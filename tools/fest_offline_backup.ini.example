@@ -1,0 +1,15 @@
+# Kopiere diese Datei nach fest_offline_backup.ini und trage echte Werte ein.
+# fest_offline_backup.ini nicht in Versionskontrolle committen (enthält das Token).
+
+[backup]
+# Basis-URL deiner Installation (mit abschließendem / oder ohne)
+base_url = https://dein-server.example/FF-Fest/
+
+# Derselbe Wert wie "Offline-Backup-Token" im Admin unter Rechnungsdaten
+token = HIER_LANGEN_ZUFALLSSTRING_EINTRAGEN
+
+# Datei, die bei jedem erfolgreichen Abruf überschrieben wird
+output_file = C:/FestBackup/Fest_Letzter_Stand.html
+
+# Abstand zwischen zwei Abrufen in Sekunden (wie Browser-Automatik: 30)
+interval_seconds = 30

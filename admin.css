@@ -1,0 +1,358 @@
+/* Gemeinsames Design – Admin & Haupt-App */
+.admin-page,
+.app-page {
+    min-height: 100vh;
+    background: #f0f2f5;
+}
+
+/* Admin-Bereich - Bootstrap 5, Desktop & Mobile */
+
+.admin-navbar {
+    background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.admin-navbar .navbar-brand,
+.admin-navbar .btn-link {
+    color: #fff !important;
+    font-weight: 600;
+}
+
+.admin-navbar .btn-link:hover {
+    color: rgba(255,255,255,0.9) !important;
+}
+
+.admin-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+}
+
+@media (min-width: 768px) {
+    .admin-content {
+        padding: 2rem;
+    }
+}
+
+/* Accordion / Collapsible */
+.admin-accordion .card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+/* Extra Luft vor thematischen Blöcken (Überschrift + erste Karte) – neue Kategorie soll deutlich sichtbar abgesetzt sein */
+.admin-accordion .admin-section-heading {
+    margin-top: 3.25rem;
+    margin-bottom: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+.admin-accordion .admin-section-heading:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.admin-accordion .card-header {
+    background: #fff;
+    border-bottom: 1px solid #dee2e6;
+    padding: 1rem 1.25rem;
+    font-weight: 600;
+    font-size: 1.05rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.admin-accordion .card-header:hover {
+    background: #f8f9fa;
+}
+
+.admin-accordion .card:has(.collapse.show) .card-header,
+.admin-accordion .card-header:not(.collapsed) {
+    background: #fce8e8;
+    color: #b91c1c;
+}
+
+.admin-accordion .card-header::after {
+    content: "▼";
+    float: right;
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+
+.admin-accordion .card-header.collapsed::after {
+    content: "▶";
+}
+
+/* Dashboard: Auf-/Zuklappen nur über den Titel, nicht über Aktualisieren / Hinweis-i */
+.admin-accordion .card-header.ff-admin-dash-header {
+    cursor: default;
+}
+.admin-accordion .card-header.ff-admin-dash-header .ff-admin-collapse-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+.admin-accordion .card-header.ff-admin-dash-header::after {
+    content: none;
+}
+.admin-accordion .ff-admin-collapse-toggle::after {
+    content: "▼";
+    float: right;
+    font-size: 0.7rem;
+    opacity: 0.7;
+}
+.admin-accordion .ff-admin-collapse-toggle.collapsed::after {
+    content: "▶";
+}
+.admin-accordion .ff-admin-dash-actions {
+    cursor: default;
+}
+.admin-accordion .ff-admin-dash-actions .ff-admin-info-btn,
+.admin-accordion .ff-admin-dash-actions .btn {
+    cursor: pointer;
+}
+
+.admin-accordion .card-body {
+    padding: 1.25rem;
+}
+
+/* Tabellen */
+.admin-page .table {
+    font-size: 0.95rem;
+}
+
+.admin-page .table thead th {
+    background: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    padding: 0.75rem 1rem;
+}
+
+.admin-page .table td {
+    padding: 0.65rem 1rem;
+    vertical-align: middle;
+}
+
+.admin-page .table-responsive {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    /* Bootstrap nutzt overflow-x: auto – nicht mit overflow:hidden überschreiben,
+       sonst kein horizontales Scrollen auf schmalen Displays (manage: Kapazität etc.). */
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+
+/* Formulare */
+.admin-page .form-label {
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+}
+
+.admin-page .form-control,
+.admin-page .form-select {
+    border-radius: 6px;
+}
+
+.admin-page .form-check-input {
+    margin-top: 0.2rem;
+}
+
+/* Buttons */
+.admin-page .btn {
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.admin-page .btn-primary {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.admin-page .btn-primary:hover {
+    background: #991b1b;
+    border-color: #7f1d1d;
+}
+
+.admin-page .btn-outline-primary {
+    color: #b91c1c;
+    border-color: #b91c1c;
+}
+
+.admin-page .btn-outline-primary:hover {
+    background: #fce8e8;
+    color: #7f1d1d;
+}
+
+.admin-page .btn-danger {
+    background: #dc3545;
+}
+
+/* Links in Tabellen */
+.admin-page .table .btn-link {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+}
+
+/* Abschnitts-Überschriften */
+.admin-page h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
+    color: #333;
+}
+
+.admin-page .text-muted-small {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 1rem;
+}
+
+/* Reset-Button */
+.admin-page .btn-reset {
+    margin-top: 2rem;
+    padding: 0.75rem 1.5rem;
+}
+
+/* ===== Haupt-App: Admin-Design übernehmen ===== */
+.app-page .app-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+}
+@media (min-width: 768px) {
+    .app-page .app-content {
+        padding: 2rem;
+    }
+}
+
+.app-page .table thead th {
+    background: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    padding: 0.75rem 1rem;
+}
+
+.app-page .tab-content {
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.app-page .nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+}
+.app-page .nav-tabs .nav-link {
+    font-weight: 600;
+    color: #6c757d;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 12px 20px;
+}
+.app-page .nav-tabs .nav-link:hover {
+    color: #b91c1c;
+}
+.app-page .nav-tabs .nav-link.active {
+    color: #b91c1c;
+    background: #fff;
+    border-bottom-color: #b91c1c;
+}
+
+/* ===== manage/ Stammdaten (Speisekarte & Tische) ===== */
+.manage-stammdaten .admin-navbar .nav-link {
+    color: #fff !important;
+    font-weight: 500;
+    border-radius: 6px;
+    padding: 0.4rem 0.65rem;
+}
+
+.manage-stammdaten .admin-navbar .nav-link:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff !important;
+}
+
+.manage-stammdaten .admin-navbar .nav-link.active {
+    background: rgba(255, 255, 255, 0.28);
+    color: #fff !important;
+}
+
+.manage-stammdaten .admin-navbar .navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.manage-stammdaten .admin-navbar .navbar-toggler:focus {
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.35);
+}
+
+.manage-stammdaten .admin-navbar .navbar-toggler-icon {
+    filter: brightness(0) invert(1);
+}
+
+.manage-stammdaten #mainContent {
+    min-height: 280px;
+}
+
+.manage-stammdaten .manage-intro-card .card-body {
+    background: linear-gradient(180deg, #fff 0%, #fafafa 100%);
+}
+
+.manage-stammdaten #manageMainCardBody {
+    border-radius: 8px;
+}
+
+/* manage/: volle Browserbreite (mehr Platz für breite Tabellen am PC) */
+.manage-stammdaten .admin-content {
+    max-width: none;
+    width: 100%;
+}
+
+.manage-stammdaten .manage-pos-table-stretch {
+    width: 100%;
+    table-layout: auto;
+}
+
+.manage-stammdaten .ff-drag-col {
+    width: 2.25rem;
+}
+
+.manage-stammdaten .ff-drag-handle {
+    cursor: grab;
+    width: 2rem;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.manage-stammdaten .ff-drag-handle:active {
+    cursor: grabbing;
+}
+
+.manage-stammdaten tr.ff-manage-pos-row.ff-dragging {
+    opacity: 0.65;
+}
+
+/* Weitere manage-Tabellen ebenfalls über die volle Inhaltsbreite */
+.manage-stammdaten #mainContent .table-responsive > .table {
+    width: 100%;
+}
+
+/* Bootstrap-Modals: ohne geladenes Bootstrap-CSS nicht als Seiteninhalt anzeigen */
+.modal:not(.show) {
+    display: none !important;
+}
+
+/* Gesamtauswertung: Bereichstabelle kompakt, Kellner/Gewinn-Karten dominieren */
+.ff-ov-bereiche-scroll {
+    max-height: 16rem;
+    overflow-y: auto;
+}
+#ffOvBox .fs-1 {
+    line-height: 1.15;
+}
