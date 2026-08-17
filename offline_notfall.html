@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Offline-Notfall – letzter Stand</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #f1f5f9; margin: 0; padding: 1rem 1rem 2rem; color: #0f172a; }
+        h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+        .muted { color: #64748b; font-size: .875rem; margin-bottom: 1rem; }
+        .pill { font-size: .85rem; padding: .35rem .65rem; border-radius: 999px; display: inline-block; }
+        .pill-warn { background: #fef3c7; color: #92400e; }
+        .pill-bad { background: #fee2e2; color: #991b1b; }
+        .pill-ok { background: #d1fae5; color: #065f46; }
+        #snapshotMirror { width: 100%; min-height: 70vh; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+        .box { background: #fff; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+        a { color: #2563eb; }
+        button { font-size: .875rem; padding: .35rem .75rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
+        button:hover { background: #f8fafc; }
+    </style>
+</head>
+<body>
+    <h1>Offline-Notfall – letzter Stand</h1>
+    <p class="muted">
+        Diese Seite läuft <strong>ohne Server</strong> (statische HTML-Datei). Sie liest den zuletzt gespeicherten Stand aus dem Browser-Speicher
+        (IndexedDB), den die Seite <em>Offline-Sicherung</em> alle 30&nbsp;Sekunden angelegt hat.
+        <strong>Nach F5 ohne Internet hierher wechseln</strong> oder diese URL als Lesezeichen setzen.
+    </p>
+    <div class="box">
+        <span id="statusPill" class="pill pill-warn">Lade …</span>
+        <span id="statusDetail" class="muted" style="margin-left:.5rem;"></span>
+        <div style="margin-top:.75rem;">
+            <button type="button" id="btnRetry">Erneut aus Speicher laden</button>
+        </div>
+    </div>
+    <div id="emptyHint" class="box" style="display:none;">
+        <p><strong>Noch kein Stand im Speicher.</strong></p>
+        <p class="muted">Einmal mit Internet die Seite <a href="backup_download.php">Offline-Sicherung</a> öffnen, Automatik laufen lassen (oder „Jetzt aktualisieren“), dann funktioniert diese Notfall-Seite auch offline.</p>
+    </div>
+    <iframe id="snapshotMirror" title="Sicherungskopie" sandbox="allow-same-origin"></iframe>
+
+    <script>
+(function() {
+    var DB_NAME = 'ff_fest_offline_v1';
+    var STORE = 'snap';
+    var KEY = 'latest';
+    var lastBlobUrl = null;
+
+    function $(id) { return document.getElementById(id); }
+
+    function setPill(kind, text) {
+        var el = $('statusPill');
+        el.className = 'pill ' + (kind === 'ok' ? 'pill-ok' : (kind === 'bad' ? 'pill-bad' : 'pill-warn'));
+        el.textContent = text;
+    }
+
+    function idbOpen() {
+        return new Promise(function(resolve, reject) {
+            var req = indexedDB.open(DB_NAME, 1);
+            req.onerror = function() { reject(req.error); };
+            req.onupgradeneeded = function() {
+                var db = req.result;
+                if (!db.objectStoreNames.contains(STORE)) {
+                    db.createObjectStore(STORE);
+                }
+            };
+            req.onsuccess = function() { resolve(req.result); };
+        });
+    }
+
+    function idbGet() {
+        return idbOpen().then(function(db) {
+            return new Promise(function(resolve, reject) {
+                var tx = db.transaction(STORE, 'readonly');
+                var req = tx.objectStore(STORE).get(KEY);
+                req.onsuccess = function() { resolve(req.result || null); };
+                req.onerror = function() { reject(req.error); };
+            });
+        });
+    }
+
+    function showInIframe(html) {
+        var iframe = $('snapshotMirror');
+        if (lastBlobUrl) {
+            try { URL.revokeObjectURL(lastBlobUrl); } catch (e) {}
+            lastBlobUrl = null;
+        }
+        var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        lastBlobUrl = URL.createObjectURL(blob);
+        iframe.src = lastBlobUrl;
+        iframe.style.display = 'block';
+    }
+
+    function loadFromCache() {
+        setPill('warn', 'Lese lokalen Speicher …');
+        $('statusDetail').textContent = '';
+        return idbGet().then(function(rec) {
+            if (rec && rec.html) {
+                showInIframe(rec.html);
+                $('emptyHint').style.display = 'none';
+                setPill('warn', 'Offline · Cache vom ' + (rec.generated_label || new Date(rec.savedAt).toLocaleString('de-AT')));
+                $('statusDetail').textContent = 'Gespeichert: ' + new Date(rec.savedAt).toLocaleString('de-AT');
+                return true;
+            }
+            $('snapshotMirror').style.display = 'none';
+            $('emptyHint').style.display = 'block';
+            setPill('bad', 'Kein gesicherter Stand in diesem Browser');
+            $('statusDetail').textContent = navigator.onLine ? 'Bitte zuerst Offline-Sicherung mit Automatik öffnen.' : 'Kein Internet – zuerst einmal online sichern.';
+            return false;
+        }).catch(function() {
+            setPill('bad', 'Speicher nicht lesbar');
+            $('emptyHint').style.display = 'block';
+        });
+    }
+
+    $('btnRetry').addEventListener('click', loadFromCache);
+
+    loadFromCache();
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('js/ff-offline-backup-sw.js', { scope: './' }).catch(function() {});
+    }
+})();
+    </script>
+</body>
+</html>

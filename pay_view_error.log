@@ -1,0 +1,10 @@
+[PAY-20260215-220351-bf978372] [Unhandled exception in list_BestellungenZahlen.php] 2026-02-15T22:03:51+01:00
+Duplicate column name 'is_ehrengast'
+#0 /users/ffobritzberg/www/list_BestellungenZahlen.php(81): mysqli_query(Object(mysqli), 'ALTER TABLE tis...')
+#1 {main}
+
+[PAY-20260215-220605-7f867253] [Unhandled exception in list_BestellungenZahlen.php] 2026-02-15T22:06:05+01:00
+Duplicate column name 'is_ehrengast'
+#0 /users/ffobritzberg/www/list_BestellungenZahlen.php(81): mysqli_query(Object(mysqli), 'ALTER TABLE tis...')
+#1 {main}
+
