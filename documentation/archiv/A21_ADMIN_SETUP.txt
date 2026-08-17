@@ -1,0 +1,11 @@
+A21 – Admin Ersteinrichtung (One-Time Setup)
+-------------------------------------------
+Wenn die Tabelle 'users' noch keine Einträge enthält, zeigt login.php automatisch
+eine einmalige Admin-Registrierung.
+
+- Dort legst du den Super-Admin an (admin=2).
+- Danach ist die Setup-Seite weg und das normale Login wird angezeigt.
+
+Hinweis:
+- Das Passwort wird mit password_hash (BCRYPT) gespeichert und ist kompatibel mit
+  der vorhandenen Login-Prüfung (crypt(...)).

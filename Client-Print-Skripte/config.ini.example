@@ -1,0 +1,78 @@
+# ============================================================
+# FeuerwehrBestellsystem - Print Client Konfiguration
+# ============================================================
+# 
+# Diese Datei nach "config.ini" kopieren und anpassen!
+# 
+# Jeder Druck-PC benötigt seine eigene config.ini mit dem
+# entsprechenden Print Target (Küche, Schank, Grill, etc.)
+#
+# ============================================================
+
+[Server]
+# URL zum Bestellsystem (ohne Schrägstrich am Ende)
+# Gratis-bplaced oft nur HTTP → dann http://… verwenden (kein https://, sonst SSL-Fehler).
+url = https://ffobritzberg.bplaced.net
+
+# Sicherheitstoken (muss im Admin -> Rechnungsdaten identisch sein)
+# Leer lassen wenn kein Token verwendet wird
+token = 
+
+# Print Target ID - welches Druckziel dieser PC bedient:
+#   11 = Küche
+#   12 = Schank
+#   13 = Feuerflecken (oder andere benutzerdefinierte)
+# Die IDs findest du im Admin unter "Druckziele (Print Targets)"
+print_target = 11
+
+# SSL-Zertifikat prüfen (true = sicher, Standard). Bei CERTIFICATE_VERIFY_FAILED / self-signed: false setzen
+# (nur im vertrauenswürdigen Netz; besser ist ein korrektes Zertifikat am Server).
+verify_ssl = true
+
+# Wie oft der Server abgefragt wird (in Sekunden)
+poll_interval = 3
+
+# Wie viele Einträge aus der Thermo-Warteschlange (printer_jobs) pro Runde nacheinander abgeholt werden.
+# Der Server liefert pro Anfrage nur einen Job; ohne diesen Wert würde nur einer pro poll_interval gedruckt.
+# Standard 25; auf 1 setzen für altes Verhalten (max. ein Queue-Job pro Wartezyklus).
+max_printer_jobs_per_poll = 25
+
+# Heartbeat: wie oft dem Server „Ich lebe noch“ gemeldet wird (Sekunden).
+# Verhindert, dass der Dienst als abgestürzt gilt, wenn ein Abruf/Druck mal länger dauert.
+# 0 = aus. Empfohlen: 60.
+heartbeat_interval = 60
+
+# Name dieses Dienstes für die Anzeige im Admin (z.B. kueche, schank).
+# Leer = automatisch target_<print_target> (z.B. target_11)
+; service_name = kueche
+
+# Zeitmessungen pro Poll-Runde im Konsolen-Log ausgeben (nur für Fehlersuche).
+# Standard false = sauberes Log. Alternativ: Skript mit --verbose starten.
+verbose_timings = false
+
+
+[Drucker]
+# === WINDOWS ===
+# Exakter Name wie in Windows „Geräte und Drucker“ (Freigabename gleich setzen).
+name = Receipt Printer
+
+# Temporäre Datei für Druckdaten
+temp_file = C:\POS-Daten\printPOS.txt
+
+# === LINUX ===
+device = /dev/usb/lp0
+
+# Mehrere USB-Devices (Komma-getrennt), z. B. wenn zwei Modelle angeschlossen sind:
+# devices = /dev/usb/lp0, /dev/usb/lp1
+devices =
+
+
+[Einstellungen]
+# Kopf- und Fußtext des Thermo-Bons: Wenn im Admin unter Rechnungsdaten
+# „Thermo-Bon Kopfzeile/Fußzeile“ etwas eingetragen ist, kommen diese Texte
+# vom Server (mehrzeilig möglich). Leer lassen im Admin = diese Werte hier.
+# Name der Feuerwehr (erscheint oben auf jedem Bon)
+ff_name = FF Obritzberg
+
+# Text am Ende des Bons
+footer_text = Guten Appetit!

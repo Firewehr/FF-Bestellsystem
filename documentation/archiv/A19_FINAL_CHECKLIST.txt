@@ -1,0 +1,74 @@
+A19 – Finalisierung: Checkliste für Test & Go-Live
+===================================================
+Datum: 2026-01-17
+
+1) Datenbank / Migrationen (phpMyAdmin)
+---------------------------------------
+- Stelle sicher, dass folgende Tabellen existieren:
+  * settings
+  * printer_jobs
+  * feste
+  * sammelrechnungen
+- Stelle sicher, dass in bestellungen (falls genutzt) Felder existieren:
+  * is_gratis
+  * sammelrechnung_id
+  * bezahlt / erledigt (wie im Projekt bereits verwendet)
+
+Tipp: Öffne /diagnose.php (eingeloggt) für schnellen Check.
+
+2) Rollen / Rechte
+------------------
+- Super-Admin (users.admin=2) kann:
+  * Zahlungsmodus pro Fest ändern
+  * Fest als "aktuelles Fest" setzen
+- Admin (users.admin=1) kann:
+  * System-Einstellungen (FAST_REFRESH, Kellner-Sichtbarkeit) ändern
+- Kellner:
+  * sieht abhängig von Setting nur eigene oder alle Bestellungen
+
+3) Fest / Zahlung
+-----------------
+- Admin -> Feste:
+  * Fest anlegen (Name, Code)
+  * aktuelles Fest setzen (damit Rechnungsnummer Prefix = Fest-Code wird)
+  * Zahlungsmodus testen:
+    - instant: nach Bestellung -> Zahlungsansicht
+    - after: normal bis Abschluss
+  * Ausnahme prüfen:
+    - Sammelrechnungstische dürfen trotz instant am Ende zahlen
+    - Ehrengast-Tisch zahlt nie (0 EUR Abschluss)
+
+4) Sammelrechnung
+-----------------
+- 2-3 Tische mit Positionen erzeugen
+- Sammelrechnung erstellen
+- Sammelrechnung bezahlen
+- Danach "Rechnung/Beleg drucken" testen
+
+5) Rechnung / Firmenrechnung
+----------------------------
+- In Zahlansicht:
+  * Beleg drucken
+  * Firmenrechnung aktivieren + Empfängerdaten optional
+- Rechnungsnummer:
+  * Format PREFIXYYYY-0001
+  * PREFIX = Fest-Code (wenn aktuelles Fest gesetzt), sonst INVOICE_PREFIX
+- Verkäuferdaten im Admin prüfen (Name/Adresse/UID)
+
+6) Druck-Queue + Windows Druckdienst
+------------------------------------
+- Windows Script (Rechnung):
+  * Client-Print-Skripte/Windows/print_rechnung_win.py
+  * Token und Server URL prüfen
+  * Drucker: Epson TM-T88 installiert, "Generic/Text Only" falls verwendet
+- Heartbeat:
+  * printer_heartbeat.php wird alle 10s aufgerufen (service=rechnung/kueche/schank)
+  * Admin sieht Status im Drucker-Service Status Block
+
+7) Küche/Schank Anzeige
+-----------------------
+- 2-Spalten Toggle prüfen (Küche & Schank)
+- FAST_REFRESH an/aus prüfen
+- status_counts.php lädt und reduziert Reloads
+
+Wenn du alle Punkte erfolgreich abhakst: System ist fest-tauglich.

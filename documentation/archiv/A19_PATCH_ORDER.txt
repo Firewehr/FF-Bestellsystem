@@ -1,0 +1,17 @@
+A19 – Patch Reihenfolge (wenn du von Original kommst)
+====================================================
+Wenn du die Steps nacheinander eingespielt hast, brauchst du das NICHT.
+Wenn du "alles auf einmal" migrierst, spiele SQL-Patches in folgender Reihenfolge ein:
+
+1) patch_settings.sql (Settings Tabelle)
+2) patch_kellner_abrechnung.sql
+3) patch_feste.sql / patch_a6_feste_payment_tischflags.sql (Feste + Zahlungsmodus + Tischflags)
+4) patch_a7_ehrengast.sql (is_gratis)
+5) patch_a8_sammelrechnung.sql (Sammelrechnungen)
+6) patch_a9_rechnung.sql (Rechnung/Firmenfelder, Rechnungsdaten, Prefix)
+7) patch_a10_printer_monitoring.sql (Warnschwelle)
+8) patch_a11_rechnung_retry_layout.sql (Retry/Status)
+9) patch_a13.sql (printer_jobs falls noch nicht)
+10) patch_a15_feste_code_setting.sql (Fest-Code Setting)
+
+Hinweis: Manche Patches überschneiden sich je nach DB-Stand. Doppelte CREATE TABLE sind unkritisch.
