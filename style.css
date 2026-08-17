@@ -1,0 +1,1266 @@
+/* FF Fest Bestellsystem - Bootstrap 5 Styling (Primärfarbe wie Login: Feuerwehr-Rot) */
+:root {
+    --ff-primary: #b91c1c;
+    --ff-primary-dark: #7f1d1d;
+    --ff-success: #198754;
+    --ff-card-bg: #fff;
+    --ff-body-bg: #f8f9fa;
+    --ff-tint-bg: rgba(185, 28, 28, 0.08);
+    --ff-tint-panel: #fce8e8;
+    --bs-primary: #b91c1c;
+    --bs-primary-rgb: 185, 28, 28;
+    --bs-link-color: #b91c1c;
+    --bs-link-hover-color: #7f1d1d;
+}
+
+.btn-primary {
+    --bs-btn-color: #fff;
+    --bs-btn-bg: #b91c1c;
+    --bs-btn-border-color: #b91c1c;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #991b1b;
+    --bs-btn-hover-border-color: #7f1d1d;
+    --bs-btn-focus-shadow-rgb: 185, 28, 28;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #7f1d1d;
+    --bs-btn-active-border-color: #6b1717;
+    --bs-btn-disabled-bg: #b91c1c;
+    --bs-btn-disabled-border-color: #b91c1c;
+}
+
+.btn-outline-primary {
+    --bs-btn-color: #b91c1c;
+    --bs-btn-border-color: #b91c1c;
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: #b91c1c;
+    --bs-btn-hover-border-color: #b91c1c;
+    --bs-btn-focus-shadow-rgb: 185, 28, 28;
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: #7f1d1d;
+    --bs-btn-active-border-color: #6b1717;
+}
+
+body {
+    background: var(--ff-body-bg);
+    font-size: 1rem;
+    padding-bottom: 2rem;
+}
+
+.durchgestrichen {
+    text-decoration: line-through;
+}
+td {
+    height: 50px;
+    vertical-align: top;
+}
+
+.tischgr {
+    background-color: lightgreen;
+}
+
+.tischy {
+    background-color: #F5F599;
+    color: #111 !important;
+}
+
+/* Tisch in der Navbar: offene Posten → gelber Hinweis, schwarze Schrift (überschreibt .navbar-brand { color:#fff }) */
+.navbar.app-navbar .navbar-brand.ff-navbar-brand-unpaid {
+    color: #111 !important;
+    background-color: #ffeb3b !important;
+    padding: 2px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+/* Tischübersicht: Spaltenzahl (Koordinatenraster), --tc aus list_tische.php */
+.tisch-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--tc, 5), minmax(0, 1fr));
+    gap: 0.5rem;
+}
+@media (max-width: 576px) {
+    .tisch-overview-grid {
+        grid-template-columns: repeat(var(--tc-mobile, var(--tc, 5)), minmax(0, 1fr));
+    }
+}
+.tisch-overview-grid > .col {
+    min-width: 0;
+}
+
+/* Tischübersicht: nicht abgeschickte Positionen — Rahmen um die Kachel */
+.tisch-overview-grid .col.tisch-unsent-wrap {
+    border: 3px solid #f97316;
+    border-radius: 0.5rem;
+    padding: 2px;
+    box-sizing: border-box;
+}
+
+/* Admin: runder Info-Button (aufklappbare Hinweise) */
+.ff-admin-info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--bs-secondary, #6c757d);
+    background: #fff;
+    color: var(--bs-secondary, #6c757d);
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-style: italic;
+    line-height: 1;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+.ff-admin-info-btn:hover,
+.ff-admin-info-btn:focus {
+    background: var(--bs-secondary, #6c757d);
+    color: #fff;
+    border-color: var(--bs-secondary, #6c757d);
+}
+.ff-admin-info-panel-inner {
+    padding: 0.5rem 0.65rem;
+    margin-top: 0.35rem;
+    background: var(--bs-light, #f8f9fa);
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 0.5rem;
+}
+.ff-admin-info-panel-inner p:last-child {
+    margin-bottom: 0;
+}
+
+/* Admin: Benutzer-Karten */
+.ff-users-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    gap: 0.75rem;
+}
+.ff-user-card {
+    border-color: #e2e8f0;
+}
+.ff-user-card-details summary {
+    cursor: pointer;
+    user-select: none;
+}
+.ff-user-card-details[open] summary {
+    margin-bottom: 0.35rem;
+}
+
+/* Systemnachricht (Vollbild) */
+.ff-system-broadcast-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(4px);
+}
+.ff-system-broadcast-overlay[hidden] {
+    display: none !important;
+}
+body.ff-system-broadcast-open {
+    overflow: hidden;
+}
+.ff-system-broadcast-panel {
+    width: min(100%, 520px);
+    max-height: min(85vh, 640px);
+    display: flex;
+    flex-direction: column;
+}
+.ff-system-broadcast-text {
+    font-size: 1.15rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    max-height: 50vh;
+}
+
+/* Kompatibilität für Partials (Direktverkauf, ältere Views) */
+.ui-grid-a {
+    display: grid;
+    grid-template-columns: repeat(var(--pos-cols, 2), 1fr);
+    gap: 10px;
+    margin-bottom: 1rem;
+}
+.ui-block-a, .ui-block-b {
+    min-width: 0;
+}
+@media (max-width: 576px) {
+    .ui-grid-a { grid-template-columns: repeat(min(var(--pos-cols, 2), 2), 1fr); }
+}
+
+/* Speisen/Getränke: Desktop --pos-cols, schmal --pos-cols-mobile (Admin separat einstellbar) */
+.pos-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--pos-cols, 3), minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 0.75rem;
+}
+.pos-menu-grid > .posWrap {
+    min-width: 0;
+}
+@media (max-width: 576px) {
+    .pos-menu-grid {
+        /* Handy: nie mehr als 2 Spalten, damit kein seitliches Scrollen entsteht. */
+        grid-template-columns: repeat(min(var(--pos-cols-mobile, 3), 2), minmax(0, 1fr));
+    }
+}
+
+/* Produkt-Buttons (Speisen/Getränke) - ersetzt jQuery Mobile ui-btn */
+.ui-btn, .ui-btn.ui-corner-all, .ui-btn.big {
+    display: block;
+    width: 100%;
+    padding: 14px 12px;
+    margin: 0;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.ui-btn:hover, .ui-btn:focus {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+.ui-btn.big {
+    min-height: 80px;
+    padding: 16px;
+    font-size: 1.05rem;
+}
+
+/* Tischkarte: − links, … rechts (jeweils am Kachelrand) */
+.posWrap {
+    position: relative;
+}
+.posWrap > .pos-menu-tile,
+.posWrap > button.ui-btn.big,
+.posWrap > button[id^="btn-pos-"] {
+    box-sizing: border-box;
+    padding-left: 48px !important;
+    padding-right: 48px !important;
+}
+.posWrap .btnHinweis,
+.posWrap .btnMinus {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 48px;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0;
+    z-index: 11;
+    text-align: center;
+    text-decoration: none;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-sizing: border-box;
+}
+.posWrap .btnMinus {
+    left: 0;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff !important;
+    font-size: 26px;
+    border-right: 1px solid rgba(255, 255, 255, 0.22);
+}
+.posWrap .btnHinweis {
+    right: 0;
+    background: rgba(127, 29, 29, 0.78);
+    color: #fff !important;
+    font-size: 22px;
+    border-left: 1px solid rgba(255, 255, 255, 0.22);
+}
+.posWrap .btnHinweis:active {
+    transform: scale(0.97);
+}
+.posWrap .btnMinus:hover {
+    background: rgba(0, 0, 0, 0.75);
+}
+.posWrap .btnMinus:active {
+    transform: scale(0.97);
+}
+
+/* Tisch: Bestellung abschicken unten rechts (sticky) */
+.tisch-bestellungen-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: min(72vh, calc(100dvh - 130px));
+}
+.tisch-order-main {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.tisch-order-footer {
+    flex-shrink: 0;
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    box-sizing: border-box;
+    padding: 10px 12px max(14px, env(safe-area-inset-bottom, 0px)) 12px;
+    /* -1px lässt die seitlichen Borders des Footers nahtlos in die unteren
+       Borders des Tab-Content übergehen (keine doppelte Trennlinie). */
+    margin-top: -1px;
+    margin-left: 0;
+    margin-right: 0;
+    /* Nahtloser Übergang vom Tab-Content (weiß) zum Footer: gleicher
+       Hintergrund, weicher Fade nach oben statt harter Bruchkante. */
+    background: linear-gradient(to top, #ffffff 65%, rgba(255, 255, 255, 0));
+    /* Seitliche + untere Border in derselben Farbe wie der Tab-Content-Rahmen,
+       damit Tabs + Inhalt + Footer wie ein gemeinsamer Block wirken. */
+    border-left: 1px solid #dee2e6;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+}
+.tisch-order-footer .btn {
+    min-width: 11.5rem;
+    font-weight: 700;
+    padding: 0.55rem 1rem;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+}
+
+/* Positions-Kacheln: ausgewählt / wenig Bestand / klare Kontraste */
+.pos-tile--selected {
+    background: linear-gradient(180deg, #facc15 0%, #eab308 92%) !important;
+    color: #1c1917 !important;
+    box-shadow: inset 0 0 0 3px #a16207, 0 0 0 2px rgba(120, 53, 15, 0.35) !important;
+    font-weight: 700;
+}
+.pos-tile--low-stock:not(.pos-tile--selected):not(:disabled) {
+    box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 3px 0 rgba(124, 45, 18, 0.65) !important;
+}
+
+/* Verfügbarkeitstext (Handy: nicht wegclampen bei Warnung) */
+.pos-tile-meta {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.15;
+    font-weight: 500;
+    margin-top: 2px;
+    opacity: 0.95;
+}
+.pos-tile-meta--warn {
+    font-weight: 800 !important;
+    font-size: 0.78rem !important;
+    line-height: 1.2 !important;
+    letter-spacing: 0.01em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    display: block !important;
+    overflow: visible !important;
+    word-break: break-word;
+    -webkit-line-clamp: unset !important;
+}
+.pos-tile-meta--sold {
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+@media (max-width: 576px) {
+    .posWrap .pos-menu-tile,
+    .posWrap .pos-menu-tile.big {
+        min-height: 92px;
+        padding: 10px 48px !important;
+        font-size: 0.88rem;
+    }
+    .pos-tile-meta:not(.pos-tile-meta--warn) {
+        font-size: 0.62rem;
+        line-height: 1.1;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: break-word;
+    }
+    .pos-tile-meta--warn {
+        font-size: 0.74rem !important;
+    }
+    .posWrap .cnt {
+        font-size: 0.8rem;
+    }
+}
+
+/* Manage: Tisch-Raster per Drag & Drop */
+.tisch-admin-grid-wrap {
+    overflow-x: auto;
+    margin-bottom: 1.5rem;
+}
+.tisch-admin-grid {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 0.5rem;
+    min-width: min-content;
+}
+.tisch-admin-cell {
+    min-width: 72px;
+    min-height: 52px;
+    border: 2px dashed #ced4da;
+    border-radius: 8px;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+}
+.tisch-admin-cell.tisch-admin-cell--busy {
+    border-style: solid;
+    border-color: #adb5bd;
+    background: #fff;
+    flex-direction: column;
+    align-items: stretch;
+}
+.tisch-grid-stack {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 3px;
+    align-items: stretch;
+}
+.tisch-grid-flags {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.tisch-flag-toggle {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border: 1px solid #adb5bd;
+    border-radius: 4px;
+    background: #fff;
+    color: #495057;
+    cursor: pointer;
+    line-height: 1.25;
+    font-weight: 600;
+}
+.tisch-flag-toggle:hover {
+    border-color: var(--ff-primary, #b91c1c);
+}
+.tisch-flag-toggle--on[data-flag="sr"] {
+    background: #dbeafe;
+    border-color: #2563eb;
+    color: #1e3a8a;
+}
+.tisch-flag-toggle--on[data-flag="eg"] {
+    background: #ede9fe;
+    border-color: #7c3aed;
+    color: #5b21b6;
+}
+.tisch-admin-cell.tisch-admin-cell--empty {
+    cursor: pointer;
+}
+.tisch-admin-cell.tisch-admin-cell--empty:hover {
+    border-color: var(--ff-primary, #b91c1c);
+    background: #fff5f5;
+}
+.tisch-draggable {
+    cursor: grab;
+    width: 100%;
+    max-width: 140px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    word-break: break-word;
+}
+.tisch-draggable:active { cursor: grabbing; }
+.tisch-draggable.dragging {
+    opacity: 0.65;
+    outline: 2px dashed var(--ff-primary);
+}
+.tisch-draggable--ehren { box-shadow: inset 0 0 0 2px #7c3aed; }
+.tisch-draggable--sammel { box-shadow: inset 0 0 0 2px #2563eb; }
+.tisch-admin-cell--over {
+    border-color: var(--ff-primary) !important;
+    background: var(--ff-tint-panel) !important;
+}
+.tisch-admin-legend { font-size: 0.85rem; }
+
+/* Tischübersicht: Typ-Klassen (Hintergrund zusätzlich inline) */
+.tisch-ehrengast { border-left: 4px solid #7c3aed; }
+.tisch-sammel { border-left: 4px solid #2563eb; }
+
+/* Navbar / Header */
+.navbar.app-navbar {
+    background: linear-gradient(135deg, var(--ff-primary) 0%, var(--ff-primary-dark) 100%) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.navbar.app-navbar .navbar-brand {
+    color: #fff !important;
+    font-weight: 600;
+}
+.navbar.app-navbar .navbar-brand.flex-grow-1 {
+    flex: 1;
+    text-align: center;
+}
+
+.navbar-light.bg-light {
+    background: #fff !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+/* Menü / List Group */
+.list-group-item {
+    border-radius: 8px !important;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+.list-group-item-action:hover {
+    background: var(--ff-tint-bg);
+}
+
+/* Tabs */
+.nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+}
+.nav-tabs .nav-link {
+    font-weight: 600;
+    color: #6c757d;
+    border: none;
+    border-bottom: 3px solid transparent;
+    padding: 12px 20px;
+}
+.nav-tabs .nav-link:hover {
+    color: var(--ff-primary);
+}
+.nav-tabs .nav-link.active {
+    color: var(--ff-primary);
+    background: transparent;
+    border-bottom-color: var(--ff-primary);
+}
+
+.tab-content {
+    padding: 1rem 0;
+    min-height: 200px;
+}
+
+/* Tisch / Direktverkauf: Wisch zwischen Speisen & Getränke (Handy); vertikal scrollen bleibt prioritär */
+@media (max-width: 768px) {
+    .ff-tab-swipe-area {
+        touch-action: pan-y pinch-zoom;
+    }
+}
+
+/* Schneller Tap auf Touch-Geräten (z. B. Direktverkauf Reset) */
+.ff-tap-fast {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Tisch-Buttons */
+.btn.w-100.py-3 {
+    font-weight: 600;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.btn.w-100.py-3:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+/* Container */
+.container {
+    max-width: 1200px;
+}
+.container.py-3 {
+    padding-top: 1rem !important;
+    padding-bottom: 1.5rem !important;
+}
+
+/* Loading Overlay */
+#loadingOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Buttons allgemein */
+.btn {
+    border-radius: 6px;
+    font-weight: 500;
+}
+.btn-outline-secondary {
+    border-color: #6c757d;
+}
+.btn-outline-primary {
+    border-color: var(--ff-primary);
+    color: var(--ff-primary);
+}
+
+/* ==========================================================================
+   Küche / Schank / Druckziel - größer, smoother, einheitliche Farben
+   list_druckziel → #DruckzielContent; list_kueche / list_schank → #Kuechenansicht / #Schankansicht
+   (gleiche Klassen → gleiche Styles über :is(…))
+   ========================================================================== */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .navbar,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .navbar-brand,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .btn {
+    font-size: 1.15rem !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .navbar-brand,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders) {
+    font-weight: 700;
+}
+
+/* Tisch-Header: bestellt = grün, nicht bestellt = rot */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-bestellt {
+    background: #22c55e !important;
+    color: #fff !important;
+    padding: 16px 20px !important;
+    margin: 8px 0 !important;
+    font-size: 1.8rem !important;
+    font-weight: 700;
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(34,197,94,0.3);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-offen {
+    background: #dc2626 !important;
+    color: #fff !important;
+    padding: 16px 20px !important;
+    margin: 8px 0 !important;
+    font-size: 1.8rem !important;
+    font-weight: 700;
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(220,38,38,0.3);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-kellner {
+    padding: 8px 20px;
+    font-size: 1.1rem;
+    color: #555;
+}
+
+/* Tisch-Gruppe: mehrere Bestellungen desselben Tisches optisch als ein Block.
+   Header (.kueche-tisch-bestellt / .kueche-tisch-offen) sitzt einmal oben drauf,
+   darunter alle .kueche-bestellung-wrap mit dezentem Trenner. */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    padding: 8px;
+    margin: 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .kueche-tisch-bestellt,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .kueche-tisch-offen {
+    margin: 0 !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .kueche-kellner,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .ui-block-b > .kueche-kellner {
+    margin: 0 0 4px 0 !important;
+    padding: 4px 12px;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .kueche-bestellung-wrap {
+    margin: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fafbfc;
+    overflow: hidden;
+    box-sizing: border-box;
+    min-width: 0;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe > .kueche-bestellung-wrap + .kueche-bestellung-wrap {
+    border-top: 1px dashed #cbd5e1;
+}
+
+/* Bestell-Buttons (offen, zu erledigen) */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kuecheCard {
+    padding: 20px !important;
+    margin-bottom: 24px !important;
+    gap: 20px !important;
+}
+
+/* Legacy: erledigte Zeilen als Input (Historie o.ä.) */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig input.kueche-btn-fertig,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig input.kueche-btn-fertig.durchgestrichen {
+    display: block !important;
+    width: 100% !important;
+    padding: 12px 14px !important;
+    margin: 0 !important;
+    font-size: 1.1rem !important;
+    font-weight: 600;
+    border: 1px solid #047857 !important;
+    border-radius: 10px;
+    background: #059669 !important;
+    color: #fff !important;
+    text-decoration: line-through;
+    cursor: default;
+    box-sizing: border-box;
+}
+
+/* Gesamt Fertig / FORCE / Drucken */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion {
+    padding: 16px 24px !important;
+    margin: 8px 4px 8px 0 !important;
+    font-size: 1.25rem !important;
+    font-weight: 700;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    transition: all 0.2s;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion:hover {
+    transform: translateY(-1px);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion.gesamt {
+    background: #22c55e !important;
+    color: #fff !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion.force {
+    background: #7c3aed !important;
+    color: #fff !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion.drucken {
+    background: #ea580c !important;
+    color: #fff !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion.abschliessen {
+    background: #0d9488 !important;
+    color: #fff !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion.abschliessen--ohne-druck {
+    background: #64748b !important;
+    color: #fff !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row,
+.kueche-orders .kueche-bestellung-wrap .kueche-order-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    margin: 0;
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    min-width: 0;
+    box-sizing: border-box;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row .kueche-unfertig,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row .kueche-fertig {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: none;
+    box-sizing: border-box;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row .kueche-buttons {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    width: 100%;
+    padding-top: 4px;
+    border-top: 1px dashed #e2e8f0;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-unfertig {
+    padding: 10px;
+    background: #fffbeb;
+    border-radius: 8px;
+    border: 1px solid #fde68a;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig {
+    padding: 10px;
+    background: #ecfdf5;
+    border-radius: 8px;
+    border: 1px solid #6ee7b7;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin: 0 0 8px;
+    box-sizing: border-box;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row:last-child {
+    margin-bottom: 0;
+}
+/* Offen + erledigt: identische Box (nur Farbe/Text unterscheidet sich) */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row button.kueche-btn-fertig--done {
+    flex: 1 1 0;
+    display: block !important;
+    width: auto !important;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 !important;
+    padding: 12px 14px !important;
+    font-size: 1.1rem !important;
+    font-weight: 600;
+    line-height: 1.35 !important;
+    min-height: 2.75rem;
+    height: auto;
+    border-radius: 10px !important;
+    border: 1px solid transparent;
+    box-sizing: border-box !important;
+    white-space: normal;
+    text-align: left;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row--open .kueche-btn-offen {
+    background: #fef3c7 !important;
+    color: #92400e !important;
+    border-color: #fde68a !important;
+    cursor: pointer;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row--open .kueche-btn-offen:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row--done .kueche-btn-fertig,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row--done button.kueche-btn-fertig--done {
+    background: #059669 !important;
+    color: #fff !important;
+    border-color: #047857 !important;
+    text-decoration: line-through;
+    cursor: default;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-wieder-offen {
+    flex: 0 0 2.75rem;
+    width: 2.75rem !important;
+    min-width: 2.75rem !important;
+    min-height: 2.75rem !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Druckziel: Hauptbereich + Sidebar als Grid (nutzt große Monitore / TV) */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-layout.druckziel-kueche-layout {
+    display: grid;
+    grid-template-columns: 1fr min(360px, 30vw);
+    gap: 1.25rem;
+    align-items: start;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0 1rem 1.25rem;
+    box-sizing: border-box;
+    position: relative;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-layout.druckziel-kueche-layout.ff-station-layout--no-sidebar {
+    grid-template-columns: 1fr;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-layout.druckziel-kueche-layout .kueche-main {
+    margin-right: 0;
+    min-width: 0;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-layout.druckziel-kueche-layout .kueche-sidebar {
+    position: static;
+    top: auto;
+    right: auto;
+    width: 100%;
+    max-width: none;
+    z-index: auto;
+}
+/* Fallback für ältere .kueche-layout ohne Druckziel-Wrapper */
+.kueche-layout:not(.druckziel-kueche-layout) {
+    position: relative;
+}
+.kueche-layout:not(.druckziel-kueche-layout) .kueche-main {
+    margin-right: 220px;
+}
+.kueche-layout:not(.druckziel-kueche-layout) .kueche-sidebar {
+    position: fixed;
+    top: 80px;
+    right: 16px;
+    width: 200px;
+    z-index: 100;
+}
+/* Rechte Spalte: Anzahl wartend */
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar {
+    background: #f1f5f9 !important;
+    padding: 24px !important;
+    border-radius: 12px;
+    min-height: 200px;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar .kueche-wartend {
+    font-size: 2rem !important;
+    font-weight: 800;
+    text-align: center;
+    padding: 20px 0;
+    color: #0f172a !important;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar input[type="button"] {
+    display: block !important;
+    width: 100% !important;
+    padding: 14px 16px !important;
+    margin: 8px 0 !important;
+    font-size: 1.2rem !important;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    cursor: default;
+}
+
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) {
+    padding: 16px 0;
+    font-size: 1.05rem;
+    max-width: none;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders) {
+    padding: 12px 0;
+    font-size: 1.15rem;
+}
+@media (max-width: 992px) {
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-layout.druckziel-kueche-layout {
+        grid-template-columns: 1fr;
+    }
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kuecheCard {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-wartend-zeit {
+    font-size: 1rem;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+/* =============================================================================
+   Küche / Schank / Druckziel: Grid zeilenweise (1. Bestellung = Spalte 1 oben,
+   2. = Spalte 2 oben, …) – nicht Multi-Column („Zeitungs“-Füllung senkrecht).
+   ============================================================================= */
+#Kuechenansicht,
+#Schankansicht {
+    max-width: none;
+}
+
+#Kuechenansicht .kueche-page-grid.ui-grid-a.ui-responsive,
+#Schankansicht .kueche-page-grid.ui-grid-a.ui-responsive {
+    display: grid;
+    grid-template-columns: 1fr min(340px, 32vw);
+    gap: 1.25rem;
+    align-items: start;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0 1rem 1.5rem;
+    box-sizing: border-box;
+}
+
+@media (max-width: 992px) {
+    #Kuechenansicht .kueche-page-grid.ui-grid-a.ui-responsive,
+    #Schankansicht .kueche-page-grid.ui-grid-a.ui-responsive {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Übersicht oben: über alle Spalten der Tischkarten */
+:is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow > .kueche-inline-summary {
+    grid-column: 1 / -1;
+    width: 100%;
+}
+
+/* Grid: Reihenfolge im HTML = zeitlich; Platzierung Zeile für Zeile links→rechts */
+#kuecheOrders.kueche-orders-flow,
+#schankOrders.kueche-orders-flow,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(280px, 24vw, 420px)), 1fr));
+    gap: 1.25rem;
+    align-items: start;
+    width: 100%;
+}
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow.ff-station-cols-fixed,
+#kuecheOrders.kueche-orders-flow.ff-station-cols-fixed,
+#schankOrders.kueche-orders-flow.ff-station-cols-fixed {
+    grid-template-columns: repeat(var(--station-cols, 1), minmax(0, 1fr));
+}
+
+/* Kein Layout auf <script> – sonst wird Quelltext sichtbar / Grid stört */
+#kuecheOrders.kueche-orders-flow > script,
+#schankOrders.kueche-orders-flow > script,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow > script {
+    display: none !important;
+}
+
+#kuecheOrders.kueche-orders-flow > .kueche-bestellung-wrap,
+#schankOrders.kueche-orders-flow > .kueche-bestellung-wrap,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow > .kueche-bestellung-wrap,
+#kuecheOrders.kueche-orders-flow > .kueche-tisch-gruppe,
+#schankOrders.kueche-orders-flow > .kueche-tisch-gruppe,
+:is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow > .kueche-tisch-gruppe {
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+/* Laufende Nummer pro Bestellblock (Küche/Schank/Druckziel) */
+/* Sanftes Nachladen Küche/Schank/Druckziel (ohne großen Spinner) */
+.app-content-silent-reload {
+    opacity: 0.9;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+}
+/* Handy: kein Aufblitzen beim Poll (voller Opacity, kein Layout-Flackern durch Transition) */
+@media (hover: none) and (pointer: coarse) {
+    .app-content-silent-reload {
+        opacity: 1;
+        transition: none;
+    }
+}
+/* Scroll-Anker: weniger Sprung wenn Sidebar unten (einspaltig) sich ändert */
+@media (max-width: 992px) {
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-main {
+        overflow-anchor: auto;
+    }
+}
+
+.kueche-bestellung-badge {
+    font-weight: 700;
+    font-size: 1.05rem;
+    line-height: 1.2;
+    color: #0f172a;
+    background: #e2e8f0;
+    padding: 0.3rem 0.65rem;
+    border-radius: 0.35rem;
+    margin-bottom: 0.45rem;
+    display: inline-block;
+}
+
+/* Direktverkauf-Bon: hoher Kontrast auf rot/grünem Tischstreifen (Küche/Schank/Druckziel) */
+.ff-kueche-dv-bon-wrap {
+    display: inline-block;
+    margin: 0.25rem 0 0;
+    padding: 0.55rem 1rem 0.65rem;
+    max-width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    color: #0a0a0a;
+    border-radius: 12px;
+    border: 3px solid #111;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.ff-kueche-dv-bon-wrap .ff-kueche-dv-bon-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.2rem;
+    line-height: 1.2;
+}
+.ff-kueche-dv-bon-wrap .ff-kueche-dv-bon-nr {
+    display: block;
+    font-size: clamp(1.85rem, 5.5vw, 2.85rem);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    color: #020617;
+    word-break: break-word;
+}
+.ff-kueche-dv-bon-wrap--fallback .ff-kueche-dv-bon-nr {
+    font-size: clamp(1.35rem, 4vw, 2rem);
+    font-weight: 700;
+}
+
+@media (min-width: 1600px) {
+    #kuecheOrders.kueche-orders-flow:not(.ff-station-cols-fixed),
+    #schankOrders.kueche-orders-flow:not(.ff-station-cols-fixed) {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(300px, 20vw, 400px)), 1fr));
+    }
+}
+
+@media (min-width: 2200px) {
+    #kuecheOrders.kueche-orders-flow:not(.ff-station-cols-fixed),
+    #schankOrders.kueche-orders-flow:not(.ff-station-cols-fixed) {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(280px, 18vw, 380px)), 1fr));
+    }
+}
+
+@media (min-width: 1200px) {
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig {
+        font-size: 1.08rem !important;
+        padding: 10px 14px !important;
+    }
+    #Kuechenansicht #kuecheOrders input[type="button"],
+    #Kuechenansicht #kuecheOrders button:not(.kueche-btn-offen):not(.kueche-btn-fertig),
+    #Schankansicht #schankOrders input[type="button"],
+    #Schankansicht #schankOrders button:not(.kueche-btn-offen):not(.kueche-btn-fertig) {
+        font-size: 1.08rem !important;
+        padding: 10px 14px !important;
+    }
+}
+
+@media (min-width: 1600px) {
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow:not(.ff-station-cols-fixed) {
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(300px, 20vw, 420px)), 1fr));
+    }
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig,
+    :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig input.kueche-btn-fertig {
+        font-size: 1.05rem !important;
+        padding: 10px 12px !important;
+    }
+}
+
+.ff-station-cols-toolbar .btn {
+    min-width: 2rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.ff-station-cols-toolbar .ff-station-cols-label {
+    min-width: 2.65rem;
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 576px) {
+    .ff-station-cols-toolbar .btn {
+        min-width: 1.65rem;
+        padding-left: 0.35rem !important;
+        padding-right: 0.35rem !important;
+    }
+}
+
+/* ---------- Terminal-Modus (z. B. 1024x768 Kassendisplay) ---------- */
+.ff-terminal-toggle {
+    background: rgba(255,255,255,0.95);
+    border-color: #adb5bd;
+}
+.ff-terminal-mode .ff-terminal-toggle {
+    border-color: #7f1d1d;
+    color: #7f1d1d;
+}
+.ff-terminal-mode body.app-page {
+    font-size: 0.94rem;
+}
+.ff-terminal-mode .app-content {
+    max-width: 980px !important;
+    padding: 0.9rem 0.7rem !important;
+}
+.ff-terminal-mode .navbar.app-navbar .btn,
+.ff-terminal-mode .navbar.app-navbar .navbar-brand {
+    font-size: 0.92rem;
+}
+.ff-terminal-mode .ui-btn,
+.ff-terminal-mode .ui-btn.ui-corner-all,
+.ff-terminal-mode .ui-btn.big {
+    min-height: 66px;
+    padding: 10px 8px;
+    font-size: 0.90rem;
+}
+.ff-terminal-mode .posWrap > .pos-menu-tile,
+.ff-terminal-mode .posWrap > button.ui-btn.big,
+.ff-terminal-mode .posWrap > button[id^="btn-pos-"] {
+    padding: 5px 44px !important;
+}
+.ff-terminal-mode .posWrap .btnMinus,
+.ff-terminal-mode .posWrap .btnHinweis {
+    width: 44px;
+    font-size: 18px;
+}
+.ff-terminal-mode .posWrap .btnMinus {
+    left: 0;
+}
+.ff-terminal-mode .posWrap .btnHinweis {
+    right: 0;
+}
+.ff-terminal-mode .table td,
+.ff-terminal-mode .table th {
+    padding: 0.38rem 0.45rem;
+}
+
+/* Bezahlen (Tisch): nur ab 768px – Handy nutzt unverändert die Inline-Styles aus list_BestellungenZahlen.php */
+@media (min-width: 768px) {
+    #BestellungZahlen .ff-pay-table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    #BestellungZahlen .ff-pay-table .ff-pay-col-controls {
+        width: 7.75rem !important;
+        max-width: 7.75rem;
+        text-align: center !important;
+        white-space: nowrap;
+        padding: 6px 4px !important;
+        vertical-align: middle;
+    }
+    #BestellungZahlen .ff-pay-table .ff-pay-col-sum {
+        width: 6.25rem !important;
+        max-width: 6.25rem;
+        text-align: right !important;
+        white-space: nowrap;
+        padding: 6px 4px !important;
+        vertical-align: middle;
+    }
+    #BestellungZahlen .pay-controls-row {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 7.75rem;
+        max-width: 100%;
+        margin: 0 auto;
+    }
+    #BestellungZahlen .ff-pay-table .ff-agg-minus,
+    #BestellungZahlen .ff-pay-table .ff-agg-plus {
+        min-width: 2.25rem !important;
+        width: 2.25rem;
+        padding-left: 0;
+        padding-right: 0;
+        margin: 0 !important;
+    }
+    #BestellungZahlen .agg-count {
+        display: inline-block !important;
+        min-width: 2.25rem !important;
+        text-align: center;
+        font-weight: bold;
+        font-variant-numeric: tabular-nums;
+    }
+    #BestellungZahlen .agg-sum,
+    #BestellungZahlen #summeZahlung {
+        display: inline-block;
+        min-width: 5.5rem;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+    #BestellungZahlen .ff-pay-total-row h2 {
+        margin: 0;
+        font-size: 1.25rem;
+    }
+}
