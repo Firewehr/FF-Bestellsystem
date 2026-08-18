@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 FeuerwehrBestellsystem - Print Client für Epson TM-T88 Thermodrucker
+Python 3.7 kompatibel - 19.7.26
 
 Dieses Skript:
 1. Liest die Konfiguration aus config.ini
@@ -13,6 +14,7 @@ Dieses Skript:
 
 Unterstützte Drucker: Epson TM-T88 Serie (TM-T88IV, TM-T88V, TM-T88VI)
 """
+from __future__ import annotations
 
 import argparse
 import configparser
@@ -315,25 +317,6 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
             data.extend(encode_text(f"Tisch: {tisch['tischname']}\n"))
         data.extend(ESC.NORMAL)
         data.extend(b'\n')
-
-    # Teillieferung (nur fertiger Teil einer noch offenen Bestellung)
-    is_teil = bool(tisch.get('teillieferung')) or bool(str(tisch.get('teillieferung_label') or '').strip())
-    if is_teil:
-        label = str(tisch.get('teillieferung_label') or '').strip()
-        if not label:
-            order_nrs_tmp = tisch.get('order_nrs') or []
-            order_txt_tmp = ', '.join(str(n) for n in order_nrs_tmp) if order_nrs_tmp else '-'
-            label = f"Teillieferung zu Bestellung {order_txt_tmp}"
-        data.extend(ESC.ALIGN_CENTER)
-        data.extend(ESC.BOLD)
-        data.extend(ESC.DOUBLE_WIDTH)
-        data.extend(encode_text("TEILLIEFERUNG\n"))
-        data.extend(ESC.NORMAL)
-        data.extend(ESC.BOLD)
-        data.extend(encode_text(f"{label}\n"))
-        data.extend(ESC.NORMAL)
-        data.extend(ESC.ALIGN_LEFT)
-        data.extend(b'\n')
     
     # Bestell-Nr., ggf. Rechnungsnummer(n), Bon-Nr. (API: order_nrs, rechnungsnummern)
     data.extend(ESC.ALIGN_LEFT)
@@ -427,10 +410,7 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
         for p in tisch['positionen']
     )
     data.extend(ESC.DOUBLE_WIDTH)
-    if is_teil:
-        data.extend(encode_text(f"TEILBETRAG: {total:.2f} EUR\n"))
-    else:
-        data.extend(encode_text(f"SUMME: {total:.2f} EUR\n"))
+    data.extend(encode_text(f"SUMME: {total:.2f} EUR\n"))
     data.extend(ESC.NORMAL)
     
     append_bon_footer(data, footer_text)
