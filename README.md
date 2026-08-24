@@ -1,4 +1,4 @@
-# FeuerwehrBestellsystem
+# Feuerwehr Bestellsystem
 
 Simple web-based ordering system designed for rural cultural festivals.
 
