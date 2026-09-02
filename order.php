@@ -143,7 +143,10 @@ $offeneSql = "
         b.position,
         p.Positionsname,
         COUNT(*) AS menge,
-        MIN(b.timestampBestellung) AS bestellt_um
+        MIN(b.timestampBestellung) AS bestellt_um,
+        MIN(UNIX_TIMESTAMP(b.timestampBestellung)) AS bestellt_unix,
+        MAX(b.kueche) AS kueche,
+        MAX(b.ausgeliefert) AS ausgeliefert
     FROM bestellungen b
     LEFT JOIN positionen p
         ON p.rowid = b.position
@@ -202,6 +205,15 @@ if ($offeneResult) {
 
                 'bestellt_um' =>
                     $bestelltUm,
+
+                'bestellt_unix' =>
+                    (int)$row['bestellt_unix'],
+
+                'kueche' =>
+                    (int)$row['kueche'],
+
+                'ausgeliefert' =>
+                    (int)$row['ausgeliefert'],
 
                 'artikel' => []
 
@@ -806,6 +818,22 @@ body {
     font-weight: bold;
 
     margin-bottom: 7px;
+}
+
+
+.open-order-group {
+
+    margin-top: 8px;
+
+    font-weight: bold;
+}
+
+
+.open-order-wait {
+
+    font-weight: normal;
+
+    color: #47734a;
 }
 
 
@@ -1474,13 +1502,18 @@ body {
 
                 <?php foreach ($offeneBestellungen as $bestellung): ?>
 
-                    <li class="open-order-group">
+                    <li
+                        class="open-order-group"
+                        data-order-time="<?= (int)$bestellung['bestellt_unix'] ?>"
+                    >
 
                         Bestellung
                         <?php if ($bestellung['bestellnummer'] > 0): ?>
                             #<?= (int)$bestellung['bestellnummer'] ?>
                         <?php endif; ?>
-                        · <?= h($bestellung['bestellt_um']) ?>
+                        <span class="open-order-wait">
+                            · bestellt <span data-wait-time>gerade eben</span>
+                        </span>
 
                     </li>
 
@@ -1909,22 +1942,13 @@ body {
 
         <div id="cartLines"></div>
 
-
-        <label for="customerName">
-            Telefonnummer
-        </label>
-
-        <input
-            type="tel"
-            id="customerName"
-            class="customer-name"
-            maxlength="20"
-            inputmode="numeric"
-            pattern="0[0-9]{8,19}"
-            placeholder="06641234567"
-            autocomplete="tel"
-            required
-        >
+        <div
+            id="sumupPaymentContainer"
+            style="
+                display:none;
+                margin-top:20px;
+            "
+        ></div>
 
 
         <div
@@ -1969,6 +1993,7 @@ body {
     </div>
 
 </div>
+<script src="https://gateway.sumup.com/gateway/ecom/card/v2/sdk.js"></script>
 
 
 <script>
@@ -1985,26 +2010,145 @@ const MAX_ORDER_QUANTITY = 10;
 
 let quantityWarningTimer = null;
 
-const customerNameInput =
-    document.getElementById('customerName');
+let sumupCardInstance = null;
 
 
-customerNameInput.addEventListener(
-    'input',
-    function() {
+function getItemRestCapacity(element) {
 
-        customerNameInput.classList.remove('invalid');
+    const restCapacity =
+        parseInt(
+            element.dataset.rest || '-1',
+            10
+        );
 
-        customerNameInput.value =
-            customerNameInput.value
-                .replace(
-                    /[^0-9]/g,
-                    ''
-                )
-                .slice(0, 20);
 
+    return Number.isNaN(restCapacity)
+        ? -1
+        : restCapacity;
+
+}
+
+
+function getItemMaxSelectable(element) {
+
+    if (element.dataset.unlimited === '1') {
+
+        return MAX_ORDER_QUANTITY;
     }
-);
+
+
+    const restCapacity =
+        getItemRestCapacity(element);
+
+
+    return restCapacity >= 0
+        ? Math.min(
+            MAX_ORDER_QUANTITY,
+            restCapacity
+        )
+        : MAX_ORDER_QUANTITY;
+
+}
+
+
+function mountSumupCard(checkoutId, successUrl) {
+
+    const container =
+        document.getElementById('sumupPaymentContainer');
+
+
+    if (!container) {
+
+        throw new Error(
+            'Die Zahlungsschnittstelle konnte nicht vorbereitet werden.'
+        );
+    }
+
+
+    if (
+        !window.SumUpCard ||
+        typeof window.SumUpCard.mount !== 'function'
+    ) {
+
+        throw new Error(
+            'Die SumUp-Zahlung ist derzeit nicht verfügbar.'
+        );
+    }
+
+
+    if (
+        sumupCardInstance &&
+        typeof sumupCardInstance.unmount === 'function'
+    ) {
+
+        sumupCardInstance.unmount();
+    }
+
+
+    container.innerHTML = '';
+    container.style.display = 'block';
+
+    const widgetRoot =
+        document.createElement('div');
+
+    widgetRoot.id = 'sumup-card';
+    container.appendChild(widgetRoot);
+
+
+    const submitButton =
+        document.getElementById('submitOrder');
+
+
+    if (submitButton) {
+
+        submitButton.disabled = true;
+        submitButton.textContent = 'Zahlung wird vorbereitet…';
+    }
+
+
+    sumupCardInstance =
+        window.SumUpCard.mount({
+            id: 'sumup-card',
+            checkoutId: checkoutId,
+            locale: 'de-AT',
+            country: 'AT',
+            onResponse: function(type, body) {
+
+                const button =
+                    document.getElementById('submitOrder');
+
+
+                if (button) {
+
+                    button.disabled = false;
+                    button.textContent = 'Bestellung absenden';
+                }
+
+
+                if (type === 'success') {
+
+                    window.location.href = successUrl;
+                    return;
+                }
+
+
+                if (
+                    type === 'fail' ||
+                    type === 'error'
+                ) {
+
+                    const message =
+                        body &&
+                        typeof body.message === 'string' &&
+                        body.message !== ''
+                            ? body.message
+                            : 'Die Zahlung wurde abgebrochen oder konnte nicht verarbeitet werden.';
+
+                    alert(message);
+                }
+            }
+        });
+}
 
 
 /*
@@ -2037,28 +2181,7 @@ document
                 ),
 
             max:
-                (function() {
-
-                    if (item.dataset.unlimited === '1') {
-
-                        return MAX_ORDER_QUANTITY;
-                    }
-
-                    const availableMax =
-                        parseInt(
-                            item.dataset.rest || '-1',
-                            10
-                        );
-
-
-                    return availableMax >= 0
-                        ? Math.min(
-                            MAX_ORDER_QUANTITY,
-                            availableMax
-                        )
-                        : MAX_ORDER_QUANTITY;
-
-                })(),
+                getItemMaxSelectable(item),
 
             quantity: 0,
 
@@ -2090,6 +2213,9 @@ document
             }
         );
 
+
+        updateItem(cart[id]);
+
     });
 
 
@@ -2110,10 +2236,32 @@ function addItem(id) {
     }
 
 
-    if (item.max === 0) {
+    const restCapacity =
+        getItemRestCapacity(item.element);
+
+
+    if (
+        restCapacity === 0 ||
+        item.max === 0
+    ) {
 
         showQuantityWarning(
             'Diese Speise ist derzeit nicht verfügbar.'
+        );
+
+        return;
+    }
+
+
+    if (
+        restCapacity > 0 &&
+        item.quantity >= restCapacity
+    ) {
+
+        showQuantityWarning(
+            'Maximal ' +
+            restCapacity +
+            ' Stück einer Position sind möglich.'
         );
 
         return;
@@ -2232,12 +2380,59 @@ function removeItem(id) {
 
 function updateItem(item) {
 
+    const minusButton =
+        item.element.querySelector(
+            '[data-action="minus"]'
+        );
+
+    const plusButton =
+        item.element.querySelector(
+            '[data-action="plus"]'
+        );
+
+    const maxSelectable =
+        getItemMaxSelectable(item.element);
+
+
+    if (
+        maxSelectable >= 0 &&
+        item.quantity > maxSelectable
+    ) {
+
+        item.quantity = maxSelectable;
+    }
+
     item.element
         .querySelector(
             '[data-quantity]'
         )
         .textContent =
         item.quantity;
+
+
+    if (minusButton) {
+
+        minusButton.disabled =
+            item.quantity <= 0;
+    }
+
+
+    if (plusButton) {
+
+        const disablePlus =
+            maxSelectable === 0 ||
+            (
+                maxSelectable > 0 &&
+                item.quantity >= maxSelectable
+            );
+
+        plusButton.disabled = disablePlus;
+
+        plusButton.classList.toggle(
+            'disabled',
+            disablePlus
+        );
+    }
 
 }
 
@@ -2585,6 +2780,221 @@ function setActiveCategoryButton(button) {
 |--------------------------------------------------------------------------
 */
 
+async function submitCurrentOrder() {
+
+    const invalidItem =
+        getCartItems()
+        .find(function(item) {
+
+            const restCapacity =
+                getItemRestCapacity(item.element);
+
+            return (
+                restCapacity >= 0 &&
+                item.quantity > restCapacity
+            );
+
+        });
+
+
+    if (invalidItem) {
+
+        showQuantityWarning(
+            'Nur noch ' +
+            getItemRestCapacity(invalidItem.element) +
+            ' Stück von "' +
+            invalidItem.name +
+            '" verfügbar.'
+        );
+
+        invalidItem.quantity =
+            Math.max(
+                0,
+                getItemRestCapacity(invalidItem.element)
+            );
+
+        updateItem(invalidItem);
+        updateCart();
+
+        return false;
+    }
+
+    const items =
+
+        getCartItems()
+        .map(function(item) {
+
+            return {
+
+                position_id:
+                    item.id,
+
+                menge:
+                    item.quantity
+
+            };
+
+        });
+
+
+    if (items.length === 0) {
+
+        return false;
+    }
+
+
+    const button =
+        document.getElementById(
+            'submitOrder'
+        );
+
+
+    if (button.dataset.processing === '1') {
+
+        return false;
+    }
+
+
+    button.dataset.processing = '1';
+    button.disabled = true;
+    button.textContent =
+        'Bestellung wird gesendet …';
+
+
+    try {
+
+        const submitUrl =
+            new URL(
+                'customer_order_submit.php',
+                window.location.href
+            ).href;
+
+        const response =
+
+            await fetch(
+                submitUrl,
+                {
+
+                    method: 'POST',
+
+                    mode: 'cors',
+
+                    credentials: 'same-origin',
+
+                    headers: {
+
+                        'Content-Type':
+                            'application/json'
+
+                    },
+
+                    body:
+
+                        JSON.stringify({
+
+                            tisch:
+                                <?= (int)$tischnummer ?>,
+
+                            token:
+                                <?= json_encode(
+                                    $token,
+                                    JSON_UNESCAPED_UNICODE |
+                                    JSON_UNESCAPED_SLASHES
+                                ) ?>,
+
+                            items:
+                                items
+
+                        })
+
+                }
+            );
+
+
+        const rawText =
+            await response.text();
+
+        let data = null;
+
+        if (rawText !== '') {
+
+            try {
+
+                data = JSON.parse(rawText);
+
+            }
+
+            catch (parseError) {
+
+                console.error(
+                    'Non-JSON response from submit endpoint:',
+                    rawText
+                );
+
+                throw new Error(
+                    'Der Server hat keine gültige JSON-Antwort zurückgegeben. Bitte den PHP-Fehler prüfen.'
+                );
+
+            }
+
+        }
+
+
+        if (
+            !response.ok ||
+            !data ||
+            !data.ok
+        ) {
+
+            throw new Error(
+
+                (data && data.message) ||
+                'Bestellung konnte nicht gesendet werden.'
+
+            );
+
+        }
+
+        window.location.href =
+
+            'customer_order_success.php' +
+
+            '?tisch=' +
+
+            encodeURIComponent(
+                data.tischnummer
+            ) +
+
+            '&order_nr=' +
+
+            encodeURIComponent(
+                data.order_nr
+            );
+
+        return true;
+    }
+
+
+    catch (error) {
+
+        alert(
+            error.message
+        );
+
+
+        button.disabled =
+            false;
+
+        button.textContent =
+            'Bestellung absenden';
+
+        button.dataset.processing = '0';
+
+        return false;
+    }
+}
+
+
 document
     .getElementById('openCart')
     .addEventListener(
@@ -2709,163 +3119,9 @@ document
     .getElementById('submitOrder')
     .addEventListener(
         'click',
-        async function() {
+        function() {
 
-            const items =
-
-                getCartItems()
-                .map(function(item) {
-
-                    return {
-
-                        position_id:
-                            item.id,
-
-                        menge:
-                            item.quantity
-
-                    };
-
-                });
-
-
-            if (items.length === 0) {
-
-                return;
-            }
-
-
-            const customerName =
-                document
-                    .getElementById('customerName')
-                    .value
-                    .trim();
-
-
-            if (customerName === '') {
-
-                customerNameInput.classList.add('invalid');
-
-                customerNameInput.focus();
-
-                alert(
-                    'Bitte geben Sie eine Telefonnummer mit mindestens 9 Ziffern ein, zum Beispiel 06641234567.'
-                );
-
-                return;
-            }
-
-
-            const button =
-                document.getElementById(
-                    'submitOrder'
-                );
-
-
-            button.disabled = true;
-
-
-            button.textContent =
-                'Bestellung wird gesendet …';
-
-
-            try {
-
-                const response =
-
-                    await fetch(
-                        'customer_order_submit.php',
-                        {
-
-                            method: 'POST',
-
-                            headers: {
-
-                                'Content-Type':
-                                    'application/json'
-
-                            },
-
-                            body:
-
-                                JSON.stringify({
-
-                                    tisch:
-                                        <?= (int)$tischnummer ?>,
-
-                                    token:
-                                        <?= json_encode(
-                                            $token,
-                                            JSON_UNESCAPED_UNICODE |
-                                            JSON_UNESCAPED_SLASHES
-                                        ) ?>,
-
-                                    name:
-                                        customerName,
-
-                                    items:
-                                        items
-
-                                })
-
-                        }
-                    );
-
-
-                const data =
-                    await response.json();
-
-
-                if (
-                    !response.ok ||
-                    !data.ok
-                ) {
-
-                    throw new Error(
-
-                        data.message ||
-
-                        'Bestellung konnte nicht gesendet werden.'
-
-                    );
-
-                }
-
-
-                window.location.href =
-
-                    'customer_order_success.php' +
-
-                    '?tisch=' +
-
-                    encodeURIComponent(
-                        data.tischnummer
-                    ) +
-
-                    '&order_nr=' +
-
-                    encodeURIComponent(
-                        data.order_nr
-                    );
-
-            }
-
-
-            catch (error) {
-
-                alert(
-                    error.message
-                );
-
-
-                button.disabled =
-                    false;
-
-
-                button.textContent =
-                    'Bestellung absenden';
-
-            }
+            void submitCurrentOrder();
 
         }
     );
@@ -2909,6 +3165,50 @@ function escapeHtml(value) {
 }
 
 
+function updateOrderWaitingTimes() {
+
+    const now =
+        Math.floor(Date.now() / 1000);
+
+
+    document
+        .querySelectorAll('[data-order-time]')
+        .forEach(function(order) {
+
+            const orderedAt =
+                parseInt(
+                    order.dataset.orderTime,
+                    10
+                );
+
+            const waitedMinutes =
+                Math.max(
+                    0,
+                    Math.floor(
+                        (now - orderedAt) / 60
+                    )
+                );
+
+            const waitText =
+                waitedMinutes === 0
+                    ? 'gerade eben'
+                    : waitedMinutes === 1
+                        ? 'vor 1 Minute'
+                        : 'vor ' + waitedMinutes + ' Minuten';
+
+            const target =
+                order.querySelector('[data-wait-time]');
+
+
+            if (target) {
+
+                target.textContent = waitText;
+            }
+        });
+
+}
+
+
 /*
 |--------------------------------------------------------------------------
 | Initialisierung
@@ -2918,6 +3218,13 @@ function escapeHtml(value) {
 buildCategoryNavigation(1);
 
 updateCart();
+
+updateOrderWaitingTimes();
+
+setInterval(
+    updateOrderWaitingTimes,
+    60000
+);
 
 </script>
 

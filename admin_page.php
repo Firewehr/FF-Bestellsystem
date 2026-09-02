@@ -15,6 +15,41 @@ require_once __DIR__ . '/include/ff_user_permissions.php';
 require_once __DIR__ . '/include/ff_user_status.php';
 require_once __DIR__ . '/include/ff_system_broadcast.php';
 
+if (!function_exists('ff_app_title_fallback_from_globals')) {
+    function ff_app_title_fallback_from_globals(): string
+    {
+        if (isset($GLOBALS['setting_app_title'])) {
+            $title = trim((string) $GLOBALS['setting_app_title']);
+            if ($title !== '') {
+                return $title;
+            }
+        }
+
+        if (isset($GLOBALS['setting_rechnung_festname'])) {
+            $title = trim((string) $GLOBALS['setting_rechnung_festname']);
+            if ($title !== '') {
+                return $title;
+            }
+        }
+
+        return 'Bestellsystem FF Obritzberg';
+    }
+}
+
+if (!function_exists('ff_app_title')) {
+    function ff_app_title($conn = null): string
+    {
+        if ($conn instanceof mysqli && function_exists('setting_get')) {
+            $title = trim((string) setting_get($conn, 'app_title', ''));
+            if ($title !== '') {
+                return $title;
+            }
+        }
+
+        return ff_app_title_fallback_from_globals();
+    }
+}
+
 ff_users_ensure_landing_columns($conn);
 ff_users_ensure_direktverkauf_column($conn);
 ff_users_ensure_menu_permissions_column($conn);
@@ -494,6 +529,8 @@ function BenutzerNeu() {
                     </div>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
                         <a href="manage/" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Stammdaten: Speisekarte &amp; Tische</a>
+                        <a href="generate_table_tokens.php" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">Table-Tokens generieren</a>
+                        <a href="qr_codes.php" target="_blank" rel="noopener" class="btn btn-outline-primary btn-sm">QR-Codes anzeigen</a>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Finanzen">Finanzen öffnen</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Statistik">Statistik öffnen</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Statistik" data-ff-admin-scroll="ffStatKellnerAbgerechnet">Kellner-Umsätze / Abrechnung</button>

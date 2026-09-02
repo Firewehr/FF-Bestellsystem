@@ -153,6 +153,25 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
     <?php /* ffPosHinweisModal: global in index.php (include/pos_hinweis_modal.php) */ ?>
 </div>
 
+<div class="modal fade" id="ffTischOrderSummaryModal" tabindex="-1" aria-labelledby="ffTischOrderSummaryTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fs-5" id="ffTischOrderSummaryTitle">Bestellung prüfen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body" style="font-size: 1rem; line-height: 1.5;">
+                <p class="text-muted mb-3" style="font-size: 0.95rem;">Bitte prüfe die offene Bestellung vor dem endgültigen Abschicken.</p>
+                <div id="ffTischOrderSummaryBody" style="font-size: 1rem;"></div>
+            </div>
+            <div class="modal-footer flex-wrap">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zurück</button>
+                <button type="button" class="btn btn-primary" id="ffTischOrderSummarySubmit" style="font-size: 1rem;">Bestellung endgültig absenden</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 window._ffTischUnsentCount = <?php echo (int) $unsentCnt; ?>;
 window._ffTischUnsentTable = <?php echo (int) $Tischnummer; ?>;

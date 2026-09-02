@@ -10,12 +10,30 @@ header('Content-Type: text/html; charset=utf-8');
 |--------------------------------------------------------------------------
 | Konfiguration
 |--------------------------------------------------------------------------
-|
-| HIER deine tatsächliche URL eintragen.
-|
 */
 
-$orderBaseUrl = 'https://ff-manhartsbrunn.at/pos/uk/order.php';
+$scheme = (
+    !empty($_SERVER['HTTPS'])
+    && $_SERVER['HTTPS'] !== 'off'
+)
+    ? 'https'
+    : 'http';
+
+$host = (string)($_SERVER['HTTP_HOST'] ?? '');
+
+$scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '/qr_codes.php');
+
+$scriptDir = str_replace('\\', '/', dirname($scriptName));
+
+$basePath = rtrim($scriptDir, '/');
+
+if ($basePath === '.' || $basePath === '/') {
+    $basePath = '';
+}
+
+$orderBaseUrl = $host !== ''
+    ? $scheme . '://' . $host . $basePath . '/order.php'
+    : 'order.php';
 
 
 /*
@@ -23,6 +41,27 @@ $orderBaseUrl = 'https://ff-manhartsbrunn.at/pos/uk/order.php';
 | Tische mit ihren Tokens laden
 |--------------------------------------------------------------------------
 */
+
+$createTableSql = "
+    CREATE TABLE IF NOT EXISTS table_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        table_number INT NOT NULL,
+        token VARCHAR(64) NOT NULL UNIQUE,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_table_number (table_number)
+    )
+";
+
+try {
+    mysqli_query($conn, $createTableSql);
+} catch (mysqli_sql_exception $e) {
+    http_response_code(500);
+    die(
+        'Fehler beim Anlegen der Tabelle table_tokens: '
+        . htmlspecialchars($e->getMessage())
+    );
+}
 
 $sql = "
     SELECT
@@ -36,7 +75,15 @@ $sql = "
     ORDER BY t.tischname, t.tischnummer
 ";
 
-$result = mysqli_query($conn, $sql);
+try {
+    $result = mysqli_query($conn, $sql);
+} catch (mysqli_sql_exception $e) {
+    http_response_code(500);
+    die(
+        'Fehler beim Laden der Tische: '
+        . htmlspecialchars($e->getMessage())
+    );
+}
 
 if (!$result) {
     http_response_code(500);
@@ -191,7 +238,7 @@ while ($row = mysqli_fetch_assoc($result)) {
             display: grid;
 
             grid-template-columns:
-                repeat(3, 1fr);
+                repeat(2, minmax(0, 1fr));
 
             gap: 20px;
         }
@@ -207,7 +254,9 @@ while ($row = mysqli_fetch_assoc($result)) {
             background: white;
             padding: 20px;
 
-            min-height: 330px;
+            min-width: 0;
+
+            min-height: 460px;
 
             display: flex;
             flex-direction: column;
@@ -236,12 +285,24 @@ while ($row = mysqli_fetch_assoc($result)) {
 
 
         .qr-code {
-            width: 180px;
-            height: 180px;
+            width: 300px;
+            height: 300px;
+
+            padding: 10px;
+            background: white;
+            box-sizing: border-box;
 
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+
+        .qr-code img,
+        .qr-code canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
         }
 
 
@@ -257,6 +318,7 @@ while ($row = mysqli_fetch_assoc($result)) {
             margin-top: 8px;
 
             max-width: 100%;
+            min-width: 0;
 
             font-size: 8px;
             color: #999;
@@ -290,16 +352,6 @@ while ($row = mysqli_fetch_assoc($result)) {
         | Responsive
         |--------------------------------------------------------------------------
         */
-
-        @media (max-width: 900px) {
-
-            .qr-grid {
-                grid-template-columns:
-                    repeat(2, 1fr);
-            }
-
-        }
-
 
         @media (max-width: 600px) {
 
@@ -350,7 +402,7 @@ while ($row = mysqli_fetch_assoc($result)) {
         display: grid;
 
         grid-template-columns:
-            repeat(3, minmax(0, 1fr));
+            repeat(2, minmax(0, 1fr));
 
         gap: 4mm;
     }
@@ -364,8 +416,8 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     .qr-card {
 
-        height: 85mm;
-        min-height: 85mm;
+        height: 134mm;
+        min-height: 134mm;
 
         padding: 3mm;
 
@@ -382,7 +434,7 @@ while ($row = mysqli_fetch_assoc($result)) {
 
         text-align: center;
 
-        overflow: hidden;
+        overflow: visible;
 
         break-inside: avoid;
         page-break-inside: avoid;
@@ -397,7 +449,7 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     .table-number {
 
-        font-size: 18mm;
+        font-size: 24mm;
         line-height: 0.9;
 
         font-weight: 900;
@@ -417,7 +469,7 @@ while ($row = mysqli_fetch_assoc($result)) {
     .table-name {
         font-size: 10pt;
 
-        margin: 0 0 2mm 0;
+        margin: 0 0 5mm 0;
 
         color: #666;
     }
@@ -431,8 +483,14 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     .qr-code {
 
-        width: 42mm;
-        height: 42mm;
+        width: 78mm;
+        height: 78mm;
+
+        margin: 3mm 0;
+
+        padding: 4mm;
+        background: white;
+        box-sizing: border-box;
 
         flex-shrink: 0;
 
@@ -451,7 +509,7 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     .scan-text {
 
-        margin-top: 2mm;
+        margin-top: 5mm;
 
         font-size: 9pt;
         font-weight: bold;
@@ -608,11 +666,11 @@ document.addEventListener(
                     {
                         text: url,
 
-                        width: 180,
-                        height: 180,
+                        width: 300,
+                        height: 300,
 
                         correctLevel:
-                            QRCode.CorrectLevel.H
+                            QRCode.CorrectLevel.L
                     }
                 );
 

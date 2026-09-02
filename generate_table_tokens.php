@@ -5,6 +5,29 @@ require_once('include/db.php');
 
 header('Content-Type: application/json; charset=utf-8');
 
+$scheme = (
+    !empty($_SERVER['HTTPS'])
+    && $_SERVER['HTTPS'] !== 'off'
+)
+    ? 'https'
+    : 'http';
+
+$host = (string)($_SERVER['HTTP_HOST'] ?? '');
+
+$scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '/generate_table_tokens.php');
+
+$scriptDir = str_replace('\\', '/', dirname($scriptName));
+
+$basePath = rtrim($scriptDir, '/');
+
+if ($basePath === '.' || $basePath === '/') {
+    $basePath = '';
+}
+
+$orderBaseUrl = $host !== ''
+    ? $scheme . '://' . $host . $basePath . '/order.php'
+    : 'order.php';
+
 
 /**
  * Erzeugt einen kryptografisch sicheren Token.
@@ -200,12 +223,10 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     /*
      * URL für den QR-Code erzeugen.
-     *
-     * HIER deine tatsächliche Domain eintragen.
      */
 
     $orderUrl =
-        'https://ff-manhartsbrunn.at/order.php'
+        $orderBaseUrl
         . '?tisch=' . urlencode((string)$tischnummer)
         . '&token=' . urlencode($token);
 

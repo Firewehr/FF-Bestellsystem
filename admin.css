@@ -316,7 +316,132 @@
 
 .manage-stammdaten .manage-pos-table-stretch {
     width: 100%;
-    table-layout: auto;
+    table-layout: fixed;
+    font-size: 0.76rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch > :not(caption) > * > * {
+    padding: 0.18rem 0.22rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch th,
+.manage-stammdaten .manage-pos-table-stretch td {
+    vertical-align: middle;
+    font-size: 0.76rem;
+    line-height: 1.2;
+    white-space: normal;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .form-control,
+.manage-stammdaten .manage-pos-table-stretch .form-select,
+.manage-stammdaten .manage-pos-table-stretch .btn {
+    padding: 0.15rem 0.28rem;
+    min-height: 1.8rem;
+    height: auto;
+    line-height: 1.2;
+    border-width: 1px;
+    border-radius: 0.25rem;
+    box-sizing: border-box;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .form-select {
+    padding-right: 1.6rem;
+    background-position: right 0.4rem center;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .d-inline-flex,
+.manage-stammdaten .manage-pos-table-stretch .d-flex {
+    gap: 0.2rem !important;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .form-control-sm,
+.manage-stammdaten .manage-pos-table-stretch .form-select-sm,
+.manage-stammdaten .manage-pos-table-stretch .btn-sm {
+    font-size: 0.72rem;
+    min-height: 1.75rem;
+    padding-top: 0.14rem;
+    padding-bottom: 0.14rem;
+    line-height: 1.2;
+    border-width: 1px;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-pos-field,
+.manage-stammdaten .manage-pos-table-stretch .ff-pm-sub,
+.manage-stammdaten .manage-pos-table-stretch .ff-pos-print-target,
+.manage-stammdaten .manage-pos-table-stretch select,
+.manage-stammdaten .manage-pos-table-stretch input {
+    min-width: 0;
+    width: 100%;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(1),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(1) {
+    width: 2.2rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(2),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(2) {
+    width: 6rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(3),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(3) {
+    width: 12rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(4),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(4) {
+    width: 5.5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(5),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(5) {
+    width: 9rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(6),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(6) {
+    width: 10rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(7),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(7) {
+    width: 5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(8),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(8) {
+    width: 5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(9),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(9) {
+    width: 8rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(10),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(10) {
+    width: 5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(11),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(11) {
+    width: 6.5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(12),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(12) {
+    width: 6rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(13),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(13) {
+    width: 5rem;
+}
+
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(14),
+.manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(14) {
+    width: 6rem;
 }
 
 .manage-stammdaten .ff-drag-col {
