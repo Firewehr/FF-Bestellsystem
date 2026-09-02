@@ -74,7 +74,7 @@ function m_out(string $s): string {
         <div class="col-md-2 d-flex align-items-end pb-1">
             <label class="form-check-label small mb-0" title="Nur Direktverkauf/Kasse"><input type="checkbox" class="form-check-input" id="pos_new_kassa_only" onchange="ffSyncPrintTargetForKassa(document.getElementById(\'pos_print_target\'), this.checked)"> Nur Kasse</label>
         </div>
-        <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Speichern</button></div>
+        <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Anlegen</button></div>
     </div>
     </form>
 </div>
@@ -93,7 +93,7 @@ if ($result4) {
     }
 }
 ?>
-<p class="small text-muted d-md-none mb-2">Schmale Anzeige: Tabelle <strong>horizontal wischen</strong>, um Kapazität, Rest und Speichern zu erreichen.</p>
+<p class="small text-muted d-md-none mb-2">Schmale Anzeige: Tabelle <strong>horizontal wischen</strong>, um Kapazität und Rest zu erreichen.</p>
 <div class="table-responsive border rounded manage-pos-table-wide">
 <table class="table table-hover table-sm align-middle mb-0 manage-pos-table-stretch" id="mySpeisekarteManage">
 <thead><tr><th class="ff-drag-col" title="Zum Sortieren ziehen"><span class="text-muted user-select-none" aria-hidden="true">⠿</span></th><th>Reihung</th><th>Position</th><th>Typ</th><th>Unterkategorie</th><th>Kachel &amp; Schrift</th><th>VK</th><th>EK</th><th>Druckziel</th><th title="Nur Direktverkauf/Kasse, nicht für Kellner">Nur Kasse</th><th title="Verbraucht: Gäste-Bestellungen + Mitarbeiter-Verpflegung">Verbrauch</th><th>Kapazität</th><th>Rest</th><th></th></tr></thead>
@@ -146,13 +146,14 @@ foreach ($allRows as $row4) {
 
     echo '<tr class="ff-manage-pos-row" data-rowid="' . $rid . '" data-type="' . $rowType . '">';
     echo '<td class="ff-drag-handle text-muted align-middle user-select-none" draggable="true" title="Ziehen zum Sortieren (nur innerhalb Speisen bzw. Getränke)" aria-label="Reihenfolge ziehen"><span aria-hidden="true">⠿</span></td>';
-    echo '<td class="text-nowrap">' . $reihe . ' <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="editReihenfolge(' . $rid . ',' . $reihe . ')">Nr.</button></td>';
-    echo '<td><div class="d-flex flex-wrap align-items-center gap-1">' . m_out((string)$row4['Positionsname'])
-        . ' <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="editPositionsname(' . $rid . ',\'' . $name_js . '\')">Name</button>'
-        . ' <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="editKurzbezeichnung(' . $rid . ',\'' . $kurz_js . '\')">Kurz</button></div>';
-    if ($kurz_utf8 !== '') {
-        echo '<div class="small text-muted mt-1">' . m_out($kurz_utf8) . '</div>';
-    }
+    echo '<td class="text-nowrap"><button type="button" class="btn btn-link btn-sm p-0 text-body fw-semibold" style="font-size:0.72rem; line-height:1.1; text-decoration:none;" onclick="editReihenfolge(' . $rid . ',' . $reihe . ')" title="Reihenfolge ändern">' . $reihe . '</button></td>';
+    echo '<td>';
+    echo '<input type="text" class="form-control form-control-sm ff-pos-field mb-1"'
+        . ' data-rowid="' . $rid . '" data-field="Positionsname" data-prev="' . $name_js . '"'
+        . ' value="' . $name_js . '" aria-label="Positionsname">';
+    echo '<input type="text" class="form-control form-control-sm ff-pos-field small text-muted"'
+        . ' data-rowid="' . $rid . '" data-field="Kurzbezeichnung" data-prev="' . $kurz_js . '"'
+        . ' value="' . $kurz_js . '" aria-label="Kurzbezeichnung" placeholder="Kurzbezeichnung">';
     echo '</td>';
     echo '<td><select class="form-select form-select-sm" onchange="updateType(' . $rid . ', this.value)" title="Speise / Getränk">';
     echo '<option value="1"' . ($rowType === 1 ? ' selected' : '') . '>Speise</option>';
@@ -175,12 +176,16 @@ foreach ($allRows as $row4) {
     echo '</div>';
     echo '<label class="d-block"><input type="checkbox" id="pm_tile_def_' . $rid . '"' . ($hasTileOv ? '' : ' checked') . ' onchange="ffPmTileDefSync(' . $rid . ')"> Standard-Kachel (Gruppe)</label>';
     echo '</td>';
-    echo '<td class="text-nowrap">&euro; ' . m_out($betragRaw);
-    echo ' <button type="button" class="btn btn-sm btn-outline-secondary" onclick="editBetrag(' . $rid . ',\'' . $betragJs . '\')">VK</button></td>';
+    echo '<td><input type="text" class="form-control form-control-sm ff-pos-field"'
+        . ' data-rowid="' . $rid . '" data-field="Betrag" data-prev="' . $betragJs . '"'
+        . ' value="' . $betragJs . '" inputmode="decimal" aria-label="VK"></td>';
     $ekDisp = number_format($ek, 2, ',', '.');
     $ekJs = htmlspecialchars($ekDisp, ENT_QUOTES, 'UTF-8');
-    echo '<td class="text-nowrap">' . ($hasSelbstkosten ? '&euro; ' . m_out($ekDisp)
-        . ' <button type="button" class="btn btn-sm btn-outline-secondary" onclick="manageUpdateSelbstkosten(' . $rid . ',\'' . $ekJs . '\')">EK</button>' : '<span class="text-muted">—</span>') . '</td>';
+    echo '<td>' . ($hasSelbstkosten
+        ? '<input type="text" class="form-control form-control-sm ff-pos-field"'
+            . ' data-rowid="' . $rid . '" data-field="Selbstkosten" data-prev="' . $ekJs . '"'
+            . ' value="' . $ekJs . '" inputmode="decimal" aria-label="EK">'
+        : '<span class="text-muted">—</span>') . '</td>';
     echo '<td class="ff-print-target-cell"><select class="form-select form-select-sm ff-pos-print-target" data-rowid="' . $rid . '" onchange="updatePrintTarget(' . $rid . ', this.value)" title="Druckziel">';
     echo ff_manage_print_target_select_options($conn, $curPrintTarget);
     echo '</select></td>';
@@ -192,7 +197,7 @@ foreach ($allRows as $row4) {
     echo '<td><button type="button" class="btn btn-sm btn-outline-primary" onclick="manageUpdateKapazitaet(' . $rid . ',' . $maxBestellbar . ')">' . $maxBestellbar . '</button></td>';
     echo '<td>' . (int)$rest . ' ' . m_out($text) . '</td>';
     echo '<td class="text-end text-nowrap"><div class="d-inline-flex flex-wrap gap-1 justify-content-end">';
-    echo '<button type="button" class="btn btn-sm btn-outline-primary" onclick="manageSavePositionMeta(' . $rid . ')">Speichern</button>';
+    echo '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadRezepturen(' . $rid . ')">Rezeptur</button>';
     echo '<button type="button" class="btn btn-sm btn-outline-danger" onclick="manageProduktLoeschen(' . $rid . ')">Löschen</button>';
     echo '</div></td>';
     echo '</tr>';
@@ -203,4 +208,4 @@ foreach ($allRows as $row4) {
 }
 ?>
 </table></div>
-<p class="text-muted small mb-0">Unterkategorie, Kachel und Schrift: Zeile bearbeiten und <strong>Speichern</strong>. Typ, <strong>VK</strong>, <strong>EK</strong>, Druckziel: Buttons – Eingabe mit Komma oder Punkt. <strong>Nur Kasse:</strong> Position nur im Direktverkauf, nicht für Kellner. <strong>Reihenfolge:</strong> Spalte <em>⠿</em> ziehen (innerhalb Speisen bzw. Getränke) oder <strong>Nr.</strong>. Alternativ: Kurzlisten.</p>
+<p class="text-muted small mb-0">Unterkategorie, Kachel, Schrift, <strong>VK</strong> und <strong>EK</strong>: Änderungen werden <strong>automatisch gespeichert</strong>. Typ und Druckziel: direkte Auswahl. <strong>Nur Kasse:</strong> Position nur im Direktverkauf, nicht für Kellner. <strong>Reihenfolge:</strong> Spalte <em>⠿</em> ziehen (innerhalb Speisen bzw. Getränke) oder die Zahl anklicken. Alternativ: Kurzlisten.</p>

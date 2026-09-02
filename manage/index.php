@@ -29,6 +29,7 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="beilagen" onclick="loadBeilagenZusatzinfos(); return false;">Beilagen / Zusatzinfos</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="apidevice" onclick="loadApiDeviceConfig(); return false;">API Device</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="sub" onclick="loadSubcategories(); return false;">Unterkategorien</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-nav="rez" onclick="loadRezepturen(); return false;">Rezepturen</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="tische" onclick="loadTische(); return false;">Tische</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="lock" onclick="loadSperren(); return false;">Sperren</a></li>
             </ul>
@@ -41,6 +42,7 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
         <div class="card-body py-3">
             <p class="small text-muted mb-2 mb-md-0">
                 Zentral: <strong>Alle Positionen (erweitert)</strong> (Typ, Preis, EK, Druckziel, Kacheln, Unterkategorien).
+                <strong>Rezepturen</strong> für zusammengesetzte Positionen mit Verbrauch pro Teil.
                 <strong>Beilagen / Zusatzinfos</strong> für den Hinweis-Dialog beim Bestellen.
                 <strong>Kurzlisten</strong> Speisen/Getränke nutzen dieselbe Logik, nur gefiltert.
             </p>
@@ -590,6 +592,193 @@ function loadSubcategories() {
     loadContent('subcategories_admin.php', function() { manageSubcategoryReload(); });
 }
 
+function ffRezepturEsc(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+function ffRezepturGetPositionList() {
+    if (Array.isArray(window._ffManageRezepturenPositionen) && window._ffManageRezepturenPositionen.length) {
+        return window._ffManageRezepturenPositionen;
+    }
+    var sel = $('rezepturPosition');
+    if (!sel) return [];
+    var rows = [];
+    Array.prototype.forEach.call(sel.options || [], function(opt) {
+        var id = parseInt(opt.value, 10) || 0;
+        if (!id) return;
+        rows.push({
+            rowid: id,
+            Positionsname: opt.textContent || '',
+            Kurzbezeichnung: '',
+            type: /\[G\]/.test(opt.textContent || '') ? 2 : 1,
+            maxBestellbar: -1
+        });
+    });
+    return rows;
+}
+
+function ffRezepturBuildPositionOptions(selected) {
+    var list = ffRezepturGetPositionList();
+    var sel = parseInt(selected, 10) || 0;
+    var html = '<option value="0">— bitte wählen —</option>';
+    list.forEach(function(pos) {
+        var id = parseInt(pos.rowid, 10) || 0;
+        if (!id) return;
+        var label = (parseInt(pos.type, 10) === 2 ? '[G] ' : '[S] ') + (pos.Positionsname || '');
+        if (pos.Kurzbezeichnung) label += ' · ' + pos.Kurzbezeichnung;
+        if (pos.maxBestellbar !== undefined && pos.maxBestellbar !== null && String(pos.maxBestellbar) !== '-1') {
+            label += ' (' + pos.maxBestellbar + ')';
+        }
+        html += '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + ffRezepturEsc(label) + '</option>';
+    });
+    return html;
+}
+
+function ffRezepturBuildComponentOptions(selected) {
+    var list = ffRezepturGetPositionList();
+    var sel = parseInt(selected, 10) || 0;
+    var html = '<option value="0">— Komponente wählen —</option>';
+    list.forEach(function(pos) {
+        var id = parseInt(pos.rowid, 10) || 0;
+        if (!id) return;
+        var label = (parseInt(pos.type, 10) === 2 ? '[G] ' : '[S] ') + (pos.Positionsname || '');
+        if (pos.Kurzbezeichnung) label += ' · ' + pos.Kurzbezeichnung;
+        html += '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + ffRezepturEsc(label) + '</option>';
+    });
+    return html;
+}
+
+function ffRezepturRowHtml(row) {
+    var rid = row && row.id ? parseInt(row.id, 10) : 0;
+    var bestandteilId = row && row.bestandteil_position_id ? parseInt(row.bestandteil_position_id, 10) : 0;
+    var menge = row && row.menge !== undefined && row.menge !== null ? String(row.menge) : '1.000';
+    var reihenfolge = row && row.reihenfolge !== undefined && row.reihenfolge !== null ? String(row.reihenfolge) : '0';
+    return '<tr data-rowid="' + rid + '">' 
+        + '<td><select class="form-select form-select-sm ff-rez-comp">' + ffRezepturBuildComponentOptions(bestandteilId) + '</select></td>' 
+        + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm ff-rez-qty" value="' + ffRezepturEsc(menge) + '"></td>' 
+        + '<td><input type="number" step="1" class="form-control form-control-sm ff-rez-order" value="' + ffRezepturEsc(reihenfolge) + '"></td>' 
+        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-del">Löschen</button></td>' 
+        + '</tr>';
+}
+
+function ffRezepturBindRowEvents() {
+    var tbody = $('rezepturenTbody');
+    if (!tbody || tbody.getAttribute('data-bound') === '1') return;
+    tbody.setAttribute('data-bound', '1');
+    tbody.addEventListener('click', function(ev) {
+        var btn = ev.target;
+        if (!btn || !btn.classList || !btn.classList.contains('ff-rez-del')) return;
+        var tr = btn.closest('tr');
+        if (tr) tr.remove();
+    });
+}
+
+function ffRezepturRenderRows(rows) {
+    var tbody = $('rezepturenTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!rows || !rows.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Noch keine Komponenten hinterlegt.</td></tr>';
+        return;
+    }
+    rows.forEach(function(row) {
+        var wrap = document.createElement('tbody');
+        wrap.innerHTML = ffRezepturRowHtml(row);
+        tbody.appendChild(wrap.firstElementChild);
+    });
+    ffRezepturBindRowEvents();
+}
+
+function ffRezepturAddRow() {
+    var tbody = $('rezepturenTbody');
+    if (!tbody) return;
+    if (tbody.children.length === 1 && /Noch keine Komponenten/.test(tbody.textContent || '')) tbody.innerHTML = '';
+    var wrap = document.createElement('tbody');
+    wrap.innerHTML = ffRezepturRowHtml({ bestandteil_position_id: 0, menge: '1.000', reihenfolge: 0 });
+    tbody.appendChild(wrap.firstElementChild);
+    ffRezepturBindRowEvents();
+}
+
+function ffRezepturLoad(selectedId) {
+    var posSel = $('rezepturPosition');
+    if (!posSel) return;
+    var posId = parseInt(selectedId || posSel.value || '0', 10) || 0;
+    posSel.value = String(posId);
+    var status = $('rezepturStatus');
+    if (status) status.textContent = 'Lade ...';
+    apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(posId))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) {
+                if (status) status.textContent = 'Fehler beim Laden.';
+                ffRezepturRenderRows([]);
+                return;
+            }
+            window._ffManageRezepturenPositionen = Array.isArray(d.positions) ? d.positions : [];
+            posSel.innerHTML = ffRezepturBuildPositionOptions(posId);
+            ffRezepturRenderRows(d.rows || []);
+            if (status) {
+                status.textContent = d.position_name ? ('Bearbeite Rezeptur für ' + d.position_name) : 'Bitte eine Position wählen.';
+            }
+        })
+        .catch(function() {
+            if (status) status.textContent = 'Netzwerkfehler beim Laden.';
+        });
+}
+
+function ffRezepturSave() {
+    var posSel = $('rezepturPosition');
+    var status = $('rezepturStatus');
+    var tbody = $('rezepturenTbody');
+    if (!posSel || !tbody) return;
+    var positionId = parseInt(posSel.value, 10) || 0;
+    if (positionId <= 0) {
+        alert('Bitte zuerst eine Zielposition wählen.');
+        return;
+    }
+    var rows = [];
+    tbody.querySelectorAll('tr').forEach(function(tr) {
+        var compEl = tr.querySelector('.ff-rez-comp');
+        var qtyEl = tr.querySelector('.ff-rez-qty');
+        var orderEl = tr.querySelector('.ff-rez-order');
+        if (!compEl || !qtyEl || !orderEl) return;
+        var comp = parseInt(compEl.value, 10) || 0;
+        var qtyRaw = String(qtyEl.value || '').replace(',', '.');
+        var qty = parseFloat(qtyRaw);
+        var order = parseInt(orderEl.value, 10) || 0;
+        if (comp <= 0) return;
+        if (!isFinite(qty) || qty <= 0) qty = 1;
+        rows.push({ bestandteil_position_id: comp, menge: qty, reihenfolge: order });
+    });
+    if (status) status.textContent = 'Speichere ...';
+    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(positionId), rows_json: JSON.stringify(rows) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) {
+                if (status) status.textContent = 'Speichern fehlgeschlagen.';
+                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
+                return;
+            }
+            if (status) status.textContent = 'Gespeichert.';
+            ffRezepturLoad(positionId);
+        })
+        .catch(function() {
+            if (status) status.textContent = 'Netzwerkfehler beim Speichern.';
+        });
+}
+
+function loadRezepturen(positionId) {
+    manageNavActive('rez');
+    window._managePosReload = null;
+    loadContent('rezepturen_admin.php' + (positionId ? ('?position_id=' + encodeURIComponent(positionId)) : ''), function() {
+        window._ffManageRezepturenPositionen = window._ffManageRezepturenPositionen || [];
+        ffRezepturBindRowEvents();
+        ffRezepturLoad(positionId || null);
+    });
+}
+
 function loadSperren() {
     manageNavActive('lock');
     window._managePosReload = null;
@@ -606,7 +795,11 @@ function ffSaveNewTable(tischname, x, y) {
     if (xEl) xEl.value = x;
     if (yEl) yEl.value = y;
     fetchPost('../neuerTisch_save.php', { neuerTischName: tischname, neueTischX: x, neueTischY: y, neueTischFarbe: '#000000' })
-        .then(function() { loadTische(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            loadTische();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 function manageApplyTischFlagsExclusive(isSammel, isEhren) {
@@ -639,7 +832,7 @@ function managePostTischFlags(tischnummer, isSammel, isEhren, opts) {
                 throw new Error((j && j.error) ? j.error : 'Speichern fehlgeschlagen.');
             }
             if (!opts.silent) {
-                alert('Gespeichert');
+                ffShowToast('Gespeichert.', 'success');
             }
             loadTische();
         });
@@ -662,8 +855,8 @@ function manageSaveTischFlags(tischnummer) {
         isSammel = 0;
         sr.checked = false;
     }
-    managePostTischFlags(tischnummer, isSammel, isEhren, { silent: true })
-        .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
+    managePostTischFlags(tischnummer, isSammel, isEhren)
+        .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Fehler', 'danger'); });
 }
 
 document.addEventListener('change', function(ev) {
@@ -695,8 +888,8 @@ function manageToggleTischFlagFromGrid(btn) {
                                 } else {
         isEhren = isOn ? 0 : 1;
     }
-    managePostTischFlags(tn, isSammel, isEhren, { silent: true })
-        .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
+    managePostTischFlags(tn, isSammel, isEhren)
+        .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Fehler', 'danger'); });
 }
 
 function ffInitTischAdminGrid() {
@@ -775,7 +968,11 @@ function updateTischname(tischname, tischnummer) {
     tischname = prompt('Neuer Tischname:', tischname);
     if (tischname !== null) {
         fetchGet('update_tischname.php?tischname=' + encodeURIComponent(tischname) + '&tischnummer=' + encodeURIComponent(tischnummer))
-            .then(function() { loadTische(); });
+            .then(function() {
+                ffShowToast('Gespeichert.', 'success');
+                loadTische();
+            })
+            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
     }
 }
 
@@ -784,7 +981,11 @@ function updateXY(x, y, tischnummer) {
     y = prompt('y neu (Zeile):', y);
     if (x > 0 && y > 0) {
         fetchGet('update_xy.php?x=' + encodeURIComponent(x) + '&y=' + encodeURIComponent(y) + '&tischnummer=' + encodeURIComponent(tischnummer))
-            .then(function() { loadTische(); });
+            .then(function() {
+                ffShowToast('Gespeichert.', 'success');
+                loadTische();
+            })
+            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
     }
 }
 
@@ -792,7 +993,11 @@ function editPositionsname(rowid, Positionsname) {
     Positionsname = prompt('Positionsname neu:', Positionsname);
     if (Positionsname !== null) {
         fetchGet('update_positionsname.php?rowid=' + encodeURIComponent(rowid) + '&Positionsname=' + encodeURIComponent(Positionsname))
-            .then(function() { manageReloadPositionsList(); });
+            .then(function() {
+                ffShowToast('Gespeichert.', 'success');
+                manageReloadPositionsList();
+            })
+            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
     }
 }
 
@@ -800,7 +1005,11 @@ function editKurzbezeichnung(rowid, Kurzbezeichnung) {
     Kurzbezeichnung = prompt('Kurzbezeichnung neu:', Kurzbezeichnung);
     if (Kurzbezeichnung !== null) {
         fetchGet('update_kurzbezeichnung.php?rowid=' + encodeURIComponent(rowid) + '&Kurzbezeichnung=' + encodeURIComponent(Kurzbezeichnung))
-            .then(function() { manageReloadPositionsList(); });
+            .then(function() {
+                ffShowToast('Gespeichert.', 'success');
+                manageReloadPositionsList();
+            })
+            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
     }
 }
 
@@ -825,7 +1034,11 @@ function editBetrag(rowid, Betrag) {
         return;
     }
     fetchGet('update_betrag.php?rowid=' + encodeURIComponent(rowid) + '&Betrag=' + encodeURIComponent(Betrag))
-        .then(function() { manageReloadPositionsList(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            manageReloadPositionsList();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 function editReihenfolge(rowid, reihenfolge) {
@@ -837,7 +1050,11 @@ function editReihenfolge(rowid, reihenfolge) {
         return;
     }
     fetchGet('update_reihenfolge.php?rowid=' + encodeURIComponent(rowid) + '&reihenfolge=' + encodeURIComponent(n))
-        .then(function() { manageReloadPositionsList(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            manageReloadPositionsList();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 function manageSavePosField(el) {
@@ -862,11 +1079,33 @@ function manageSavePosField(el) {
             .then(function() {
                 el.setAttribute('data-prev', val);
                 el.classList.remove('opacity-50');
+                ffShowToast('Gespeichert.', 'success');
             })
             .catch(function() {
                 el.value = prev;
                 el.classList.remove('opacity-50');
                 alert('Speichern fehlgeschlagen.');
+            });
+        return;
+    }
+    if (field === 'Selbstkosten') {
+        var ekNum = parseFloat(val.replace(',', '.'));
+        if (isNaN(ekNum) || ekNum < 0) {
+            alert('Ungültiger Betrag.');
+            el.value = prev;
+            return;
+        }
+        el.classList.add('opacity-50');
+        apiPost('update_selbstkosten.php', { rowid: rowid, selbstkosten: ekNum })
+            .then(function() {
+                el.setAttribute('data-prev', val);
+                el.classList.remove('opacity-50');
+                ffShowToast('Gespeichert.', 'success');
+            })
+            .catch(function() {
+                el.value = prev;
+                el.classList.remove('opacity-50');
+                ffShowToast('Speichern fehlgeschlagen.', 'danger');
             });
         return;
     }
@@ -883,6 +1122,7 @@ function manageSavePosField(el) {
                 el.setAttribute('data-prev', String(n));
                 el.value = String(n);
                 el.classList.remove('opacity-50');
+                ffShowToast('Gespeichert.', 'success');
             })
             .catch(function() {
                 el.value = prev;
@@ -902,6 +1142,7 @@ function manageSavePosField(el) {
             .then(function() {
                 el.setAttribute('data-prev', val);
                 el.classList.remove('opacity-50');
+                ffShowToast('Gespeichert.', 'success');
             })
             .catch(function() {
                 el.value = prev;
@@ -916,6 +1157,7 @@ function manageSavePosField(el) {
             .then(function() {
                 el.setAttribute('data-prev', val);
                 el.classList.remove('opacity-50');
+                ffShowToast('Gespeichert.', 'success');
             })
             .catch(function() {
                 el.value = prev;
@@ -978,12 +1220,20 @@ function addMeal() {
 
 function updateType(rowid, type) {
     fetchGet('update_type.php?rowid=' + encodeURIComponent(rowid) + '&type=' + encodeURIComponent(type))
-        .then(function() { manageReloadPositionsList(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            manageReloadPositionsList();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 function updatePrintTarget(rowid, print_target) {
     fetchGet('update_print_target.php?rowid=' + encodeURIComponent(rowid) + '&print_target=' + encodeURIComponent(print_target))
-        .then(function() { manageReloadPositionsList(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            manageReloadPositionsList();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 /** Druckziel bei „Nur Kasse“: ausgegraut, Anzeige „—“ (Wert bleibt in DB für späteres Abwählen). */
@@ -1039,7 +1289,11 @@ function updateKassaOnly(rowid, checked) {
     var sel = document.querySelector('.ff-pos-print-target[data-rowid="' + rowid + '"]');
     if (sel) window.ffSyncPrintTargetForKassa(sel, checked);
     fetchGet('update_kassa_only.php?rowid=' + encodeURIComponent(rowid) + '&kassa_only=' + (checked ? '1' : '0'))
-        .then(function() { manageReloadPositionsList(); });
+        .then(function() {
+            ffShowToast('Gespeichert.', 'success');
+            manageReloadPositionsList();
+        })
+        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
 }
 
 function ffSyncPosKassaFromSubcategory() {
@@ -1137,6 +1391,77 @@ function manageApplySubcategoryRowsToSelects(rows) {
     });
 }
 
+// Auto-save: when meta fields change in the "Alle Positionen (erweitert)" table,
+// save automatically instead of requiring the per-row "Speichern" button.
+window._manageSaveTimers = window._manageSaveTimers || {};
+document.addEventListener('change', function(ev) {
+    try {
+        var t = ev.target;
+        if (!t) return;
+        var id = t.id || '';
+        var rowid = null;
+        var m;
+        if ((m = id.match(/^pm_tile_(\d+)$/))) rowid = m[1];
+        else if ((m = id.match(/^pm_color_(\d+)$/))) rowid = m[1];
+        else if ((m = id.match(/^pm_tile_def_(\d+)$/))) rowid = m[1];
+        else if (t.matches && t.matches('select.ff-pm-sub')) {
+            var tr = t.closest('tr.ff-manage-pos-row');
+            if (tr) rowid = tr.getAttribute('data-rowid');
+        }
+        if (!rowid) return;
+        rowid = parseInt(rowid, 10) || 0;
+        if (rowid <= 0) return;
+        // If tile default checkbox changed, update UI immediately
+        if (id.indexOf('pm_tile_def_') === 0) {
+            try { ffPmTileDefSync(rowid); } catch (e) {}
+        }
+        // debounce per-row
+        try { if (window._manageSaveTimers[rowid]) clearTimeout(window._manageSaveTimers[rowid]); } catch (e) {}
+        window._manageSaveTimers[rowid] = setTimeout(function() {
+            try { manageSavePositionMeta(rowid); } catch (e) {}
+            try { delete window._manageSaveTimers[rowid]; } catch (e) {}
+        }, 320);
+    } catch (e) {}
+}, { passive: true });
+
+// Lightweight top-right toast message (auto-dismiss)
+function ffShowToast(message, type, timeout) {
+    timeout = (typeof timeout === 'number') ? timeout : 5000;
+    type = type || 'info';
+    try {
+        var container = document.getElementById('ffToastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'ffToastContainer';
+            container.style.position = 'fixed';
+            container.style.top = '1rem';
+            container.style.right = '1rem';
+            container.style.zIndex = '1060';
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '0.5rem';
+            document.body.appendChild(container);
+        }
+        var el = document.createElement('div');
+        el.className = 'ff-toast ff-toast-' + type;
+        el.style.minWidth = '180px';
+        el.style.padding = '0.6rem 0.9rem';
+        el.style.borderRadius = '6px';
+        el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.12)';
+        el.style.color = '#fff';
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.25s ease';
+        if (type === 'success') el.style.background = '#198754';
+        else if (type === 'danger') el.style.background = '#dc3545';
+        else el.style.background = '#0d6efd';
+        el.textContent = String(message || '');
+        el.onclick = function() { el.style.opacity = '0'; setTimeout(function(){ try{ el.remove(); }catch(e){} }, 250); };
+        container.appendChild(el);
+        requestAnimationFrame(function(){ el.style.opacity = '1'; });
+        setTimeout(function(){ el.style.opacity = '0'; setTimeout(function(){ try{ el.remove(); }catch(e){} }, 250); }, timeout);
+    } catch (e) { try { alert(message); } catch (e2) {} }
+}
+
 function manageSavePositionMeta(rowid) {
     var sub = $('pm_sub_' + rowid), tile = $('pm_tile_' + rowid), col = $('pm_color_' + rowid), def = $('pm_tile_def_' + rowid);
     if (!sub || !tile || !col) return;
@@ -1150,10 +1475,10 @@ function manageSavePositionMeta(rowid) {
     apiPost('position_meta_save.php', body)
         .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
         .then(function(x) {
-            if (x.j && x.j.ok) alert('Gespeichert.');
-            else alert('Fehler: ' + savePositionMetaErr(x.j && x.j.error) + (x.j && x.j.detail ? ' ' + x.j.detail : ''));
+            if (x.j && x.j.ok) ffShowToast('Gespeichert.', 'success');
+            else ffShowToast('Fehler: ' + savePositionMetaErr(x.j && x.j.error) + (x.j && x.j.detail ? ' ' + x.j.detail : ''), 'danger');
         })
-        .catch(function() { alert('Fehler (Netzwerk).'); });
+        .catch(function() { ffShowToast('Fehler (Netzwerk).', 'danger'); });
 }
 
 function manageProduktNeu() {
@@ -1267,10 +1592,10 @@ function manageSubcategorySave(id) {
     })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            if (d && d.ok) { alert('Gespeichert.'); manageSubcategoryReload(); }
-            else alert('Fehler: ' + (d && d.error === 'bad_tile_bg' ? savePositionMetaErr('bad_tile_bg') : (d && d.error ? d.error : '')));
+            if (d && d.ok) { ffShowToast('Gespeichert.', 'success'); manageSubcategoryReload(); }
+            else ffShowToast('Fehler: ' + (d && d.error === 'bad_tile_bg' ? savePositionMetaErr('bad_tile_bg') : (d && d.error ? d.error : '')), 'danger');
         })
-        .catch(function() { alert('Fehler (Netzwerk).'); });
+        .catch(function() { ffShowToast('Fehler (Netzwerk).', 'danger'); });
 }
 
 function manageSubcategoryAdd() {
@@ -1286,10 +1611,10 @@ function manageSubcategoryAdd() {
             if (d && d.ok) {
                 if ($('subcat_new_name')) $('subcat_new_name').value = '';
                 manageSubcategoryReload();
-                alert('Unterkategorie angelegt.');
+                ffShowToast('Unterkategorie angelegt.', 'success');
             } else alert('Fehler: ' + (d && d.error ? d.error : ''));
         })
-        .catch(function() { alert('Fehler'); });
+        .catch(function() { ffShowToast('Fehler', 'danger'); });
 }
 
 function manageSubcategoryDelete(id) {
