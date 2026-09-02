@@ -175,6 +175,112 @@
     }
     window.ffSyncTischRequirePaymentFromServer = ffSyncTischRequirePaymentFromServer;
 
+    function ffShowQrScanToast(message, timeoutMs) {
+        timeoutMs = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 2000;
+        var container = document.getElementById('ffQrScanToastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'ffQrScanToastContainer';
+            container.setAttribute('aria-live', 'polite');
+            container.setAttribute('aria-atomic', 'true');
+            container.style.position = 'fixed';
+            container.style.left = '0';
+            container.style.right = '0';
+            container.style.top = '0';
+            container.style.bottom = '0';
+            container.style.zIndex = '1080';
+            container.style.display = 'flex';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+            container.style.flexDirection = 'column';
+            container.style.pointerEvents = 'none';
+            container.style.padding = '0';
+            document.body.appendChild(container);
+        }
+
+        var toast = document.createElement('div');
+        toast.className = 'toast align-items-center text-bg-success border-0 show';
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'polite');
+        toast.setAttribute('aria-atomic', 'true');
+        toast.style.width = '100vw';
+        toast.style.maxWidth = '100vw';
+        toast.style.height = '100vh';
+        toast.style.borderRadius = '0';
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.15s ease';
+        toast.style.background = 'linear-gradient(180deg, rgba(25,135,84,0.96) 0%, rgba(31,157,103,0.96) 100%)';
+        toast.style.boxShadow = 'none';
+        toast.style.pointerEvents = 'auto';
+
+        var toastInner = document.createElement('div');
+        toastInner.className = 'd-flex w-100 h-100 align-items-center justify-content-center';
+
+        var toastBody = document.createElement('div');
+        toastBody.className = 'toast-body text-white fw-black text-center w-100 px-3';
+        toastBody.style.display = 'flex';
+        toastBody.style.flexDirection = 'column';
+        toastBody.style.alignItems = 'center';
+        toastBody.style.justifyContent = 'center';
+        toastBody.style.gap = '0.15em';
+        toastBody.style.lineHeight = '0.95';
+        toastBody.style.letterSpacing = '0.02em';
+        toastBody.style.wordBreak = 'break-word';
+        toastBody.style.whiteSpace = 'pre-line';
+
+        var lines = [];
+        if (Array.isArray(message)) {
+            lines = message;
+        } else {
+            String(message || '').split('\n').forEach(function(line) {
+                lines.push({ text: line, fontSize: 'clamp(2.5rem, 8vw, 8rem)' });
+            });
+        }
+
+        lines.forEach(function(line) {
+            var lineEl = document.createElement('div');
+            var text = (line && typeof line === 'object' && 'text' in line) ? line.text : String(line || '');
+            lineEl.textContent = text;
+            lineEl.style.display = 'block';
+            lineEl.style.fontSize = (line && typeof line === 'object' && line.fontSize) ? line.fontSize : 'clamp(2.5rem, 8vw, 8rem)';
+            lineEl.style.lineHeight = '0.95';
+            lineEl.style.fontWeight = '900';
+            lineEl.style.color = '#fff';
+            toastBody.appendChild(lineEl);
+        });
+
+        toastInner.appendChild(toastBody);
+        toast.appendChild(toastInner);
+
+        container.appendChild(toast);
+        requestAnimationFrame(function() {
+            toast.style.opacity = '1';
+        });
+
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            setTimeout(function() {
+                try { if (toast.parentNode) toast.parentNode.removeChild(toast); } catch (e) {}
+            }, 150);
+        }, timeoutMs);
+    }
+
+    function ffResolveTischScanLabel(tischnummer) {
+        var fallback = 'Tisch ' + String(tischnummer || 0);
+        return fetch('list_tische_json.php', { credentials: 'same-origin', cache: 'no-store' })
+            .then(function(r) { if (!r || !r.ok) return fallback; return r.json(); })
+            .then(function(data) {
+                if (!data || !data.ok || !Array.isArray(data.tische)) return fallback;
+                var match = data.tische.find(function(t) { return parseInt(t.tischnummer, 10) === parseInt(tischnummer, 10); });
+                if (!match) return fallback;
+                var label = String(match.tischname || '').trim();
+                return label || fallback;
+            })
+            .catch(function() {
+                return fallback;
+            });
+    }
+
     function ffUpdateHistorieBackLabel() {
         var lbl = document.getElementById('ffHistBackLabel');
         if (!lbl) return;
@@ -977,7 +1083,29 @@
             }
             return;
         }
-        console.log("TischAnsicht()");
+        // If camera permission is explicitly denied, go straight to classic table list
+        try {
+            if (window._ffCameraPermissionDenied === true) {
+                loadListTische();
+                return;
+            }
+        } catch (e) {}
+        // Show table selection modal (QR scan or all tables)
+        try {
+            var modalEl = document.getElementById('ffTischSelectModal');
+            if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                var m = new bootstrap.Modal(modalEl);
+                m.show();
+                return;
+            }
+        } catch (e) {}
+        // Fallback: load full table list
+        loadListTische();
+    };
+
+    /* Load the regular table list into the page */
+    window.loadListTische = function() {
+        console.log('loadListTische()');
         window.Tischnummer = 0;
         window._ffTischUnsentCount = 0;
         window._ffTischUnsentTable = 0;
@@ -988,6 +1116,337 @@
             showPage('listTische');
         });
     };
+
+    /* Close the select modal and then load the full table list */
+    window.closeTischSelectAndLoadAll = function() {
+        try {
+            var sel = document.getElementById('ffTischSelectModal');
+            if (sel && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                var inst = bootstrap.Modal.getInstance(sel) || new bootstrap.Modal(sel);
+                inst.hide();
+            }
+        } catch (e) {}
+        loadListTische();
+    };
+
+    /* QR scanning helpers for table selection (robust camera detection) */
+    window._ffTischQrScanner = null; // Html5Qrcode instance
+    window.startTischQrScan = function() {
+        // Hide select modal if open
+        try { var sel = document.getElementById('ffTischSelectModal'); if (sel) { var _m = bootstrap.Modal.getInstance(sel); if (_m) _m.hide(); } } catch (e) {}
+        // If permission was previously denied, don't attempt scanner — load classic table view
+        try { if (window._ffCameraPermissionDenied === true) { loadListTische(); return; } } catch (e) {}
+        var scanModalEl = document.getElementById('ffTischScanModal');
+        var scanRegion = document.getElementById('ffTischScanRegion');
+        if (!scanModalEl || !scanRegion) {
+            loadListTische();
+            return;
+        }
+        // Clear previous content
+        scanRegion.innerHTML = '';
+        // Show modal first (camera prompt will come after)
+        var m = new bootstrap.Modal(scanModalEl);
+        m.show();
+
+        var startNativeScanner = function() {
+            if (!('BarcodeDetector' in window)) return false;
+            try {
+                var formats = ['qr_code'];
+                if (typeof BarcodeDetector.getSupportedFormats === 'function') {
+                    // some browsers require checking
+                    // proceed anyway — constructor will throw if not supported
+                }
+                var detector = new BarcodeDetector({ formats: formats });
+                // create video element
+                var vid = document.createElement('video');
+                vid.setAttribute('autoplay', '');
+                vid.setAttribute('playsinline', '');
+                vid.style.width = '100%';
+                vid.style.height = '100%';
+                vid.id = 'ffTischNativeVideo';
+                scanRegion.appendChild(vid);
+                window._ffTischNativeDetector = detector;
+                window._ffTischNativeVideo = vid;
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function(stream) {
+                    vid.srcObject = stream;
+                    window._ffTischNativeStream = stream;
+                    vid.play().catch(function() {});
+                    var running = true;
+                    var detectLoop = function() {
+                        if (!running) return;
+                        detector.detect(vid).then(function(barcodes) {
+                            if (barcodes && barcodes.length > 0) {
+                                running = false;
+                                var v = barcodes[0].rawValue || (barcodes[0].rawData && barcodes[0].rawData.toString()) || '';
+                                _handleTischScanResult(v);
+                            } else {
+                                setTimeout(detectLoop, 200);
+                            }
+                        }).catch(function(err) {
+                            // some implementations require drawing video to canvas — fallback to library
+                            running = false;
+                            console.error('BarcodeDetector.detect error', err);
+                            showScanFallback();
+                        });
+                    };
+                    setTimeout(detectLoop, 300);
+                }).catch(function(err) {
+                    console.error('getUserMedia for BarcodeDetector failed', err);
+                    showScanFallback();
+                });
+                return true;
+            } catch (e) {
+                console.error('BarcodeDetector init failed', e);
+                return false;
+            }
+        };
+
+        var ensureLib = function(cb, errCb) {
+            if (typeof Html5Qrcode !== 'undefined') {
+                return cb();
+            }
+            // try native BarcodeDetector first (no CDN required)
+            try {
+                if (startNativeScanner()) return;
+            } catch (e) {}
+            var urls = [
+                'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js',
+                'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js',
+                'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js'
+            ];
+            var tryLoad = function(i) {
+                if (i >= urls.length) {
+                    if (typeof errCb === 'function') errCb();
+                    return;
+                }
+                var s = document.createElement('script');
+                s.src = urls[i];
+                s.onload = function() { setTimeout(cb, 50); };
+                s.onerror = function() { tryLoad(i + 1); };
+                document.head.appendChild(s);
+            };
+            tryLoad(0);
+        };
+
+        ensureLib(function() {
+            // Try to get cameras and prefer back camera
+            if (typeof Html5Qrcode.getCameras === 'function') {
+                Html5Qrcode.getCameras().then(function(cameras) {
+            var cameraId = null;
+            if (Array.isArray(cameras) && cameras.length > 0) {
+                // try to find environment/back camera
+                for (var i = 0; i < cameras.length; i++) {
+                    var cam = cameras[i];
+                    if (cam.label && /back|rear|environment/i.test(cam.label)) { cameraId = cam.id; break; }
+                }
+                if (!cameraId) cameraId = cameras[0].id;
+            }
+                    var html5Qr = new Html5Qrcode('ffTischScanRegion');
+            window._ffTischQrScanner = html5Qr;
+            var constraints = cameraId || { facingMode: { exact: 'environment' } };
+            var startArg = cameraId || { facingMode: 'environment' };
+            html5Qr.start(startArg, { fps: 10, qrbox: 250 }, function(decodedText) {
+                _handleTischScanResult(decodedText);
+            }, function(errorMessage) {
+                // ignore per-frame scan errors
+            }).catch(function(err) {
+                console.error('html5-qrcode start failed', err);
+                alert('Kamera konnte nicht gestartet werden. Stelle sicher, dass die Seite per HTTPS geladen wird und die Kamera‑Berechtigung erlaubt ist.');
+                try { m.hide(); } catch (e) {}
+                loadListTische();
+            });
+                }).catch(function(err) {
+                    console.error('getCameras failed', err);
+                    showScanFallback();
+                });
+            } else {
+                // Older versions: try to start directly
+                try {
+                    var html5Qr2 = new Html5Qrcode('ffTischScanRegion');
+                    window._ffTischQrScanner = html5Qr2;
+                    html5Qr2.start({ facingMode: 'environment' }, { fps: 10, qrbox: 250 }, function(decodedText) { _handleTischScanResult(decodedText); }, function() {}).catch(function(err) { console.error(err); showScanFallback(); });
+                } catch (e) {
+                    console.error('start fallback failed', e);
+                    showScanFallback();
+                }
+            }
+        }, function() {
+            // Failed to load library from CDN — show fallback UI
+            showScanFallback();
+        });
+    };
+
+    window.stopTischQrScan = function() {
+        try {
+            if (window._ffTischQrScanner && typeof window._ffTischQrScanner.stop === 'function') {
+                window._ffTischQrScanner.stop().then(function() {
+                    try { window._ffTischQrScanner.clear(); } catch (e) {}
+                }).catch(function() {
+                    try { window._ffTischQrScanner.clear(); } catch (e) {}
+                });
+            }
+        } catch (e) {}
+        try {
+            if (window._ffTischNativeStream) {
+                try { window._ffTischNativeStream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); } catch (e) {}
+                window._ffTischNativeStream = null;
+            }
+            if (window._ffTischNativeVideo) {
+                try { var v = document.getElementById('ffTischNativeVideo'); if (v && v.parentNode) v.parentNode.removeChild(v); } catch (e) {}
+                window._ffTischNativeVideo = null;
+            }
+            window._ffTischNativeDetector = null;
+        } catch (e) {}
+        window._ffTischQrScanner = null;
+    };
+
+    function _handleTischScanResult(decodedText) {
+        // stop scanner and close modal
+        stopTischQrScan();
+        try { var scanModal = document.getElementById('ffTischScanModal'); if (scanModal) { var mi = bootstrap.Modal.getInstance(scanModal); if (mi) mi.hide(); } } catch (e) {}
+        if (!decodedText) {
+            loadListTische();
+            return;
+        }
+        // Try to extract a numeric table id from the scanned text
+        var parsed = null;
+        try {
+            // If the code is a URL with parameter 'tischnummer' or 'tisch'
+            var m = decodedText.match(/[?&](?:tischnummer|tisch)=([0-9]+)/i);
+            if (m && m[1]) parsed = parseInt(m[1], 10);
+            if (!parsed) {
+                // any number in the text
+                var n = decodedText.match(/(\d+)/);
+                if (n && n[1]) parsed = parseInt(n[1], 10);
+            }
+        } catch (e) {}
+        if (parsed && parsed > 0) {
+            window.Tischnummer = parsed;
+            ffResolveTischScanLabel(parsed).then(function(label) {
+                ffShowQrScanToast([
+                    { text: 'Tisch', fontSize: 'clamp(2.5rem, 8vw, 8rem)' },
+                    { text: label, fontSize: 'clamp(10rem, 32vw, 32rem)' },
+                    { text: 'erkannt', fontSize: 'clamp(2.5rem, 8vw, 8rem)' }
+                ], 2000);
+            });
+            if (typeof window.tisch === 'function') {
+                window.tisch();
+                return;
+            }
+            // fallback: open tisch_anzeigen directly
+            ffSetTischInUrl(parsed, 'listTischBestellungen', 'bestellen');
+            loadContent('tisch_anzeigen.php?tischnummer=' + encodeURIComponent(parsed), 'listTischBestellungen', function() {
+                initTischTabs();
+                showPage('listTischBestellungen');
+            });
+            return;
+        }
+        // if no parseable ID, show full list
+        loadListTische();
+    }
+
+    function showScanFallback() {
+        try {
+            var scanRegion = document.getElementById('ffTischScanRegion');
+            var fb = document.getElementById('ffTischScanFallback');
+            if (scanRegion) scanRegion.style.display = 'none';
+            if (fb) fb.style.display = 'block';
+        } catch (e) {}
+    }
+
+    window.startTischQrFromImage = function() {
+        var fi = document.getElementById('ffTischScanFileInput');
+        if (!fi || !fi.files || fi.files.length === 0) { alert('Bitte eine Bilddatei auswählen.'); return; }
+        var file = fi.files[0];
+        if (typeof Html5Qrcode === 'undefined') {
+            // Try to load library then scan (jsDelivr then unpkg)
+            var urls = [
+                'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js',
+                'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js',
+                'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js'
+            ];
+            var tryLoadFile = function(i) {
+                if (i >= urls.length) { alert('QR‑Bibliothek konnte nicht geladen werden.'); return; }
+                var s = document.createElement('script');
+                s.src = urls[i];
+                s.onload = function() { setTimeout(function(){ startTischQrFromImage(); },50); };
+                s.onerror = function() { tryLoadFile(i + 1); };
+                document.head.appendChild(s);
+            };
+            tryLoadFile(0);
+            return;
+        }
+        var html5Qr = new Html5Qrcode(/* element id not needed for file scan */ 'ffTischScanRegion');
+        html5Qr.scanFile(file, true).then(function(decodedText) {
+            _handleTischScanResult(decodedText);
+        }).catch(function(err) {
+            alert('QR aus Bild konnte nicht gelesen werden.');
+        });
+    };
+
+    window._handleManualTischEntry = function() {
+        var el = document.getElementById('ffTischScanManualInput');
+        if (!el) return;
+        var v = parseInt(el.value, 10) || 0;
+        if (v <= 0) { alert('Ungültige Tischnummer'); return; }
+        _handleTischScanResult(String(v));
+    };
+
+    /* Check camera permission on main page load to trigger browser prompt early */
+    window.ffCheckCameraPermission = function() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+        // Track camera permission state so callers (e.g. TischAnsicht/startTischQrScan)
+        // can decide to fall back to the classic table list when access is denied.
+        window._ffCameraPermissionState = window._ffCameraPermissionState || null; // 'granted'|'prompt'|'denied'
+        window._ffCameraPermissionDenied = !!window._ffCameraPermissionDenied;
+
+        var tryGet = function() {
+            return navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    try { stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); } catch (e) {}
+                    window._ffCameraPermissionState = 'granted';
+                    window._ffCameraPermissionDenied = false;
+                })
+                .catch(function(err) {
+                    // denied or not available
+                    try { if (err && err.name === 'NotAllowedError') { window._ffCameraPermissionState = 'denied'; window._ffCameraPermissionDenied = true; } } catch (e) {}
+                });
+        };
+
+        if (navigator.permissions && typeof navigator.permissions.query === 'function') {
+            try {
+                navigator.permissions.query({ name: 'camera' }).then(function(result) {
+                    if (result) {
+                        window._ffCameraPermissionState = result.state || window._ffCameraPermissionState;
+                        window._ffCameraPermissionDenied = (result.state === 'denied');
+                        if (result.state === 'prompt') {
+                            // trigger prompt so browser asks user early
+                            tryGet();
+                        }
+                        // listen for future changes
+                        try {
+                            result.onchange = function() {
+                                try { window._ffCameraPermissionState = result.state || null; window._ffCameraPermissionDenied = (result.state === 'denied'); } catch (e) {}
+                            };
+                        } catch (e) {}
+                    }
+                }).catch(function() {
+                    // permissions API may not support 'camera' — fallback to direct getUserMedia
+                    tryGet();
+                });
+            } catch (e) {
+                tryGet();
+            }
+        } else {
+            // no permissions API — try direct getUserMedia to prompt
+            tryGet();
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Run permission check once when main document loads
+        try { window.ffCheckCameraPermission(); } catch (e) {}
+    });
 
     /**
      * Dialog mit Buttons „Ja“ / „Nein“ (Bootstrap-Modal).
@@ -2083,15 +2542,102 @@
             .catch(function() { alert('Netzwerkfehler.'); });
     };
 
-    window.bestellungAbschicken = function(tischnummer) {
-        if (typeof window.ffSystemBroadcastIsOpen === 'function' && window.ffSystemBroadcastIsOpen()) {
-            alert('Bitte zuerst die Systemnachricht mit OK bestätigen.');
-            return false;
+    window.ffTischOrderSummaryPrompt = function(tischnummer, callback) {
+        var modal = document.getElementById('ffTischOrderSummaryModal');
+        var body = document.getElementById('ffTischOrderSummaryBody');
+        var submitBtn = document.getElementById('ffTischOrderSummarySubmit');
+        if (!modal || !body || !submitBtn) {
+            if (typeof callback === 'function') {
+                callback();
+            }
+            return;
         }
-        var btn = $('btnBestellungAbschicken');
-        if (btn && btn.classList.contains('disabled')) return false;
-        console.log("bestellung Abschicken " + tischnummer);
 
+        body.innerHTML = '<div class="text-muted">Übersicht wird geladen…</div>';
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Bestellung endgültig absenden';
+        submitBtn.onclick = null;
+
+        function moneyText(value) {
+            var num = Number(value) || 0;
+            return num.toLocaleString('de-AT', { style: 'currency', currency: 'EUR' });
+        }
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        fetchPost('bestellung_unsent_summary.php', { tischnummer: tischnummer })
+            .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+            .then(function(x) {
+                if (!x.ok || !x.j || !x.j.ok) {
+                    var msg = (x.j && x.j.message) ? x.j.message : 'Die Bestellübersicht konnte nicht geladen werden.';
+                    alert(msg);
+                    return;
+                }
+
+                var lines = Array.isArray(x.j.lines) ? x.j.lines : [];
+                var total = Number(x.j.total || 0);
+                var html = '';
+                if (lines.length === 0) {
+                    html = '<div class="alert alert-warning mb-0" style="font-size: 1rem;">Keine offenen Positionen zum Abschicken.</div>';
+                } else {
+                    html = '<div class="list-group list-group-flush" style="font-size: 1rem;">';
+                    lines.forEach(function(line) {
+                        var name = String(line.name || 'Unbekannt');
+                        var qty = Number(line.quantity || 0);
+                        var price = Number(line.price || 0);
+                        var lineTotal = Number(line.total || (qty * price));
+                        var hint = String(line.hint || '').trim();
+                        var hintHtml = String(line.hint_html || '').trim();
+                        var priceText = moneyText(price);
+                        var lineTotalText = moneyText(lineTotal);
+                        var hintBlock = '';
+                        if (hintHtml) {
+                            hintBlock = '<div class="mt-1">' + hintHtml + '</div>';
+                        } else if (hint) {
+                            hintBlock = '<div class="text-muted small mt-1" style="line-height:1.4;">Hinweis: ' + escapeHtml(hint) + '</div>';
+                        }
+                        html += '<div class="list-group-item px-0 py-2 border-0 border-bottom" style="font-size: 1rem;">'
+                            + '<div class="d-flex justify-content-between gap-3 align-items-start">'
+                            + '<div style="min-width: 0; flex: 1;">'
+                            + '<div class="fw-semibold" style="font-size: 1.02rem; line-height: 1.35;">' + escapeHtml(name) + '</div>'
+                            + '<div class="text-muted" style="font-size: 0.95rem;">' + qty + ' × ' + priceText + '</div>'
+                            + hintBlock
+                            + '</div>'
+                            + '<div class="fw-semibold text-end" style="white-space: nowrap; font-size: 1rem;">' + lineTotalText + '</div>'
+                            + '</div>'
+                            + '</div>';
+                    });
+                    html += '</div>';
+                }
+                html += '<div class="d-flex justify-content-between align-items-center border-top mt-3 pt-3 fw-bold" style="font-size: 1.05rem;">'
+                    + '<span>Gesamt</span>'
+                    + '<span>' + moneyText(total) + '</span>'
+                    + '</div>';
+                body.innerHTML = html;
+
+                if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                    var inst = bootstrap.Modal.getOrCreateInstance(modal);
+                    inst.show();
+                }
+                submitBtn.disabled = false;
+                submitBtn.onclick = function() {
+                    var inst2 = bootstrap && bootstrap.Modal ? bootstrap.Modal.getInstance(modal) : null;
+                    if (inst2) inst2.hide();
+                    if (typeof callback === 'function') callback();
+                };
+            })
+            .catch(function() {
+                alert('Fehler beim Laden der Bestellübersicht.');
+            });
+    };
+
+    window.ffTischOrderSendConfirmed = function(tischnummer) {
         fetchPost('bestellung_has_items.php', { tischnummer: tischnummer })
             .then(function(r) { return r.json(); })
             .then(function(check) {
@@ -2115,6 +2661,29 @@
                 } else {
                     alert("Fehler beim Speichern: " + (resp.error || 'unbekannt'));
                 }
+            })
+            .catch(function(xhr) {
+                alert("Fehler beim Speichern! Siehe Konsole für Details.");
+            });
+    };
+
+    window.bestellungAbschicken = function(tischnummer) {
+        if (typeof window.ffSystemBroadcastIsOpen === 'function' && window.ffSystemBroadcastIsOpen()) {
+            alert('Bitte zuerst die Systemnachricht mit OK bestätigen.');
+            return false;
+        }
+        var btn = $('btnBestellungAbschicken');
+        if (btn && btn.classList.contains('disabled')) return false;
+        console.log("bestellung Abschicken " + tischnummer);
+
+        fetchPost('bestellung_has_items.php', { tischnummer: tischnummer })
+            .then(function(r) { return r.json(); })
+            .then(function(check) {
+                if (!check || !check.ok) { alert("Fehler beim Prüfen der Bestellung."); return; }
+                if (check.has_items !== 1) { alert("Keine offenen Positionen zum Abschicken."); return; }
+                window.ffTischOrderSummaryPrompt(tischnummer, function() {
+                    window.ffTischOrderSendConfirmed(tischnummer);
+                });
             })
             .catch(function(xhr) {
                 alert("Fehler beim Speichern! Siehe Konsole für Details.");

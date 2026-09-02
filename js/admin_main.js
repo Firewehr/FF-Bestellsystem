@@ -1,5 +1,46 @@
 var ffIsSuperAdmin = !!window.ffIsSuperAdmin;
 
+function ffShowAdminToast(message, type, timeout) {
+    timeout = (typeof timeout === 'number') ? timeout : 5000;
+    type = type || 'info';
+    try {
+        var container = document.getElementById('ffAdminToastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'ffAdminToastContainer';
+            container.style.position = 'fixed';
+            container.style.top = '1rem';
+            container.style.right = '1rem';
+            container.style.zIndex = '1060';
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.gap = '0.5rem';
+            document.body.appendChild(container);
+        }
+        var el = document.createElement('div');
+        el.style.minWidth = '180px';
+        el.style.padding = '0.6rem 0.9rem';
+        el.style.borderRadius = '6px';
+        el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.12)';
+        el.style.color = '#fff';
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.25s ease';
+        if (type === 'success') el.style.background = '#198754';
+        else if (type === 'danger') el.style.background = '#dc3545';
+        else el.style.background = '#0d6efd';
+        el.textContent = String(message || '');
+        el.onclick = function() { el.style.opacity = '0'; setTimeout(function(){ try { el.remove(); } catch (e) {} }, 250); };
+        container.appendChild(el);
+        requestAnimationFrame(function() { el.style.opacity = '1'; });
+        setTimeout(function() {
+            el.style.opacity = '0';
+            setTimeout(function() { try { el.remove(); } catch (e) {} }, 250);
+        }, timeout);
+    } catch (e) {
+        try { alert(message); } catch (e2) {}
+    }
+}
+
 (function() {
     var scopeEl = document.getElementById('abScope');
     var tableWrap = document.getElementById('abTableWrap');
@@ -61,6 +102,47 @@ function abrechnungAusfuehren() {
 }
 
 var posStatChartInstance = null;
+var qrOrderTypeChartInstance = null;
+
+function ffRenderQrOrderTypeChart() {
+    var canvas = document.getElementById('qrOrderTypeChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var qrCount = parseInt(canvas.getAttribute('data-qr-count') || '0', 10) || 0;
+    var classicCount = parseInt(canvas.getAttribute('data-classic-count') || '0', 10) || 0;
+    if (qrOrderTypeChartInstance) {
+        qrOrderTypeChartInstance.destroy();
+        qrOrderTypeChartInstance = null;
+    }
+    qrOrderTypeChartInstance = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+            labels: ['QR-Code', 'Ohne QR-Code'],
+            datasets: [{
+                data: [qrCount, classicCount],
+                backgroundColor: ['#c0392b', '#6c757d'],
+                borderColor: '#fff',
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var total = qrCount + classicCount;
+                            var value = Number(context.raw || 0);
+                            var percent = total > 0 ? Math.round(value * 1000 / total) / 10 : 0;
+                            return context.label + ': ' + value + ' (' + percent + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
 
 function posStatAnzeigen() {
     var positionId = (ffById('posStatPosition') && ffById('posStatPosition').value) ? ffById('posStatPosition').value : '0';
@@ -163,30 +245,62 @@ function posStatAnzeigen() {
             if (isLine && d.chart_resolution_minutes === 15 && labLen > 20) {
                 xTicksOpts = { maxRotation: 65, minRotation: 45, autoSkip: true, maxTicksLimit: 40 };
             }
+            var qr = Array(labLen).fill(0);
+            var classic = Array(labLen).fill(0);
+            (d.gast || []).forEach(function(row) {
+                var orderOwner = String(row.kellner || '') + ' ' + String(row.kellner_label || '');
+                var isQrOrder = row.bestellart === 'QR-Code' || orderOwner.indexOf('QR-Tisch-') >= 0;
+                var index = -1;
+                if ((d.chart.labels || []).length === 1 && (d.chart.labels || [])[0] === 'Alle Zeiten') {
+                    index = 0;
+                } else if (isLine) {
+                    var timeParts = String(row.zeit || '').split(':');
+                    var quarterLabel = timeParts.length >= 2
+                        ? timeParts[0].padStart(2, '0') + ':' + (Math.floor(Number(timeParts[1]) / 15) * 15).toString().padStart(2, '0')
+                        : '';
+                    index = (d.chart.labels || []).indexOf(quarterLabel);
+                    if (index < 0 && quarterLabel !== '') {
+                        index = (d.chart.labels || []).findIndex(function(label) {
+                            return String(label).slice(0, 5) === quarterLabel;
+                        });
+                    }
+                } else {
+                    var dateParts = String(row.datum || '').split('.');
+                    var dateLabel = dateParts.length >= 2 ? dateParts[0] + '.' + dateParts[1] : '';
+                    index = (d.chart.labels || []).indexOf(dateLabel);
+                    if (index < 0 && dateParts.length >= 2) {
+                        index = (d.chart.labels || []).findIndex(function(label) {
+                            return String(label).indexOf(dateLabel) === 0;
+                        });
+                    }
+                }
+                if (index >= 0) {
+                    if (isQrOrder) qr[index] += Number(row.menge || 1);
+                    else classic[index] += Number(row.menge || 1);
+                }
+            });
             var datasets = [];
-            if (inklGast && (d.chart.gast && d.chart.gast.length)) {
+            if (inklGast) {
                 datasets.push({
-                    label: 'Gast',
-                    data: d.chart.gast,
+                    label: 'Klassisch',
+                    data: classic,
                     borderColor: 'rgba(54, 162, 235, 1)',
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
                     borderWidth: 2,
                     fill: isLine,
                     tension: isLine ? 0.2 : 0
                 });
-            }
-            if (inklMitarbeiter && (d.chart.mitarbeiter && d.chart.mitarbeiter.length)) {
                 datasets.push({
-                    label: 'Mitarbeiter',
-                    data: d.chart.mitarbeiter,
-                    borderColor: 'rgba(255, 159, 64, 1)',
-                    backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                    label: 'QR-Code',
+                    data: qr,
+                    borderColor: 'rgba(192, 57, 43, 1)',
+                    backgroundColor: 'rgba(192, 57, 43, 0.1)',
                     borderWidth: 2,
                     fill: isLine,
                     tension: isLine ? 0.2 : 0
                 });
             }
-            if (inklGast && inklMitarbeiter && d.chart.gesamt && d.chart.gesamt.length) {
+            if (inklGast && d.chart.gesamt && d.chart.gesamt.length) {
                 datasets.push({
                     label: 'Gesamt',
                     data: d.chart.gesamt,
@@ -275,6 +389,7 @@ function ffReloadStatistikBody() {
         })
         .then(function(html) {
             box.innerHTML = html;
+            ffRenderQrOrderTypeChart();
             // Nach AJAX-Render Datum wieder in die Felder schreiben (robust gegen
             // Browser/Render-Race, bei dem Input-Werte kurzzeitig leer werden).
             var v2 = document.getElementById('ffStatVon');
@@ -679,7 +794,7 @@ window.saveUserAdmin = function(userid, sel) {
         .then(function(x) {
             if (x.j && x.j.ok) {
                 sel.setAttribute('data-prev', v);
-                alert('Gespeichert');
+                ffShowAdminToast('Gespeichert.', 'success');
                 AdminAnsicht();
             } else {
                 alert('Fehler: ' + saveUserAdminErr(x.j && x.j.error));
@@ -2112,7 +2227,7 @@ function saveTischFlags(tischnummer, opts) {
                 if (!j || !j.ok) {
                     throw new Error((j && j.error) ? j.error : 'Speichern fehlgeschlagen.');
                 }
-                if (!opts.silent) alert('Gespeichert');
+                if (!opts.silent) ffShowAdminToast('Gespeichert.', 'success');
             });
         })
         .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
@@ -2160,7 +2275,7 @@ function savePrintTarget(printTargetId, opts) {
         .then(function(r) { return r.json(); })
         .then(function(r) {
             if (r && r.ok) {
-                if (!opts.silent) alert('Gespeichert');
+                if (!opts.silent) ffShowAdminToast('Gespeichert.', 'success');
                 return;
             }
             throw new Error((r && r.error) || 'Fehler');
@@ -2770,6 +2885,7 @@ function ffEnsureStatistikPanel() {
             if (mount) {
                 mount.innerHTML = html;
                 mount.setAttribute('data-ff-stat-fetched', '1');
+                ffRenderQrOrderTypeChart();
             }
         })
         .catch(function(err) {
