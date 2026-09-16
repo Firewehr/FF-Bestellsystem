@@ -289,6 +289,12 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
         <h1><?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></h1>
         <h2>Anmeldung</h2>
 
+        <button type="button" id="ffPasskeyLoginBtn" class="btn btn-outline-secondary w-100 mb-2 d-none">
+            🔑 Mit Passkey anmelden
+        </button>
+        <div id="ffPasskeyLoginErr" class="alert alert-danger py-2 small d-none mb-2"></div>
+        <div id="ffPasskeyLoginDivider" class="text-center text-muted small my-2 d-none">oder mit Benutzername/Kennwort</div>
+
         <form action="login.php" method="post">
             <div class="mb-3">
                 <label for="username" class="form-label">Benutzername</label>
@@ -305,5 +311,61 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
             </div>
         </form>
     </div>
+    <script src="js/webauthn.js"></script>
+    <script>
+    (function() {
+        var btn = document.getElementById('ffPasskeyLoginBtn');
+        var divider = document.getElementById('ffPasskeyLoginDivider');
+        var errEl = document.getElementById('ffPasskeyLoginErr');
+        if (!btn || !window.FfWebAuthn || !window.FfWebAuthn.supported()) {
+            return;
+        }
+        btn.classList.remove('d-none');
+        if (divider) divider.classList.remove('d-none');
+
+        function showErr(msg) {
+            if (!errEl) return;
+            if (!msg) { errEl.classList.add('d-none'); errEl.textContent = ''; return; }
+            errEl.textContent = msg;
+            errEl.classList.remove('d-none');
+        }
+
+        btn.addEventListener('click', function() {
+            showErr('');
+            btn.disabled = true;
+            fetch('webauthn_login_options.php', { credentials: 'same-origin' })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                    if (!j || !j.ok) { throw new Error('options_failed'); }
+                    return window.FfWebAuthn.getPasskey(j.options);
+                })
+                .then(function(credential) {
+                    return fetch('webauthn_login_finish.php', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ credential: credential })
+                    });
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                    if (!j || !j.ok) {
+                        showErr('Anmeldung mit Passkey nicht möglich.');
+                        btn.disabled = false;
+                        return;
+                    }
+                    window.location.href = j.redirect || 'index.php';
+                })
+                .catch(function(e) {
+                    if (e && e.name === 'NotAllowedError') {
+                        showErr('Abgebrochen.');
+                    } else {
+                        showErr('Anmeldung mit Passkey fehlgeschlagen.');
+                    }
+                    btn.disabled = false;
+                });
+        });
+    })();
+    </script>
 </body>
 </html>

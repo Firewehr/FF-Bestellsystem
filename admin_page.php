@@ -276,6 +276,7 @@ echo '<script defer src="admin_main_js.php' . htmlspecialchars($ffAdminMainJsQs,
 $ffAdminFinJsMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'admin_finance.js');
 $ffAdminFinJsQs = $ffAdminFinJsMtime ? ('?v=' . (int)$ffAdminFinJsMtime) : '';
 echo '<script defer src="js/admin_finance.js' . htmlspecialchars($ffAdminFinJsQs, ENT_QUOTES, 'UTF-8') . '"></script>';
+echo '<script defer src="js/webauthn.js"></script>';
 echo '<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
 echo '</head>';
 echo '<body class="admin-page">';
@@ -462,10 +463,10 @@ function BenutzerNeu() {
                             </div>
                         </div>
                         <div class="col-12 small text-muted"><span id="dashZeilenGesamt">—</span> bezahlte Zeilen gesamt (Fest)</div>
-                        <div class="col-12 d-none" id="dashPositionStockWrap">
+                        <div class="col-12 d-none" id="dashBestandteilStockWrap">
                             <div class="border rounded-3 p-3 bg-light">
-                                <div class="text-muted small mb-2">Begrenzte Positionen (noch verfügbar)</div>
-                                <div id="dashPositionStock" class="small text-muted">—</div>
+                                <div class="text-muted small mb-2">Bestandteile mit Restkapazität (bisherige Bestellungen)</div>
+                                <div id="dashBestandteilStock" class="small text-muted">—</div>
                             </div>
                         </div>
                         <div class="col-12">
@@ -1214,6 +1215,32 @@ function BenutzerNeu() {
                                     <button type="button" class="btn btn-link btn-sm me-auto" id="ffUserStatusClearBtn">Fenster leeren</button>
                                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
                                     <button type="button" class="btn btn-primary btn-sm" id="ffUserStatusSaveBtn">Speichern</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal fade" id="ffPasskeyModal" tabindex="-1" aria-labelledby="ffPasskeyModalLabel" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header py-2">
+                                    <h5 class="modal-title" id="ffPasskeyModalLabel">Passkeys</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="small text-muted mb-2" id="ffPasskeyModalUser"></p>
+                                    <p class="small mb-3">Mit einem Passkey kann sich dieser Benutzer am Gerät (z.&nbsp;B. Smartphone per Fingerabdruck/Gesichtserkennung) anmelden – ohne Passwort einzutippen. Das übliche Benutzername/Passwort-Login bleibt zusätzlich weiter möglich.</p>
+                                    <div id="ffPasskeyList" class="list-group list-group-flush mb-3 small"></div>
+                                    <div id="ffPasskeyEmpty" class="text-muted small mb-3 d-none">Noch kein Passkey angelegt.</div>
+                                    <div id="ffPasskeyUnsupported" class="alert alert-warning small d-none mb-3">Dieser Browser/dieses Gerät unterstützt keine Passkeys.</div>
+                                    <div class="alert alert-danger small d-none mb-3" id="ffPasskeyErr"></div>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="ffPasskeyNewLabel" placeholder="Bezeichnung, z.B. „Handy Max“" maxlength="120">
+                                        <button type="button" class="btn btn-primary" id="ffPasskeyAddBtn">Neuen Passkey anlegen</button>
+                                    </div>
+                                    <p class="small text-muted mt-2 mb-0">Anlegen muss <strong>auf dem Gerät des Benutzers</strong> passieren (Admin öffnet diese Seite z.&nbsp;B. am Smartphone des Benutzers, oder der Benutzer meldet sich einmal selbst hier an).</p>
+                                </div>
+                                <div class="modal-footer py-2">
+                                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Schließen</button>
                                 </div>
                             </div>
                         </div>
