@@ -644,6 +644,139 @@ window.updatePW = function(userid) {
     } });
 };
 
+var ffPasskeyModal = null;
+var ffPasskeyUserId = 0;
+
+function ffPasskeyShowError(msg) {
+    var el = document.getElementById('ffPasskeyErr');
+    if (!el) return;
+    if (!msg) {
+        el.classList.add('d-none');
+        el.textContent = '';
+        return;
+    }
+    el.textContent = msg;
+    el.classList.remove('d-none');
+}
+
+function ffPasskeyErrorLabel(err) {
+    var map = {
+        forbidden: 'Keine Berechtigung.',
+        not_found: 'Benutzer nicht gefunden.',
+        already_registered: 'Dieser Passkey ist bereits registriert.',
+        challenge_mismatch: 'Sitzung abgelaufen, bitte erneut versuchen.',
+        origin_mismatch: 'Ungültige Herkunft der Anfrage.',
+        unsupported_key_type: 'Nicht unterstützter Schlüsseltyp.',
+        no_pending_challenge: 'Sitzung abgelaufen, bitte Dialog neu öffnen.'
+    };
+    return map[err] || ('Fehler: ' + err);
+}
+
+function ffLoadPasskeyList() {
+    var listEl = document.getElementById('ffPasskeyList');
+    var emptyEl = document.getElementById('ffPasskeyEmpty');
+    if (!listEl || !ffPasskeyUserId) return;
+    listEl.innerHTML = '<div class="text-muted">Lade …</div>';
+    if (emptyEl) emptyEl.classList.add('d-none');
+    fetchGet('webauthn_passkeys_list.php?userid=' + encodeURIComponent(String(ffPasskeyUserId)))
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            listEl.innerHTML = '';
+            if (!j || !j.ok || !Array.isArray(j.passkeys)) return;
+            if (j.passkeys.length === 0) {
+                if (emptyEl) emptyEl.classList.remove('d-none');
+                return;
+            }
+            j.passkeys.forEach(function(pk) {
+                var item = document.createElement('div');
+                item.className = 'list-group-item d-flex align-items-center gap-2 px-0';
+                var info = document.createElement('div');
+                info.className = 'flex-grow-1';
+                var used = pk.last_used_at ? ('zuletzt genutzt ' + pk.last_used_at) : 'noch nicht genutzt';
+                info.innerHTML = '<strong>' + (pk.label || 'Passkey').replace(/</g, '&lt;') + '</strong>'
+                    + '<br><span class="text-muted">angelegt ' + pk.created_at + ' · ' + used + '</span>';
+                var delBtn = document.createElement('button');
+                delBtn.type = 'button';
+                delBtn.className = 'btn btn-outline-danger btn-sm';
+                delBtn.textContent = 'Löschen';
+                delBtn.addEventListener('click', function() {
+                    if (!confirm('Diesen Passkey wirklich löschen?')) return;
+                    fetchPost('webauthn_passkey_delete.php', { id: String(pk.id) })
+                        .then(function(r) { return r.json(); })
+                        .then(function(jj) {
+                            if (!jj || !jj.ok) { alert('Löschen fehlgeschlagen.'); return; }
+                            ffLoadPasskeyList();
+                        })
+                        .catch(function() { alert('Netzwerkfehler'); });
+                });
+                item.appendChild(info);
+                item.appendChild(delBtn);
+                listEl.appendChild(item);
+            });
+        })
+        .catch(function() { listEl.innerHTML = '<div class="text-danger">Fehler beim Laden.</div>'; });
+}
+
+function ffOpenPasskeyModal(btn) {
+    ffPasskeyUserId = parseInt(btn.getAttribute('data-userid'), 10) || 0;
+    var el = document.getElementById('ffPasskeyModal');
+    if (!el || !ffPasskeyUserId) return;
+    var sub = document.getElementById('ffPasskeyModalUser');
+    if (sub) sub.textContent = 'Benutzer: ' + (btn.getAttribute('data-username') || '');
+    var labelEl = document.getElementById('ffPasskeyNewLabel');
+    if (labelEl) labelEl.value = '';
+    ffPasskeyShowError('');
+    var unsupportedEl = document.getElementById('ffPasskeyUnsupported');
+    var addBtn = document.getElementById('ffPasskeyAddBtn');
+    var supported = window.FfWebAuthn && window.FfWebAuthn.supported();
+    if (unsupportedEl) unsupportedEl.classList.toggle('d-none', !!supported);
+    if (addBtn) addBtn.disabled = !supported;
+    if (!ffPasskeyModal && typeof bootstrap !== 'undefined') {
+        ffPasskeyModal = new bootstrap.Modal(el);
+    }
+    if (ffPasskeyModal) ffPasskeyModal.show();
+    ffLoadPasskeyList();
+}
+
+function ffAddPasskey() {
+    if (!ffPasskeyUserId || !window.FfWebAuthn) return;
+    ffPasskeyShowError('');
+    var labelEl = document.getElementById('ffPasskeyNewLabel');
+    var label = labelEl ? String(labelEl.value || '').trim() : '';
+    var addBtn = document.getElementById('ffPasskeyAddBtn');
+    if (addBtn) addBtn.disabled = true;
+    fetchGet('webauthn_register_options.php?userid=' + encodeURIComponent(String(ffPasskeyUserId)))
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (!j || !j.ok) { throw new Error(j && j.error ? j.error : 'options_failed'); }
+            return window.FfWebAuthn.createPasskey(j.options);
+        })
+        .then(function(credential) {
+            return fetch(ffResolveAdminApiUrl('webauthn_register_finish.php'), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ credential: credential, label: label })
+            });
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (!j || !j.ok) { ffPasskeyShowError(ffPasskeyErrorLabel(j && j.error ? j.error : 'unknown')); return; }
+            ffLoadPasskeyList();
+        })
+        .catch(function(e) {
+            var msg = (e && e.name === 'NotAllowedError') ? 'Abgebrochen oder nicht erlaubt.' : 'Passkey konnte nicht angelegt werden.';
+            ffPasskeyShowError(msg);
+        })
+        .then(function() { if (addBtn) addBtn.disabled = false; });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var addBtn = document.getElementById('ffPasskeyAddBtn');
+    if (addBtn) addBtn.addEventListener('click', ffAddPasskey);
+});
+
+
 var ffAdminOwnPwModal = null;
 
 function ffOpenAdminOwnPwModal() {
@@ -1412,6 +1545,12 @@ if (myUsersTbl) {
             ffOpenUserPwResetModal(pwBtn);
             return;
         }
+        var passkeyBtn = e.target.closest && e.target.closest('.btn-user-passkeys');
+        if (passkeyBtn) {
+            e.preventDefault();
+            ffOpenPasskeyModal(passkeyBtn);
+            return;
+        }
         var ownPwBtn = e.target.closest && e.target.closest('.btn-user-pw-own');
         if (ownPwBtn) {
             e.preventDefault();
@@ -1856,8 +1995,8 @@ function adminDashboardApplyPayload(d) {
             hinweisApi.classList.add('d-none');
         }
     }
-    if (typeof ffRenderPositionStockList === 'function') {
-        ffRenderPositionStockList(d.position_stock, 'dashPositionStock', 'dashPositionStockWrap');
+    if (typeof ffRenderBestandteilStockList === 'function') {
+        ffRenderBestandteilStockList(d.bestandteil_stock, 'dashBestandteilStock', 'dashBestandteilStockWrap');
     }
     adminDashboardApplyPrintAlerts(d);
     adminMaybeNotifyPrintIssues(d);
@@ -2589,14 +2728,126 @@ window.ffRenderPositionStockList = function ffRenderPositionStockList(items, box
         return;
     }
     if (wrap) wrap.classList.remove('d-none');
-    var html = '<div class="d-flex flex-wrap gap-2">';
-    list.forEach(function(p) {
+
+    var rows = list.map(function(p) {
         var rest = parseInt(p.rest, 10) || 0;
         var max = parseInt(p.max, 10) || 0;
-        var cls = rest <= 0 ? 'bg-danger-subtle border-danger' : (rest < 10 ? 'bg-warning-subtle border-warning' : 'bg-white');
-        html += '<span class="badge border ' + cls + ' text-dark fw-normal">' + (p.name || '?') + ': <strong>' + rest + '</strong> von ' + max + '</span>';
+        var cls = rest <= 0 ? 'table-danger' : (rest <= 5 ? 'table-warning' : 'table-success');
+        return '<tr class="' + cls + '"><td>' + adminDashEsc(p.name || '?') + '</td><td class="text-end">' + max + '</td><td class="text-end"><strong>' + rest + '</strong></td></tr>';
+    }).join('');
+
+    box.innerHTML = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 bg-white small"><thead><tr><th>Position</th><th class="text-end">Kapazität</th><th class="text-end">Rest</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+};
+
+function ffGetStockPercentClass(rest, max) {
+    var restVal = parseFloat(rest) || 0;
+    var maxVal = parseFloat(max) || 0;
+    if (maxVal <= 0) {
+        return 'table-success';
+    }
+    var ratio = restVal / maxVal;
+    if (ratio < 0.2) {
+        return 'table-danger';
+    }
+    if (ratio <= 0.5) {
+        return 'table-warning';
+    }
+    return 'table-success';
+}
+
+function ffBindTableSorting(tableEl) {
+    if (!tableEl || !tableEl.querySelectorAll) return;
+    var headers = tableEl.querySelectorAll('thead th');
+    if (!headers.length) return;
+    Array.prototype.forEach.call(headers, function(header) {
+        if (header.getAttribute('data-sort-bound') === '1') return;
+        header.setAttribute('data-sort-bound', '1');
+        header.style.cursor = 'pointer';
+        header.title = 'Sortieren';
+        header.addEventListener('click', function() {
+            var key = header.getAttribute('data-sort-key');
+            if (!key) return;
+            var tbody = tableEl.querySelector('tbody');
+            if (!tbody) return;
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+            var dir = header.getAttribute('data-sort-dir') === 'asc' ? 'desc' : 'asc';
+            Array.prototype.forEach.call(headers, function(otherHeader) {
+                otherHeader.removeAttribute('data-sort-dir');
+                otherHeader.style.fontWeight = '';
+            });
+            header.setAttribute('data-sort-dir', dir);
+            header.style.fontWeight = '600';
+            rows.sort(function(a, b) {
+                var aCell = a.querySelector('[data-sort-key="' + key + '"]');
+                var bCell = b.querySelector('[data-sort-key="' + key + '"]');
+                var aVal = aCell ? (aCell.getAttribute('data-sort-value') || '') : '';
+                var bVal = bCell ? (bCell.getAttribute('data-sort-value') || '') : '';
+                var aNum = parseFloat(aVal);
+                var bNum = parseFloat(bVal);
+                var result;
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    result = aNum - bNum;
+                } else {
+                    result = String(aVal).localeCompare(String(bVal), undefined, { sensitivity: 'base' });
+                }
+                return dir === 'asc' ? result : -result;
+            });
+            rows.forEach(function(row) {
+                tbody.appendChild(row);
+            });
+        });
     });
-    box.innerHTML = html + '</div>';
+}
+
+window.ffRenderBestandteilStockList = function ffRenderBestandteilStockList(items, boxId, wrapId) {
+    var box = ffById(boxId);
+    var wrap = wrapId ? ffById(wrapId) : null;
+    if (!box) return;
+    var list = items || [];
+    if (!list.length) {
+        if (wrap) wrap.classList.add('d-none');
+        box.innerHTML = '<span class="text-muted">Keine begrenzten Bestandteile.</span>';
+        return;
+    }
+    if (wrap) wrap.classList.remove('d-none');
+
+    var rows = list.map(function(item) {
+        var rest = parseInt(item.rest, 10) || 0;
+        var max = parseInt(item.max, 10) || 0;
+        var cls = ffGetStockPercentClass(rest, max);
+        var name = item.name || '?';
+        var einheit = item.einheit || '';
+        var restPercent = max > 0 ? Math.round((rest / max) * 100) : 0;
+        var usedIn = Array.isArray(item.used_in) ? item.used_in.filter(function(u) { return u && (u.name || u.menge !== undefined); }) : [];
+        var nameCell = '<div class="fw-semibold">' + adminDashEsc(name) + '</div>';
+        if (usedIn.length) {
+            nameCell += '<div class="small text-muted mt-1">Aufgegangen:</div>';
+            usedIn.forEach(function(entry) {
+                var posName = entry && entry.name ? entry.name : '?';
+                var menge = entry && entry.menge !== undefined ? entry.menge : 1;
+                var unit = (item && item.einheit) ? item.einheit : '';
+                if (menge % 1 !== 0) {
+                    menge = Number(menge).toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+                } else {
+                    menge = String(Math.round(Number(menge)));
+                }
+                var mengeText = adminDashEsc(String(menge));
+                if (unit) {
+                    mengeText += ' ' + adminDashEsc(String(unit));
+                }
+                nameCell += '<div class="small text-muted ms-2">• ' + adminDashEsc(posName) + ' (' + mengeText + ')</div>';
+            });
+        } else {
+            nameCell += '<div class="small text-muted mt-1">Aufgegangen: keine Position</div>';
+        }
+        return '<tr class="' + cls + '"><td data-sort-key="name" data-sort-value="' + adminDashEsc(String(name).toLowerCase()) + '">' + nameCell + '</td><td class="text-end" data-sort-key="einheit" data-sort-value="' + adminDashEsc(String(einheit).toLowerCase()) + '">' + adminDashEsc(einheit) + '</td><td class="text-end" data-sort-key="kapazitaet" data-sort-value="' + max + '">' + max + '</td><td class="text-end" data-sort-key="rest" data-sort-value="' + rest + '"><strong>' + rest + '</strong></td><td class="text-end" data-sort-key="rest_percent" data-sort-value="' + restPercent + '">' + restPercent + '%</td></tr>';
+    }).join('');
+
+    box.innerHTML = '<div class="table-responsive"><table class="table table-sm table-bordered mb-0 bg-white small"><thead><tr><th data-sort-key="name">Bestandteil</th><th data-sort-key="einheit" class="text-end">Einheit</th><th data-sort-key="kapazitaet" class="text-end">Kapazität</th><th data-sort-key="rest" class="text-end">Rest</th><th data-sort-key="rest_percent" class="text-end">Rest %</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    var tableEl = box.querySelector('table');
+    if (tableEl) {
+        ffBindTableSorting(tableEl);
+    }
 };
 
 function gewinnAktualisieren() {
@@ -2647,6 +2898,9 @@ function gewinnAktualisieren() {
                 gBd.classList.add('d-none');
             }
             ffRenderPositionStockList(d.position_stock, 'ffFinPositionStock', 'ffFinPositionStockWrap');
+            if (typeof window.ffRenderBestandteilStockList === 'function') {
+                window.ffRenderBestandteilStockList(d.bestandteil_stock, 'ffFinBestandteilStock', 'ffFinBestandteilStockWrap');
+            }
         })
         .catch(function() { /* ignore */ });
 }
