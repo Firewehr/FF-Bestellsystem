@@ -277,6 +277,7 @@ $ffAdminFinJsMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY
 $ffAdminFinJsQs = $ffAdminFinJsMtime ? ('?v=' . (int)$ffAdminFinJsMtime) : '';
 echo '<script defer src="js/admin_finance.js' . htmlspecialchars($ffAdminFinJsQs, ENT_QUOTES, 'UTF-8') . '"></script>';
 echo '<script defer src="js/webauthn.js"></script>';
+echo '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>';
 echo '<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
 echo '</head>';
 echo '<body class="admin-page">';
@@ -1233,11 +1234,19 @@ function BenutzerNeu() {
                                     <div id="ffPasskeyEmpty" class="text-muted small mb-3 d-none">Noch kein Passkey angelegt.</div>
                                     <div id="ffPasskeyUnsupported" class="alert alert-warning small d-none mb-3">Dieser Browser/dieses Gerät unterstützt keine Passkeys.</div>
                                     <div class="alert alert-danger small d-none mb-3" id="ffPasskeyErr"></div>
-                                    <div class="input-group input-group-sm">
+                                    <div class="input-group input-group-sm mb-2">
                                         <input type="text" class="form-control" id="ffPasskeyNewLabel" placeholder="Bezeichnung, z.B. „Handy Max“" maxlength="120">
-                                        <button type="button" class="btn btn-primary" id="ffPasskeyAddBtn">Neuen Passkey anlegen</button>
+                                        <button type="button" class="btn btn-primary" id="ffPasskeyAddBtn">Auf diesem Gerät anlegen</button>
                                     </div>
-                                    <p class="small text-muted mt-2 mb-0">Anlegen muss <strong>auf dem Gerät des Benutzers</strong> passieren (Admin öffnet diese Seite z.&nbsp;B. am Smartphone des Benutzers, oder der Benutzer meldet sich einmal selbst hier an).</p>
+                                    <div class="d-grid mb-3">
+                                        <button type="button" class="btn btn-outline-primary btn-sm" id="ffPasskeyQrBtn">📱 QR-Code für Smartphone des Benutzers anzeigen</button>
+                                    </div>
+                                    <div id="ffPasskeyQrBox" class="text-center border rounded p-3 mb-3 d-none">
+                                        <div id="ffPasskeyQrCanvas" class="d-flex justify-content-center mb-2"></div>
+                                        <p class="small text-muted mb-1">Vom Benutzer mit dem Smartphone scannen lassen und dort einen Passkey anlegen.</p>
+                                        <p class="small mb-0" id="ffPasskeyQrStatus">Warte auf Scan …</p>
+                                    </div>
+                                    <p class="small text-muted mt-2 mb-0">„Auf diesem Gerät anlegen“ legt den Passkey im <strong>aktuell geöffneten Browser</strong> an. Für das Smartphone des Benutzers den QR-Code verwenden.</p>
                                 </div>
                                 <div class="modal-footer py-2">
                                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Schließen</button>
