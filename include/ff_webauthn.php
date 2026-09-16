@@ -391,14 +391,157 @@ function ff_webauthn_register_options(mysqli $conn, int $userId, string $usernam
     ];
 }
 
+/** Tabelle für Remote-Registrierungs-Anfragen (QR-Code-Flow) sicherstellen. */
+function ff_webauthn_remote_ensure_schema(mysqli $conn): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `webauthn_remote_requests` (
+        `token` VARCHAR(64) NOT NULL PRIMARY KEY,
+        `user_id` INT NOT NULL,
+        `challenge` VARCHAR(64) NOT NULL,
+        `status` VARCHAR(20) NOT NULL DEFAULT 'pending',
+        `label` VARCHAR(120) NOT NULL DEFAULT '',
+        `error` VARCHAR(64) NULL DEFAULT NULL,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `expires_at` DATETIME NOT NULL,
+        KEY `idx_user_id` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+}
+
+/** Admin: neue Remote-Registrierungs-Anfrage (für QR-Code) anlegen. Gültig 5 Minuten. */
+function ff_webauthn_remote_create(mysqli $conn, int $userId): array
+{
+    ff_webauthn_remote_ensure_schema($conn);
+    $token = ff_webauthn_b64url_encode(random_bytes(32));
+    $challenge = ff_webauthn_b64url_encode(random_bytes(32));
+    $stmt = mysqli_prepare($conn, "INSERT INTO webauthn_remote_requests (token, user_id, challenge, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
+    mysqli_stmt_bind_param($stmt, 'sis', $token, $userId, $challenge);
+    $ok = mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+    if (!$ok) {
+        return ['ok' => false, 'error' => 'db_error'];
+    }
+    return ['ok' => true, 'token' => $token, 'expires_in' => 300];
+}
+
+/** Ausstehende (nicht abgelaufene) Remote-Anfrage anhand des Tokens laden. */
+function ff_webauthn_remote_load_pending(mysqli $conn, string $token): ?array
+{
+    ff_webauthn_remote_ensure_schema($conn);
+    $stmt = mysqli_prepare($conn, "SELECT r.token, r.user_id, r.challenge, r.status, r.expires_at, u.username
+        FROM webauthn_remote_requests r JOIN users u ON u.id = r.user_id
+        WHERE r.token = ? AND r.status = 'pending' AND r.expires_at >= NOW() LIMIT 1");
+    mysqli_stmt_bind_param($stmt, 's', $token);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    $row = $res ? mysqli_fetch_assoc($res) : null;
+    mysqli_stmt_close($stmt);
+    return $row ?: null;
+}
+
+/** Öffentlich (vom Gerät des Benutzers via QR-Link): Creation-Options für ein Token. */
+function ff_webauthn_remote_options(mysqli $conn, string $token): array
+{
+    $row = ff_webauthn_remote_load_pending($conn, $token);
+    if ($row === null) {
+        return ['ok' => false, 'error' => 'invalid_or_expired'];
+    }
+    $userId = (int) $row['user_id'];
+
+    $existing = [];
+    $stmt = mysqli_prepare($conn, 'SELECT credential_id FROM user_passkeys WHERE user_id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $userId);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    while ($r = mysqli_fetch_assoc($res)) {
+        $existing[] = ['id' => $r['credential_id'], 'type' => 'public-key'];
+    }
+    mysqli_stmt_close($stmt);
+
+    return [
+        'ok' => true,
+        'username' => (string) $row['username'],
+        'options' => [
+            'challenge' => (string) $row['challenge'],
+            'rp' => ['id' => ff_webauthn_rp_id(), 'name' => 'FF Bestellsystem'],
+            'user' => [
+                'id' => ff_webauthn_b64url_encode((string) $userId),
+                'name' => (string) $row['username'],
+                'displayName' => (string) $row['username'],
+            ],
+            'pubKeyCredParams' => [
+                ['type' => 'public-key', 'alg' => -7],   // ES256
+                ['type' => 'public-key', 'alg' => -257], // RS256
+            ],
+            'timeout' => 60000,
+            'attestation' => 'none',
+            'authenticatorSelection' => [
+                'residentKey' => 'required',
+                'requireResidentKey' => true,
+                'userVerification' => 'required',
+            ],
+            'excludeCredentials' => $existing,
+        ],
+    ];
+}
+
+/** Öffentlich (vom Gerät des Benutzers via QR-Link): Attestation prüfen und Anfrage abschließen. */
+function ff_webauthn_remote_verify(mysqli $conn, string $token, array $cred, string $label): array
+{
+    $row = ff_webauthn_remote_load_pending($conn, $token);
+    if ($row === null) {
+        return ['ok' => false, 'error' => 'invalid_or_expired'];
+    }
+    $result = ff_webauthn_register_verify_core($conn, $cred, $label, (string) $row['challenge'], (int) $row['user_id']);
+
+    // Einmal-Verwendung: Anfrage in jedem Fall abschließen (pending -> done/error), unabhängig vom Ergebnis.
+    $newStatus = $result['ok'] ? 'done' : 'error';
+    $errCode = $result['ok'] ? null : (string) ($result['error'] ?? 'unknown');
+    $stmt = mysqli_prepare($conn, "UPDATE webauthn_remote_requests SET status = ?, error = ?, label = ? WHERE token = ? AND status = 'pending'");
+    mysqli_stmt_bind_param($stmt, 'ssss', $newStatus, $errCode, $label, $token);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+
+    return $result;
+}
+
+/** Admin: Status einer Remote-Anfrage abfragen (Polling). */
+function ff_webauthn_remote_status(mysqli $conn, string $token, int $expectedUserId): array
+{
+    ff_webauthn_remote_ensure_schema($conn);
+    $stmt = mysqli_prepare($conn, 'SELECT status, error, label, user_id, expires_at FROM webauthn_remote_requests WHERE token = ? LIMIT 1');
+    mysqli_stmt_bind_param($stmt, 's', $token);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    $row = $res ? mysqli_fetch_assoc($res) : null;
+    mysqli_stmt_close($stmt);
+    if (!$row || (int) $row['user_id'] !== $expectedUserId) {
+        return ['ok' => false, 'error' => 'not_found'];
+    }
+    $status = (string) $row['status'];
+    if ($status === 'pending' && strtotime((string) $row['expires_at']) < time()) {
+        $status = 'expired';
+    }
+    return ['ok' => true, 'status' => $status, 'error' => $row['error'], 'label' => $row['label']];
+}
+
 /** Attestation-Antwort des Browsers prüfen und Passkey speichern. */
 function ff_webauthn_register_verify(mysqli $conn, array $cred, string $label): array
 {
-    ff_webauthn_ensure_schema($conn);
     $expectedChallenge = (string) ($_SESSION['webauthn_reg_challenge'] ?? '');
     $userId = (int) ($_SESSION['webauthn_reg_user_id'] ?? 0);
     unset($_SESSION['webauthn_reg_challenge'], $_SESSION['webauthn_reg_user_id']);
+    return ff_webauthn_register_verify_core($conn, $cred, $label, $expectedChallenge, $userId);
+}
 
+/** Kernprüfung der Attestation-Antwort, unabhängig davon woher Challenge/Benutzer stammen. */
+function ff_webauthn_register_verify_core(mysqli $conn, array $cred, string $label, string $expectedChallenge, int $userId): array
+{
+    ff_webauthn_ensure_schema($conn);
     if ($expectedChallenge === '' || $userId <= 0) {
         return ['ok' => false, 'error' => 'no_pending_challenge'];
     }
