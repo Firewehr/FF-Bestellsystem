@@ -41,6 +41,17 @@ function ffShowAdminToast(message, type, timeout) {
     }
 }
 
+document.addEventListener('DOMContentLoaded', function() {
+    var instanceQr = document.getElementById('ffInstanceQr');
+    if (!instanceQr || typeof QRCode === 'undefined') return;
+    new QRCode(instanceQr, {
+        text: instanceQr.getAttribute('data-url') || '',
+        width: 180,
+        height: 180,
+        correctLevel: QRCode.CorrectLevel.M
+    });
+});
+
 (function() {
     var scopeEl = document.getElementById('abScope');
     var tableWrap = document.getElementById('abTableWrap');
@@ -646,6 +657,8 @@ window.updatePW = function(userid) {
 
 var ffPasskeyModal = null;
 var ffPasskeyUserId = 0;
+var ffPasskeyQrPollTimer = null;
+var ffPasskeyQrObj = null;
 
 function ffPasskeyShowError(msg) {
     var el = document.getElementById('ffPasskeyErr');
@@ -717,6 +730,67 @@ function ffLoadPasskeyList() {
         .catch(function() { listEl.innerHTML = '<div class="text-danger">Fehler beim Laden.</div>'; });
 }
 
+function ffPasskeyQrStop() {
+    if (ffPasskeyQrPollTimer) {
+        clearInterval(ffPasskeyQrPollTimer);
+        ffPasskeyQrPollTimer = null;
+    }
+    var box = document.getElementById('ffPasskeyQrBox');
+    if (box) box.classList.add('d-none');
+    var canvas = document.getElementById('ffPasskeyQrCanvas');
+    if (canvas) canvas.innerHTML = '';
+    ffPasskeyQrObj = null;
+}
+
+function ffPasskeyQrStart() {
+    if (!ffPasskeyUserId) return;
+    ffPasskeyShowError('');
+    var box = document.getElementById('ffPasskeyQrBox');
+    var canvas = document.getElementById('ffPasskeyQrCanvas');
+    var statusEl = document.getElementById('ffPasskeyQrStatus');
+    if (!box || !canvas) return;
+    ffPasskeyQrStop();
+    fetchPost('webauthn_register_remote_start.php', { userid: String(ffPasskeyUserId) })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (!j || !j.ok) { throw new Error(j && j.error ? j.error : 'start_failed'); }
+            box.classList.remove('d-none');
+            if (statusEl) statusEl.textContent = 'Warte auf Scan …';
+            if (typeof QRCode !== 'undefined') {
+                ffPasskeyQrObj = new QRCode(canvas, { text: j.url, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.L });
+            } else {
+                canvas.textContent = j.url;
+            }
+            var deadline = Date.now() + (Number(j.expires_in || 300) * 1000);
+            var token = j.token;
+            ffPasskeyQrPollTimer = setInterval(function() {
+                if (Date.now() > deadline) {
+                    if (statusEl) statusEl.textContent = 'QR-Code abgelaufen, bitte neu anfordern.';
+                    clearInterval(ffPasskeyQrPollTimer);
+                    ffPasskeyQrPollTimer = null;
+                    return;
+                }
+                fetchGet('webauthn_register_remote_status.php?token=' + encodeURIComponent(token) + '&userid=' + encodeURIComponent(String(ffPasskeyUserId)))
+                    .then(function(r) { return r.json(); })
+                    .then(function(sj) {
+                        if (!sj || !sj.ok) return;
+                        if (sj.status === 'done') {
+                            if (statusEl) statusEl.textContent = 'Passkey wurde angelegt ✔';
+                            clearInterval(ffPasskeyQrPollTimer);
+                            ffPasskeyQrPollTimer = null;
+                            ffLoadPasskeyList();
+                        } else if (sj.status === 'expired' || sj.status === 'error') {
+                            if (statusEl) statusEl.textContent = (sj.status === 'expired') ? 'QR-Code abgelaufen, bitte neu anfordern.' : 'Fehlgeschlagen, bitte neu anfordern.';
+                            clearInterval(ffPasskeyQrPollTimer);
+                            ffPasskeyQrPollTimer = null;
+                        }
+                    })
+                    .catch(function() {});
+            }, 2000);
+        })
+        .catch(function() { ffPasskeyShowError('QR-Code konnte nicht erzeugt werden.'); });
+}
+
 function ffOpenPasskeyModal(btn) {
     ffPasskeyUserId = parseInt(btn.getAttribute('data-userid'), 10) || 0;
     var el = document.getElementById('ffPasskeyModal');
@@ -726,6 +800,7 @@ function ffOpenPasskeyModal(btn) {
     var labelEl = document.getElementById('ffPasskeyNewLabel');
     if (labelEl) labelEl.value = '';
     ffPasskeyShowError('');
+    ffPasskeyQrStop();
     var unsupportedEl = document.getElementById('ffPasskeyUnsupported');
     var addBtn = document.getElementById('ffPasskeyAddBtn');
     var supported = window.FfWebAuthn && window.FfWebAuthn.supported();
@@ -733,6 +808,7 @@ function ffOpenPasskeyModal(btn) {
     if (addBtn) addBtn.disabled = !supported;
     if (!ffPasskeyModal && typeof bootstrap !== 'undefined') {
         ffPasskeyModal = new bootstrap.Modal(el);
+        el.addEventListener('hidden.bs.modal', ffPasskeyQrStop);
     }
     if (ffPasskeyModal) ffPasskeyModal.show();
     ffLoadPasskeyList();
@@ -774,6 +850,8 @@ function ffAddPasskey() {
 document.addEventListener('DOMContentLoaded', function() {
     var addBtn = document.getElementById('ffPasskeyAddBtn');
     if (addBtn) addBtn.addEventListener('click', ffAddPasskey);
+    var qrBtn = document.getElementById('ffPasskeyQrBtn');
+    if (qrBtn) qrBtn.addEventListener('click', ffPasskeyQrStart);
 });
 
 
