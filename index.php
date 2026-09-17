@@ -97,6 +97,8 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
     <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#991b1b">
     <?php if ($ff_favicon !== ''):
         $ffFavMtime = @filemtime(__DIR__ . '/' . $ff_favicon) ?: 1;
     ?>
@@ -853,6 +855,6 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
         </script>
     <?php endif; ?>
     <?php require __DIR__ . '/include/ff_system_broadcast_assets.php'; ?>
+<script src="js/pwa.js"></script>
 </body>
-
 </html>

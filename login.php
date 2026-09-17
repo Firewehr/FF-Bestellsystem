@@ -86,6 +86,9 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin Setup – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#991b1b">
+    <script src="js/pwa.js"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -250,6 +253,9 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Login – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#991b1b">
+    <script src="js/pwa.js"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>

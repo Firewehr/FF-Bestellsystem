@@ -291,7 +291,7 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     });
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('js/ff-offline-backup-sw.js', { scope: './' }).catch(function() {});
+        navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function() {});
     }
 
     loadCachedFirst().then(function() {

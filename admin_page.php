@@ -255,6 +255,17 @@ if (isset($_GET['users_io'])) {
     }
 }
 
+$ffInstanceScheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$ffInstanceHost = (string)($_SERVER['HTTP_HOST'] ?? '');
+$ffInstanceScriptDir = str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/admin_page.php')));
+$ffInstanceBasePath = rtrim($ffInstanceScriptDir, '/');
+if ($ffInstanceBasePath === '.' || $ffInstanceBasePath === '/') {
+    $ffInstanceBasePath = '';
+}
+$ffInstanceUrl = $ffInstanceHost !== ''
+    ? $ffInstanceScheme . '://' . $ffInstanceHost . $ffInstanceBasePath . '/index.php'
+    : 'index.php';
+
 // Immer vollständige HTML-Seite ausgeben
 echo '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
 echo '<title>Admin – ' . htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8') . '</title>';
@@ -1033,6 +1044,16 @@ function BenutzerNeu() {
             </div>
             <div id="Benutzer" class="collapse">
                 <div class="card-body">
+                    <div class="border rounded p-3 mb-4 bg-light">
+                        <div class="d-flex flex-wrap align-items-start gap-3">
+                            <div>
+                                <h5 class="h6 mb-1">Link zur aktuellen Instanz</h5>
+                                <p class="small text-muted mb-2">Mit dem Smartphone scannen, um diese Instanz zu öffnen.</p>
+                                <a class="small text-break" href="<?php echo out($ffInstanceUrl); ?>" target="_blank" rel="noopener"><?php echo out($ffInstanceUrl); ?></a>
+                            </div>
+                            <div id="ffInstanceQr" class="bg-white p-2" data-url="<?php echo out($ffInstanceUrl); ?>" aria-label="QR-Code für die aktuelle Instanz"></div>
+                        </div>
+                    </div>
                     <details class="mb-3 pb-3 border-bottom">
                         <summary class="small fw-semibold text-muted" style="cursor:pointer">Import / Export (JSON)</summary>
                         <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
