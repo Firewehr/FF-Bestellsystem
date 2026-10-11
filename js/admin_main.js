@@ -1,5 +1,44 @@
 var ffIsSuperAdmin = !!window.ffIsSuperAdmin;
 
+function ffGenerateTableTokens(button) {
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    button.textContent = 'Table-Tokens werden geprüft ...';
+    fetchGet('generate_table_tokens.php')
+        .then(function(response) {
+            return response.json().then(function(data) {
+                return { ok: response.ok, data: data };
+            });
+        })
+        .then(function(result) {
+            var data = result.data || {};
+            if (!result.ok || data.success !== true) {
+                throw new Error(data.error || 'Table-Tokens konnten nicht erstellt werden.');
+            }
+            var created = Number(data.neu_erstellt || 0);
+            var total = Number(data.anzahl_tische || 0);
+            ffShowAdminToast('Table-Tokens aktualisiert: ' + created + ' neu, ' + total + ' Tische geprüft.', 'success', 3500);
+        })
+        .catch(function(error) {
+            ffShowAdminToast(error && error.message ? error.message : 'Table-Tokens konnten nicht erstellt werden.', 'danger', 4000);
+        })
+        .finally(function() {
+            button.disabled = false;
+            button.textContent = 'Table-Tokens generieren';
+        });
+}
+
+var ffGenerateTableTokensButton = document.getElementById('ffGenerateTableTokensBtn');
+if (ffGenerateTableTokensButton) {
+    ffGenerateTableTokensButton.addEventListener('click', function() {
+        ffGenerateTableTokens(ffGenerateTableTokensButton);
+        var dropdown = ffGenerateTableTokensButton.closest('.dropdown-menu')?.previousElementSibling;
+        if (dropdown && ffAdminBootstrapJsOk()) {
+            bootstrap.Dropdown.getOrCreateInstance(dropdown).hide();
+        }
+    });
+}
+
 function ffShowAdminToast(message, type, timeout) {
     timeout = (typeof timeout === 'number') ? timeout : 5000;
     type = type || 'info';
@@ -113,6 +152,8 @@ function abrechnungAusfuehren() {
 }
 
 var posStatChartInstance = null;
+var posStatWaitChartInstance = null;
+var posStatWaitTimelineChartInstance = null;
 var qrOrderTypeChartInstance = null;
 
 function ffRenderQrOrderTypeChart() {
@@ -325,21 +366,234 @@ function posStatAnzeigen() {
             if (datasets.length === 0) {
                 datasets.push({ label: 'Gesamt', data: d.chart.gesamt || [], borderColor: 'rgba(75, 192, 192, 1)', backgroundColor: 'rgba(75, 192, 192, 0.2)', borderWidth: 2, fill: isLine, tension: isLine ? 0.2 : 0 });
             }
+
+            var waitSchwelle = Number(d.wartezeit_schwelle_min || 15);
+            var waitAvg = (d.chart.wartezeit_avg_min || []).map(function(v) { return v === null || v === undefined ? null : Number(v); });
+            var hasWaitData = waitAvg.some(function(v) { return v !== null; });
+            var scales = {
+                x: { ticks: xTicksOpts },
+                y: { beginAtZero: true, ticks: { stepSize: 1 } }
+            };
+            if (hasWaitData) {
+                var waitPointColors = waitAvg.map(function(v) { return v !== null && v >= waitSchwelle ? 'rgba(192, 57, 43, 1)' : 'rgba(243, 156, 18, 1)'; });
+                datasets.push({
+                    type: 'line',
+                    label: 'Ø Wartezeit Küche (Min)',
+                    data: waitAvg,
+                    yAxisID: 'yWait',
+                    borderColor: 'rgba(243, 156, 18, 1)',
+                    backgroundColor: 'rgba(243, 156, 18, 0.15)',
+                    borderWidth: 2,
+                    borderDash: [6, 4],
+                    pointBackgroundColor: waitPointColors,
+                    pointBorderColor: waitPointColors,
+                    pointRadius: 4,
+                    spanGaps: true,
+                    fill: false,
+                    tension: 0.2
+                });
+                datasets.push({
+                    type: 'line',
+                    label: 'Kritische Schwelle (' + waitSchwelle + ' Min)',
+                    data: Array(labLen).fill(waitSchwelle),
+                    yAxisID: 'yWait',
+                    borderColor: 'rgba(192, 57, 43, 0.6)',
+                    borderWidth: 1,
+                    borderDash: [2, 3],
+                    pointRadius: 0,
+                    fill: false
+                });
+                scales.yWait = {
+                    position: 'right',
+                    beginAtZero: true,
+                    grid: { drawOnChartArea: false },
+                    title: { display: true, text: 'Ø Wartezeit (Min)' }
+                };
+            }
             posStatChartInstance = new Chart(ctx, {
                 type: isLine ? 'line' : 'bar',
                 data: { labels: d.chart.labels || [], datasets: datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
-                    scales: {
-                        x: { ticks: xTicksOpts },
-                        y: { beginAtZero: true, ticks: { stepSize: 1 } }
-                    },
+                    scales: scales,
                     plugins: { legend: { position: 'top' } }
                 }
             });
+
+            ffRenderPosStatWaitChart(d, waitSchwelle);
+            ffRenderPosStatWaitTimelineChart(d);
         })
         .catch(function() { alert('Fehler beim Laden.'); });
+}
+
+function ffParseGermanDateTime(datum, zeit) {
+    var dParts = String(datum || '').split('.');
+    var tParts = String(zeit || '').split(':');
+    if (dParts.length < 3 || tParts.length < 2) return null;
+    var day = parseInt(dParts[0], 10);
+    var month = parseInt(dParts[1], 10) - 1;
+    var year = parseInt(dParts[2], 10);
+    var hour = parseInt(tParts[0], 10);
+    var minute = parseInt(tParts[1], 10);
+    if ([day, month, year, hour, minute].some(function(n) { return isNaN(n); })) return null;
+    return new Date(year, month, day, hour, minute, 0, 0).getTime();
+}
+
+function ffDruckzielColor(name) {
+    var palette = {
+        'küche': 'rgba(230, 126, 34, 0.75)',
+        'schank': 'rgba(39, 174, 96, 0.75)'
+    };
+    var key = String(name || '').trim().toLowerCase();
+    if (palette[key]) return palette[key];
+    // Stabile Fallback-Farbe für weitere/unbekannte Druckziele (Hash über den Namen).
+    var hash = 0;
+    for (var i = 0; i < key.length; i++) { hash = (hash * 31 + key.charCodeAt(i)) % 360; }
+    return 'hsla(' + hash + ', 60%, 50%, 0.75)';
+}
+
+function ffRenderPosStatWaitTimelineLegend(bars) {
+    var legend = document.getElementById('posStatWaitTimelineLegend');
+    if (!legend) return;
+    var seen = {};
+    var html = '';
+    bars.forEach(function(b) {
+        if (seen[b.druckziel]) return;
+        seen[b.druckziel] = true;
+        var color = ffDruckzielColor(b.druckziel);
+        html += '<span class="d-inline-flex align-items-center gap-1"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:' + color + ';"></span>' + b.druckziel + '</span>';
+    });
+    html += '<span class="d-inline-flex align-items-center gap-1"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;border:2px solid rgba(192,57,43,1);background:transparent;"></span>längste Dauer</span>';
+    legend.innerHTML = html;
+}
+
+function ffRenderPosStatWaitTimelineChart(d) {
+    var canvas = document.getElementById('posStatWaitTimelineChart');
+    if (posStatWaitTimelineChartInstance) { posStatWaitTimelineChartInstance.destroy(); posStatWaitTimelineChartInstance = null; }
+    var wartezeiten = d.wartezeiten || [];
+    var legendEl = document.getElementById('posStatWaitTimelineLegend');
+    if (legendEl) legendEl.innerHTML = '';
+    if (!canvas || typeof Chart === 'undefined' || wartezeiten.length === 0) return;
+
+    var bars = [];
+    var maxSec = -1;
+    wartezeiten.forEach(function(r) {
+        var startTs = ffParseGermanDateTime(r.datum, r.zeit);
+        var sek = Number(r.wartesekunden || 0);
+        if (startTs === null || sek < 0) return;
+        bars.push({ start: startTs, end: startTs + sek * 1000, sek: sek, datum: r.datum || '', zeit: r.zeit || '', kuechezeit: r.kuechezeit || '', druckziel: r.druckziel || 'Unbekannt' });
+        if (sek > maxSec) maxSec = sek;
+    });
+    if (bars.length === 0) return;
+
+    ffRenderPosStatWaitTimelineLegend(bars);
+
+    var labels = bars.map(function(_, i) { return String(i); });
+    var data = bars.map(function(b) { return [b.start, b.end]; });
+    var colors = bars.map(function(b) { return ffDruckzielColor(b.druckziel); });
+    var borderColors = bars.map(function(b) { return b.sek === maxSec ? 'rgba(192, 57, 43, 1)' : ffDruckzielColor(b.druckziel); });
+    var borderWidths = bars.map(function(b) { return b.sek === maxSec ? 3 : 1; });
+    var minStart = Math.min.apply(null, bars.map(function(b) { return b.start; }));
+    var maxEnd = Math.max.apply(null, bars.map(function(b) { return b.end; }));
+    var pad = Math.max(60000, Math.round((maxEnd - minStart) * 0.03));
+
+    posStatWaitTimelineChartInstance = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Bearbeitungsdauer (Bestellung \u2192 K\u00fcche fertig)',
+                data: data,
+                backgroundColor: colors,
+                borderColor: borderColors,
+                borderWidth: borderWidths,
+                barPercentage: 1,
+                categoryPercentage: 0.9
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    type: 'linear',
+                    min: minStart - pad,
+                    max: maxEnd + pad,
+                    title: { display: true, text: 'Uhrzeit' },
+                    ticks: {
+                        callback: function(value) {
+                            var dt = new Date(value);
+                            return dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+                        }
+                    }
+                },
+                y: { ticks: { display: false }, grid: { display: false } }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var b = bars[context.dataIndex];
+                            var min = Math.round((b.sek / 60) * 10) / 10;
+                            return b.druckziel + ': ' + b.datum + ' ' + b.zeit + ' \u2192 ' + b.kuechezeit + ' \u00b7 ' + min + ' Min' + (b.sek === maxSec ? ' (l\u00e4ngste Dauer)' : '');
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function ffRenderPosStatWaitChart(d, waitSchwelle) {
+    var wrap = document.getElementById('posStatWaitWrap');
+    var canvas = document.getElementById('posStatWaitChart');
+    if (posStatWaitChartInstance) { posStatWaitChartInstance.destroy(); posStatWaitChartInstance = null; }
+    var wartezeiten = d.wartezeiten || [];
+    if (!wrap || !canvas || typeof Chart === 'undefined' || wartezeiten.length === 0) {
+        if (wrap) wrap.style.display = 'none';
+        return;
+    }
+    wrap.style.display = 'block';
+    var points = wartezeiten.map(function(r, i) {
+        var min = Math.round((Number(r.wartesekunden || 0) / 60) * 10) / 10;
+        return { x: i, y: min, _datum: r.datum || '', _zeit: r.zeit || '', _kuechezeit: r.kuechezeit || '', _kritisch: min >= waitSchwelle };
+    });
+    var colors = points.map(function(p) { return p._kritisch ? 'rgba(192, 57, 43, 0.85)' : 'rgba(54, 162, 235, 0.75)'; });
+    posStatWaitChartInstance = new Chart(canvas, {
+        type: 'scatter',
+        data: {
+            datasets: [{
+                label: 'Wartezeit je Bestellung (Min)',
+                data: points,
+                backgroundColor: colors,
+                borderColor: colors,
+                pointRadius: 4,
+                pointHoverRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            scales: {
+                x: { title: { display: true, text: 'Bestellungen (chronologisch)' }, ticks: { display: false } },
+                y: { beginAtZero: true, title: { display: true, text: 'Wartezeit (Min)' } }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var p = context.raw;
+                            return p._datum + ' ' + p._zeit + ' → ' + p._kuechezeit + ' · ' + p.y + ' Min' + (p._kritisch ? ' (kritisch)' : '');
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 function posStatExportCsv() {
@@ -710,8 +964,10 @@ function ffLoadPasskeyList() {
                     + '<br><span class="text-muted">angelegt ' + pk.created_at + ' · ' + used + '</span>';
                 var delBtn = document.createElement('button');
                 delBtn.type = 'button';
-                delBtn.className = 'btn btn-outline-danger btn-sm';
-                delBtn.textContent = 'Löschen';
+                delBtn.className = 'btn btn-outline-danger btn-sm ff-icon-action';
+                delBtn.textContent = '🗑';
+                delBtn.title = 'Passkey löschen';
+                delBtn.setAttribute('aria-label', 'Passkey löschen');
                 delBtn.addEventListener('click', function() {
                     if (!confirm('Diesen Passkey wirklich löschen?')) return;
                     fetchPost('webauthn_passkey_delete.php', { id: String(pk.id) })
@@ -2035,8 +2291,12 @@ function adminDashboardApplyPayload(d) {
     var h = ffById('dashUmsatzHeute');
     var gk = ffById('dashUmsatzGesamtKombiniert'), bs = ffById('dashUmsatzBereicheSumme');
     var zh = ffById('dashZeilenHeute'), zg = ffById('dashZeilenGesamt');
+    var bp = ffById('dashBestelltePositionen'), op = ffById('dashOffenePositionen'), os = ffById('dashUmsatzOffen');
     var bereichBox = ffById('dashBereicheUmsatz');
     if (h) h.textContent = adminFormatEur(d.umsatz_heute);
+    if (bp) bp.textContent = String(d.bestellte_positionen != null ? d.bestellte_positionen : 0);
+    if (op) op.textContent = String(d.offene_positionen != null ? d.offene_positionen : 0);
+    if (os) os.textContent = adminFormatEur(d.umsatz_offen != null ? d.umsatz_offen : 0);
     if (typeof window.ffFinanceApplyVerkaufSplit === 'function') {
         window.ffFinanceApplyVerkaufSplit(d);
     } else {
@@ -2324,6 +2584,8 @@ function ffBindSystemSettingsAutosave() {
     }
     bindCb('set_kellner_nur_eigene', 'kellner_nur_eigene');
     bindCb('set_fast_refresh', 'fast_refresh');
+    bindCb('set_sumup_open_app_button', 'sumup_open_app_button');
+    bindCb('set_pay_cash_modal', 'pay_cash_modal');
     bindCb('set_station_summary_top', 'station_summary_top');
     bindCb('set_station_summary_right', 'station_summary_right');
     bindCb('set_station_one_click_abschliessen', 'station_one_click_abschliessen');
@@ -2371,6 +2633,30 @@ function ffBindSystemSettingsAutosave() {
         appTitleEl.addEventListener('change', saveAppTitle);
         appTitleEl.addEventListener('blur', saveAppTitle);
     }
+
+    var sumupAffiliateEl = ffById('set_sumup_affiliate_key');
+    if (sumupAffiliateEl) {
+        function saveSumupAffiliate() {
+            var t = String(sumupAffiliateEl.value || '').trim();
+            if (t.length > 120) t = t.slice(0, 120);
+            sumupAffiliateEl.value = t;
+            ffSaveSystemSettingKey('sumup_affiliate_key', t);
+        }
+        sumupAffiliateEl.addEventListener('change', saveSumupAffiliate);
+        sumupAffiliateEl.addEventListener('blur', saveSumupAffiliate);
+    }
+
+    var sumupAppIdEl = ffById('set_sumup_app_id');
+    if (sumupAppIdEl) {
+        function saveSumupAppId() {
+            var t = String(sumupAppIdEl.value || '').trim();
+            if (t.length > 120) t = t.slice(0, 120);
+            sumupAppIdEl.value = t;
+            ffSaveSystemSettingKey('sumup_app_id', t);
+        }
+        sumupAppIdEl.addEventListener('change', saveSumupAppId);
+        sumupAppIdEl.addEventListener('blur', saveSumupAppId);
+    }
 }
 
 /** @deprecated Sofort-Save über ffBindSystemSettingsAutosave; bleibt für Kompatibilität. */
@@ -2415,9 +2701,16 @@ function ffAdminClearSchemaCache() {
 }
 window.ffAdminClearSchemaCache = ffAdminClearSchemaCache;
 
+function ffGetTischFlagInputs(tischnummer) {
+    var sr = document.querySelector('input[data-tid="' + String(tischnummer) + '"][data-flag="sr"]') || ffById('sr_' + tischnummer);
+    var eg = document.querySelector('input[data-tid="' + String(tischnummer) + '"][data-flag="eg"]') || ffById('eg_' + tischnummer);
+    return { sr: sr, eg: eg };
+}
+
 function saveTischFlags(tischnummer, opts) {
     opts = opts || {};
-    var sr = ffById('sr_' + tischnummer), eg = ffById('eg_' + tischnummer);
+    var flags = ffGetTischFlagInputs(tischnummer);
+    var sr = flags.sr, eg = flags.eg;
     if (!sr || !eg) {
         if (!opts.silent) alert('Tisch-Zeile nicht gefunden.');
         return;
@@ -2450,31 +2743,69 @@ function saveTischFlags(tischnummer, opts) {
         .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
 }
 
+function ffAdminSaveTischColor(tischnummer) {
+    var colorInput = document.getElementById('html5colorpicker' + tischnummer);
+    if (!colorInput) return;
+    fetchPost('update_color.php', { color: colorInput.value, tischnummer: tischnummer })
+        .then(function(r) {
+            if (!r.ok) {
+                throw new Error('Speichern fehlgeschlagen (HTTP ' + r.status + ').');
+            }
+            ffShowAdminToast('Farbe gespeichert.', 'success');
+        })
+        .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
+}
+
+function ffAdminDeleteTable(tischnummer) {
+    if (!confirm('Wirklich löschen?')) return;
+    fetchGet('delete_table.php?tischnummer=' + encodeURIComponent(tischnummer))
+        .then(function(r) {
+            if (!r.ok) {
+                throw new Error('Löschen fehlgeschlagen (HTTP ' + r.status + ').');
+            }
+            location.reload();
+        })
+        .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
+}
+
+function ffAdminUpdateTischName(tischname, tischnummer) {
+    var next = prompt('Neuer Tischname:', tischname);
+    if (next === null) return;
+    fetchGet('update_tischname.php?tischname=' + encodeURIComponent(next) + '&tischnummer=' + encodeURIComponent(tischnummer))
+        .then(function(r) {
+            if (!r.ok) {
+                throw new Error('Speichern fehlgeschlagen (HTTP ' + r.status + ').');
+            }
+            ffShowAdminToast('Gespeichert.', 'success');
+            location.reload();
+        })
+        .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
+}
+
 /** Sammelrechnung ↔ Ehrengast: nur eine Checkbox pro Tisch aktiv + Sofort-Save */
 document.addEventListener('change', function(ev) {
     var t = ev.target;
     if (!t || t.type !== 'checkbox') return;
-    var id = t.id || '';
-    var m = id.match(/^sr_(\d+)$/);
-    if (m) {
-        if (t.checked) {
-            var eg = ffById('eg_' + m[1]);
-            if (eg) eg.checked = false;
+    var tid = parseInt(t.getAttribute('data-tid') || '0', 10);
+    var flag = t.getAttribute('data-flag');
+    if (!tid || !flag) {
+        var id = t.id || '';
+        var m = id.match(/^sr_(\d+)$/) || id.match(/^eg_(\d+)$/);
+        if (m) {
+            tid = parseInt(m[1], 10);
+            flag = id.indexOf('sr_') === 0 ? 'sr' : 'eg';
         }
-        if (document.getElementById('tischFlags') && t.closest && t.closest('#tischFlags')) {
-            saveTischFlags(parseInt(m[1], 10), { silent: true });
-        }
-        return;
     }
-    m = id.match(/^eg_(\d+)$/);
-    if (m) {
-        if (t.checked) {
-            var sr = ffById('sr_' + m[1]);
-            if (sr) sr.checked = false;
-        }
-        if (document.getElementById('tischFlags') && t.closest && t.closest('#tischFlags')) {
-            saveTischFlags(parseInt(m[1], 10), { silent: true });
-        }
+    if (!tid || !flag) return;
+    var flags = ffGetTischFlagInputs(tid);
+    if (flag === 'sr' && t.checked) {
+        if (flags.eg) flags.eg.checked = false;
+    } else if (flag === 'eg' && t.checked) {
+        if (flags.sr) flags.sr.checked = false;
+    }
+    var tableMatch = (document.getElementById('tischFlags') && t.closest && t.closest('#tischFlags')) || (document.getElementById('tischTable') && t.closest && t.closest('#tischTable'));
+    if (tableMatch) {
+        saveTischFlags(tid, { silent: true });
     }
 });
 
@@ -3189,6 +3520,158 @@ function ffAdminEscapeCssId(id) {
     return s.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
+/** Admin-Seitenmenü: "Stammdaten" / "Personal…" / "Auswertungen…" werden als eigene <section> ein-/ausgeblendet. */
+function ffAdminSwitchPage(pageKey) {
+    if (!pageKey) return;
+    var found = false;
+    var activeSec = null;
+    document.querySelectorAll('.ff-admin-page').forEach(function(sec) {
+        var match = sec.getAttribute('data-admin-page') === pageKey;
+        sec.hidden = !match;
+        if (match) {
+            found = true;
+            activeSec = sec;
+        }
+    });
+    if (!found) return;
+    if (pageKey === 'stammdaten-tischplan') {
+        ffAdminLoadManageFrame(document.getElementById('ffAdminTablesFrame'));
+    } else if (pageKey === 'personal-speisekarte') {
+        ffAdminLoadManageFrame(document.getElementById('ffAdminManageFrame'));
+    }
+    document.querySelectorAll('.ff-admin-nav-group').forEach(function(group) {
+        group.querySelector('.dropdown-toggle').classList.remove('active');
+    });
+    document.querySelectorAll('.ff-admin-page-link').forEach(function(link) {
+        var isActive = link.getAttribute('data-ff-page') === pageKey;
+        link.classList.toggle('active', isActive);
+        if (isActive) {
+            var groupToggle = link.closest('.ff-admin-nav-group')?.querySelector('.dropdown-toggle');
+            if (groupToggle) groupToggle.classList.add('active');
+        }
+    });
+    document.querySelectorAll('.ff-admin-manage-link').forEach(function(link) {
+        link.classList.remove('active');
+    });
+    /** Seiten mit genau einer Karte (alles außer "uebersicht"): Inhalt direkt aufklappen, kein Extra-Klick nötig. */
+    if (pageKey !== 'uebersicht' && activeSec) {
+        activeSec.querySelectorAll(':scope > .card > .collapse').forEach(function(coll) {
+            if (!coll.classList.contains('show')) {
+                if (ffAdminBootstrapJsOk()) {
+                    try {
+                        bootstrap.Collapse.getOrCreateInstance(coll).show();
+                    } catch (eShow) {
+                        coll.classList.add('show');
+                    }
+                } else {
+                    coll.classList.add('show');
+                }
+            }
+        });
+    }
+    try {
+        window.localStorage.setItem('ffAdminActivePage', pageKey);
+    } catch (eStorage) {}
+    var menu = document.getElementById('ffAdminPageMenu');
+    if (menu && menu.classList.contains('show')) {
+        if (ffAdminBootstrapJsOk()) {
+            try {
+                bootstrap.Collapse.getOrCreateInstance(menu).hide();
+            } catch (eColl) {
+                menu.classList.remove('show');
+            }
+        } else {
+            menu.classList.remove('show');
+        }
+    }
+}
+
+function ffAdminPageKeyForElement(el) {
+    var sec = el && el.closest ? el.closest('.ff-admin-page') : null;
+    return sec ? sec.getAttribute('data-admin-page') : null;
+}
+
+function ffAdminLoadManageFrame(frame) {
+    if (!frame) return;
+    if (frame.getAttribute('data-ff-resize-bound') !== '1') {
+        frame.addEventListener('load', function() {
+            if (frame._ffManageResizeObserver) {
+                frame._ffManageResizeObserver.disconnect();
+                frame._ffManageResizeObserver = null;
+            }
+            var resizeObserver = null;
+            var resize = function() {
+                try {
+                    var doc = frame.contentDocument;
+                    var body = doc && doc.body;
+                    var root = doc && doc.documentElement;
+                    var contentHeight = Math.max(body ? body.scrollHeight : 0, root ? root.scrollHeight : 0, 560);
+                    var nextHeight = contentHeight + 8;
+                    if (Math.abs(frame.offsetHeight - nextHeight) > 1) {
+                        frame.style.height = nextHeight + 'px';
+                    }
+                } catch (eFrame) {}
+            };
+            try {
+                var doc = frame.contentDocument;
+                if (doc && typeof ResizeObserver === 'function') {
+                    resizeObserver = new ResizeObserver(resize);
+                    [doc.body, doc.documentElement, doc.getElementById('mainContent')].forEach(function(target) {
+                        if (target) resizeObserver.observe(target);
+                    });
+                }
+            } catch (eObserver) {}
+            resize();
+            window.setTimeout(resize, 300);
+            window.setTimeout(resize, 1000);
+            if (resizeObserver) {
+                frame._ffManageResizeObserver = resizeObserver;
+            }
+        });
+        frame.setAttribute('data-ff-resize-bound', '1');
+    }
+    if (frame.getAttribute('data-ff-loaded') !== '1') {
+        var src = frame.getAttribute('data-src');
+        if (!src) return;
+        frame.setAttribute('data-ff-loaded', '1');
+        frame.src = src;
+    }
+}
+
+document.querySelectorAll('.ff-admin-page-link').forEach(function(link) {
+    link.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        ffAdminSwitchPage(link.getAttribute('data-ff-page'));
+        var dropdown = link.closest('.dropdown-menu')?.previousElementSibling;
+        if (dropdown && ffAdminBootstrapJsOk()) {
+            bootstrap.Dropdown.getOrCreateInstance(dropdown).hide();
+        }
+    });
+});
+document.querySelectorAll('.ff-admin-manage-link').forEach(function(link) {
+    link.addEventListener('click', function() {
+        var frame = document.getElementById('ffAdminManageFrame');
+        if (!frame) return;
+        var frameSrc = 'manage/index.php?embed=1&v=' + Date.now() + (link.getAttribute('data-manage-hash') || '#pos');
+        frame.setAttribute('data-src', frameSrc);
+        ffAdminSwitchPage('personal-speisekarte');
+        document.querySelectorAll('.ff-admin-manage-link').forEach(function(item) {
+            item.classList.toggle('active', item === link);
+        });
+        var groupToggle = link.closest('.ff-admin-nav-group')?.querySelector('.dropdown-toggle');
+        if (groupToggle) groupToggle.classList.add('active');
+        var dropdown = link.closest('.dropdown-menu')?.previousElementSibling;
+        if (dropdown && ffAdminBootstrapJsOk()) {
+            bootstrap.Dropdown.getOrCreateInstance(dropdown).hide();
+        }
+        if (frame.getAttribute('data-ff-loaded') === '1') frame.src = frameSrc;
+    });
+});
+(function ffAdminRestoreActivePage() {
+    ffAdminSwitchPage('uebersicht');
+})();
+window.ffAdminSwitchPage = ffAdminSwitchPage;
+
 var ffStatistikEnsurePromise = null;
 function ffEnsureStatistikPanel() {
     var el = document.getElementById('Statistik');
@@ -3348,6 +3831,10 @@ function ffAdminOpenSection(collapseId, scrollToId) {
             console.warn('ffAdminOpenSection: Collapse „' + collapseId + '“ nicht im Dokument (admin_page.php vollständig laden / Cache leeren).');
         } catch (e0) {}
         return;
+    }
+    var pageKey = ffAdminPageKeyForElement(el) || ffAdminPageKeyForElement(hdr);
+    if (pageKey) {
+        ffAdminSwitchPage(pageKey);
     }
     if (!el.getAttribute('data-ff-collapse-inline-guard')) {
         el.setAttribute('data-ff-collapse-inline-guard', '1');

@@ -311,6 +311,273 @@
         }
     }
 
+    function ffSetPendingSumupState(state) {
+        try {
+            if (!state) {
+                sessionStorage.removeItem('ff_sumup_pending');
+                return;
+            }
+            sessionStorage.setItem('ff_sumup_pending', JSON.stringify(state));
+        } catch (eSt) {}
+    }
+
+    function ffGetPendingSumupState() {
+        try {
+            var raw = sessionStorage.getItem('ff_sumup_pending');
+            if (!raw) return null;
+            var j = JSON.parse(raw);
+            if (!j || typeof j !== 'object') return null;
+            return j;
+        } catch (eGt) {
+            return null;
+        }
+    }
+
+    function ffCleanSumupReturnUrlParams() {
+        try {
+            var u = new URL(window.location.href);
+            [
+                'sumup_return',
+                'sumup_tx',
+                'sumup_status',
+                'sumup_result',
+                'status',
+                'result',
+                'success'
+            ].forEach(function(k) {
+                u.searchParams.delete(k);
+            });
+            history.replaceState(null, '', u.pathname + u.search + u.hash);
+        } catch (eUrl) {}
+    }
+
+    function ffShowSumupReturnToast(message, type) {
+        var text = String(message || '').trim();
+        if (!text) return;
+        var kind = String(type || 'success').toLowerCase();
+        var isDanger = kind === 'danger' || kind === 'error';
+        var bg = isDanger ? '#b42318' : '#157347';
+        var toast = document.createElement('div');
+        toast.style.cssText = [
+            'position:fixed',
+            'left:50%',
+            'top:12px',
+            'transform:translateX(-50%)',
+            'z-index:11000',
+            'max-width:min(94vw,520px)',
+            'padding:10px 14px',
+            'border-radius:10px',
+            'color:#fff',
+            'font-size:0.98rem',
+            'font-weight:700',
+            'line-height:1.2',
+            'box-shadow:0 8px 24px rgba(0,0,0,0.25)',
+            'background:' + bg,
+            'opacity:0',
+            'transition:opacity .15s ease'
+        ].join(';');
+        toast.textContent = text;
+        document.body.appendChild(toast);
+        requestAnimationFrame(function() { toast.style.opacity = '1'; });
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            setTimeout(function() {
+                if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+            }, 180);
+        }, 2600);
+    }
+
+    function ffFetchOpenPayIdsForTisch(tischnummer) {
+        var t = parseInt(tischnummer, 10) || 0;
+        if (t <= 0) return Promise.resolve([]);
+        var url = 'list_BestellungenZahlen.php?tischnummer=' + encodeURIComponent(String(t)) + '&partial=1';
+        return fetch(url, {
+            cache: 'no-store',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function(r) { return r.ok ? r.text() : ''; })
+            .then(function(html) {
+                if (!html) return [];
+                var wrap = document.createElement('div');
+                wrap.innerHTML = html;
+                var pd = wrap.querySelector('#PayData');
+                if (!pd) return [];
+                var raw = pd.getAttribute('data-array') || '[]';
+                var arr;
+                try {
+                    arr = JSON.parse(raw);
+                } catch (eJ) {
+                    arr = [];
+                }
+                if (!Array.isArray(arr)) return [];
+                return arr.map(function(x) { return parseInt(x, 10); }).filter(function(n) { return n > 0; });
+            })
+            .catch(function() { return []; });
+    }
+
+    function ffShowSumupConfirmModal(amount, cb) {
+        var amt = parseFloat(amount);
+        var amtText = isFinite(amt) ? amt.toFixed(2).replace('.', ',') + ' €' : '';
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px';
+        ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:22px;max-width:420px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.4)">'
+            + '<div style="font-size:1.1rem;font-weight:700;margin-bottom:10px">SumUp-Zahlung bestätigen</div>'
+            + (amtText ? '<div style="font-size:3rem;font-weight:800;line-height:1.1;margin:10px 0 18px">' + amtText + '</div>' : '')
+            + '<div style="font-size:1.05rem;margin-bottom:18px">Wurde die Zahlung mit SumUp bezahlt?</div>'
+            + '<div style="display:flex;gap:12px">'
+            + '<button type="button" data-a="yes" style="flex:1;padding:16px;font-size:1.3rem;font-weight:700;border:0;border-radius:10px;background:#198754;color:#fff">Ja</button>'
+            + '<button type="button" data-a="no" style="flex:1;padding:16px;font-size:1.3rem;font-weight:700;border:0;border-radius:10px;background:#dc3545;color:#fff">Nein</button>'
+            + '</div></div>';
+        ov.addEventListener('click', function(e) {
+            var a = e.target && e.target.getAttribute ? e.target.getAttribute('data-a') : null;
+            if (!a) return;
+            if (ov.parentNode) ov.parentNode.removeChild(ov);
+            cb(a === 'yes');
+        });
+        document.body.appendChild(ov);
+    }
+
+    function ffHandleSumupReturnIfNeeded() {
+        if (window._sumupReturnHandled) return;
+        var params;
+        try {
+            params = new URLSearchParams(window.location.search || '');
+        } catch (eP) {
+            return;
+        }
+        if (params.get('sumup_return') !== '1') return;
+        window._sumupReturnHandled = true;
+
+        var t = ffGetTischFromUrl() || ffGetLastTischFromStorage() || 0;
+        if (t > 0) window.Tischnummer = t;
+
+        var pending = ffGetPendingSumupState();
+        var tx = String(params.get('sumup_tx') || '').trim();
+        if (pending && tx && String(pending.tx || '') && String(pending.tx || '') !== tx) {
+            pending = null;
+        }
+
+        var statusRaw = String(
+            params.get('sumup_status')
+            || params.get('sumup_result')
+            || params.get('status')
+            || params.get('result')
+            || params.get('success')
+            || ''
+        ).trim().toLowerCase();
+
+        var isSuccess = statusRaw === 'success'
+            || statusRaw === 'successful'
+            || statusRaw === 'ok'
+            || statusRaw === 'paid'
+            || statusRaw === '1'
+            || statusRaw === 'true';
+        var isFail = statusRaw === 'failed'
+            || statusRaw === 'failure'
+            || statusRaw === 'cancel'
+            || statusRaw === 'cancelled'
+            || statusRaw === 'canceled'
+            || statusRaw === 'declined'
+            || statusRaw === 'error'
+            || statusRaw === '0'
+            || statusRaw === 'false';
+
+        var partialFromUrl = String(params.get('sumup_partial') || '').trim() === '1';
+
+        if (isSuccess) {
+            ffShowSumupReturnToast('SumUp-Zahlung erfolgreich. Positionen werden als bezahlt markiert.', 'success');
+        } else if (isFail) {
+            ffShowSumupReturnToast('SumUp-Zahlung nicht erfolgreich. Es wurden keine Positionen markiert.', 'danger');
+        }
+
+        if (!isSuccess && !isFail) {
+            ffCleanSumupReturnUrlParams();
+            ffShowSumupConfirmModal(pending && pending.amount, function(ok) {
+                if (ok) {
+                    ffShowSumupReturnToast('Zahlung bestaetigt. Positionen werden als bezahlt markiert.', 'success');
+                }
+                finishReturn(ok);
+            });
+            return;
+        }
+
+        ffCleanSumupReturnUrlParams();
+        finishReturn(isSuccess);
+
+        function finishReturn(isSuccess) {
+
+        if (!isSuccess) {
+            ffSetPendingSumupState(null);
+            return;
+        }
+
+        var ids = [];
+        if (pending && Array.isArray(pending.ids)) {
+            ids = pending.ids.map(function(x) { return parseInt(x, 10); }).filter(function(n) { return n > 0; });
+        }
+        if (!ids.length) {
+            var idsFromUrlRaw = String(params.get('sumup_ids') || '').trim();
+            if (idsFromUrlRaw) {
+                ids = idsFromUrlRaw.split(',')
+                    .map(function(x) { return parseInt(x, 10); })
+                    .filter(function(n) { return n > 0; });
+            }
+        }
+
+        if (!ids.length) {
+            // Fallback: aktuelle Auswahl / alle offenen Positionen aus dem geladenen Zahlen-View ableiten.
+            try {
+                if (typeof window.ffPayIdsForCheckout === 'function') {
+                    ids = window.ffPayIdsForCheckout();
+                }
+            } catch (eFb1) {}
+            if (!ids.length && window._selPay && typeof window._selPay === 'object') {
+                ids = Object.keys(window._selPay)
+                    .map(function(k) { return parseInt(k, 10); })
+                    .filter(function(n) { return n > 0 && !!window._selPay[n]; });
+            }
+            if (!ids.length) {
+                try {
+                    if (typeof window.ensurePayDataFromDom === 'function') {
+                        window.ensurePayDataFromDom();
+                    }
+                    if (typeof window.ffPayAllRowIds === 'function') {
+                        ids = window.ffPayAllRowIds();
+                    }
+                } catch (eFb2) {}
+            }
+        }
+
+        var pendingPartial = !!(pending && pending.partial);
+        var partialWanted = pendingPartial || partialFromUrl;
+
+        ffSetPendingSumupState(null);
+        if (ids.length) {
+            if (typeof window.BestellungBezahlt === 'function') {
+                window.BestellungBezahlt(ids, 0);
+            }
+            return;
+        }
+
+        if (partialWanted) {
+            ffShowSumupReturnToast('Teilauswahl konnte beim Rücksprung nicht eindeutig aufgelöst werden. Bitte Positionen erneut markieren.', 'danger');
+            return;
+        }
+
+        ffFetchOpenPayIdsForTisch(t).then(function(serverIds) {
+            if (Array.isArray(serverIds) && serverIds.length > 0) {
+                ffShowSumupReturnToast('Positionen werden aus dem Tischstand übernommen und als bezahlt markiert.', 'success');
+                if (typeof window.BestellungBezahlt === 'function') {
+                    window.BestellungBezahlt(serverIds, 0);
+                }
+                return;
+            }
+            ffShowSumupReturnToast('Zahlung erfolgreich, aber keine Positionen zum Markieren gefunden.', 'danger');
+        });
+        }
+    }
+
     /** Tisch-Shell (Navbar + Speisekarten-Tabs) bereits im DOM? */
     function ffTischShellReady() {
         var shell = document.getElementById('listTischBestellungen');
@@ -654,7 +921,6 @@
             var h = hashOverride !== undefined && hashOverride !== null && hashOverride !== '' ? hashOverride : pageId;
             window.location.hash = h;
         }
-        syncBodySubviewClass();
     }
 
     function ffRedirectToLogin(reasonMsg) {
@@ -673,6 +939,66 @@
         return msg;
     }
 
+    /* Speisekarte/Getränke: zuletzt geladenes HTML sofort anzeigen, danach im Hintergrund aktualisieren. */
+    var FF_MENU_CACHE_PREFIX = 'ffMenuHtml:';
+    var FF_MENU_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+    var ffMenuMemCache = {};
+
+    function ffMenuCacheable(url) {
+        var m = /^list(Speisen|Getraenke)\.php\?tischnummer=(\d+)$/.exec(String(url || ''));
+        return !!m && m[2] !== '999999' && m[2] !== '0';
+    }
+
+    function ffMenuCacheGet(url) {
+        if (!ffMenuCacheable(url)) return null;
+        var e = ffMenuMemCache[url];
+        if (!e) {
+            try {
+                var raw = window.sessionStorage.getItem(FF_MENU_CACHE_PREFIX + url);
+                if (raw) e = JSON.parse(raw);
+            } catch (err) { e = null; }
+        }
+        if (!e || !e.html || (Date.now() - e.ts) > FF_MENU_CACHE_TTL_MS) return null;
+        ffMenuMemCache[url] = e;
+        return e.html;
+    }
+
+    function ffMenuCacheSet(url, html) {
+        if (!ffMenuCacheable(url)) return;
+        var e = { ts: Date.now(), html: html };
+        ffMenuMemCache[url] = e;
+        try {
+            window.sessionStorage.setItem(FF_MENU_CACHE_PREFIX + url, JSON.stringify(e));
+        } catch (err) { /* Speicher voll/gesperrt: nur Memory-Cache */ }
+    }
+
+    function ffMenuCacheClear() {
+        ffMenuMemCache = {};
+        try {
+            Object.keys(window.sessionStorage).forEach(function(k) {
+                if (k.indexOf(FF_MENU_CACHE_PREFIX) === 0) window.sessionStorage.removeItem(k);
+            });
+        } catch (err) { /* ignorieren */ }
+    }
+
+    /* Jede schreibende Anfrage (Bestellung, Sperre, Kapazität …) macht den Karten-Cache ungültig. */
+    (function() {
+        var origFetch = window.fetch;
+        if (typeof origFetch !== 'function' || origFetch.__ffMenuWrapped) return;
+        var wrapped = function(input, init) {
+            try {
+                var u = typeof input === 'string' ? input : (input && input.url) || '';
+                var method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+                if (method !== 'GET' || /^(\.\/)?(bestellung_|update_kapazitaet|menu_lock|position_meta|produkt|saveZusatz)/.test(u)) {
+                    ffMenuCacheClear();
+                }
+            } catch (err) { /* ignorieren */ }
+            return origFetch.apply(this, arguments);
+        };
+        wrapped.__ffMenuWrapped = true;
+        window.fetch = wrapped;
+    })();
+
     function loadContent(url, containerId, callback, opts) {
         opts = opts || {};
         var el = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
@@ -680,8 +1006,14 @@
             console.error('loadContent: Container nicht gefunden:', containerId);
             return;
         }
+        var cachedHtml = (opts.silentPoll === true) ? null : ffMenuCacheGet(url);
         /* silentPoll: nur Auto-Refresh (Küche/Speisekarte) – nie halbtransparentes Durchscheinen */
         var silent = opts.silentPoll === true && el.children.length > 0;
+        if (cachedHtml) {
+            el.innerHTML = cachedHtml;
+            executeScriptsIn(el, null);
+            silent = true;
+        }
         var prevScrollY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         var prevMinH = '';
         if (silent) {
@@ -709,6 +1041,16 @@
                 if (!html || html.length < 50) throw new Error('Leere Antwort');
                 if (html.indexOf('login.php') !== -1 || html.indexOf('Kennwort') !== -1 || html.indexOf('Benutzername') !== -1) {
                     window.location.href = 'login.php' + (window.location.hash ? '?redirect=' + encodeURIComponent(window.location.hash) : '');
+                    return;
+                }
+                ffMenuCacheSet(url, html);
+                if (cachedHtml && html === cachedHtml) {
+                    el.classList.remove('app-content-silent-reload');
+                    el.style.minHeight = prevMinH;
+                    if (typeof window.ffSystemBroadcastPoll === 'function') {
+                        window.ffSystemBroadcastPoll();
+                    }
+                    if (typeof callback === 'function') callback();
                     return;
                 }
                 el.innerHTML = html;
@@ -742,6 +1084,10 @@
                 console.error('loadContent error:', url, err);
                 el.classList.remove('app-content-silent-reload');
                 el.style.minHeight = prevMinH;
+                if (cachedHtml) {
+                    if (typeof callback === 'function') callback();
+                    return;
+                }
                 el.innerHTML = '<div class="alert alert-danger m-3">Fehler beim Laden von ' + url + '. Bitte Konsole prüfen (F12).</div>';
                 if (typeof callback === 'function') callback();
             });
@@ -981,7 +1327,8 @@
 
   /** Rest-/Ausverkauft-Hinweis an der Kachel ohne Tab-Reload (DV mit maxBestellbar). */
     function ffUpdatePosTileStockVisual(btnEl, res) {
-        if (!btnEl || !res || !(res.max_bestellbar > 0) || typeof res.rest !== 'number') {
+        var isLimited = (res && typeof res.is_limited === 'boolean') ? res.is_limited : !!(res && res.max_bestellbar > 0);
+        if (!btnEl || !res || !isLimited || typeof res.rest !== 'number') {
             return;
         }
         var rest = parseInt(String(res.rest), 10);
@@ -995,8 +1342,8 @@
             btnEl.disabled = true;
             btnEl.classList.add('pos-tile--sold-out');
             if (meta) {
-                meta.textContent = ' AUSVERKAUFT!';
-                meta.className = 'pos-tile-meta pos-tile-meta--sold';
+                meta.textContent = '';
+                meta.className = 'pos-tile-meta';
             }
         } else {
             btnEl.disabled = false;
@@ -1013,22 +1360,42 @@
         }
     }
 
+    function ffAnimatePosSaveSuccess(btnEl, cntEl) {
+        if (!btnEl) return;
+        var effectMs = 720;
+        btnEl.classList.remove('pos-tile--save-hit');
+        void btnEl.offsetWidth;
+        btnEl.classList.add('pos-tile--save-hit');
+        if (cntEl) {
+            cntEl.classList.remove('pos-cnt--save-hit');
+            void cntEl.offsetWidth;
+            cntEl.classList.add('pos-cnt--save-hit');
+            setTimeout(function() {
+                cntEl.classList.remove('pos-cnt--save-hit');
+            }, effectMs);
+        }
+        setTimeout(function() {
+            btnEl.classList.remove('pos-tile--save-hit');
+        }, effectMs);
+    }
+
     /** Nach bestellung_save: Kachel-Zähler lokal aktualisieren (kein Tab-Reload). */
-    function ffUpdatePosTileFromSave(positionId, res) {
+    function ffUpdatePosTileFromSave(positionId, res, options) {
         var posId = parseInt(String(positionId), 10) || 0;
         if (posId <= 0 || !res) return false;
+        var opts = options && typeof options === 'object' ? options : {};
+        var animateSuccess = !!opts.animateSuccess;
         var btnEl = document.getElementById('btn-pos-' + posId);
         var cntEl = document.getElementById('cnt-' + posId);
         if (!btnEl || !cntEl) return false;
+        var prevCnt = parseInt(cntEl.getAttribute('data-cnt') || '0', 10) || 0;
         if (res.open_cnt !== undefined && res.open_cnt !== null) {
             var openCnt = parseInt(String(res.open_cnt), 10);
             if (isNaN(openCnt) || openCnt < 0) openCnt = 0;
             cntEl.setAttribute('data-cnt', String(openCnt));
             if (openCnt > 0) {
-                cntEl.textContent = ' (' + openCnt + 'x)';
+                cntEl.textContent = openCnt + 'x';
                 btnEl.classList.add('pos-tile--selected');
-                btnEl.style.background = '';
-                btnEl.style.color = '';
             } else {
                 cntEl.textContent = '';
                 btnEl.classList.remove('pos-tile--selected');
@@ -1036,6 +1403,9 @@
                 var baseBg = wrap ? wrap.getAttribute('data-basebg') || '#ffffff' : '#ffffff';
                 btnEl.style.background = baseBg;
                 btnEl.style.color = '';
+            }
+            if (animateSuccess && openCnt >= prevCnt) {
+                ffAnimatePosSaveSuccess(btnEl, cntEl);
             }
         }
         ffUpdatePosTileStockVisual(btnEl, res);
@@ -2560,7 +2930,7 @@
 
         function moneyText(value) {
             var num = Number(value) || 0;
-            return num.toLocaleString('de-AT', { style: 'currency', currency: 'EUR' });
+            return num.toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
         }
         function escapeHtml(value) {
             return String(value)
@@ -2722,6 +3092,15 @@
         if (_saveBestellungInflight[inflightKey]) {
             return;
         }
+        try {
+            var tapEl = document.getElementById('btn-pos-' + posId);
+            if (tapEl) {
+                tapEl.classList.remove('ff-tap-pop');
+                void tapEl.offsetWidth;
+                tapEl.classList.add('ff-tap-pop');
+            }
+            if (navigator.vibrate) navigator.vibrate(15);
+        } catch (e) {}
         _saveBestellungInflight[inflightKey] = true;
         var tabContentIdPre = ffSpeisekarteTabContentId(tischnummer);
         var tabContentPre = document.getElementById(tabContentIdPre);
@@ -2737,7 +3116,7 @@
             if (cntOpt && btnOpt) {
                 var curCnt = parseInt(cntOpt.getAttribute('data-cnt') || '0', 10) || 0;
                 dvOptimistic = { prevCnt: curCnt };
-                ffUpdatePosTileFromSave(posId, { open_cnt: curCnt + 1 });
+                ffUpdatePosTileFromSave(posId, { open_cnt: curCnt + 1 }, { animateSuccess: false });
             }
         }
         if (!useSilentKarteReload && !isDv) {
@@ -2757,7 +3136,7 @@
             .then(function(r) { return handleBestellungSaveFetchResponse(r); })
             .then(function(res) {
                 var dvOpts = { paybar: true, tab: false, cart: false };
-                if (ffUpdatePosTileFromSave(position, res)) {
+                if (ffUpdatePosTileFromSave(position, res, { animateSuccess: true })) {
                     Summe = 0;
                     if (isDv) {
                         if (res.open_counts && typeof ffApplyDvOpenCountMap === 'function') {
@@ -2809,8 +3188,44 @@
     };
 
     window.ffParseHinweisToFreeAndChecks = function(str, presetItems) {
-        var names = (presetItems || []).map(function(it) { return typeof it === 'string' ? it : String(it.name || ''); });
-        var checks = names.map(function() { return false; });
+        var items = (presetItems || []).map(function(it) {
+            if (typeof it === 'string') {
+                return { name: it, option_group: '', default_selected: 0, control: 'checkbox' };
+            }
+            return {
+                name: String(it.name || ''),
+                option_group: String(it.option_group || ''),
+                default_selected: parseInt(it.default_selected, 10) === 1 ? 1 : 0,
+                control: String(it.control || (it.option_group ? 'radio' : 'checkbox'))
+            };
+        });
+        var names = items.map(function(it) { return it.name; });
+        var checks = items.map(function(it) { return !!it.default_selected; });
+
+        // In exklusiven Gruppen nur eine Standardauswahl aktiv lassen.
+        var groupTaken = {};
+        for (var gi = 0; gi < items.length; gi++) {
+            var grp = items[gi].option_group;
+            if (!grp || items[gi].control !== 'radio') continue;
+            if (!groupTaken[grp] && checks[gi]) {
+                groupTaken[grp] = gi;
+            } else if (checks[gi]) {
+                checks[gi] = false;
+            }
+        }
+        for (var gk in groupTaken) {
+            if (!Object.prototype.hasOwnProperty.call(groupTaken, gk)) continue;
+        }
+
+        for (var gi2 = 0; gi2 < items.length; gi2++) {
+            var grp2 = items[gi2].option_group;
+            if (!grp2 || items[gi2].control !== 'radio') continue;
+            if (groupTaken[grp2] === undefined) {
+                checks[gi2] = true;
+                groupTaken[grp2] = gi2;
+            }
+        }
+
         var free = '';
         var s = String(str || '').trim();
         if (!s) return { checks: checks, free: '' };
@@ -2823,11 +3238,52 @@
         if (left && names.length) {
             var parts = left.split(',').map(function(x) { return x.trim(); }).filter(Boolean);
             var unmatched = [];
+            var explicitPos = {};
+            var explicitNeg = {};
             for (var p = 0; p < parts.length; p++) {
-                var pi = names.indexOf(parts[p]);
-                if (pi >= 0) checks[pi] = true;
-                else unmatched.push(parts[p]);
+                var part = parts[p];
+                var negName = '';
+                var mOhne = part.match(/^ohne\s+(.+)$/i);
+                if (mOhne && mOhne[1]) {
+                    negName = mOhne[1].trim();
+                } else if (part.charAt(0) === '-') {
+                    negName = part.slice(1).trim();
+                }
+                if (negName) {
+                    explicitNeg[negName] = true;
+                    continue;
+                }
+                explicitPos[part] = true;
             }
+
+            for (var pp in explicitPos) {
+                if (!Object.prototype.hasOwnProperty.call(explicitPos, pp)) continue;
+                var pi = names.indexOf(pp);
+                if (pi >= 0) {
+                    checks[pi] = true;
+                    var grpPos = items[pi].option_group;
+                    if (grpPos && items[pi].control === 'radio') {
+                        for (var gpi = 0; gpi < items.length; gpi++) {
+                            if (gpi !== pi && items[gpi].option_group === grpPos && items[gpi].control === 'radio') {
+                                checks[gpi] = false;
+                            }
+                        }
+                    }
+                } else {
+                    unmatched.push(pp);
+                }
+            }
+
+            for (var pn in explicitNeg) {
+                if (!Object.prototype.hasOwnProperty.call(explicitNeg, pn)) continue;
+                var ni = names.indexOf(pn);
+                if (ni >= 0) {
+                    checks[ni] = false;
+                } else {
+                    unmatched.push('ohne ' + pn);
+                }
+            }
+
             if (unmatched.length) {
                 var extra = unmatched.join(', ');
                 free = free ? (extra + ', ' + free) : extra;
@@ -2841,16 +3297,24 @@
     window.ffComposeHinweisLine = function(i) {
         var items = window._ffHinweisPresetItems || [];
         var picked = [];
+        var neg = [];
         for (var pi = 0; pi < items.length; pi++) {
             var el = document.getElementById('ffH_cb_' + i + '_' + pi);
-            if (el && el.checked) {
-                var it = items[pi];
-                picked.push(typeof it === 'string' ? it : String(it.name || ''));
+            if (!el) continue;
+            var it = items[pi];
+            var nm = typeof it === 'string' ? it : String(it.name || '');
+            if (!nm) continue;
+            var defSel = (typeof it === 'object' && it) ? (parseInt(it.default_selected, 10) === 1) : false;
+            if (el.checked) {
+                picked.push(nm);
+            } else if (defSel) {
+                neg.push('ohne ' + nm);
             }
         }
         var ta = document.getElementById('ffHinweisLine' + i);
         var fr = ta ? String(ta.value || '').trim() : '';
-        var parts = picked.filter(Boolean).join(', ');
+        var leftParts = picked.concat(neg).filter(Boolean);
+        var parts = leftParts.join(', ');
         var out = '';
         if (parts && fr) out = parts + ' | ' + fr;
         else if (parts) out = parts;
@@ -2892,39 +3356,64 @@
         }
         container.innerHTML = '';
         if (n === 0) {
-            container.innerHTML = '<p class="text-muted small mb-0">Alle offenen Portionen dieser Position werden beim Übernehmen entfernt.</p>';
+            container.innerHTML = '<p class="text-muted ff-hinweis-zero mb-0">Alle offenen Portionen dieser Position werden beim Übernehmen entfernt.</p>';
             return;
         }
         for (var i = 0; i < n; i++) {
             var block = document.createElement('div');
-            block.className = 'ff-hinweis-block mb-3 p-2 border rounded';
+            block.className = 'ff-hinweis-block mb-3 p-3 border rounded';
             var title = document.createElement('div');
-            title.className = 'form-label small fw-semibold mb-1';
+            title.className = 'ff-hinweis-portion-title mb-2';
             title.textContent = 'Portion ' + (i + 1);
             block.appendChild(title);
             var checkEls = [];
             if (presetItems.length > 0) {
                 var cbRow = document.createElement('div');
-                cbRow.className = 'd-flex flex-wrap gap-2 mb-2 small';
+                cbRow.className = 'd-flex flex-wrap gap-2 mb-2 ff-hinweis-options-row';
+                var groupFirstInput = {};
+                var groupHasChecked = {};
                 for (var pi = 0; pi < presetItems.length; pi++) {
                     var it = presetItems[pi];
                     var nm = typeof it === 'string' ? it : String(it.name || '');
                     var bet = (typeof it === 'object' && it && Number(it.betrag) > 0) ? Number(it.betrag) : 0;
+                    var grp = (typeof it === 'object' && it) ? String(it.option_group || '').trim() : '';
+                    var control = (typeof it === 'object' && it) ? String(it.control || (grp ? 'radio' : 'checkbox')) : 'checkbox';
+                    var defSel = (typeof it === 'object' && it) ? (parseInt(it.default_selected, 10) === 1) : false;
                     var cid = 'ffH_cb_' + i + '_' + pi;
                     var fdiv = document.createElement('div');
-                    fdiv.className = 'form-check m-0';
+                    fdiv.className = 'form-check m-0 ff-hinweis-option';
                     var inp = document.createElement('input');
-                    inp.type = 'checkbox';
+                    inp.type = (control === 'radio' ? 'radio' : 'checkbox');
                     inp.className = 'form-check-input';
                     inp.id = cid;
+                    if (control === 'radio') {
+                        var gSafe = (grp || ('grp_' + pi)).replace(/[^a-zA-Z0-9_\-]/g, '_');
+                        inp.name = 'ffH_rg_' + i + '_' + gSafe;
+                    }
+                    inp.checked = !!defSel;
                     var lab = document.createElement('label');
-                    lab.className = 'form-check-label';
+                    lab.className = 'form-check-label ff-hinweis-option-label';
                     lab.setAttribute('for', cid);
                     lab.textContent = nm + (bet > 0 ? ' (+' + bet.toFixed(2).replace('.', ',') + ' €)' : '');
                     fdiv.appendChild(inp);
                     fdiv.appendChild(lab);
                     cbRow.appendChild(fdiv);
                     checkEls.push(inp);
+
+                    if (control === 'radio') {
+                        if (!groupFirstInput[grp]) {
+                            groupFirstInput[grp] = inp;
+                        }
+                        if (inp.checked) {
+                            groupHasChecked[grp] = true;
+                        }
+                    }
+                }
+                for (var gname in groupFirstInput) {
+                    if (!Object.prototype.hasOwnProperty.call(groupFirstInput, gname)) continue;
+                    if (!groupHasChecked[gname] && groupFirstInput[gname]) {
+                        groupFirstInput[gname].checked = true;
+                    }
                 }
                 block.appendChild(cbRow);
             }
@@ -2941,6 +3430,23 @@
                 }
             }
             block.appendChild(ta);
+            var quickRow = document.createElement('div');
+            quickRow.className = 'd-flex flex-wrap gap-1 mt-2 ff-hinweis-quick';
+            ['ohne Zwiebel', 'ohne Senf', 'ohne Ketchup', 'ohne Soße', 'extra scharf', 'gut durch'].forEach(function(q) {
+                var qb = document.createElement('button');
+                qb.type = 'button';
+                qb.className = 'btn btn-sm btn-outline-secondary ff-hinweis-quick-btn';
+                qb.textContent = q;
+                qb.addEventListener('click', function() {
+                    var parts = ta.value.split(',').map(function(x) { return x.trim(); }).filter(Boolean);
+                    var idx = parts.indexOf(q);
+                    if (idx >= 0) parts.splice(idx, 1); else parts.push(q);
+                    ta.value = parts.join(', ').slice(0, 255);
+                    qb.classList.toggle('active', idx < 0);
+                });
+                quickRow.appendChild(qb);
+            });
+            block.appendChild(quickRow);
             container.appendChild(block);
         }
     };
@@ -2973,6 +3479,12 @@
         posEl.value = String(positionId);
         tabEl.value = String(tab);
         tischEl.value = String(tischnummer);
+        var titleEl = document.getElementById('ffPosHinweisTitle');
+        if (titleEl) {
+            var nameEl = document.querySelector('#btn-pos-' + positionId + ' .pos-tile-name');
+            var posName = nameEl ? (nameEl.textContent || '').replace(/\s+/g, ' ').trim() : '';
+            titleEl.textContent = posName ? 'Hinweis: ' + posName : 'Hinweis zur Position';
+        }
         fertigEl.value = String(fertig || 0);
 
         var openCntPassed = parseInt(openMenge, 10) || 0;
@@ -2999,7 +3511,7 @@
         var bs = typeof bootstrap !== 'undefined' && bootstrap.Modal ? bootstrap.Modal.getOrCreateInstance(modal) : null;
         if (bs) bs.show();
 
-        container.innerHTML = '<p class="text-muted small mb-0">Lade Zusatzoptionen…</p>';
+        container.innerHTML = '<p class="text-muted ff-hinweis-loading mb-0">Lade Zusatzoptionen…</p>';
 
         var loadUrl = 'pos_hinweis_modal_data.php'
             + '?tischnummer=' + encodeURIComponent(tischnummer)
@@ -3801,7 +4313,7 @@
         if (zeileEl) {
             if (plusEl) plusEl.style.display = 'none';
             if (minusEl) minusEl.style.display = '';
-            zeileEl.style.backgroundColor = '#66ff66';
+            zeileEl.style.backgroundColor = '#dcfce7';
         }
         if (typeof window.updateButtonsAndSum === 'function') window.updateButtonsAndSum();
     };
@@ -3930,7 +4442,7 @@
         document.querySelectorAll('.agg-count').forEach(function(el) { el.textContent = '0'; });
         if (typeof window.updateButtonsAndSum === 'function') window.updateButtonsAndSum();
     };
-    window.formatEUR = function(num) { num = Number(num||0); return num.toFixed(2).replace(".",",") + " EUR"; };
+    window.formatEUR = function(num) { num = Number(num||0); return num.toFixed(2).replace(".",",") + " €"; };
     window.ffUpdateAggRowSums = function() {
         var aggCounts = document.querySelectorAll('.agg-count');
         var anySelected = false;
@@ -4023,21 +4535,500 @@
             ? window.ffPayIsPartialSelection()
             : ((window.arrayZahlungGetrennt || []).length > 0);
         var btnGesamt = document.getElementById('btnBezahlenGesamt');
+        var btnSumup = document.getElementById('btnOpenSumupApp');
+        var btnSumupAmount = document.getElementById('btnOpenSumupWithAmount');
         var btnEinzeln = document.getElementById('btnBezahlenGesamtEinzeln');
         var btnMr = document.getElementById('btnBezahlenMitRechnung');
         var summeEl = document.getElementById('summeZahlung');
         if (partial) {
             if (btnGesamt) btnGesamt.style.display = 'none';
+            if (btnSumup) btnSumup.style.display = '';
+            if (btnSumupAmount) btnSumupAmount.style.display = '';
             if (btnEinzeln) btnEinzeln.style.display = '';
-            if (btnMr) btnMr.textContent = 'Bezahlen + Rechnung';
+            if (btnMr) btnMr.textContent = '+ Rechnung';
             if (summeEl) summeEl.textContent = window.formatEUR(window.BetragEinzelnBezahlen || 0);
         } else {
             if (btnEinzeln) btnEinzeln.style.display = 'none';
             if (btnGesamt) btnGesamt.style.display = '';
-            if (btnMr) btnMr.textContent = 'Bezahlen Gesamt + Rechnung';
+            if (btnSumup) btnSumup.style.display = '';
+            if (btnSumupAmount) btnSumupAmount.style.display = '';
+            if (btnMr) btnMr.textContent = '+ Rechnung';
             if (summeEl) summeEl.textContent = window.formatEUR(window._payTotal || 0);
         }
         if (typeof window.ffUpdateAggRowSums === 'function') window.ffUpdateAggRowSums();
+        if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+    };
+    window.ffPayLayoutSyncFooter = function() {
+        var root = document.getElementById('BestellungZahlen');
+        if (!root) return;
+        var footer = root.querySelector('.ff-pay-footer');
+        if (!footer) return;
+        if (window.matchMedia && !window.matchMedia('(max-width: 767.98px)').matches) {
+            root.style.removeProperty('--ff-pay-footer-height');
+            return;
+        }
+        var footerHeight = Math.ceil(footer.getBoundingClientRect().height || footer.offsetHeight || 0);
+        if (footerHeight > 0) {
+            root.style.setProperty('--ff-pay-footer-height', footerHeight + 'px');
+        }
+    };
+    window.ffPayLayoutObserveFooter = function() {
+        var root = document.getElementById('BestellungZahlen');
+        if (!root) return;
+        var footer = root.querySelector('.ff-pay-footer');
+        if (!footer) return;
+        if (root._ffPayFooterObserved === footer) {
+            if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+            return;
+        }
+        if (root._ffPayFooterResizeObserver) {
+            try { root._ffPayFooterResizeObserver.disconnect(); } catch (eDisc) {}
+            root._ffPayFooterResizeObserver = null;
+        }
+        root._ffPayFooterObserved = footer;
+        if (typeof ResizeObserver !== 'undefined') {
+            root._ffPayFooterResizeObserver = new ResizeObserver(function() {
+                if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+            });
+            root._ffPayFooterResizeObserver.observe(footer);
+        }
+        if (!window._ffPayFooterResizeBound) {
+            window._ffPayFooterResizeBound = true;
+            window.addEventListener('resize', function() {
+                if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+            }, { passive: true });
+            window.addEventListener('orientationchange', function() {
+                if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+            }, { passive: true });
+        }
+        if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
+    };
+    window.ffCashSuggestions = function(amount) {
+        var a = Math.round(amount * 100) / 100;
+        var maxTip = Math.max(a * 1.25, a + 5);
+        var tipTarget = Math.round(a * 110) / 100;
+        var set = {};
+        function add(v) {
+            v = Math.round(v * 100) / 100;
+            if (v > a && v <= maxTip) set[v.toFixed(2)] = v;
+        }
+        [1, 5, 10, 20, 50].forEach(function(step) {
+            add(Math.ceil(a / step) * step);
+            add(Math.ceil(tipTarget / step) * step);
+        });
+        return Object.keys(set).map(function(k) { return set[k]; })
+            .sort(function(x, y) { return x - y; }).slice(0, 5);
+    };
+
+    window.ffShowCashModal = function(amount, cb) {
+        var fmt = function(v) { return v.toFixed(2).replace('.', ',') + ' €'; };
+        var btnCss = 'flex:1 1 30%;padding:10px 6px;font-size:1.1rem;font-weight:700;border-radius:10px;background:#fff;';
+        var ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto';
+        var sugg = window.ffCashSuggestions(amount).map(function(v) {
+            return '<button type="button" data-w="' + v.toFixed(2) + '" style="' + btnCss + 'border:2px solid #0d6efd;color:#0d6efd">' + fmt(v) + '</button>';
+        }).join('');
+        var bills = [5, 10, 20, 50, 100, 200].filter(function(v) { return v >= amount; }).map(function(v) {
+            return '<button type="button" data-g="' + v + '" style="' + btnCss + 'border:2px solid #6c757d;color:#333">' + v + ' €</button>';
+        }).join('');
+        var inp = 'width:100%;font-size:1.5rem;padding:6px;text-align:center;border:2px solid #999;border-radius:8px;margin-bottom:8px';
+        ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.4)">'
+            + '<div style="font-weight:700">Zu zahlen</div>'
+            + '<div style="font-size:2.6rem;font-weight:800;line-height:1.1;margin:4px 0 10px">' + fmt(amount) + '</div>'
+            + '<label style="display:block;font-weight:700;text-align:left">Kunde zahlt (inkl. Trinkgeld)</label>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">' + sugg + '</div>'
+            + '<input type="text" inputmode="decimal" data-r="wish" style="' + inp + ';border-color:#198754;background:#e8f5ec;color:#198754;font-weight:800">'
+            + '<div data-r="tip" style="font-weight:700;color:#198754;margin-bottom:8px;min-height:1.3em"></div>'
+            + '<label style="display:block;font-weight:700;text-align:left">Erhalten (Schein/Münzen)</label>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">' + bills + '</div>'
+            + '<input type="text" inputmode="decimal" data-r="given" style="' + inp + '">'
+            + '<div style="font-weight:700">Rückgeld</div>'
+            + '<div data-r="change" style="font-size:2.4rem;font-weight:800;line-height:1.1;margin-bottom:12px;color:#198754">–</div>'
+            + '<div style="display:flex;gap:12px">'
+            + '<button type="button" data-a="yes" style="flex:1;padding:14px;font-size:1.2rem;font-weight:700;border:0;border-radius:10px;background:#198754;color:#fff">Bezahlt</button>'
+            + '<button type="button" data-a="no" style="flex:1;padding:14px;font-size:1.2rem;font-weight:700;border:0;border-radius:10px;background:#dc3545;color:#fff">Abbrechen</button>'
+            + '</div></div>';
+        var wishEl = ov.querySelector('[data-r="wish"]');
+        var givenEl = ov.querySelector('[data-r="given"]');
+        var chEl = ov.querySelector('[data-r="change"]');
+        var tipEl = ov.querySelector('[data-r="tip"]');
+        var yes = ov.querySelector('[data-a="yes"]');
+        wishEl.value = amount.toFixed(2).replace('.', ',');
+        function num(el) {
+            var v = parseFloat(String(el.value).replace(',', '.'));
+            return isFinite(v) ? Math.round(v * 100) / 100 : NaN;
+        }
+        function update() {
+            var w = num(wishEl);
+            var g = num(givenEl);
+            var wishOk = isFinite(w) && w >= amount;
+            tipEl.textContent = wishOk && w > amount ? 'Trinkgeld: ' + fmt(w - amount) : '';
+            var ok = wishOk && isFinite(g) && g >= w;
+            chEl.textContent = ok ? fmt(g - w) : '–';
+            yes.disabled = !(wishOk && (givenEl.value === '' || ok));
+            yes.style.opacity = yes.disabled ? '.5' : '1';
+        }
+        wishEl.addEventListener('input', update);
+        givenEl.addEventListener('input', update);
+        ov.addEventListener('click', function(e) {
+            var t = e.target;
+            if (!t || !t.getAttribute) return;
+            var w = t.getAttribute('data-w');
+            if (w) { wishEl.value = w.replace('.', ','); update(); return; }
+            var g = t.getAttribute('data-g');
+            if (g) { givenEl.value = g; update(); return; }
+            var a = t.getAttribute('data-a');
+            if (!a) return;
+            if (a === 'yes' && yes.disabled) return;
+            if (ov.parentNode) ov.parentNode.removeChild(ov);
+            cb(a === 'yes');
+        });
+        document.body.appendChild(ov);
+        update();
+    };
+
+    window.ffPayWithOptionalCashModal = function(ids) {
+        var amount = (typeof window.ffCurrentPayAmount === 'function') ? window.ffCurrentPayAmount() : 0;
+        if (!window.FF_PAY_CASH_MODAL || !isFinite(amount) || amount <= 0) {
+            window.BestellungBezahlt(ids, 0);
+            return;
+        }
+        window.ffShowCashModal(amount, function(ok) {
+            if (ok) window.BestellungBezahlt(ids, 0);
+        });
+    };
+
+    window.ffCurrentPayAmount = function() {
+        var partial = typeof window.ffPayIsPartialSelection === 'function'
+            ? window.ffPayIsPartialSelection()
+            : ((window.arrayZahlungGetrennt || []).length > 0);
+        var amount = partial ? Number(window.BetragEinzelnBezahlen || 0) : Number(window._payTotal || 0);
+        if (!isFinite(amount)) return 0;
+        return Math.round(amount * 100) / 100;
+    };
+    window.ffOpenSumupApp = function() {
+        var isAndroid = /Android/i.test(navigator.userAgent || '');
+        var didLeavePage = false;
+        var now = Date.now();
+
+        // Schutz gegen Doppelklick/Mehrfachversuche, die die App beim Start instabil machen koennen.
+        if (window._ffSumupLaunchLockUntil && now < window._ffSumupLaunchLockUntil) {
+            return;
+        }
+        window._ffSumupLaunchLockUntil = now + 4000;
+
+        function markLeft() {
+            didLeavePage = true;
+        }
+
+        function onVisibilityChange() {
+            if (document.visibilityState === 'hidden') {
+                markLeft();
+            }
+        }
+
+        function onPageHide() {
+            markLeft();
+        }
+
+        function onBlur() {
+            markLeft();
+        }
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('pagehide', onPageHide, { once: true });
+        window.addEventListener('blur', onBlur, { once: true });
+
+        if (isAndroid) {
+            // Stabiler App-Start ueber Paket-Launcher (ohne direkten Checkout-Deep-Link).
+            window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.kaching.merchant;end';
+        } else {
+            // Nicht-Android: Scheme oeffnen (falls installiert).
+            window.location.href = 'sumupmerchant://';
+        }
+
+        window.setTimeout(function() {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            if (!didLeavePage && document.visibilityState === 'visible') {
+                if (isAndroid) {
+                    alert('Die SumUp App konnte nicht geöffnet werden. Bitte in Android die Standard-Apps/Berechtigungen für App-Links prüfen.');
+                } else {
+                    alert('Die SumUp App konnte nicht geöffnet werden. Bitte prüfen, ob sie auf diesem Gerät installiert ist.');
+                }
+            }
+        }, 1800);
+    };
+    window.ffEnsureSumupAmountModal = function() {
+        if (document.getElementById('ffSumupAmountModal')) {
+            return;
+        }
+        var modal = document.createElement('div');
+        modal.id = 'ffSumupAmountModal';
+        modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10060;padding:8px;align-items:flex-start;justify-content:center;';
+        modal.innerHTML = ''
+            + '<div style="background:#fff;width:min(96vw,560px);height:min(50dvh,420px);margin-top:min(7dvh,44px);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.25);display:flex;flex-direction:column;overflow:hidden;">'
+            + '<div style="padding:10px 14px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;">'
+            + '<strong style="font-size:1.2rem;line-height:1.1;">SumUp Betrag</strong>'
+            + '<button type="button" id="ffSumupAmountClose" style="border:none;background:none;font-size:30px;line-height:1;cursor:pointer;padding:0 4px;">&times;</button>'
+            + '</div>'
+            + '<div style="padding:10px 14px 12px;display:grid;grid-template-columns:1fr;gap:8px;align-content:start;flex:1 1 auto;">'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start;">'
+            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
+            + '<label style="font-size:0.95rem;font-weight:600;line-height:1.1;">Basisbetrag</label>'
+            + '<input type="text" class="form-control" id="ffSumupBaseAmount" readonly style="height:46px;font-size:1.28rem;font-weight:700;background:#f4f6f8;border:1px solid #d3d8de;padding:6px 10px;">'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
+            + '<label style="font-size:0.95rem;font-weight:600;line-height:1.1;">Trinkgeld (€)</label>'
+            + '<input type="number" class="form-control" id="ffSumupTipAmount" min="0" step="0.01" value="0.00" inputmode="decimal" style="height:46px;font-size:1.28rem;font-weight:700;padding:6px 10px;">'
+            + '</div>'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
+            + '<label style="font-size:0.98rem;font-weight:700;line-height:1.1;">Endbetrag (€)</label>'
+            + '<input type="number" class="form-control" id="ffSumupFinalAmount" min="0.01" step="0.01" inputmode="decimal" style="height:56px;font-size:1.8rem;font-weight:900;padding:6px 12px;">'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto;">'
+            + '<button type="button" id="ffSumupAmountCancel" class="btn btn-secondary" style="font-size:1rem;font-weight:600;padding:9px 6px;">Abbrechen</button>'
+            + '<button type="button" id="ffSumupAmountConfirm" class="btn btn-primary" style="font-size:1rem;font-weight:700;padding:9px 6px;">SumUp App öffnen</button>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(modal);
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        var closeBtn = document.getElementById('ffSumupAmountClose');
+        var cancelBtn = document.getElementById('ffSumupAmountCancel');
+        var tipInput = document.getElementById('ffSumupTipAmount');
+        var finalInput = document.getElementById('ffSumupFinalAmount');
+        var confirmBtn = document.getElementById('ffSumupAmountConfirm');
+
+        function parseAmountLoose(v) {
+            var s = String(v == null ? '' : v).trim().replace(',', '.');
+            if (s === '') return NaN;
+            var n = Number(s);
+            if (!isFinite(n)) return 0;
+            return Math.round(n * 100) / 100;
+        }
+
+        function toAmount(v) {
+            var n = parseAmountLoose(v);
+            if (!isFinite(n)) return 0;
+            return n;
+        }
+
+        tipInput.addEventListener('input', function() {
+            var base = toAmount(modal.getAttribute('data-base'));
+            var tip = parseAmountLoose(tipInput.value);
+            if (!isFinite(tip)) {
+                finalInput.value = '';
+                return;
+            }
+            if (tip < 0) tip = 0;
+            var finalVal = Math.round((base + tip) * 100) / 100;
+            finalInput.value = finalVal.toFixed(2);
+        });
+
+        tipInput.addEventListener('blur', function() {
+            var tip = parseAmountLoose(tipInput.value);
+            if (!isFinite(tip) || tip < 0) tip = 0;
+            tipInput.value = tip.toFixed(2);
+        });
+
+        finalInput.addEventListener('input', function() {
+            var base = toAmount(modal.getAttribute('data-base'));
+            var finalVal = parseAmountLoose(finalInput.value);
+            if (!isFinite(finalVal)) {
+                tipInput.value = '';
+                return;
+            }
+            if (finalVal < 0) finalVal = 0;
+            var tip = Math.round((finalVal - base) * 100) / 100;
+            tipInput.value = (tip > 0 ? tip : 0).toFixed(2);
+        });
+
+        finalInput.addEventListener('click', function() {
+            finalInput.value = '';
+            tipInput.value = '';
+        });
+
+        finalInput.addEventListener('blur', function() {
+            var finalVal = parseAmountLoose(finalInput.value);
+            if (!isFinite(finalVal) || finalVal < 0) finalVal = 0;
+            finalInput.value = finalVal.toFixed(2);
+            var base = toAmount(modal.getAttribute('data-base'));
+            var tip = Math.round((finalVal - base) * 100) / 100;
+            tipInput.value = (tip > 0 ? tip : 0).toFixed(2);
+        });
+
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', function(ev) {
+            if (ev.target === modal) closeModal();
+        });
+
+        confirmBtn.addEventListener('click', function() {
+            var finalVal = parseAmountLoose(finalInput.value);
+            if (!isFinite(finalVal)) {
+                alert('Bitte einen gültigen Endbetrag eingeben.');
+                return;
+            }
+            finalVal = Math.round(finalVal * 100) / 100;
+            if (!(finalVal > 0)) {
+                alert('Bitte einen gültigen Endbetrag eingeben.');
+                return;
+            }
+            closeModal();
+            window.ffOpenSumupWithAmount(finalVal);
+        });
+    };
+
+    window.ffOpenSumupAmountDialog = function() {
+        window.ffEnsureSumupAmountModal();
+        var modal = document.getElementById('ffSumupAmountModal');
+        var baseInput = document.getElementById('ffSumupBaseAmount');
+        var tipInput = document.getElementById('ffSumupTipAmount');
+        var finalInput = document.getElementById('ffSumupFinalAmount');
+
+        var base = (typeof window.ffCurrentPayAmount === 'function')
+            ? window.ffCurrentPayAmount()
+            : Number(window._payTotal || 0);
+        if (!isFinite(base) || base <= 0) {
+            alert('Ungültiger Basisbetrag für SumUp.');
+            return;
+        }
+        base = Math.round(base * 100) / 100;
+        modal.setAttribute('data-base', String(base));
+        baseInput.value = base.toFixed(2).replace('.', ',') + ' €';
+        tipInput.value = '0.00';
+        finalInput.value = base.toFixed(2);
+        modal.style.display = 'flex';
+    };
+
+    window.ffOpenSumupWithAmount = function(amountOverride) {
+        var btn = document.getElementById('btnOpenSumupWithAmount');
+        var affiliateKey = btn ? String(btn.getAttribute('data-affiliate-key') || '').trim() : '';
+        var appId = btn ? String(btn.getAttribute('data-app-id') || '').trim() : '';
+        if (!affiliateKey) {
+            alert('SumUp Affiliate Key fehlt. Bitte im Admin unter System-Einstellungen hinterlegen.');
+            return;
+        }
+        if (!appId) {
+            appId = 'at.ff.bestellsystem.web';
+        }
+
+        var isAndroid = /Android/i.test(navigator.userAgent || '');
+        var didLeavePage = false;
+        var now = Date.now();
+        if (window._ffSumupLaunchLockUntil && now < window._ffSumupLaunchLockUntil) {
+            return;
+        }
+        window._ffSumupLaunchLockUntil = now + 4000;
+
+        var amount = (typeof amountOverride === 'number' && isFinite(amountOverride))
+            ? Number(amountOverride)
+            : ((typeof window.ffCurrentPayAmount === 'function')
+                ? window.ffCurrentPayAmount()
+                : Number(window._payTotal || 0));
+        if (!isFinite(amount) || amount <= 0) {
+            alert('Ungültiger Betrag für SumUp.');
+            return;
+        }
+        var amountStr = amount.toFixed(2);
+        var tisch = parseInt(window.Tischnummer, 10) || 0;
+        if (!tisch) {
+            var pd = document.getElementById('PayData');
+            if (pd) tisch = parseInt(pd.getAttribute('data-tischnummer'), 10) || 0;
+        }
+        var tischName = '';
+        var pdName = document.getElementById('PayData');
+        if (pdName) tischName = String(pdName.getAttribute('data-tischname') || '').trim();
+        var title = tisch > 0
+            ? ('Tisch ' + tisch + (tischName ? ' - ' + tischName : ''))
+            : 'Tischzahlung';
+        var foreignTxId = 'ff-' + String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000));
+        var payIds = [];
+        try {
+            if (typeof window.ensurePayDataFromDom === 'function') {
+                window.ensurePayDataFromDom();
+            }
+        } catch (eEnsure) {}
+        if (typeof window.ffPayIdsForCheckout === 'function') {
+            payIds = window.ffPayIdsForCheckout();
+        }
+        if ((!Array.isArray(payIds) || payIds.length === 0) && window._selPay && typeof window._selPay === 'object') {
+            payIds = Object.keys(window._selPay)
+                .map(function(k) { return parseInt(k, 10); })
+                .filter(function(n) { return n > 0 && !!window._selPay[n]; });
+        }
+        if ((!Array.isArray(payIds) || payIds.length === 0) && Array.isArray(window.arrayZahlungGetrennt) && window.arrayZahlungGetrennt.length > 0) {
+            payIds = window.arrayZahlungGetrennt;
+        }
+        if ((!Array.isArray(payIds) || payIds.length === 0) && Array.isArray(window.arrayZahlung) && window.arrayZahlung.length > 0) {
+            payIds = window.arrayZahlung;
+        }
+        payIds = (Array.isArray(payIds) ? payIds : []).map(function(x) { return parseInt(x, 10); }).filter(function(n) { return n > 0; });
+        var isPartialSelection = false;
+        try {
+            if (typeof window.ffPayIsPartialSelection === 'function') {
+                isPartialSelection = !!window.ffPayIsPartialSelection();
+            }
+        } catch (ePart) {}
+
+        var cbUrl = new URL(window.location.origin + window.location.pathname);
+        if (tisch > 0) cbUrl.searchParams.set('tischnummer', String(tisch));
+        cbUrl.searchParams.set('view', 'zahlen');
+        cbUrl.searchParams.set('sumup_return', '1');
+        cbUrl.searchParams.set('sumup_tx', foreignTxId);
+        if (payIds.length) cbUrl.searchParams.set('sumup_ids', payIds.join(','));
+        cbUrl.searchParams.set('sumup_partial', isPartialSelection ? '1' : '0');
+        cbUrl.hash = 'listTischBestellungen';
+        var callbackUrl = cbUrl.toString();
+
+        ffSetPendingSumupState({
+            tx: foreignTxId,
+            tisch: tisch,
+            ids: payIds,
+            partial: isPartialSelection,
+            amount: amountStr,
+            createdAt: Date.now()
+        });
+
+        var query = new URLSearchParams();
+        query.set('affiliate-key', affiliateKey);
+        query.set('app-id', appId);
+        query.set('total', amountStr);
+        query.set('amount', amountStr);
+        query.set('currency', 'EUR');
+        query.set('title', title);
+        query.set('callback', callbackUrl);
+        query.set('foreign-tx-id', foreignTxId);
+        query.set('skip-screen-success', 'true');
+        var checkoutUri = 'sumupmerchant://pay/1.0?' + query.toString();
+
+        function markLeft() { didLeavePage = true; }
+        function onVisibilityChange() {
+            if (document.visibilityState === 'hidden') markLeft();
+        }
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        window.addEventListener('pagehide', markLeft, { once: true });
+        window.addEventListener('blur', markLeft, { once: true });
+
+        if (isAndroid) {
+            var intentUri = 'intent://pay/1.0?' + query.toString()
+                + '#Intent;scheme=sumupmerchant;package=com.kaching.merchant;end';
+            window.location.href = intentUri;
+        } else {
+            window.location.href = checkoutUri;
+        }
+
+        window.setTimeout(function() {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+            if (!didLeavePage && document.visibilityState === 'visible') {
+                alert('SumUp Checkout konnte nicht gestartet werden. Bitte App-Links/Berechtigungen prüfen.');
+            }
+        }, 1800);
     };
     window.applySelectionToUI = function() {
         window._selPay = window._selPay || {};
@@ -4050,7 +5041,7 @@
             var plusEl = document.getElementById('plus' + rid);
             var minusEl = document.getElementById('minus' + rid);
             if (zeileEl) {
-                zeileEl.style.backgroundColor = '#66ff66';
+                zeileEl.style.backgroundColor = '#dcfce7';
                 if (plusEl) plusEl.style.display = 'none';
                 if (minusEl) minusEl.style.display = '';
             }
@@ -4618,6 +5609,13 @@
                 }
                 btn.disabled = !has;
                 if (has) {
+                    var cntNum = parseInt(resp.count, 10) || 1;
+                    var totTxt = (Number(resp.total) || 0).toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    btn.innerHTML = '<span class="ff-send-info">' + cntNum + ' Pos. · ' + totTxt + ' €</span><span class="ff-send-action"> – Abschicken</span>';
+                } else {
+                    btn.textContent = 'Bestellung abschicken';
+                }
+                if (has) {
                     btn.classList.remove('disabled');
                     btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                     btn.style.backgroundColor = '#00ff04'; btn.style.color = '#000';
@@ -4712,10 +5710,8 @@
                 cntEl.setAttribute('data-cnt', String(next));
 
                 if (next > 0) {
-                    cntEl.textContent = ' (' + next + 'x)';
+                    cntEl.textContent = next + 'x';
                     btnEl.classList.add('pos-tile--selected');
-                    btnEl.style.background = '';
-                    btnEl.style.color = '';
                 } else {
                     cntEl.textContent = '';
                     btnEl.classList.remove('pos-tile--selected');
@@ -4868,6 +5864,8 @@
                     showPage('listTische');
                     window.TischAnsicht();
                 }
+
+                ffHandleSumupReturnIfNeeded();
             }
             if (isDruckzielHash) {
                 var tid = window.currentDruckzielId;
@@ -5097,6 +6095,84 @@
                     if (typeof window.aggPlus === 'function') window.aggPlus(gid, preisAp);
                     return;
                 }
+                var grpStep = e.target.closest('.ff-pay-grp-plus, .ff-pay-grp-minus');
+                var mergedRow = e.target.closest('.ff-pay-merged-row');
+                if (mergedRow && (grpStep || !e.target.closest('button, a, input, select, textarea, label'))) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var mIds = [];
+                    try { mIds = JSON.parse(mergedRow.getAttribute('data-rids') || '[]'); } catch (errM) { mIds = []; }
+                    var isSel = function (r) { return !!(window._selPay && window._selPay[r]); };
+                    if (grpStep && grpStep.classList.contains('ff-pay-grp-plus')) {
+                        var nextId = mIds.filter(function (r) { return !isSel(r); })[0];
+                        if (nextId) window.paySelect(nextId, (window._ridAmount && window._ridAmount[nextId]) || 0);
+                    } else if (grpStep) {
+                        var selIds = mIds.filter(isSel);
+                        if (selIds.length) window.payUnselect(selIds[selIds.length - 1]);
+                    } else if (mIds.every(isSel)) {
+                        mIds.forEach(function (r) { window.payUnselect(r); });
+                    } else {
+                        mIds.forEach(function (r) { if (!isSel(r)) window.paySelect(r, (window._ridAmount && window._ridAmount[r]) || 0); });
+                    }
+                    return;
+                }
+                var grpToggle = e.target.closest('.ff-pay-group-toggle');
+                if (grpToggle) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var gh = grpToggle.closest('.ff-pay-group-head');
+                    var collapsed = !gh.classList.contains('is-collapsed');
+                    gh.classList.toggle('is-collapsed', collapsed);
+                    grpToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                    for (var sib = gh.nextElementSibling; sib && !sib.classList.contains('ff-pay-group-head'); sib = sib.nextElementSibling) {
+                        sib.classList.toggle('ff-pay-collapsed', collapsed);
+                    }
+                    return;
+                }
+                var groupHead = e.target.closest('.ff-pay-group-head');
+                if (groupHead && !e.target.closest('.ff-pay-group-pick')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var tg = groupHead.querySelector('.ff-pay-group-toggle');
+                    if (tg) tg.click();
+                    return;
+                }
+                if (groupHead) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var gIds = [];
+                    try { gIds = JSON.parse(groupHead.getAttribute('data-rids') || '[]'); } catch (errG) { gIds = []; }
+                    var allSel = gIds.length > 0 && gIds.every(function (r) { return window._selPay && window._selPay[r]; });
+                    gIds.forEach(function (r) {
+                        var amt = (window._ridAmount && window._ridAmount[r]) || 0;
+                        if (allSel) {
+                            delete window._selPay[r];
+                            var zr = document.getElementById('zeile' + r), pl = document.getElementById('plus' + r), mi = document.getElementById('minus' + r);
+                            if (zr) zr.style.backgroundColor = '';
+                            if (pl) pl.style.display = '';
+                            if (mi) mi.style.display = 'none';
+                        } else if (typeof window.paySelect === 'function') {
+                            window.paySelect(r, amt);
+                        }
+                    });
+                    if (typeof window.updateButtonsAndSum === 'function') window.updateButtonsAndSum();
+                    return;
+                }
+                var payRow = e.target.closest('.ff-pay-selectable-row');
+                if (payRow && !e.target.closest('button, a, input, select, textarea, label')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var ridRow = parseInt(payRow.getAttribute('data-rid'), 10) || 0;
+                    var betragRow = parseFloat(payRow.getAttribute('data-betrag')) || 0;
+                    if (ridRow > 0) {
+                        if (window._selPay && window._selPay[ridRow]) {
+                            if (typeof window.payUnselect === 'function') window.payUnselect(ridRow);
+                        } else if (typeof window.paySelect === 'function') {
+                            window.paySelect(ridRow, betragRow);
+                        }
+                    }
+                    return;
+                }
                 var payMrAct = e.target.closest('#payMrConfirm, #payMrCancel, #payMrClose');
                 if (payMrAct) {
                     e.preventDefault();
@@ -5108,7 +6184,7 @@
                 }
                 return;
                 }
-                var payBtn = e.target.closest('#btnBezahlenGesamtEinzeln, #btnBezahlenGesamt, #btnEhrengast, #btnBezahlenMitRechnung');
+                var payBtn = e.target.closest('#btnBezahlenGesamtEinzeln, #btnBezahlenGesamt, #btnEhrengast, #btnBezahlenMitRechnung, #btnOpenSumupApp, #btnOpenSumupWithAmount');
                 if (payBtn) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -5116,7 +6192,7 @@
                         var arrE = typeof window.ffPayIdsForCheckout === 'function'
                             ? window.ffPayIdsForCheckout()
                             : (window.arrayZahlungGetrennt || []);
-                        if (arrE.length && typeof window.BestellungBezahlt === 'function') window.BestellungBezahlt(arrE, 0);
+                        if (arrE.length && typeof window.BestellungBezahlt === 'function') window.ffPayWithOptionalCashModal(arrE);
                     } else if (payBtn.id === 'btnBezahlenGesamt') {
                         var arrG = typeof window.ffPayIdsForCheckout === 'function'
                             ? window.ffPayIdsForCheckout()
@@ -5127,12 +6203,16 @@
                                 if (pd0 && pd0.getAttribute('data-array')) arrG = JSON.parse(pd0.getAttribute('data-array'));
                             } catch (err1) {}
                         }
-                        if (arrG.length && typeof window.BestellungBezahlt === 'function') window.BestellungBezahlt(arrG, 0);
+                        if (arrG.length && typeof window.BestellungBezahlt === 'function') window.ffPayWithOptionalCashModal(arrG);
                     } else if (payBtn.id === 'btnBezahlenMitRechnung') {
                         var arrMr = typeof window.ffPayIdsForCheckout === 'function'
                             ? window.ffPayIdsForCheckout()
                             : (window.arrayZahlungGetrennt || []);
                         if (typeof window.openPayMitRechnungModal === 'function') window.openPayMitRechnungModal(arrMr);
+                    } else if (payBtn.id === 'btnOpenSumupApp') {
+                        if (typeof window.ffOpenSumupApp === 'function') window.ffOpenSumupApp();
+                    } else if (payBtn.id === 'btnOpenSumupWithAmount') {
+                        if (typeof window.ffOpenSumupAmountDialog === 'function') window.ffOpenSumupAmountDialog();
                     } else if (payBtn.id === 'btnEhrengast') {
                         var arrH = window.arrayZahlung || [];
                         if (arrH.length === 0) {
@@ -5183,4 +6263,127 @@
     } else {
         init();
     }
+})();
+
+/* Lange Positionsnamen: erstes Wort verkleinern, bis es in die Kachel passt */
+(function() {
+    var timer = null;
+    function fit() {
+        document.querySelectorAll('.pos-tile-name .pos-first-word').forEach(function(w) {
+            if (!w.offsetWidth) return;
+            w.style.fontSize = '';
+            w.style.overflowWrap = '';
+            var size = parseFloat(getComputedStyle(w).fontSize);
+            var min = size * 0.62;
+            var guard = 0;
+            while (w.scrollWidth > w.clientWidth + 1 && size > min && guard++ < 30) {
+                size -= 0.5;
+                w.style.fontSize = size + 'px';
+            }
+            if (w.scrollWidth > w.clientWidth + 1) w.style.overflowWrap = 'anywhere';
+        });
+    }
+    function schedule() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(fit, 80);
+    }
+    function start() {
+        if (!window.MutationObserver || !document.body) return;
+        new MutationObserver(function(muts) {
+            for (var i = 0; i < muts.length; i++) {
+                if (muts[i].addedNodes && muts[i].addedNodes.length) { schedule(); return; }
+            }
+        }).observe(document.body, { childList: true, subtree: true });
+        window.addEventListener('resize', schedule);
+        document.addEventListener('shown.bs.tab', schedule);
+        schedule();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+})();
+
+/* Küche/Schank: Bestellungen nach Wartezeit einfärben (>= 10 min gelb, >= 15 min rot) */
+(function() {
+    function mark() {
+        document.querySelectorAll('.kueche-wartend-zeit').forEach(function(el) {
+            var m = (el.textContent || '').match(/(\d+):(\d{1,2}):(\d{1,2})/);
+            var wrap = el.closest('.kueche-bestellung-wrap');
+            if (!m || !wrap) return;
+            var mins = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+            wrap.classList.toggle('ff-wait-late', mins >= 15);
+            wrap.classList.toggle('ff-wait-warn', mins >= 10 && mins < 15);
+        });
+    }
+    setInterval(mark, 3000);
+})();
+
+
+/* Zahlen: Gruppen-/Sammelzeilen und Summenbeschriftung nach jeder Auswahländerung aktualisieren */
+(function () {
+    function setGroupCollapsed(gh, collapsed) {
+        gh.classList.toggle('is-collapsed', collapsed);
+        var t = gh.querySelector('.ff-pay-group-toggle');
+        if (t) t.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        for (var sib = gh.nextElementSibling; sib && !sib.classList.contains('ff-pay-group-head'); sib = sib.nextElementSibling) {
+            sib.classList.toggle('ff-pay-collapsed', collapsed);
+        }
+    }
+    function refresh() {
+        var wrap = document.getElementById('BestellungZahlen');
+        if (!wrap) return;
+        var sel = window._selPay || {};
+        var isSel = function (r) { return !!sel[r]; };
+        wrap.querySelectorAll('.ff-pay-group-head').forEach(function (h) {
+            var ids = [];
+            try { ids = JSON.parse(h.getAttribute('data-rids') || '[]'); } catch (e) {}
+            var n = ids.filter(isSel).length;
+            h.classList.toggle('is-all-selected', ids.length > 0 && n === ids.length);
+            h.classList.toggle('is-part-selected', n > 0 && n < ids.length);
+            var pick = h.querySelector('.ff-pay-group-pick');
+            if (pick) pick.textContent = (ids.length > 0 && n === ids.length) ? '✓ Gewählt' : 'Gruppe wählen';
+            var sub = h.querySelector('.ff-pay-group-subtxt');
+            if (sub) {
+                if (!sub.hasAttribute('data-base')) sub.setAttribute('data-base', sub.textContent);
+                sub.textContent = n > 0 ? n + '/' + ids.length + ' gewählt · ' + sub.getAttribute('data-base').split(' · ').pop() : sub.getAttribute('data-base');
+            }
+            if (!h.hasAttribute('data-init')) {
+                h.setAttribute('data-init', '1');
+                if (wrap.querySelector('.ff-pay-group-head') !== h) setGroupCollapsed(h, true);
+            }
+        });
+        wrap.querySelectorAll('.ff-pay-single-count').forEach(function (s) {
+            var tr = s.closest('tr');
+            var rid = tr && tr.getAttribute('data-rid');
+            s.textContent = (rid && sel[rid] ? 1 : 0) + '/1';
+        });
+        var selTotal = Object.keys(sel).filter(function (k) { return sel[k]; }).length;
+        var hint = document.getElementById('payHint');
+        if (hint) hint.style.display = selTotal > 0 ? 'none' : '';
+        var footer = document.getElementById('summeZahlung');
+        if (footer) footer.classList.toggle('ff-pay-sum-selected', selTotal > 0);
+        wrap.querySelectorAll('.ff-pay-merged-row').forEach(function (row) {
+            var ids = [];
+            try { ids = JSON.parse(row.getAttribute('data-rids') || '[]'); } catch (e) {}
+            var n = ids.filter(isSel).length;
+            var cnt = row.querySelector('.ff-pay-grp-count');
+            if (cnt) cnt.textContent = n + '/' + ids.length;
+            row.classList.toggle('is-sel', n > 0);
+            row.style.backgroundColor = n > 0 ? '#dcfce7' : '';
+        });
+        var btnPay = document.getElementById('btnBezahlenGesamtEinzeln');
+        if (btnPay) {
+            var amt = 0;
+            Object.keys(sel).forEach(function (k) { if (sel[k]) amt += parseFloat((window._ridAmount && window._ridAmount[k]) || 0); });
+            btnPay.textContent = amt > 0 ? 'Bezahlen ' + amt.toFixed(2).replace('.', ',') + ' €' : 'Bezahlen';
+        }
+        var label = document.getElementById('payTotalLabel');
+        if (label) {
+            var total = Object.keys(sel).filter(function (k) { return sel[k]; }).length;
+            label.textContent = total > 0 ? 'Auswahl · ' + total + ' Pos.' : 'Gesamt';
+        }
+    }
+    window.ffPayRefreshGroupUI = refresh;
+    document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('#BestellungZahlen')) setTimeout(refresh, 0);
+    });
 })();
