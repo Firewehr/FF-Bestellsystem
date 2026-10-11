@@ -8,8 +8,11 @@ require_once __DIR__ . '/include/menu_lock_helpers.php';
 require_once __DIR__ . '/include/menu_tile_helpers.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
 require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
+require_once __DIR__ . '/include/ff_position_stock_summary.php';
+require_once __DIR__ . '/include/ff_fest_scope.php';
 
 ff_menu_ensure_schema($conn);
+ff_fest_scope_ensure_columns($conn);
 $menuCols = ff_menu_column_count($conn);
 $menuColsMob = ff_menu_column_count_mobile($conn);
 
@@ -17,7 +20,7 @@ $rootId = 'posRootGetraenke_' . (int)$Tischnummer;
 $sql = "SELECT p.*, s.name AS subcat_name, s.tile_bg AS sub_tile_bg
         FROM positionen p
         LEFT JOIN position_subcategories s ON s.id = p.subcategory_id
-        WHERE p.type = 2" . ff_position_sql_kellner_visible('p', 's') . "
+        WHERE p.type = 2" . ff_position_sql_kellner_visible('p', 's') . ff_fest_scope_position_sql($conn, 'p') . "
         ORDER BY COALESCE(s.sort_order, 99999), COALESCE(s.id, 0), p.reihenfolge, p.rowid";
 $result = mysqli_query($conn, $sql);
 $rows = [];
@@ -29,9 +32,9 @@ if ($result) {
 $sections = [];
 foreach ($rows as $rowww) {
     $subKey = !empty($rowww['subcategory_id']) ? (string)(int)$rowww['subcategory_id'] : '_none_';
-    $subLabel = !empty($rowww['subcat_name']) ? (string)$rowww['subcat_name'] : 'Ohne Unterkategorie';
+    $subLabel = !empty($rowww['subcat_name']) ? (string)$rowww['subcat_name'] : 'Sonstige';
     if (!isset($sections[$subKey])) {
-        $sections[$subKey] = ['label' => $subLabel, 'items' => []];
+        $sections[$subKey] = ['label' => $subLabel, 'items' => [], 'color' => ff_menu_subcat_color_style($rowww['sub_tile_bg'] ?? null)];
     }
     $sections[$subKey]['items'][] = $rowww;
 }
@@ -53,7 +56,7 @@ if (count($sections) > 1) {
 }
 
 foreach ($sections as $sk => $sec) {
-    echo '<div class="pos-subcat-section" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '">';
+    echo '<div class="pos-subcat-section" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '"' . ($sec['color'] !== '' ? ' style="' . htmlspecialchars($sec['color'], ENT_QUOTES, 'UTF-8') . '"' : '') . '>';
     echo '<h6 class="pos-menu-subheading text-secondary fw-semibold small text-uppercase mt-3 mb-2 px-1">' . htmlspecialchars($sec['label'], ENT_QUOTES, 'UTF-8') . '</h6>';
     echo '<div class="pos-menu-grid" style="--pos-cols:' . (int)$menuCols . '; --pos-cols-mobile:' . (int)$menuColsMob . ';">';
     foreach ($sec['items'] as $rowww) {
@@ -65,12 +68,11 @@ foreach ($sections as $sk => $sec) {
 
         $text = '';
         $maxBestellbar = (int)$rowww['maxBestellbar'];
-        $rest = 999999;
-        if ($maxBestellbar > 0) {
-            $rest = (int)($maxBestellbar - $anzahlBestellt);
-            if ($rest <= 0) {
-                $text = ' AUSVERKAUFT!';
-            } elseif ($rest < 10) {
+        $cap = ff_position_display_capacity($conn, $pid, $maxBestellbar, $anzahlBestellt);
+        $isLimited = !empty($cap['limited']);
+        $rest = $isLimited ? (int)($cap['rest'] ?? 0) : 999999;
+        if ($isLimited) {
+            if ($rest > 0 && $rest < 10) {
                 $text = ' Noch ' . $rest . '×';
             }
         }
@@ -90,13 +92,10 @@ foreach ($sections as $sk => $sec) {
         $Colour = $baseBg;
         $fontColour = ff_menu_font_color_row($rowww);
 
-        $soldOut = ($maxBestellbar > 0 && $rest <= 0);
-        $lowStock = ($maxBestellbar > 0 && $rest > 0 && $rest < 10);
+        $soldOut = ($isLimited && $rest <= 0);
+        $lowStock = ($isLimited && $rest > 0 && $rest < 10);
 
-        if ($soldOut) {
-            $Colour = '#ff0000';
-            $fontColour = '#ffffff';
-        } elseif ($lowStock && !$menuLocked) {
+        if ($lowStock && !$menuLocked) {
             $Colour = '#ff7f00';
             $fontColour = '#ffffff';
         } elseif ($menuLocked) {
@@ -105,10 +104,7 @@ foreach ($sections as $sk => $sec) {
         }
 
         $showSelected = ($openCnt > 0 && !$soldOut && !$menuLocked && !$lowStock);
-        if ($showSelected) {
-            $fontColour = '#0f172a';
-        }
-
+        
         $dataBaseForWrap = $baseBg;
         if ($soldOut || $lowStock || $menuLocked) {
             $dataBaseForWrap = $Colour;
@@ -125,7 +121,7 @@ foreach ($sections as $sk => $sec) {
 
         echo '<div class="posWrap" data-basebg="' . htmlspecialchars($dataBaseForWrap, ENT_QUOTES, 'UTF-8') . '">';
 
-        $restAttr = ($maxBestellbar > 0) ? ' data-rest="' . (int)$rest . '"' : '';
+        $restAttr = $isLimited ? ' data-rest="' . (int)$rest . '"' : '';
         $disabledAttr = '';
         if ($soldOut) {
             $disabledAttr = ' disabled="disabled" title="Ausverkauft"';
@@ -133,18 +129,32 @@ foreach ($sections as $sk => $sec) {
             $disabledAttr = ' disabled="disabled" title="' . htmlspecialchars($lockHint, ENT_QUOTES, 'UTF-8') . '"';
         }
         $btnStyle = 'white-space: normal !important; height: 80px; color:' . htmlspecialchars($fontColour, ENT_QUOTES, 'UTF-8') . ';';
-        if (!$showSelected) {
+        if (true) {
             $btnStyle .= ' background:' . htmlspecialchars($Colour, ENT_QUOTES, 'UTF-8') . ';';
         }
 
         echo '<button id="btn-pos-' . (int)$rowww['rowid'] . '" class="' . htmlspecialchars($btnClass, ENT_QUOTES, 'UTF-8') . '"' . $restAttr . $disabledAttr . '
-                onclick="if(this.disabled||parseInt(this.getAttribute(\'data-rest\')||999,10)<=0) return false; saveBestellung(' . (int)$rowww['rowid'] . ',0,' . (int)$Tischnummer . ',0); return false;"
+            onclick="if(this.disabled) return false; saveBestellung(' . (int)$rowww['rowid'] . ',0,' . (int)$Tischnummer . ',0); return false;"
                 style="' . $btnStyle . '">';
-        echo htmlspecialchars($rowww['Positionsname'], ENT_QUOTES, 'UTF-8');
+        $posName = trim((string)($rowww['Positionsname'] ?? ''));
+        $posNameParts = $posName === '' ? [''] : preg_split('/\s+/', $posName, 2);
+        $firstWord = $posNameParts[0] ?? '';
+        $restName = count($posNameParts) > 1 ? $posNameParts[1] : '';
+        $qtyText = ff_menu_split_leading_quantity($restName);
+        echo '<span class="pos-tile-name">';
+        if ($firstWord !== '') {
+            echo '<span class="pos-first-word">' . htmlspecialchars($firstWord, ENT_QUOTES, 'UTF-8')
+                . ($qtyText !== '' ? ' <span class="pos-qty">' . htmlspecialchars($qtyText, ENT_QUOTES, 'UTF-8') . '</span>' : '')
+                . '</span>';
+        }
+        if ($restName !== '') {
+            echo '<span class="pos-rest-name">' . htmlspecialchars($restName, ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+        echo '</span>';
 
-        echo ' <span class="cnt" id="cnt-' . (int)$rowww['rowid'] . '" data-cnt="' . (int)$openCnt . '">';
+        echo '<span class="cnt" id="cnt-' . (int)$rowww['rowid'] . '" data-cnt="' . (int)$openCnt . '">';
         if ($openCnt > 0) {
-            echo ' (' . (int)$openCnt . 'x)';
+            echo (int)$openCnt . 'x';
         }
         echo '</span>';
 
@@ -159,11 +169,11 @@ foreach ($sections as $sk => $sec) {
         }
         echo '</button>';
 
-        $hinweisRest = ($maxBestellbar > 0) ? (int)$rest : 0;
+        $hinweisRest = $isLimited ? (int)$rest : 0;
         echo '<a href="#" class="btnMinus" title="1x entfernen"
                   onclick="minusPosition(event, ' . (int)$Tischnummer . ', ' . (int)$rowww['rowid'] . ', 0); return false;">–</a>';
-        echo '<a href="#" class="btnHinweis" title="Hinweise pro Portion (auch unterschiedlich)"
-                  onclick="var b=document.getElementById(\'btn-pos-' . (int)$rowww['rowid'] . '\'); if(b && b.disabled && ' . ($openCnt > 0 ? 'false' : 'true') . ') return false; ffOpenPosHinweisModal(' . (int)$rowww['rowid'] . ',0,' . (int)$Tischnummer . ',0,' . $openCnt . ',' . $hinweisRest . '); return false;">…</a>';
+        echo '<a href="#" class="btnHinweis" aria-label="Hinweis" title="Hinweise pro Portion (auch unterschiedlich)"
+                  onclick="var b=document.getElementById(\'btn-pos-' . (int)$rowww['rowid'] . '\'); if(b && b.disabled && ' . ($openCnt > 0 ? 'false' : 'true') . ') return false; ffOpenPosHinweisModal(' . (int)$rowww['rowid'] . ',0,' . (int)$Tischnummer . ',0,' . $openCnt . ',' . $hinweisRest . '); return false;">💬</a>';
 
         echo '</div>';
         } catch (Exception $e) {

@@ -7,6 +7,7 @@ require_once __DIR__ . '/include/user_landing.php';
 require_once __DIR__ . '/include/ff_finance_auth.php';
 require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
 require_once __DIR__ . '/include/ff_schema_helpers.php';
+require_once __DIR__ . '/include/ff_app_title.php';
 
 ff_users_ensure_landing_columns($conn);
 ff_users_ensure_direktverkauf_column($conn);
@@ -86,7 +87,7 @@ $ffAppTitle = ff_app_title($conn);
     <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="manifest" href="<?php echo htmlspecialchars($ffManifestHref, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="theme-color" content="#991b1b">
     <?php if ($ff_favicon !== ''):
         $ffFavMtime = @filemtime(__DIR__ . '/' . $ff_favicon) ?: 1;
@@ -95,6 +96,10 @@ $ffAppTitle = ff_app_title($conn);
     <link rel="apple-touch-icon" href="<?php echo htmlspecialchars($ff_favicon, ENT_QUOTES, 'UTF-8'); ?>?v=<?php echo (int)$ffFavMtime; ?>">
     <?php endif; ?>
     <?php
+    $ffManifestHref = 'manifest.webmanifest?v=' . (int) (@filemtime(__DIR__ . '/manifest.webmanifest') ?: 1);
+    $ffStyleHref = 'style.css?v=' . (int) (@filemtime(__DIR__ . '/style.css') ?: 1);
+    $ffAdminHref = 'admin.css?v=' . (int) (@filemtime(__DIR__ . '/admin.css') ?: 1);
+    $ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
     $ffBsCss = is_file(__DIR__ . '/assets/bootstrap-5.3.2/css/bootstrap.min.css')
         ? 'assets/bootstrap-5.3.2/css/bootstrap.min.css?v=' . (int) @filemtime(__DIR__ . '/assets/bootstrap-5.3.2/css/bootstrap.min.css')
         : 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css';
@@ -103,8 +108,8 @@ $ffAppTitle = ff_app_title($conn);
         : 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js';
     ?>
     <link href="<?php echo htmlspecialchars($ffBsCss, ENT_QUOTES, 'UTF-8'); ?>" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($ffStyleHref, ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($ffAdminHref, ENT_QUOTES, 'UTF-8'); ?>">
     <style>
         body.app-page { background: #f0f2f5; min-height: 100vh; }
         [data-page] { display: none; min-height: 100vh; background: #f0f2f5; }
@@ -560,6 +565,9 @@ $ffAppTitle = ff_app_title($conn);
         }
     </script>
     <?php require __DIR__ . '/include/ff_system_broadcast_assets.php'; ?>
-<script src="js/pwa.js"></script>
+<script>
+window.FF_PWA_SW_URL = <?php echo json_encode('sw.js?v=' . ((int) (@filemtime(__DIR__ . '/sw.js') ?: 1))); ?>;
+</script>
+<script src="<?php echo htmlspecialchars($ffPwaJsHref, ENT_QUOTES, 'UTF-8'); ?>"></script>
 </body>
 </html>

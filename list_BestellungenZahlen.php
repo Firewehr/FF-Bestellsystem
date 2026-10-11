@@ -18,10 +18,6 @@ function pay_log_error(string $context, $detail = null): string {
 }
 
 function eur_format(float $amount, ?NumberFormatter $formatter): string {
-    if ($formatter) {
-        $s = $formatter->formatCurrency($amount, 'EUR');
-        if ($s !== false && $s !== null && $s !== '') return $s;
-    }
     return number_format($amount, 2, ',', '.') . ' €';
 }
 
@@ -65,25 +61,13 @@ if ($requirePaymentRequested && $Tischnummer > 0) {
     );
 }
 
-// Zurück-Link IMMER rendern (auch im Partial-Modus), damit man jederzeit zur
-// Speisekarte zurückkehren kann – auch bevor etwas bestellt/bezahlt wurde.
+// Hinweis nur bei Sofortzahl-Sperre
 ?>
 <?php if ($requirePayment): ?>
 <span style="display:inline-block; padding:8px 12px; background:#fff3cd; color:#856404; border:1px solid #ffc107; border-radius:4px;">Bitte erst zahlen, bevor Sie den Tisch verlassen. Weitere Positionen können Sie über die Speisekarte eingeben.</span>
-<br>
-<a style="background-color:rgba(158, 158, 150,0.3); margin-top:6px; display:inline-block;" href="javascript:void(0)" data-theme="b"
-   onclick="tisch(); return false;" class="ui-btn ui-icon-arrow-l ui-btn-icon-left">
-    Zurück zur Speisekarte (weitere Positionen eingeben)
-</a>
-<?php else: ?>
-<a style="background-color:rgba(158, 158, 150,0.3)" href="javascript:void(0)" data-theme="b"
-   onclick="tisch(); return false;" class="ui-btn ui-icon-arrow-l ui-btn-icon-left">
-    Zurück zur Speisekarte
-</a>
 <?php endif; ?>
 
 <?php if (!$isPartial) { ?>
-<h2>Zahlen:</h2>
 
 <script>
     // globale Variablen werden im Hauptscript verwendet
@@ -91,11 +75,13 @@ if ($requirePaymentRequested && $Tischnummer > 0) {
     rowIDsBezahlt = "";
     rowIDsBezahltAlle = "";
 </script>
+<?php } ?>
 
 <div id="BestellungZahlen">
-<?php } else { ?>
-<div id="BestellungZahlen">
-<?php } ?>
+    <div class="ff-pay-header">
+        <h2>Zahlen</h2>
+        <a href="javascript:void(0)" class="btn btn-sm btn-outline-secondary ff-pay-back-btn" onclick="tisch(); return false;" title="Zurück zur Speisekarte">← Speisekarte</a>
+    </div>
 
 <script data-ff-pay-static="1">
 /**
@@ -123,7 +109,7 @@ function ensurePayDataFromDom(){
 
 function formatEUR(num){
     num = Number(num || 0);
-    return num.toFixed(2).replace(".", ",") + " EUR";
+    return num.toFixed(2).replace(".", ",") + " €";
 }
 
 /**
@@ -225,8 +211,16 @@ function recomputeFromState(){
 function updateButtonsAndSum(){
     ensurePayDataFromDom();
     recomputeFromState();
+    document.querySelectorAll('.ff-pay-group-head').forEach(function(h){
+        var ids = []; try { ids = JSON.parse(h.getAttribute('data-rids') || '[]'); } catch(e) {}
+        var all = ids.length > 0 && ids.every(function(r){ return window._selPay && window._selPay[r]; });
+        h.classList.toggle('is-all-selected', all);
+        var pick = h.querySelector('.ff-pay-group-pick');
+        if (pick) pick.textContent = all ? 'Gruppe abwählen' : 'Gruppe wählen';
+    });
 
     var btnGesamt = document.getElementById('btnBezahlenGesamt');
+    var btnSumup = document.getElementById('btnOpenSumupApp');
     var btnEinzeln = document.getElementById('btnBezahlenGesamtEinzeln');
     var btnMr = document.getElementById('btnBezahlenMitRechnung');
     var summeEl = document.getElementById('summeZahlung');
@@ -236,16 +230,23 @@ function updateButtonsAndSum(){
 
     if (partial) {
         if (btnGesamt) btnGesamt.style.display = 'none';
+        if (btnSumup) btnSumup.style.display = '';
+        var btnSumupAmount = document.getElementById('btnOpenSumupWithAmount');
+        if (btnSumupAmount) btnSumupAmount.style.display = '';
         if (btnEinzeln) btnEinzeln.style.display = '';
-        if (btnMr) btnMr.textContent = 'Bezahlen + Rechnung';
+        if (btnMr) btnMr.textContent = '+ Rechnung';
         if (summeEl) summeEl.textContent = formatEUR(window.BetragEinzelnBezahlen);
     } else {
         if (btnEinzeln) btnEinzeln.style.display = 'none';
         if (btnGesamt) btnGesamt.style.display = '';
-        if (btnMr) btnMr.textContent = 'Bezahlen Gesamt + Rechnung';
+        if (btnSumup) btnSumup.style.display = '';
+        var btnSumupAmount2 = document.getElementById('btnOpenSumupWithAmount');
+        if (btnSumupAmount2) btnSumupAmount2.style.display = '';
+        if (btnMr) btnMr.textContent = '+ Rechnung';
         if (summeEl) summeEl.textContent = formatEUR(window._payTotal || 0);
     }
     ffUpdateAggRowSums();
+    if (typeof window.ffPayLayoutSyncFooter === 'function') window.ffPayLayoutSyncFooter();
 }
 
 /**
@@ -262,7 +263,7 @@ function applySelectionToUI(){
         var plusEl = document.getElementById('plus' + rid);
         var minusEl = document.getElementById('minus' + rid);
         if (zeileEl) {
-            zeileEl.style.backgroundColor = '#66ff66';
+            zeileEl.style.backgroundColor = '#dcfce7';
             if (plusEl) plusEl.style.display = 'none';
             if (minusEl) minusEl.style.display = '';
         }
@@ -312,7 +313,7 @@ function paySelect(rid, betrag){
     if (zeileEl) {
         if (plusEl) plusEl.style.display = 'none';
         if (minusEl) minusEl.style.display = '';
-        zeileEl.style.backgroundColor = '#66ff66';
+        zeileEl.style.backgroundColor = '#dcfce7';
     }
 
     updateButtonsAndSum();
@@ -436,6 +437,7 @@ if (class_exists('NumberFormatter')) {
 
 try {
     include_once __DIR__ . '/include/db.php';
+    require_once __DIR__ . '/include/settings.php';
     require_once __DIR__ . '/include/ff_schreibaus.php';
     require_once __DIR__ . '/include/ff_rechnungen_ensure_columns.php';
     require_once __DIR__ . '/include/ff_sammelrechnung_helpers.php';
@@ -464,6 +466,12 @@ try {
     }
 
     $paymentMode = ff_aktiver_payment_mode($conn);
+    $showSumupOpenAppButton = (setting_get($conn, 'sumup_open_app_button', '0') === '1');
+    $sumupAffiliateKey = trim((string) setting_get($conn, 'sumup_affiliate_key', ''));
+    $sumupAppId = trim((string) setting_get($conn, 'sumup_app_id', 'at.ff.bestellsystem.web'));
+    if ($sumupAppId === '') {
+        $sumupAppId = 'at.ff.bestellsystem.web';
+    }
 
     // Viewmode: nur im instant Mode togglen, default aggregated
     $viewMode = 'detail';
@@ -484,13 +492,6 @@ try {
         pay_log_error('Query failed: tische flag', mysqli_error($conn));
     }
 
-    // Select All / Unselect All (nur wenn kein Ehrengast)
-    if ($isEhrengast !== 1) {
-        echo '<div style="display:flex; gap:8px; margin:8px 0;">'
-           . '<button type="button" class="ui-btn ui-mini btn btn-outline-secondary" onclick="if(typeof window.paySelectAll===\'function\') window.paySelectAll(); return false;">Alles auswählen</button> '
-           . '<button type="button" class="ui-btn ui-mini btn btn-outline-secondary" onclick="if(typeof window.payUnselectAll===\'function\') window.payUnselectAll(); return false;">Alles abwählen</button>'
-           . '</div>';
-    }
 
     // Toggle Link (instant)
     if ($paymentMode === 'instant') {
@@ -577,13 +578,107 @@ try {
         }
     }
 
-    $payTableCols = ($viewMode === 'detail') ? 4 : 3;
+    $payTableCols = 3;
     $payGesamtColspan = $payTableCols - 1;
 
+    echo '<div class="ff-pay-layout">';
+    echo '<div class="ff-pay-list-shell">';
+    if ($viewMode === 'detail' && $isEhrengast !== 1) {
+        echo '<div class="ff-pay-hint" id="payHint">Tipp: Zeile antippen wählt alle gleichen Positionen · Kopfzeile antippen klappt die Gruppe auf/zu</div>';
+    }
     echo '<table class="ff-pay-table" border="0" width="100%">';
 
     if ($viewMode === 'detail') {
+        // Gruppieren nach Küche-fertig-Zeit (Minute); ohne Zeit = noch nicht fertig, am Ende
+        $payGroups = [];
         foreach ($detailRows as $row) {
+            $gk = safe_time_hm($row['zeitKueche'] ?? '');
+            $payGroups[$gk][] = $row;
+        }
+        uksort($payGroups, function ($x, $y) {
+            if ($x === $y) return 0;
+            if ($x === '') return 1;
+            if ($y === '') return -1;
+            return strcmp((string)$y, (string)$x);
+        });
+        $detailRowsGrouped = [];
+        foreach ($payGroups as $gk => $grpRows) {
+            $gRids = [];
+            $gSum = 0.0;
+            foreach ($grpRows as $gr) {
+                $gRids[] = (int)($gr['rowidBestellung'] ?? 0);
+                $gSum += (float)($gr['betrag'] ?? 0);
+            }
+            $ordCnt = [];
+            foreach ($grpRows as $gr) {
+                $ohm = safe_time_hm($gr['zeitstempel'] ?? '');
+                if ($ohm !== '') { $ordCnt[$ohm] = ($ordCnt[$ohm] ?? 0) + 1; }
+            }
+            arsort($ordCnt);
+            $gOrd = $ordCnt ? (string)array_key_first($ordCnt) : '';
+            $gTitle = ((string)$gk !== '') ? '🍳 ' . $gk . ' Küche fertig' : '⏳ Noch nicht fertig';
+            $detailRowsGrouped[] = ['head' => ['title' => $gTitle, 'rids' => $gRids, 'sum' => $gSum, 'ord' => $gOrd]];
+            // Gleiche Positionen (Name + Preis + Zusatzinfo) innerhalb der Gruppe zusammenfassen
+            $buckets = [];
+            foreach ($grpRows as $gr) {
+                $bk = (string)($gr['Positionsname'] ?? '') . '|' . number_format((float)($gr['betrag'] ?? 0), 2, '.', '') . '|' . trim((string)($gr['Zusatzinfo'] ?? ''));
+                $buckets[$bk][] = $gr;
+            }
+            foreach ($buckets as $bRows) {
+                if (count($bRows) > 1) {
+                    $detailRowsGrouped[] = ['merged' => $bRows, 'ghm' => $gOrd];
+                } else {
+                    $detailRowsGrouped[] = ['row' => $bRows[0], 'ghm' => $gOrd];
+                }
+            }
+        }
+        foreach ($detailRowsGrouped as $entry) {
+            if (isset($entry['head'])) {
+                $h = $entry['head'];
+                if ($isEhrengast !== 1) {
+                    echo '<tr class="ff-pay-group-head" data-rids="' . htmlspecialchars(json_encode($h['rids']), ENT_QUOTES, 'UTF-8') . '">';
+                    echo '<td colspan="' . (int)$payTableCols . '"><button type="button" class="ff-pay-group-toggle" aria-label="Gruppe ein-/ausklappen" aria-expanded="true">▾</button><span class="ff-pay-group-title"><span class="ff-pay-group-time">' . htmlspecialchars($h['title'], ENT_QUOTES, 'UTF-8')
+                       . '</span><span class="ff-pay-group-sub"><span class="ff-pay-group-subtxt">' . count($h['rids']) . ' Pos. · ' . htmlspecialchars(eur_format((float)$h['sum'], $formatter)) . '</span>' . ($h['ord'] !== '' ? '<span class="ff-pay-group-ord"> · 🧾 ' . htmlspecialchars($h['ord']) . '</span>' : '') . '</span></span>'
+                       . '<span class="ff-pay-group-pick">Gruppe wählen</span></td></tr>';
+                }
+                continue;
+            }
+            if (isset($entry['merged'])) {
+                $mRows = $entry['merged'];
+                $m0 = $mRows[0];
+                $mRids = [];
+                $mSum = 0.0;
+                foreach ($mRows as $mr) {
+                    $mRids[] = (int)($mr['rowidBestellung'] ?? 0);
+                    $mSum += (float)($mr['betrag'] ?? 0);
+                }
+                $mZi = trim((string)($m0['Zusatzinfo'] ?? ''));
+                $mHm = safe_time_hm($m0['zeitstempel'] ?? '');
+                echo '<tr class="ff-pay-row ff-pay-merged-row" data-rids="' . htmlspecialchars(json_encode($mRids), ENT_QUOTES, 'UTF-8') . '">';
+                echo '<td class="ff-pay-col-name">' . count($mRids) . '× ' . htmlspecialchars((string)($m0['Positionsname'] ?? ''));
+                if ($mZi !== '') {
+                    echo '<br><small class="text-muted" style="font-weight:normal;">' . htmlspecialchars($mZi) . '</small>';
+                }
+                if ($mHm && $mHm !== ($entry['ghm'] ?? '')) {
+                    echo '<div class="ff-pay-meta-inline"><span class="ff-pay-meta-chip">🧾 ' . htmlspecialchars($mHm) . ' bestellt</span></div>';
+                }
+                echo '</td>';
+                echo '<td class="ff-pay-col-controls" style="text-align:right;">';
+                if ($isEhrengast === 1) {
+                    echo '&nbsp;';
+                } else {
+                    echo '<span class="pay-controls-row ff-pay-stepper">'
+                       . '<button type="button" class="btn btn-sm ff-pay-grp-minus" aria-label="eine abwählen">−</button>'
+                       . '<span class="ff-pay-grp-count">0/' . count($mRids) . '</span>'
+                       . '<button type="button" class="btn btn-sm ff-pay-grp-plus" aria-label="eine auswählen">+</button>'
+                       . '</span>';
+                }
+                echo '</td>';
+                echo '<td class="ff-pay-col-sum" width="20%" align="right"><span class="ff-pay-amount">' . htmlspecialchars(eur_format($mSum, $formatter)) . '</span></td>';
+                echo '</tr>';
+                continue;
+            }
+            $row = $entry['row'];
             $rid = (int)($row['rowidBestellung'] ?? 0);
             $betrag = (float)($row['betrag'] ?? 0);
             $name = (string)($row['Positionsname'] ?? '');
@@ -596,19 +691,21 @@ try {
 
             $zeitBestellt = $row['zeitstempel'] ?? '';
             $zeitKueche   = $row['zeitKueche'] ?? '';
-
-            echo '<tr id="zeile' . (int)$rid . '">';
-
-            echo '<td style="white-space:nowrap; font-size:12px; line-height:1.3;">';
             $hm = safe_time_hm($zeitBestellt);
-            if ($hm) echo '<div>🧾 ' . htmlspecialchars($hm) . ' bestellt</div>';
             $hk = safe_time_hm($zeitKueche);
-            if ($hk) echo '<div style="opacity:0.7;">🍳 ' . htmlspecialchars($hk) . ' Küche</div>';
-            echo '</td>';
 
-            echo '<td>' . htmlspecialchars($name) . $label;
+            echo '<tr id="zeile' . (int)$rid . '" class="ff-pay-row ff-pay-selectable-row" data-rid="' . (int)$rid . '" data-betrag="' . htmlspecialchars((string)$betrag, ENT_QUOTES, 'UTF-8') . '">';
+
+            echo '<td class="ff-pay-col-name">' . htmlspecialchars($name) . $label;
             if ($zi !== '') {
                 echo '<br><small class="text-muted" style="font-weight:normal;">' . htmlspecialchars($zi) . '</small>';
+            }
+            if ($hm && $hm !== ($entry['ghm'] ?? '')) {
+                echo '<div class="ff-pay-meta-inline">';
+                if ($hm) {
+                    echo '<span class="ff-pay-meta-chip">🧾 ' . htmlspecialchars($hm) . ' bestellt</span>';
+                }
+                echo '</div>';
             }
             echo '</td>';
 
@@ -617,17 +714,17 @@ try {
                 echo '&nbsp;';
             } else {
                 echo '<span class="pay-controls-row" style="display:inline-flex; align-items:center; gap:6px;">';
-                echo '<button type="button" id="minus' . (int)$rid . '" class="ui-btn ui-mini ui-btn-inline pay-minus btn btn-sm btn-outline-danger" '
+                echo '<button type="button" id="minus' . (int)$rid . '" class="ui-btn ui-mini ui-btn-inline pay-minus btn btn-sm btn-outline-danger ff-pay-toggle-btn" '
                    . 'data-rid="' . (int)$rid . '" data-betrag="' . htmlspecialchars((string)$betrag, ENT_QUOTES, 'UTF-8') . '" '
-                   . 'style="margin:0; display:none;">−</button>';
-                echo '<button type="button" id="plus' . (int)$rid . '" class="ui-btn ui-mini ui-btn-inline pay-plus btn btn-sm btn-outline-success" '
+                   . 'style="margin:0; display:none;" aria-label="Position abwählen">−</button>';
+                echo '<button type="button" id="plus' . (int)$rid . '" class="ui-btn ui-mini ui-btn-inline pay-plus btn btn-sm btn-outline-success ff-pay-toggle-btn" '
                    . 'data-rid="' . (int)$rid . '" data-betrag="' . htmlspecialchars((string)$betrag, ENT_QUOTES, 'UTF-8') . '" '
-                   . 'style="margin:0;">+</button>';
+                   . 'style="margin:0;" aria-label="Position auswählen">+</button>';
                 echo '</span>';
             }
             echo '</td>';
 
-            echo '<td class="ff-pay-col-sum" width="20%" align="right">' . htmlspecialchars(eur_format($betrag, $formatter)) . '</td>';
+            echo '<td class="ff-pay-col-sum" width="20%" align="right"><span class="ff-pay-amount">' . htmlspecialchars(eur_format($betrag, $formatter)) . '</span></td>';
             echo '</tr>';
         }
     } else {
@@ -637,10 +734,10 @@ try {
             $jsonRows = htmlspecialchars(json_encode($data['rows'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8');
             $preisJs  = json_encode((float)$data['preis']);
 
-            echo '<tr id="agg_row_' . htmlspecialchars($groupId) . '">';
+                echo '<tr id="agg_row_' . htmlspecialchars($groupId) . '" class="ff-pay-row">';
 
             $ziAgg = trim((string)($data['zusatzinfo'] ?? ''));
-            echo '<td style="padding:6px 4px;">'
+                echo '<td class="ff-pay-col-name" style="padding:6px 4px;">'
                . (int)$data['anzahl'] . 'x ' . htmlspecialchars($data['name'])
                . ' <span style="opacity:0.6;">(' . htmlspecialchars(eur_format((float)$data['preis'], $formatter)) . ')</span>';
             if ($ziAgg !== '') {
@@ -675,13 +772,17 @@ try {
     }
 
     // Gesamt
+    echo '</table>';
+    echo '</div>';
+
+    echo '<div class="ff-pay-footer">';
+    echo '<table class="ff-pay-table ff-pay-summary-table" border="0" width="100%">';
     echo '<tr class="ff-pay-total-row">';
-    echo '<td colspan="' . (int) $payGesamtColspan . '"><h2>Gesamt</h2></td>';
+    echo '<td colspan="' . (int) $payGesamtColspan . '"><h2 id="payTotalLabel">Gesamt</h2></td>';
     echo '<td class="ff-pay-col-sum" align="right"><h2><div id="summeZahlung">';
     if ($isEhrengast === 1) echo 'Ehrengast (0,00 €)';
     else echo htmlspecialchars(eur_format((float)$Summe, $formatter));
     echo '</div></h2></td></tr>';
-
     echo '</table>';
 
     if ($isEhrengast === 1 && $count === 0) {
@@ -711,7 +812,12 @@ try {
     $payDataAmounts = htmlspecialchars(json_encode($ridAmount), ENT_QUOTES, 'UTF-8');
     $payDataOrders = htmlspecialchars(json_encode($ridOrderNr), ENT_QUOTES, 'UTF-8');
     $payModeEsc = htmlspecialchars($paymentMode, ENT_QUOTES, 'UTF-8');
-    echo '<div id="PayData" data-array="' . $payDataArray . '" data-amounts="' . $payDataAmounts . '" data-orders="' . $payDataOrders . '" data-payment-mode="' . $payModeEsc . '" data-tischnummer="' . (int)$Tischnummer . '" style="display:none"></div>';
+    $payTischName = '';
+    $rtn = @mysqli_query($conn, 'SELECT tischname FROM tische WHERE tischnummer=' . (int)$Tischnummer . ' LIMIT 1');
+    if ($rtn && ($rowTn = mysqli_fetch_assoc($rtn))) {
+        $payTischName = trim((string)$rowTn['tischname']);
+    }
+    echo '<div id="PayData" data-tischname="' . htmlspecialchars($payTischName, ENT_QUOTES, 'UTF-8') . '" data-array="' . $payDataArray . '" data-amounts="' . $payDataAmounts . '" data-orders="' . $payDataOrders . '" data-payment-mode="' . $payModeEsc . '" data-tischnummer="' . (int)$Tischnummer . '" style="display:none"></div>';
     // Sofort nach PayData: _ridAmount und arrayZahlung setzen, damit erstes + in Aggregiert den Gesamtpreis zeigt
     echo '<script>';
     echo '(function(){ var pd = document.getElementById("PayData"); if (pd) { try {';
@@ -725,12 +831,16 @@ try {
     // Buttons: alle Kassieren-Varianten in einer Zeile, Sonstiges getrennt darunter.
     // Sammelrechnungs-Tische werden NICHT einzeln kassiert (sonst bleibt der Tisch hängen),
     // sondern ausschließlich über "Sammelrechnung erstellen".
+    $primaryOpen = false;
     if ($count > 0 && $isEhrengast !== 1 && $isSammelrechnung !== 1) {
-        echo '<div class="pay-actions-primary d-flex flex-nowrap gap-2 my-3" style="overflow-x:auto;">';
-        echo '<button type="button" id="btnBezahlenGesamtEinzeln" class="btn btn-warning flex-shrink-0" style="padding:12px 16px;">Bezahlen</button>';
-        echo '<button type="button" id="btnBezahlenGesamt" class="btn btn-warning flex-shrink-0" style="padding:12px 16px;" data-array="' . $payDataArray . '">Bezahlen Gesamt</button>';
-        echo '<button type="button" id="btnBezahlenMitRechnung" class="btn btn-success flex-shrink-0" style="padding:12px 16px;">Bezahlen Gesamt + Rechnung</button>';
-        echo '</div>';
+        echo '<div class="pay-actions-primary d-flex flex-wrap gap-2 my-3">';
+        echo '<button type="button" id="btnBezahlenGesamtEinzeln" class="btn btn-warning pay-action-btn" style="padding:12px 14px;" title="Ausgewählte Positionen bezahlen">Bezahlen</button>';
+        echo '<button type="button" id="btnBezahlenGesamt" class="btn btn-warning pay-action-btn" style="padding:12px 14px;" title="Gesamten Tisch bezahlen" data-array="' . $payDataArray . '">Alles bezahlen</button>';
+        if ($showSumupOpenAppButton) {
+            echo '<button type="button" id="btnOpenSumupWithAmount" class="btn btn-outline-primary pay-action-btn" style="padding:12px 14px;" title="SumUp mit Betrag öffnen" data-affiliate-key="' . htmlspecialchars($sumupAffiliateKey, ENT_QUOTES, 'UTF-8') . '" data-app-id="' . htmlspecialchars($sumupAppId, ENT_QUOTES, 'UTF-8') . '">SumUp + Betrag</button>';
+        }
+        echo '<button type="button" id="btnBezahlenMitRechnung" class="btn btn-outline-success pay-action-btn" style="padding:12px 14px;" title="Gesamtbetrag bezahlen und Rechnung erstellen">+ Rechnung</button>';
+        $primaryOpen = true;
     } elseif ($count > 0 && $isEhrengast !== 1 && $isSammelrechnung === 1) {
         echo '<div class="alert alert-warning my-3 mb-2">Dieser Tisch ist als <strong>Sammelrechnung</strong> markiert und wird nur über <strong>„Sammelrechnung erstellen“</strong> abgerechnet.</div>';
     }
@@ -738,7 +848,7 @@ try {
     $hasPaySecondary = false;
     ob_start();
     if ($count > 0 && $isEhrengast !== 1) {
-        echo '<a id="btnRechnung" class="btn btn-outline-info" href="rechnung.php?tischnummer=' . (int)$Tischnummer . '&basis=tischstand" target="_blank" rel="noopener">Rechnung / Übersicht</a>';
+        echo '<a id="btnRechnung" class="btn btn-outline-info" href="rechnung.php?tischnummer=' . (int)$Tischnummer . '&basis=tischstand" target="_blank" rel="noopener" title="Rechnung / Übersicht">📄 Rechnung</a>';
         $hasPaySecondary = true;
     }
     $canSammel = ff_user_is_fest_admin();
@@ -750,7 +860,7 @@ try {
         $hasPaySecondary = true;
     }
     if ($count > 0 && $paymentMode === 'after') {
-        echo '<button type="button" id="btnVerschieben" class="btn btn-outline-secondary" style="padding:10px 16px;" onclick="openVerschiebenModal(); return false;">↷ Verschieben</button>';
+        echo '<button type="button" id="btnVerschieben" class="btn btn-outline-secondary" style="padding:10px 14px;" title="Positionen verschieben" onclick="openVerschiebenModal(); return false;">↷ Verschieben</button>';
         $hasPaySecondary = true;
     }
     if ($isEhrengast !== 1) {
@@ -762,10 +872,17 @@ try {
     }
     $paySecondaryHtml = ob_get_clean();
     if ($hasPaySecondary && $paySecondaryHtml !== '') {
-        echo '<div class="pay-actions-secondary d-flex flex-wrap gap-2 mt-4 pt-3 mb-3" style="border-top:1px solid #dee2e6;">';
+        echo '<details class="ff-pay-more' . (!empty($primaryOpen) ? ' ff-pay-more-inline' : ' mt-3 mb-3') . '"><summary aria-label="Weitere Aktionen" title="Weitere Aktionen">⋯</summary>';
+        echo '<div class="pay-actions-secondary d-flex flex-wrap gap-2">';
         echo $paySecondaryHtml;
+        echo '</div></details>';
+    }
+    if (!empty($primaryOpen)) {
         echo '</div>';
     }
+
+    echo '</div>';
+    echo '</div>';
 
     if ($count > 0 && $isEhrengast === 1) {
         echo '<div class="my-3">';
@@ -913,7 +1030,9 @@ function doVerschieben() {
 
     /* Bezahlen-Buttons: Klick läuft über zentrale Delegation in app.js (#BestellungZahlen), damit es nach partial=1 / innerHTML (Aggregiert/Detail) weiter funktioniert. */
 
+    echo 'if(typeof window.ffPayRefreshGroupUI==="function")window.ffPayRefreshGroupUI();';
     echo 'if(typeof applySelectionToUI==="function")applySelectionToUI();else if(typeof updateButtonsAndSum==="function")updateButtonsAndSum();';
+    echo 'if(typeof window.ffPayLayoutObserveFooter==="function")window.ffPayLayoutObserveFooter();else if(typeof window.ffPayLayoutSyncFooter==="function")window.ffPayLayoutSyncFooter();';
     $syncRequirePayment = (
         $requirePaymentRequested
         && $paymentMode === 'instant'

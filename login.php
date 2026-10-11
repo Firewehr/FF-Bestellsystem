@@ -7,6 +7,7 @@ require_once __DIR__ . '/include/settings.php';
 require_once __DIR__ . '/include/ff_finance_schema.php';
 require_once __DIR__ . '/include/ff_session_bootstrap.php';
 require_once __DIR__ . '/include/ff_favicon_helpers.php';
+require_once __DIR__ . '/include/ff_app_title.php';
 session_start();
 
 $message = [];
@@ -79,6 +80,8 @@ if ($setup_required) {
     ?>
 <?php
 $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 'Bestellsystem FF Obritzberg';
+$ffManifestHref = 'manifest.webmanifest?v=' . (int) (@filemtime(__DIR__ . '/manifest.webmanifest') ?: 1);
+$ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -86,9 +89,9 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin Setup – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="manifest" href="<?php echo htmlspecialchars($ffManifestHref, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="theme-color" content="#991b1b">
-    <script src="js/pwa.js"></script>
+    <script src="<?php echo htmlspecialchars($ffPwaJsHref, ENT_QUOTES, 'UTF-8'); ?>"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -209,6 +212,8 @@ if (!empty($_POST)) {
                         $_SESSION = [];
                         session_regenerate_id(true);
                         $_SESSION['login'] = true;
+                        require_once __DIR__ . '/include/ff_schema_login.php';
+                        ff_schema_run_login($conn);
                         $_SESSION['user'] = ['username' => $row['username']];
                         $_SESSION['user_id'] = (int) ($row['id'] ?? 0);
                         $_SESSION['auth_rev'] = (int) ($row['auth_rev'] ?? 0);
@@ -255,7 +260,10 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     <title>Login – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="theme-color" content="#991b1b">
-    <script src="js/pwa.js"></script>
+    <script>
+    window.FF_PWA_SW_URL = <?php echo json_encode('sw.js?v=' . ((int) (@filemtime(__DIR__ . '/sw.js') ?: 1))); ?>;
+    </script>
+    <script src="js/pwa.js?v=<?php echo @filemtime(__DIR__ . '/js/pwa.js') ?: '1'; ?>"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>

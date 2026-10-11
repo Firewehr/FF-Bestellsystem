@@ -104,15 +104,38 @@ $labels = $chart['labels'] ?? [];
 $cg = $chart['gast'] ?? [];
 $cm = $chart['mitarbeiter'] ?? [];
 $cs = $chart['gesamt'] ?? [];
+$cwAvg = $chart['wartezeit_avg_min'] ?? [];
+$cwMax = $chart['wartezeit_max_min'] ?? [];
+$cwCnt = $chart['wartezeit_anzahl'] ?? [];
 $nAgg = max(count($labels), count($cg), count($cm), count($cs));
 
-$wr(['Zeitslot oder Tag', 'Gast', 'Mitarbeiter', 'Gesamt']);
+$wr(['Zeitslot oder Tag', 'Gast', 'Mitarbeiter', 'Gesamt', 'Ø Wartezeit Küche (Min)', 'Max Wartezeit Küche (Min)', 'Anzahl mit Küchenzeit']);
 for ($i = 0; $i < $nAgg; ++$i) {
     $wr([
         isset($labels[$i]) ? (string) $labels[$i] : '',
         isset($cg[$i]) ? (string) $cg[$i] : '0',
         isset($cm[$i]) ? (string) $cm[$i] : '0',
         isset($cs[$i]) ? (string) $cs[$i] : '0',
+        isset($cwAvg[$i]) && $cwAvg[$i] !== null ? (string) $cwAvg[$i] : '',
+        isset($cwMax[$i]) && $cwMax[$i] !== null ? (string) $cwMax[$i] : '',
+        isset($cwCnt[$i]) ? (string) $cwCnt[$i] : '0',
+    ]);
+}
+
+$wr([]);
+$wr(['Kritische Wartezeit-Schwelle (Min)', (string) ($d['wartezeit_schwelle_min'] ?? 15)]);
+$wr(['— Küchen-Wartezeit je Bestellung (Bestellung -> fertig in der Küche) —']);
+$wr(['Datum', 'Uhrzeit Bestellung', 'Uhrzeit Küche fertig', 'Wartezeit (Min)', 'Kritisch', 'Position']);
+foreach ($d['wartezeiten'] ?? [] as $r) {
+    $sek = (int) ($r['wartesekunden'] ?? 0);
+    $min = round($sek / 60, 1);
+    $wr([
+        $f($r['datum'] ?? ''),
+        $f($r['zeit'] ?? ''),
+        $f($r['kuechezeit'] ?? ''),
+        (string) $min,
+        $min >= (float) ($d['wartezeit_schwelle_min'] ?? 15) ? 'ja' : 'nein',
+        $f($r['position_name'] ?? ''),
     ]);
 }
 

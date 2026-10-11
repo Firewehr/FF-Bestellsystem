@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ff-bestellsystem-static-v1';
+const CACHE_NAME = 'ff-bestellsystem-static-v2';
 const STATIC_ASSETS = [
     './style.css',
     './admin.css',
@@ -59,15 +59,19 @@ self.addEventListener('fetch', (event) => {
     }
 
     event.respondWith(
-        caches.match(request).then((cachedResponse) => {
-            const networkResponse = fetch(request).then((response) => {
-                if (response.ok) {
-                    const responseForCache = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(request, responseForCache));
+        fetch(request).then((response) => {
+            if (response.ok) {
+                const responseForCache = response.clone();
+                caches.open(CACHE_NAME).then((cache) => cache.put(request, responseForCache));
+            }
+            return response;
+        }).catch(() =>
+            caches.match(request).then((cachedResponse) => {
+                if (cachedResponse) {
+                    return cachedResponse;
                 }
-                return response;
-            });
-            return cachedResponse || networkResponse;
-        })
+                return Response.error();
+            })
+        )
     );
 });

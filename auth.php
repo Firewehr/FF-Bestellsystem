@@ -7,9 +7,11 @@ define('FF_AUTH_LOADED', true);
 
 require_once __DIR__ . '/include/runtime_bootstrap.php';
 require_once __DIR__ . '/include/ff_session_bootstrap.php';
+$ffTs = microtime(true);
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
+$GLOBALS['ff_t_session'] = (microtime(true) - $ffTs) * 1000;
 /* session_regenerate_id() nur bei Login (login.php) – nicht bei jedem Include, sonst parallele AJAX-Requests (Zahlen, Küche, …) blockieren sich gegenseitig. */
 
 //echo $_SERVER['HTTP_REFERER'];
@@ -46,4 +48,15 @@ if (!empty($_SESSION['login'])) {
 				<a href="./logout.php">Sitzung beenden</a>
 			</div>
 		';
+}
+
+/* Diagnose: Server-Timing-Header (Browser: DevTools > Netzwerk > Timing) */
+if (!headers_sent()) {
+    $ffStart = (float) ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true));
+    header(sprintf(
+        'Server-Timing: boot;dur=%.0f, session;dur=%.0f, dbconnect;dur=%.0f',
+        (microtime(true) - $ffStart) * 1000,
+        $GLOBALS['ff_t_session'] ?? 0,
+        $GLOBALS['ff_t_dbconnect'] ?? 0
+    ));
 }

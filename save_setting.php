@@ -37,6 +37,10 @@ $allowed = [
     'station_spalten_mobil',
     'station_one_click_abschliessen',
     'station_teillieferung_druck',
+    'sumup_open_app_button',
+    'pay_cash_modal',
+    'sumup_affiliate_key',
+    'sumup_app_id',
     'app_title',
 ];
 if (!in_array($k, $allowed, true)) {
@@ -61,7 +65,8 @@ if ($k === 'session_max_idle_sec') {
 }
 
 if ($k === 'station_summary_top' || $k === 'station_summary_right'
-    || $k === 'station_one_click_abschliessen' || $k === 'station_teillieferung_druck') {
+    || $k === 'station_one_click_abschliessen' || $k === 'station_teillieferung_druck'
+    || $k === 'sumup_open_app_button' || $k === 'pay_cash_modal') {
     $v = ($v === '1' || $v === 'true' || $v === 'on') ? '1' : '0';
 }
 
@@ -95,6 +100,24 @@ if ($k === 'app_title') {
         $v = substr($v, 0, 80);
     }
     // Leer = Admin-Override löschen → Fallback $FFName / $Titellogin aus db.php
+}
+
+if ($k === 'sumup_affiliate_key') {
+    $v = trim($v);
+    if (function_exists('mb_substr')) {
+        $v = mb_substr($v, 0, 120, 'UTF-8');
+    } else {
+        $v = substr($v, 0, 120);
+    }
+}
+
+if ($k === 'sumup_app_id') {
+    $v = trim($v);
+    if (function_exists('mb_substr')) {
+        $v = mb_substr($v, 0, 120, 'UTF-8');
+    } else {
+        $v = substr($v, 0, 120);
+    }
 }
 
 // Kritische Keys nur Super-Admin

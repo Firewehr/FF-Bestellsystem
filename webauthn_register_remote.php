@@ -7,6 +7,7 @@ require_once __DIR__ . '/include/runtime_bootstrap.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/settings.php';
 require_once __DIR__ . '/include/ff_webauthn.php';
+require_once __DIR__ . '/include/ff_app_title.php';
 
 $token = isset($_GET['token']) ? (string) $_GET['token'] : '';
 $row = ($token !== '' && isset($conn) && $conn instanceof mysqli) ? ff_webauthn_remote_load_pending($conn, $token) : null;

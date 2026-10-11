@@ -118,7 +118,9 @@
     loadFromCache();
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function() {});
+        navigator.serviceWorker.register('./sw.js?v=2', { scope: './', updateViaCache: 'none' }).then(function(reg) {
+            reg.update().catch(function() {});
+        }).catch(function() {});
     }
 })();
     </script>

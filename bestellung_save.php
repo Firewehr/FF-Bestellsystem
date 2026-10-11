@@ -203,9 +203,11 @@ if ($tischnummer === 999999) {
 } elseif ($tischnummer > 0) {
     $openCnt = ff_menu_open_count_tisch($conn, $tischnummer, (int)$positionsid);
 }
-$stock = ff_menu_stock_state($conn, (int)$positionsid, $maxBestellbar, $kellnerFilterDv);
-$rest = (int)$stock['rest'];
-$needsTileReload = ($maxBestellbar > 0 && ($rest <= 10));
+$positionConsumed = ff_position_consumed_total($conn, (int)$positionsid);
+$displayCap = ff_position_display_capacity($conn, (int)$positionsid, $maxBestellbar, $positionConsumed);
+$isLimited = !empty($displayCap['limited']);
+$rest = $isLimited ? max(0, (int)($displayCap['rest'] ?? 0)) : 999999;
+$needsTileReload = ($isLimited && ($rest <= 10));
 
 $payload = [
     'ok' => true,
@@ -213,6 +215,7 @@ $payload = [
     'open_cnt' => $openCnt,
     'rest' => $rest,
     'max_bestellbar' => $maxBestellbar,
+    'is_limited' => $isLimited,
     'needs_tile_reload' => $needsTileReload,
 ];
 if ($tischnummer === 999999) {

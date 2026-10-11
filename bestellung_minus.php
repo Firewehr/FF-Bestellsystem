@@ -3,6 +3,7 @@ require_once('auth.php');
 include_once("include/db.php");
 require_once __DIR__ . '/include/settings.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
+require_once __DIR__ . '/include/ff_position_stock_summary.php';
 
 header("Content-Type: application/json; charset=utf-8");
 
@@ -92,10 +93,13 @@ $posRes = mysqli_query($conn, 'SELECT COALESCE(maxBestellbar, 0) AS maxBestellba
 if ($posRes && ($pr = mysqli_fetch_assoc($posRes))) {
     $maxBestellbar = (int) ($pr['maxBestellbar'] ?? 0);
 }
-$stock = ff_menu_stock_state($conn, (int) $position, $maxBestellbar, $kellnerFilterDv);
+$positionConsumed = ff_position_consumed_total($conn, (int)$position);
+$displayCap = ff_position_display_capacity($conn, (int)$position, $maxBestellbar, $positionConsumed);
+$isLimited = !empty($displayCap['limited']);
 $payload['position_id'] = (int) $position;
-$payload['rest'] = (int) $stock['rest'];
+$payload['rest'] = $isLimited ? max(0, (int)($displayCap['rest'] ?? 0)) : 999999;
 $payload['max_bestellbar'] = $maxBestellbar;
+$payload['is_limited'] = $isLimited;
 
 mysqli_close($conn);
 

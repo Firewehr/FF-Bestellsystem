@@ -5,9 +5,17 @@
     background: #f0f2f5;
 }
 
+.admin-page {
+    display: flex;
+    flex-direction: column;
+}
+
 /* Admin-Bereich - Bootstrap 5, Desktop & Mobile */
 
 .admin-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
     background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
     color: #fff !important;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
@@ -23,10 +31,149 @@
     color: rgba(255,255,255,0.9) !important;
 }
 
+/* Seiten-Menü (Übersicht / Stammdaten-Punkte / Personal-Punkte / Auswertungen-Punkte) – Hamburger unterhalb lg */
+.admin-navbar .ff-admin-page-nav {
+    flex-direction: column;
+    gap: 0.15rem;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+.admin-navbar .navbar-collapse {
+    margin-top: 0.5rem;
+}
+@media (min-width: 992px) {
+    .admin-navbar .navbar-collapse {
+        margin-top: 0;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .admin-navbar .ff-admin-page-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        max-height: none;
+        overflow: visible;
+    }
+}
+.admin-navbar .ff-admin-page-group-label {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.5rem 0.8rem 0.15rem;
+}
+@media (min-width: 992px) {
+    .admin-navbar .ff-admin-page-group-label {
+        display: none;
+    }
+}
+.admin-navbar .ff-admin-page-link,
+.admin-navbar .ff-admin-manage-link {
+    display: block;
+    width: 100%;
+    text-align: left;
+    color: #fff !important;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid transparent;
+    text-decoration: none !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+@media (min-width: 992px) {
+    .admin-navbar .ff-admin-page-link,
+    .admin-navbar .ff-admin-manage-link {
+        display: inline-block;
+        width: auto;
+    }
+}
+.admin-navbar .ff-admin-page-link:hover,
+.admin-navbar .ff-admin-manage-link:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+.admin-navbar .ff-admin-page-link.active {
+    background: rgba(255, 255, 255, 0.24);
+    color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 0.15rem rgba(255, 255, 255, 0.12);
+}
+.admin-navbar .ff-admin-manage-link.active {
+    background: rgba(255, 255, 255, 0.24);
+    color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 0.15rem rgba(255, 255, 255, 0.12);
+}
+.admin-navbar .dropdown-menu .ff-admin-page-link,
+.admin-navbar .dropdown-menu .ff-admin-manage-link {
+    display: block;
+    width: 100%;
+    color: #212529 !important;
+    text-align: left;
+    border-radius: 0;
+    padding: 0.45rem 1rem;
+}
+.admin-navbar .dropdown-menu .ff-admin-page-link:hover,
+.admin-navbar .dropdown-menu .ff-admin-manage-link:hover,
+.admin-navbar .dropdown-menu .ff-admin-page-link.active,
+.admin-navbar .dropdown-menu .ff-admin-manage-link.active {
+    color: #16181b !important;
+    background: #e9ecef;
+    border-color: transparent;
+    box-shadow: none;
+}
+.admin-navbar .ff-admin-nav-group > .dropdown-toggle.active {
+    background: rgba(255, 255, 255, 0.24);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+.ff-admin-manage-frame {
+    display: block;
+    width: 100%;
+    height: 0;
+    min-height: 0;
+    border: 0;
+}
+.ff-admin-tables-frame {
+    height: 0;
+    min-height: 0;
+}
+#ffAdminManageFrame {
+    height: 0;
+    min-height: 0;
+}
+.admin-navbar .navbar-toggler {
+    border-color: rgba(255, 255, 255, 0.55);
+}
+.admin-navbar .navbar-toggler:focus {
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.35);
+}
+.admin-navbar .navbar-toggler-icon {
+    filter: brightness(0) invert(1);
+}
+
 .admin-content {
+    flex: 1 0 auto;
+    min-height: 0;
     max-width: 1200px;
     margin: 0 auto;
     padding: 1.5rem 1rem;
+}
+.admin-content:has(#ffAdminManageFrame) {
+    flex: 1 1 auto;
+    max-width: none;
+    width: 100%;
+}
+.admin-page .ff-icon-action {
+    width: 2.25rem;
+    min-width: 2.25rem;
+    height: 2rem;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
 }
 
 @media (min-width: 768px) {
@@ -54,6 +201,9 @@
     margin-top: 0;
     padding-top: 0;
     border-top: 0;
+}
+.admin-accordion .admin-section-heading {
+    display: none;
 }
 
 .admin-accordion .card-header {
@@ -147,6 +297,18 @@
     overscroll-behavior-x: contain;
 }
 
+.admin-page .ff-tischflags-scroll {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.admin-page .ff-tischflags-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #f8f9fa;
+}
+
 /* Formulare */
 .admin-page .form-label {
     font-weight: 500;
@@ -213,6 +375,161 @@
     margin-bottom: 1rem;
 }
 
+.manage-fragment-header {
+    padding-bottom: 0.75rem;
+}
+
+.manage-fragment-header h4 {
+    font-size: 1.15rem;
+    margin-bottom: 0.2rem;
+}
+
+.manage-rezeptur-position-block {
+    background: #fff;
+    border-color: #e7ebf0;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    padding: 0.9rem !important;
+}
+
+.manage-rezeptur-position-head {
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eef2f6;
+    margin-bottom: 0.75rem !important;
+}
+
+.manage-rezeptur-position-head .fw-semibold {
+    font-size: 0.96rem;
+}
+
+.manage-rezeptur-position-block .table-responsive {
+    border-radius: 6px;
+}
+
+.manage-rezeptur-position-block .btn-group .btn {
+    padding-inline: 0.7rem;
+}
+
+.manage-rezeptur-status {
+    min-height: 1.5rem;
+    padding: 0.25rem 0.5rem;
+    border-left: 3px solid #adb5bd;
+    background: #f8f9fa;
+}
+
+.manage-filter-input {
+    flex: 1 1 18rem;
+    max-width: 32rem;
+}
+
+.manage-rezeptur-position-block {
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+.manage-rezeptur-position-summary {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 2.75rem;
+    padding: 0.55rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.manage-rezeptur-position-summary::-webkit-details-marker {
+    display: none;
+}
+
+.manage-rezeptur-position-summary::before {
+    content: "▶";
+    flex: 0 0 auto;
+    color: #6c757d;
+    font-size: 0.7rem;
+    transition: transform 0.15s ease;
+}
+
+.manage-rezeptur-position-block[open] > .manage-rezeptur-position-summary::before {
+    transform: rotate(90deg);
+}
+
+.manage-rezeptur-position-summary .fw-semibold {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.manage-rezeptur-position-content {
+    padding: 0 0.75rem 0.75rem;
+}
+
+.manage-rezeptur-position-content .table-responsive {
+    overflow-x: auto;
+}
+
+.manage-rezeptur-position-content table {
+    min-width: 760px;
+}
+
+.manage-bestandteile-tools {
+    display: flex;
+}
+
+.manage-pos-short-table {
+    min-width: 1120px;
+}
+
+.manage-pos-short-table th,
+.manage-pos-short-table td {
+    white-space: nowrap;
+}
+
+.manage-pos-short-table td:nth-child(2) input,
+.manage-pos-short-table td:nth-child(3) input {
+    min-width: 10rem;
+}
+
+.manage-pos-short-table td:nth-child(4) input,
+.manage-pos-short-table td:nth-child(5) input {
+    min-width: 5.5rem;
+}
+
+.manage-table-scroll-hint {
+    display: none;
+}
+
+@media (max-width: 767.98px) {
+    .manage-rezeptur-position-summary {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .manage-rezeptur-position-summary .fw-semibold {
+        flex-basis: calc(100% - 1.5rem);
+    }
+
+    .manage-rezeptur-position-summary .badge {
+        margin-left: 1.35rem;
+    }
+
+    .manage-rezeptur-position-head {
+        justify-content: flex-start !important;
+    }
+
+    .manage-rezeptur-position-head .btn-group {
+        width: 100%;
+    }
+
+    .manage-rezeptur-position-head .btn-group .btn {
+        flex: 1 1 auto;
+    }
+
+}
+
+@media (max-width: 1199.98px) {
+    .manage-table-scroll-hint {
+        display: block;
+    }
+}
+
 /* Reset-Button */
 .admin-page .btn-reset {
     margin-top: 2rem;
@@ -269,19 +586,24 @@
 /* ===== manage/ Stammdaten (Speisekarte & Tische) ===== */
 .manage-stammdaten .admin-navbar .nav-link {
     color: #fff !important;
-    font-weight: 500;
+    font-weight: 600;
     border-radius: 6px;
-    padding: 0.4rem 0.65rem;
+    padding: 0.45rem 0.8rem;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .manage-stammdaten .admin-navbar .nav-link:hover {
     background: rgba(255, 255, 255, 0.12);
     color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .manage-stammdaten .admin-navbar .nav-link.active {
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.24);
     color: #fff !important;
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 0 0 0.15rem rgba(255, 255, 255, 0.12);
 }
 
 .manage-stammdaten .admin-navbar .navbar-toggler {
@@ -308,6 +630,27 @@
     border-radius: 8px;
 }
 
+.manage-embedded .admin-content {
+    padding: 0;
+}
+
+.manage-embedded.admin-page {
+    min-height: 0;
+}
+
+.manage-embedded #manageMainCardBody {
+    margin-bottom: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.manage-embedded #mainContent {
+    padding: 0 !important;
+}
+.manage-embedded-tische .manage-fragment-header {
+    display: none;
+}
+
 /* manage/: volle Browserbreite (mehr Platz für breite Tabellen am PC) */
 .manage-stammdaten .admin-content {
     max-width: none;
@@ -316,8 +659,9 @@
 
 .manage-stammdaten .manage-pos-table-stretch {
     width: 100%;
-    table-layout: fixed;
-    font-size: 0.76rem;
+    min-width: 1440px;
+    table-layout: auto;
+    font-size: 0.82rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch > :not(caption) > * > * {
@@ -327,9 +671,16 @@
 .manage-stammdaten .manage-pos-table-stretch th,
 .manage-stammdaten .manage-pos-table-stretch td {
     vertical-align: middle;
-    font-size: 0.76rem;
+    font-size: 0.82rem;
     line-height: 1.2;
     white-space: normal;
+}
+.manage-stammdaten .manage-pos-table-stretch th {
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8f9fa;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .form-control,
@@ -348,6 +699,19 @@
     padding-right: 1.6rem;
     background-position: right 0.4rem center;
 }
+.manage-stammdaten .manage-pos-table-stretch .ff-pos-print-target {
+    min-width: 7rem;
+}
+.manage-stammdaten .manage-pos-table-stretch .ff-position-fest {
+    min-width: 11rem;
+}
+.manage-stammdaten .manage-pos-table-stretch .ff-icon-action {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
+}
 
 .manage-stammdaten .manage-pos-table-stretch .d-inline-flex,
 .manage-stammdaten .manage-pos-table-stretch .d-flex {
@@ -357,7 +721,7 @@
 .manage-stammdaten .manage-pos-table-stretch .form-control-sm,
 .manage-stammdaten .manage-pos-table-stretch .form-select-sm,
 .manage-stammdaten .manage-pos-table-stretch .btn-sm {
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     min-height: 1.75rem;
     padding-top: 0.14rem;
     padding-bottom: 0.14rem;
@@ -381,7 +745,21 @@
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(2),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(2) {
-    width: 6rem;
+    width: 3.2rem;
+    min-width: 0;
+    max-width: 3.2rem;
+    padding-left: 0.2rem;
+    padding-right: 0.2rem;
+    text-align: center;
+}
+
+.manage-stammdaten .manage-pos-table-stretch thead th:nth-child(2) {
+    width: 3.2rem;
+    max-width: 3.2rem;
+    padding-left: 0.2rem;
+    padding-right: 0.2rem;
+    text-align: center;
+    font-size: 0.75rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(3),
@@ -391,22 +769,22 @@
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(4),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(4) {
-    width: 5.5rem;
+    width: 11rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(5),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(5) {
-    width: 9rem;
+    width: 5.5rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(6),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(6) {
-    width: 10rem;
+    width: 9rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(7),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(7) {
-    width: 5rem;
+    width: 10rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(8),
@@ -416,7 +794,7 @@
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(9),
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row th:nth-child(9) {
-    width: 8rem;
+    width: 5rem;
 }
 
 .manage-stammdaten .manage-pos-table-stretch .ff-manage-pos-row td:nth-child(10),
@@ -481,3 +859,23 @@
 #ffOvBox .fs-1 {
     line-height: 1.15;
 }
+
+/* Alle Positionen: feste Spaltenbreiten */
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed{table-layout:fixed;min-width:93rem;width:100%}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(1),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(1){width:1.8rem;max-width:1.8rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(2),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(2){width:2.4rem;max-width:2.4rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(3),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(3){width:14rem;max-width:14rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(4),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(4){width:6rem;max-width:6rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(5),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(5){width:6rem;max-width:6rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(6),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(6){width:6.5rem;max-width:6.5rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(7),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(7){width:16.5rem;max-width:16.5rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(8),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(8){width:4.6rem;max-width:4.6rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(9),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(9){width:4.6rem;max-width:4.6rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(10),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(10){width:4.4rem;max-width:4.4rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(11),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(11){width:5.4rem;max-width:5.4rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(12),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(12){width:6.4rem;max-width:6.4rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(13),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(13){width:4.4rem;max-width:4.4rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th:nth-child(14),.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:nth-child(14){width:9.5rem;max-width:9.5rem;}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed th{overflow:hidden;text-overflow:ellipsis}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:last-child{white-space:nowrap}
+.manage-stammdaten .manage-pos-table-stretch.ff-pos-fixed td:last-child .btn{display:inline-block;width:auto}

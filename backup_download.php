@@ -291,7 +291,9 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     });
 
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function() {});
+        navigator.serviceWorker.register('./sw.js?v=<?php echo (int) (@filemtime(__DIR__ . '/sw.js') ?: 1); ?>', { scope: './', updateViaCache: 'none' }).then(function(reg) {
+            reg.update().catch(function() {});
+        }).catch(function() {});
     }
 
     loadCachedFirst().then(function() {

@@ -29,6 +29,7 @@ $Selbstkosten = isset($_POST['Selbstkosten']) ? (float)str_replace(',', '.', (st
 $printTargetIn = isset($_POST['print_target']) ? (int)$_POST['print_target'] : 0;
 $printTarget = $printTargetIn > 0 ? $printTargetIn : ($type === 2 ? 12 : 11);
 $defaultFontColor = '#000000';
+$Kurzbezeichnung = isset($_POST['Kurzbezeichnung']) ? trim((string)$_POST['Kurzbezeichnung']) : '';
 
 if ($Positionsname === '') {
     http_response_code(400);
@@ -73,7 +74,7 @@ if ($helpersOk) {
     $subBind = $subcategoryId > 0 ? $subcategoryId : null;
 
     $tileBgStr = $tileBg !== null && $tileBg !== '' ? (string)$tileBg : '';
-    $sql = 'INSERT INTO positionen (Positionsname, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, subcategory_id, tile_bg, print_target, color, kassa_only) VALUES (?,?,?,?,?,?,?,?,?,?,?)';
+    $sql = 'INSERT INTO positionen (Positionsname, Kurzbezeichnung, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, subcategory_id, tile_bg, print_target, color, kassa_only) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)';
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
@@ -83,8 +84,9 @@ if ($helpersOk) {
 
     mysqli_stmt_bind_param(
         $stmt,
-        'sdiiidisisi',
+        'ssdiiidisisi',
         $Positionsname,
+        $Kurzbezeichnung,
         $Betrag,
         $type,
         $Kapazitaet,
@@ -97,7 +99,7 @@ if ($helpersOk) {
         $kassaOnly
     );
 } else {
-    $sql = 'INSERT INTO positionen (Positionsname, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, print_target, color) VALUES (?,?,?,?,?,?,?,?)';
+    $sql = 'INSERT INTO positionen (Positionsname, Kurzbezeichnung, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, print_target, color) VALUES (?,?,?,?,?,?,?,?,?)';
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
@@ -106,8 +108,9 @@ if ($helpersOk) {
     }
     mysqli_stmt_bind_param(
         $stmt,
-        'sdiiidis',
+        'ssdiiidis',
         $Positionsname,
+        $Kurzbezeichnung,
         $Betrag,
         $type,
         $Kapazitaet,

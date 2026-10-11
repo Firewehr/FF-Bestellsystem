@@ -8,6 +8,7 @@ require_once __DIR__ . '/include/ff_finance_auth.php';
 require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
 require_once __DIR__ . '/include/ff_schema_helpers.php';
 require_once __DIR__ . '/include/ff_user_permissions.php';
+require_once __DIR__ . '/include/ff_app_title.php';
 
 ff_users_ensure_landing_columns($conn);
 ff_users_ensure_direktverkauf_column($conn);
@@ -92,20 +93,11 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
 <html lang="de">
 
 <head>
-    <meta charset="utf-8">
-    <title><?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?>">
-    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="manifest.webmanifest">
-    <meta name="theme-color" content="#991b1b">
-    <?php if ($ff_favicon !== ''):
-        $ffFavMtime = @filemtime(__DIR__ . '/' . $ff_favicon) ?: 1;
-    ?>
-        <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($ff_favicon, ENT_QUOTES, 'UTF-8'); ?>?v=<?php echo (int)$ffFavMtime; ?>">
-        <link rel="apple-touch-icon" href="<?php echo htmlspecialchars($ff_favicon, ENT_QUOTES, 'UTF-8'); ?>?v=<?php echo (int)$ffFavMtime; ?>">
-    <?php endif; ?>
     <?php
+    $ffManifestHref = 'manifest.webmanifest?v=' . (int) (@filemtime(__DIR__ . '/manifest.webmanifest') ?: 1);
+    $ffStyleHref = 'style.css?v=' . (int) (@filemtime(__DIR__ . '/style.css') ?: 1);
+    $ffAdminHref = 'admin.css?v=' . (int) (@filemtime(__DIR__ . '/admin.css') ?: 1);
+    $ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
     $ffBsCss = is_file(__DIR__ . '/assets/bootstrap-5.3.2/css/bootstrap.min.css')
         ? 'assets/bootstrap-5.3.2/css/bootstrap.min.css?v=' . (int) @filemtime(__DIR__ . '/assets/bootstrap-5.3.2/css/bootstrap.min.css')
         : 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css';
@@ -113,9 +105,22 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
         ? 'assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js?v=' . (int) @filemtime(__DIR__ . '/assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js')
         : 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js';
     ?>
+    <meta charset="utf-8">
+    <title><?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
+    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="<?php echo htmlspecialchars($ffManifestHref, ENT_QUOTES, 'UTF-8'); ?>">
+    <meta name="theme-color" content="#991b1b">
+    <?php if ($ff_favicon !== ''):
+        $ffFavMtime = @filemtime(__DIR__ . '/' . $ff_favicon) ?: 1;
+    ?>
+        <link rel="icon" type="image/png" href="<?php echo htmlspecialchars($ff_favicon, ENT_QUOTES, 'UTF-8'); ?>?v=<?php echo (int)$ffFavMtime; ?>">
+        <link rel="apple-touch-icon" href="<?php echo htmlspecialchars($ff_favicon, ENT_QUOTES, 'UTF-8'); ?>?v=<?php echo (int)$ffFavMtime; ?>">
+    <?php endif; ?>
     <link href="<?php echo htmlspecialchars($ffBsCss, ENT_QUOTES, 'UTF-8'); ?>" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="admin.css">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($ffStyleHref, ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="stylesheet" href="<?php echo htmlspecialchars($ffAdminHref, ENT_QUOTES, 'UTF-8'); ?>">
     <style>
         body.app-page {
             background: #f0f2f5;
@@ -385,6 +390,7 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
 
     <script>
         window.FAST_REFRESH_ENABLED = <?php echo (int)setting_get($conn, 'fast_refresh', '0'); ?>;
+        window.FF_PAY_CASH_MODAL = <?php echo (int)setting_get($conn, 'pay_cash_modal', '0'); ?>;
         window.FF_STATION_COLS_DEFAULT = <?php echo (int)setting_get($conn, 'station_spalten', '0'); ?>;
         window.FF_STATION_COLS_MOBILE_DEFAULT = <?php echo (int)setting_get($conn, 'station_spalten_mobil', '0'); ?>;
         window._lastCountsSig = '';
@@ -855,6 +861,9 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
         </script>
     <?php endif; ?>
     <?php require __DIR__ . '/include/ff_system_broadcast_assets.php'; ?>
-<script src="js/pwa.js"></script>
+<script>
+window.FF_PWA_SW_URL = <?php echo json_encode('sw.js?v=' . ((int) (@filemtime(__DIR__ . '/sw.js') ?: 1))); ?>;
+</script>
+<script src="<?php echo htmlspecialchars($ffPwaJsHref, ENT_QUOTES, 'UTF-8'); ?>"></script>
 </body>
 </html>

@@ -6,6 +6,9 @@ require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/menu_lock_helpers.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
 require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
+require_once __DIR__ . '/include/ff_position_stock_summary.php';
+require_once __DIR__ . '/include/ff_fest_scope.php';
+ff_fest_scope_ensure_columns($conn);
 
 
 /*
@@ -286,6 +289,7 @@ $sql .= ff_position_sql_kellner_visible(
     'p',
     's'
 );
+$sql .= ff_fest_scope_position_sql($conn, 'p');
 
 
 $sql .= "
@@ -319,6 +323,17 @@ while ($row = mysqli_fetch_assoc($result)) {
 
     $positionen[] = $row;
 }
+
+ff_rezepturen_ensure_schema($conn);
+$allergeneNachPosition = ff_rezeptur_allergene_by_position(
+    $conn,
+    array_column($positionen, 'rowid')
+);
+foreach ($positionen as &$position) {
+    $positionId = (int)($position['rowid'] ?? 0);
+    $position['allergene'] = $allergeneNachPosition[$positionId] ?? [];
+}
+unset($position);
 
 $verbrauchtePositionen = [];
 
@@ -1591,20 +1606,19 @@ body {
                     $price =
                         (float)$position['Betrag'];
 
-                    $max =
-                        (int)(
-                            $position['maxBestellbar']
-                            ?? 0
+                    $allergene = (array)($position['allergene'] ?? []);
+
+                    $cap =
+                        ff_position_display_capacity(
+                            $conn,
+                            $id,
+                            (int)($position['maxBestellbar'] ?? 0),
+                            $verbrauchtePositionen[$id] ?? 0
                         );
 
-                    $rest =
-                        $max > 0
-                            ? max(
-                                0,
-                                $max -
-                                ($verbrauchtePositionen[$id] ?? 0)
-                            )
-                            : $max;
+                    $max = $cap['max'];
+
+                    $rest = $cap['rest'];
 
                     ?>
 
@@ -1630,6 +1644,10 @@ body {
                             <div class="item-name">
 
                                 <?= h($name) ?>
+
+                                <?php if ($allergene !== []): ?>
+                                    <span class="item-allergens">(<?= h(implode(', ', $allergene)) ?>)</span>
+                                <?php endif; ?>
 
                                 <?php if ($rest === 0): ?>
                                     <span class="sold-out-label">
@@ -1753,20 +1771,19 @@ body {
                     $price =
                         (float)$position['Betrag'];
 
-                    $max =
-                        (int)(
-                            $position['maxBestellbar']
-                            ?? 0
+                    $allergene = (array)($position['allergene'] ?? []);
+
+                    $cap =
+                        ff_position_display_capacity(
+                            $conn,
+                            $id,
+                            (int)($position['maxBestellbar'] ?? 0),
+                            $verbrauchtePositionen[$id] ?? 0
                         );
 
-                    $rest =
-                        $max > 0
-                            ? max(
-                                0,
-                                $max -
-                                ($verbrauchtePositionen[$id] ?? 0)
-                            )
-                            : $max;
+                    $max = $cap['max'];
+
+                    $rest = $cap['rest'];
 
                     ?>
 
@@ -1792,6 +1809,10 @@ body {
                             <div class="item-name">
 
                                 <?= h($name) ?>
+
+                                <?php if ($allergene !== []): ?>
+                                    <span class="item-allergens">(<?= h(implode(', ', $allergene)) ?>)</span>
+                                <?php endif; ?>
 
                                 <?php if ($rest === 0): ?>
                                     <span class="sold-out-label">

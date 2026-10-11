@@ -72,6 +72,18 @@ if ($openUnpaidCount > 0) {
 
 $unsentCnt = ff_tisch_count_unsent($conn, (int) $Tischnummer);
 $hasOpenToSend = $unsentCnt > 0;
+$unsentTotal = 0.0;
+$utq = @mysqli_prepare($conn, "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag, 0)), 0) FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position WHERE b.tischnummer = ? AND b.delete = 0 AND (b.bestellt IS NULL OR b.bestellt = 0)");
+if ($utq) {
+    $utqTisch = (int) $Tischnummer;
+    mysqli_stmt_bind_param($utq, 'i', $utqTisch);
+    mysqli_stmt_execute($utq);
+    mysqli_stmt_bind_result($utq, $utqVal);
+    if (mysqli_stmt_fetch($utq)) {
+        $unsentTotal = (float) $utqVal;
+    }
+    mysqli_stmt_close($utq);
+}
 
 $btnDisabledAttr = $hasOpenToSend ? '' : ' disabled="disabled" ';
 $btnClass = $hasOpenToSend ? '' : ' disabled ';
@@ -82,6 +94,52 @@ $btnStyle = $hasOpenToSend ? 'background-color:rgba(0, 255, 0, 0.35); color:#000
 $mustPayFirst = ($paymentMode === 'instant' && $openUnpaidCount > 0 && $isSammelrechnung === 0 && $isEhrengast === 0);
 
 $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
+
+// Wartezeit je Standard-Druckziel (Getränke=Schank 12, Speisen=Küche 11)
+$ffPtNames = [11 => 'Küche', 12 => 'Schank'];
+$ptRes = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE print_target IN (11,12)');
+if ($ptRes) {
+    while ($ptRow = mysqli_fetch_assoc($ptRes)) {
+        $ptId = (int)($ptRow['print_target'] ?? 0);
+        if ($ptId > 0) {
+            $nm = trim((string)($ptRow['name'] ?? ''));
+            if ($nm !== '') {
+                $ffPtNames[$ptId] = $nm;
+            }
+        }
+    }
+    @mysqli_free_result($ptRes);
+}
+
+$ffWaitByTarget = [11 => '', 12 => ''];
+$wq = @mysqli_query(
+    $conn,
+    "SELECT print_target, UNIX_TIMESTAMP(MIN(zeitstempel)) AS oldest_unix
+       FROM bestellungen
+      WHERE `delete`=0
+        AND kueche=0
+        AND zeitKueche='0000-00-00 00:00:00'
+        AND print_target IN (11,12)
+      GROUP BY print_target"
+);
+if ($wq) {
+    while ($wr = mysqli_fetch_assoc($wq)) {
+        $ptId = (int)($wr['print_target'] ?? 0);
+        $oldestUnix = (int)($wr['oldest_unix'] ?? 0);
+        if (($ptId === 11 || $ptId === 12) && $oldestUnix > 0) {
+            $mins = (int) round(max(0, time() - $oldestUnix) / 60);
+            $ffWaitByTarget[$ptId] = (string)$mins;
+        }
+    }
+    @mysqli_free_result($wq);
+}
+
+// Unplausible Werte (> 120 min, z. B. alte Testbestellungen) werden ausgeblendet
+$ffWaitMax = 120;
+$ffDrinkWait = ($ffWaitByTarget[12] !== '') ? $ffWaitByTarget[12] : '0';
+$ffFoodWait = ($ffWaitByTarget[11] !== '') ? $ffWaitByTarget[11] : '0';
+$ffDrinkWaitShow = ((int)$ffDrinkWait <= $ffWaitMax);
+$ffFoodWaitShow = ((int)$ffFoodWait <= $ffWaitMax);
 ?>
 
 <nav class="navbar app-navbar sticky-top">
@@ -112,7 +170,7 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
     Bitte zuerst kassieren oder in der <strong>Historie</strong> stornieren.
 </div>
 <?php elseif ($unsentCnt > 0): ?>
-<div class="alert alert-warning m-2 py-2 mb-0" style="font-size: 0.9rem;">
+<div class="alert alert-warning m-2 py-2 mb-0 ff-unsent-alert" style="font-size: 0.9rem;">
     <strong>Noch nicht abgeschickt:</strong> <?php echo (int) $unsentCnt; ?> Position(en) im Warenkorb.
     Bitte <strong>Bestellung abschicken</strong> oder beim Verlassen entfernen.
 </div>
@@ -126,14 +184,22 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
 <div class="app-content py-4">
     <div id="Bestellungen" class="tisch-bestellungen-wrap">
     <div class="tisch-order-main">
-    <ul class="nav nav-tabs" id="TischAnzeigen" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="tab-getraenke-btn" data-bs-toggle="tab" data-bs-target="#tabGetraenke" type="button">Getränke</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="tab-speisen-btn" data-bs-toggle="tab" data-bs-target="#tabSpeisen" type="button">Speisen</button>
-        </li>
-    </ul>
+    <div class="ff-order-tabs-head">
+        <ul class="nav nav-tabs mb-0" id="TischAnzeigen" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="tab-getraenke-btn" data-bs-toggle="tab" data-bs-target="#tabGetraenke" type="button">Getränke</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-speisen-btn" data-bs-toggle="tab" data-bs-target="#tabSpeisen" type="button">Speisen</button>
+            </li>
+        </ul>
+        <div class="ff-order-waitline" aria-live="polite">
+            <?php if ($ffDrinkWaitShow || $ffFoodWaitShow): ?><span class="ff-order-wait-icon" aria-hidden="true">⌛</span><?php endif; ?>
+            <?php if ($ffDrinkWaitShow): ?><span><?php echo htmlspecialchars($ffPtNames[12], ENT_QUOTES, 'UTF-8'); ?>: <?php echo htmlspecialchars($ffDrinkWait, ENT_QUOTES, 'UTF-8'); ?> min</span><?php endif; ?>
+            <?php if ($ffDrinkWaitShow && $ffFoodWaitShow): ?><span class="ff-order-wait-sep">|</span><?php endif; ?>
+            <?php if ($ffFoodWaitShow): ?><span><?php echo htmlspecialchars($ffPtNames[11], ENT_QUOTES, 'UTF-8'); ?>: <?php echo htmlspecialchars($ffFoodWait, ENT_QUOTES, 'UTF-8'); ?> min</span><?php endif; ?>
+        </div>
+    </div>
 
     <div class="tab-content border border-top-0 p-2 ff-tab-swipe-area" id="TischAnzeigenContent">
         <div class="tab-pane fade show active" id="tabGetraenke" role="tabpanel" data-load-url="listGetraenke.php?tischnummer=<?php echo (int)$Tischnummer; ?>">
@@ -146,7 +212,7 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
     </div>
     <div class="tisch-order-footer w-100 d-flex flex-row justify-content-end align-items-center">
         <button type="button" id="btnBestellungAbschicken" class="btn ms-auto<?php echo $btnClass; ?>" style="<?php echo $btnStyle; ?>" onclick="bestellungAbschicken(<?php echo (int)$Tischnummer; ?>); return false;">
-            Bestellung abschicken
+            <?php if ($unsentCnt > 0): ?><span class="ff-send-info"><?php echo (int)$unsentCnt; ?> Pos. · <?php echo number_format($unsentTotal, 2, ',', '.'); ?> €</span><span class="ff-send-action"> – Abschicken</span><?php else: ?>Bestellung abschicken<?php endif; ?>
         </button>
     </div>
     </div>
@@ -175,5 +241,18 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
 <script>
 window._ffTischUnsentCount = <?php echo (int) $unsentCnt; ?>;
 window._ffTischUnsentTable = <?php echo (int) $Tischnummer; ?>;
+(function() {
+    function sync() {
+        var navH = 0;
+        document.querySelectorAll('.app-navbar').forEach(function(n) { navH = Math.max(navH, n.offsetHeight); });
+        var head = document.querySelector('.ff-order-tabs-head');
+        var root = document.documentElement.style;
+        if (navH) root.setProperty('--ff-nav-h', navH + 'px');
+        if (head) root.setProperty('--ff-tabs-h', head.offsetHeight + 'px');
+    }
+    sync();
+    window.addEventListener('resize', sync);
+    setTimeout(sync, 300);
+})();
 </script>
 <?php mysqli_close($conn); ?>

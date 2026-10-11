@@ -4,6 +4,8 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/menu_tile_helpers.php';
 require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
+require_once __DIR__ . '/include/ff_fest_scope.php';
+ff_fest_scope_ensure_columns($conn);
 
 ff_menu_ensure_schema($conn);
 
@@ -14,7 +16,7 @@ if ($Tischnummer <= 0) {
     exit;
 }
 
-$resulttt = mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen WHERE type=3' . ff_position_sql_kellner_visible() . ' ORDER BY Positionsname');
+$resulttt = mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen WHERE type=3' . ff_position_sql_kellner_visible() . ff_fest_scope_position_sql($conn) . ' ORDER BY Positionsname');
 if (!$resulttt) {
     echo '</div>';
     exit;

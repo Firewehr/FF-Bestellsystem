@@ -54,6 +54,8 @@ if (!$loginAllowed['ok']) {
 $_SESSION = [];
 session_regenerate_id(true);
 $_SESSION['login'] = true;
+require_once __DIR__ . '/include/ff_schema_login.php';
+ff_schema_run_login($conn);
 $_SESSION['user'] = ['username' => $row['username']];
 $_SESSION['user_id'] = (int) ($row['id'] ?? 0);
 $_SESSION['auth_rev'] = (int) ($row['auth_rev'] ?? 0);

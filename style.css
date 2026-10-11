@@ -203,13 +203,59 @@ body.ff-system-broadcast-open {
     gap: 10px;
     margin-bottom: 0.75rem;
 }
+.pos-menu-subheading {
+    font-size: 1.02rem !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.05em;
+    margin-top: 0.8rem !important;
+    margin-bottom: 0.35rem !important;
+    color: #475569 !important;
+    border-bottom: none;
+    padding-bottom: 0;
+}
 .pos-menu-grid > .posWrap {
     min-width: 0;
 }
+.pos-subcat-filter {
+    display: flex;
+    gap: 0.28rem;
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    padding: 0.15rem 0 0.18rem;
+    margin-bottom: 0.4rem;
+    -webkit-overflow-scrolling: touch;
+}
+.pos-subcat-filter::-webkit-scrollbar {
+    display: none;
+}
+.ff-subcat-chip {
+    flex: 0 0 auto;
+    min-height: 1.75rem;
+    padding: 0.28rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    line-height: 1.2;
+    font-weight: 700;
+}
 @media (max-width: 576px) {
     .pos-menu-grid {
-        /* Handy: nie mehr als 2 Spalten, damit kein seitliches Scrollen entsteht. */
-        grid-template-columns: repeat(min(var(--pos-cols-mobile, 3), 2), minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .pos-menu-subheading {
+        font-size: 0.9rem !important;
+        margin-top: 0.8rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    .pos-subcat-filter {
+        gap: 0.24rem;
+        margin-bottom: 0.3rem;
+    }
+    .ff-subcat-chip {
+        font-size: 0.62rem;
+        padding: 0.26rem 0.52rem;
     }
 }
 
@@ -246,15 +292,22 @@ body.ff-system-broadcast-open {
 .posWrap > button.ui-btn.big,
 .posWrap > button[id^="btn-pos-"] {
     box-sizing: border-box;
-    padding-left: 48px !important;
-    padding-right: 48px !important;
+    padding-left: 44px !important;
+    padding-right: 44px !important;
+    cursor: pointer;
+    transition: box-shadow 0.12s ease, transform 0.08s ease;
+}
+.posWrap > .pos-menu-tile:active,
+.posWrap > button.ui-btn.big:active,
+.posWrap > button[id^="btn-pos-"]:active {
+    transform: scale(0.992);
 }
 .posWrap .btnHinweis,
 .posWrap .btnMinus {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 48px;
+    width: 44px;
     height: auto;
     margin: 0;
     padding: 0;
@@ -274,26 +327,29 @@ body.ff-system-broadcast-open {
 }
 .posWrap .btnMinus {
     left: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(15, 23, 42, 0.46);
     color: #fff !important;
-    font-size: 26px;
+    font-size: 24px;
     border-right: 1px solid rgba(255, 255, 255, 0.22);
 }
 .posWrap .btnHinweis {
     right: 0;
-    background: rgba(127, 29, 29, 0.78);
+    background: rgba(71, 85, 105, 0.62);
     color: #fff !important;
-    font-size: 22px;
+    font-size: 20px;
     border-left: 1px solid rgba(255, 255, 255, 0.22);
 }
 .posWrap .btnHinweis:active {
     transform: scale(0.97);
 }
 .posWrap .btnMinus:hover {
-    background: rgba(0, 0, 0, 0.75);
+    background: rgba(15, 23, 42, 0.62);
 }
 .posWrap .btnMinus:active {
     transform: scale(0.97);
+}
+.posWrap .btnHinweis:hover {
+    background: rgba(51, 65, 85, 0.75);
 }
 
 /* Tisch: Bestellung abschicken unten rechts (sticky) */
@@ -338,12 +394,17 @@ body.ff-system-broadcast-open {
 
 /* Positions-Kacheln: ausgewählt / wenig Bestand / klare Kontraste */
 .pos-tile--selected {
-    background: linear-gradient(180deg, #facc15 0%, #eab308 92%) !important;
-    color: #1c1917 !important;
-    box-shadow: inset 0 0 0 3px #a16207, 0 0 0 2px rgba(120, 53, 15, 0.35) !important;
+    box-shadow: inset 0 0 0 3px #fff, 0 0 0 1px rgba(17, 24, 39, 0.6) !important;
     font-weight: 700;
 }
+.pos-tile--sold-out:not(.pos-tile--selected):not(:disabled) {
+    background: linear-gradient(180deg, #b10f0f 0%, #8f0d0d 100%) !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.2), 0 3px 0 rgba(68, 10, 10, 0.7) !important;
+}
 .pos-tile--low-stock:not(.pos-tile--selected):not(:disabled) {
+    background: linear-gradient(180deg, #ffc97a 0%, #ffb454 100%) !important;
+    color: #2c1a08 !important;
     box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.22), 0 3px 0 rgba(124, 45, 18, 0.65) !important;
 }
 
@@ -357,42 +418,185 @@ body.ff-system-broadcast-open {
     opacity: 0.95;
 }
 .pos-tile-meta--warn {
+    color: #2c1a08;
     font-weight: 800 !important;
     font-size: 0.78rem !important;
     line-height: 1.2 !important;
     letter-spacing: 0.01em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    text-shadow: none;
     display: block !important;
     overflow: visible !important;
     word-break: break-word;
     -webkit-line-clamp: unset !important;
 }
 .pos-tile-meta--sold {
+    color: #fff;
     font-weight: 800;
     letter-spacing: 0.03em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
+.pos-tile-name {
+    display: block;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+.pos-tile--sold-out .pos-tile-name {
+    text-decoration: line-through;
+}
+
+.pos-tile-name .pos-first-word {
+    display: block;
+    font-size: 2em;
+    line-height: 1;
+}
+
+.pos-tile-name .pos-rest-name {
+    display: block;
+    font-size: 1.05em;
+    line-height: 1.15;
+    opacity: 0.94;
+}
+
+@keyframes ffPosTileSaveHit {
+    0% {
+        transform: scale(1);
+        box-shadow: inset 0 0 0 3px #a16207, 0 0 0 2px rgba(120, 53, 15, 0.35);
+    }
+    40% {
+        transform: scale(1.06);
+        box-shadow: inset 0 0 0 3px #78350f, 0 0 0 5px rgba(16, 185, 129, 0.62), 0 0 0 14px rgba(16, 185, 129, 0.32), 0 6px 16px rgba(5, 46, 22, 0.42);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: inset 0 0 0 3px #a16207, 0 0 0 2px rgba(120, 53, 15, 0.35);
+    }
+}
+
+@keyframes ffPosCntSaveHit {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    45% {
+        transform: scale(1.35);
+        text-shadow: 0 0 10px rgba(16, 185, 129, 0.55);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1);
+        text-shadow: none;
+        opacity: 1;
+    }
+}
+
+@keyframes ffPosCheckOverlay {
+    0% {
+        opacity: 0;
+        transform: translateY(4px) scale(0.65) rotate(-10deg);
+    }
+    24% {
+        opacity: 1;
+        transform: translateY(0) scale(1.12) rotate(0deg);
+    }
+    72% {
+        opacity: 1;
+        transform: translateY(0) scale(1) rotate(0deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-2px) scale(0.92) rotate(2deg);
+    }
+}
+
+.pos-tile--save-hit {
+    position: relative;
+    animation: ffPosTileSaveHit 0.68s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+
+.pos-tile--save-hit::after {
+    content: '✓';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    min-width: 1.45rem;
+    height: 1.45rem;
+    padding: 0 0.1rem;
+    border-radius: 999px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.45rem;
+    text-align: center;
+    box-shadow: 0 3px 10px rgba(22, 163, 74, 0.45);
+    pointer-events: none;
+    z-index: 13;
+    animation: ffPosCheckOverlay 0.68s ease-out;
+}
+
+.pos-cnt--save-hit {
+    display: inline-block;
+    animation: ffPosCntSaveHit 0.68s cubic-bezier(0.2, 0.85, 0.25, 1);
+}
+
 @media (max-width: 576px) {
     .posWrap .pos-menu-tile,
     .posWrap .pos-menu-tile.big {
-        min-height: 92px;
-        padding: 10px 48px !important;
-        font-size: 0.88rem;
+        min-height: 104px;
+        padding: 10px 50px 10px 12px !important;
+        font-size: 0.86rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        text-align: left;
+    }
+    .pos-tile-name {
+        display: block;
+        width: 100%;
+        font-size: 0.82rem;
+        line-height: 1.18;
+        font-weight: 800;
+        letter-spacing: 0;
+        margin-bottom: 0.08rem;
+    }
+    .pos-tile-name .pos-first-word {
+        display: block;
+        font-size: 1.6em;
+        line-height: 1;
+    }
+    .pos-tile-name .pos-rest-name {
+        display: block;
+        font-size: 0.9em;
+        line-height: 1.15;
     }
     .pos-tile-meta:not(.pos-tile-meta--warn) {
-        font-size: 0.62rem;
+        display: block;
+        font-size: 0.66rem;
         line-height: 1.1;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
+        opacity: 0.95;
         word-break: break-word;
     }
     .pos-tile-meta--warn {
-        font-size: 0.74rem !important;
+        font-size: 0.7rem !important;
+        line-height: 1.2 !important;
     }
     .posWrap .cnt {
-        font-size: 0.8rem;
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        min-width: 1.5rem;
+        height: 1.5rem;
+        padding: 0 0.3rem;
+        border-radius: 999px;
+        background: rgba(17, 24, 39, 0.72);
+        color: #fff;
+        font-size: 0.68rem;
+        font-weight: 800;
+        line-height: 1.5rem;
+        text-align: center;
+        z-index: 2;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
     }
 }
 
@@ -431,6 +635,30 @@ body.ff-system-broadcast-open {
     width: 100%;
     gap: 3px;
     align-items: stretch;
+    position: relative;
+}
+.tisch-delete-btn {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgba(185, 28, 28, 0.8);
+    border-radius: 50%;
+    background: #dc2626;
+    color: #fff;
+    font-size: 0.9rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    z-index: 2;
+}
+.tisch-delete-btn:hover {
+    background: #b91c1c;
 }
 .tisch-grid-flags {
     display: flex;
@@ -492,6 +720,39 @@ body.ff-system-broadcast-open {
     border-color: var(--ff-primary) !important;
     background: var(--ff-tint-panel) !important;
 }
+#ffTischEditModal {
+    position: fixed !important;
+    inset: 0 !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 1rem !important;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1055;
+    max-height: 100vh;
+    overflow: hidden;
+}
+#ffTischEditModal.show,
+#ffTischEditModal.modal.show {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+#ffTischEditModal .modal-dialog {
+    width: min(92vw, 420px) !important;
+    max-width: 420px !important;
+    max-height: calc(100vh - 2rem) !important;
+    margin: 0 !important;
+}
+#ffTischEditModal .modal-content {
+    max-height: calc(100vh - 2rem);
+    overflow: hidden;
+}
+#ffTischEditModal .modal-body {
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+}
+
 .tisch-admin-legend { font-size: 0.85rem; }
 
 /* Tischübersicht: Typ-Klassen (Hintergrund zusätzlich inline) */
@@ -551,6 +812,53 @@ body.ff-system-broadcast-open {
 .tab-content {
     padding: 1rem 0;
     min-height: 200px;
+}
+
+.ff-order-tabs-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.ff-order-tabs-head #TischAnzeigen {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ff-order-waitline {
+    flex: 0 0 auto;
+    font-size: 0.8rem;
+    color: #64748b;
+    line-height: 1.1;
+    margin-bottom: 0.42rem;
+    white-space: nowrap;
+    text-align: right;
+}
+
+.ff-order-wait-sep {
+    opacity: 0.5;
+    padding: 0 0.22rem;
+}
+
+.ff-order-wait-icon {
+    margin-left: 0.4rem;
+    font-size: 0.82rem;
+    opacity: 0.75;
+    vertical-align: baseline;
+}
+
+@media (max-width: 768px) {
+    .ff-order-tabs-head {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .ff-order-waitline {
+        margin-bottom: 0;
+        align-self: flex-end;
+        font-size: 0.74rem;
+    }
 }
 
 /* Tisch / Direktverkauf: Wisch zwischen Speisen & Getränke (Handy); vertikal scrollen bleibt prioritär */
@@ -1206,6 +1514,323 @@ body.ff-system-broadcast-open {
     padding: 0.38rem 0.45rem;
 }
 
+#BestellungZahlen .pay-actions-primary {
+    align-items: stretch;
+}
+#BestellungZahlen .pay-actions-primary .pay-action-btn {
+    flex: 1 1 11rem;
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.2;
+}
+
+#BestellungZahlen .ff-pay-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+#BestellungZahlen {
+    --ff-pay-footer-height: 18rem;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - 11rem);
+}
+
+#BestellungZahlen .ff-pay-header {
+    position: sticky;
+    top: 0;
+    z-index: 1043;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background: #fff;
+    border-bottom: 1px solid #e4e7ec;
+    padding: 0.35rem 0 0.45rem;
+}
+
+#BestellungZahlen .ff-pay-header h2 {
+    margin: 0;
+    font-size: 1.35rem;
+    line-height: 1.1;
+}
+
+#BestellungZahlen .ff-pay-back-btn {
+    white-space: nowrap;
+    font-size: 0.86rem;
+    padding: 0.28rem 0.58rem;
+    line-height: 1.15;
+}
+
+#BestellungZahlen .ff-pay-list-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(var(--ff-pay-footer-height) + 0.75rem);
+}
+
+#BestellungZahlen .ff-pay-footer {
+    background: #fff;
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 0;
+    z-index: 1042;
+    width: min(100vw, 1200px);
+    max-width: 100vw;
+    box-sizing: border-box;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+    border-top: 1px solid #d8dee6;
+    padding-top: 0.75rem;
+    padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+    padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+    padding-bottom: calc(0.6rem + env(safe-area-inset-bottom, 0px));
+}
+
+#BestellungZahlen .ff-pay-select-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.5rem 0 0.75rem;
+}
+
+#BestellungZahlen .ff-pay-mini-toggle {
+    flex: 1 1 0;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.95rem;
+    line-height: 1.1;
+}
+
+#BestellungZahlen .ff-pay-row {
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#BestellungZahlen .ff-pay-selectable-row {
+    cursor: pointer;
+}
+
+#BestellungZahlen .ff-pay-col-name {
+    font-size: 1.2rem;
+    line-height: 1.25;
+    padding: 0.75rem 0.35rem;
+}
+
+#BestellungZahlen .ff-pay-col-name small {
+    font-size: 0.9rem;
+}
+
+#BestellungZahlen .ff-pay-meta-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.8rem;
+    margin-top: 0.35rem;
+    font-size: 0.92rem;
+    line-height: 1.2;
+    color: #505a66;
+}
+
+#BestellungZahlen .ff-pay-meta-chip {
+    white-space: nowrap;
+}
+
+#BestellungZahlen .ff-pay-col-sum {
+    font-size: 1.25rem;
+    font-weight: 700;
+    padding: 0.75rem 0 0.75rem 0.35rem;
+}
+
+#BestellungZahlen .ff-pay-amount {
+    white-space: nowrap;
+}
+
+#BestellungZahlen .ff-pay-toggle-btn {
+    min-width: 2.05rem;
+    width: 2.05rem;
+    height: 2.05rem;
+    padding: 0;
+    font-size: 1.05rem;
+    line-height: 1;
+}
+
+#BestellungZahlen .ff-pay-total-row h2 {
+    margin: 0;
+    font-size: 1.35rem;
+}
+
+#BestellungZahlen #summeZahlung {
+    font-size: 1.9rem;
+    font-weight: 800;
+}
+
+#BestellungZahlen .pay-actions-secondary {
+    margin-top: 0.85rem !important;
+    padding-top: 0.85rem !important;
+    margin-bottom: 0 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+#BestellungZahlen .pay-actions-secondary > * {
+    flex: 0 0 auto;
+}
+
+#BestellungZahlen .pay-actions-secondary .btn {
+    padding: 0.52rem 0.68rem;
+    font-size: 0.95rem;
+    line-height: 1.15;
+    white-space: nowrap;
+}
+
+@media (max-width: 767.98px) {
+    #BestellungZahlen .ff-pay-layout {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    #BestellungZahlen .ff-pay-header {
+        padding-top: 0.25rem;
+        padding-bottom: 0.35rem;
+    }
+    #BestellungZahlen .ff-pay-header h2 {
+        font-size: 1.2rem;
+    }
+    #BestellungZahlen .ff-pay-back-btn {
+        font-size: 0.8rem;
+        padding: 0.24rem 0.48rem;
+    }
+    #BestellungZahlen .ff-pay-table,
+    #BestellungZahlen .ff-pay-table tbody,
+    #BestellungZahlen .ff-pay-table tr,
+    #BestellungZahlen .ff-pay-table td {
+        display: block;
+        width: 100% !important;
+    }
+    #BestellungZahlen .ff-pay-row {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 0.2rem 0.55rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid #edf1f5;
+        align-items: center;
+    }
+    #BestellungZahlen .ff-pay-row .ff-pay-col-name,
+    #BestellungZahlen .ff-pay-row .ff-pay-col-controls,
+    #BestellungZahlen .ff-pay-row .ff-pay-col-sum {
+        width: auto !important;
+    }
+    #BestellungZahlen .ff-pay-row .ff-pay-col-name {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        padding-left: 0 !important;
+    }
+    #BestellungZahlen .ff-pay-row .ff-pay-col-controls {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        text-align: right !important;
+        padding: 0 0 0 0.25rem !important;
+        align-self: center !important;
+    }
+    #BestellungZahlen .ff-pay-row .ff-pay-col-sum {
+        grid-column: 3;
+        grid-row: 2;
+        text-align: right !important;
+        padding: 0 0 0 0.25rem !important;
+        align-self: end;
+    }
+    #BestellungZahlen .ff-pay-meta-inline {
+        gap: 0.25rem 0.7rem;
+        font-size: 0.86rem;
+    }
+    #BestellungZahlen .pay-controls-row {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.25rem;
+    }
+    #BestellungZahlen .ff-pay-total-row {
+        display: grid !important;
+        grid-template-columns: 1fr auto;
+        gap: 0.5rem;
+        align-items: end;
+        padding: 0.35rem 0 0;
+    }
+    #BestellungZahlen .ff-pay-total-row td {
+        width: auto !important;
+        padding: 0 !important;
+    }
+    #BestellungZahlen .pay-actions-primary {
+        margin: 0.8rem 0 0 !important;
+    }
+    #BestellungZahlen .pay-actions-secondary {
+        gap: 0.45rem !important;
+    }
+    #BestellungZahlen .pay-actions-secondary .btn {
+        font-size: 0.84rem;
+        padding: 0.42rem 0.52rem;
+    }
+}
+
+@media (min-width: 768px) {
+    #BestellungZahlen .pay-actions-primary .pay-action-btn {
+        flex: 0 1 auto;
+    }
+}
+
+/* Hinweis zur Position: bessere Lesbarkeit von Haupttext und Zusatzfeldern */
+#ffPosHinweisModal .modal-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+#ffPosHinweisModal .ff-hinweis-menge-label {
+    font-size: 1.05rem;
+}
+#ffPosHinweisModal #ffHinweisMenge {
+    font-size: 1.1rem;
+    font-weight: 600;
+    min-height: 2.8rem;
+}
+#ffPosHinweisModal .ff-hinweis-portion-title {
+    font-size: 1.22rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
+#ffPosHinweisModal .ff-hinweis-options-row .form-check {
+    padding-left: 1.55em;
+}
+#ffPosHinweisModal .ff-hinweis-options-row .form-check-input {
+    transform: scale(1.15);
+    margin-top: 0.2em;
+}
+#ffPosHinweisModal .ff-hinweis-option-label {
+    font-size: 1.05rem;
+    line-height: 1.28;
+    font-weight: 600;
+}
+#ffPosHinweisModal .ff-hinweis-zeile {
+    font-size: 1.08rem;
+    line-height: 1.35;
+    min-height: 5.8rem;
+}
+#ffPosHinweisModal .ff-hinweis-loading,
+#ffPosHinweisModal .ff-hinweis-zero {
+    font-size: 1rem;
+    line-height: 1.3;
+}
+@media (max-width: 576px) {
+    #ffPosHinweisModal .modal-title {
+        font-size: 1.18rem;
+    }
+    #ffPosHinweisModal .ff-hinweis-portion-title {
+        font-size: 1.14rem;
+    }
+    #ffPosHinweisModal .ff-hinweis-option-label {
+        font-size: 1rem;
+    }
+}
+
 /* Bezahlen (Tisch): nur ab 768px – Handy nutzt unverändert die Inline-Styles aus list_BestellungenZahlen.php */
 @media (min-width: 768px) {
     #BestellungZahlen .ff-pay-table {
@@ -1263,4 +1888,727 @@ body.ff-system-broadcast-open {
         margin: 0;
         font-size: 1.25rem;
     }
+}
+
+/* Kellner-Bestellansicht (Smartphone): Name über volle Breite, −/… unten, Zähler als Badge */
+@media (max-width: 576px) {
+    html body .posWrap.posWrap > .pos-menu-tile.pos-menu-tile,
+    html body .posWrap.posWrap > button[id^="btn-pos-"].pos-menu-tile {
+        height: auto !important;
+        min-height: 96px !important;
+        padding: 8px 10px 40px 10px !important;
+        justify-content: flex-start !important;
+    }
+    html body .posWrap.posWrap .pos-tile-name {
+        padding-right: 2.1rem;
+    }
+    html body .posWrap.posWrap .btnMinus,
+    html body .posWrap.posWrap .btnHinweis {
+        top: auto !important;
+        bottom: 5px !important;
+        width: 46px !important;
+        height: 30px !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 20px !important;
+    }
+    html body .posWrap.posWrap .btnMinus {
+        left: 6px !important;
+        right: auto !important;
+    }
+    html body .posWrap.posWrap .btnHinweis {
+        right: 6px !important;
+        left: auto !important;
+    }
+}
+
+/* Tabs + Unterkategorien beim Scrollen fixiert (unter der Navbar) */
+.ff-order-tabs-head {
+    position: sticky;
+    top: var(--ff-nav-h, 56px);
+    z-index: 30;
+    background: #fff;
+    padding-top: 0.25rem;
+}
+.tisch-order-main .pos-subcat-filter {
+    position: sticky;
+    top: calc(var(--ff-nav-h, 56px) + var(--ff-tabs-h, 70px));
+    z-index: 25;
+    background: #fff;
+}
+@media (max-width: 576px) {
+    .tisch-order-main .pos-subcat-filter {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        margin-bottom: 0.2rem !important;
+    }
+    .tisch-order-main .pos-subcat-filter > span {
+        display: none;
+    }
+    .tisch-order-main .pos-subcat-filter .ff-subcat-chip {
+        flex: 0 0 auto;
+        min-height: 36px;
+    }
+}
+
+@media (max-width: 576px) {
+    html body .posWrap.posWrap .cnt {
+        background: none !important;
+        box-shadow: none !important;
+        color: inherit !important;
+        min-width: 0;
+        height: auto;
+        line-height: 1;
+        font-size: 1.5rem;
+        font-weight: 800;
+        padding: 0;
+        top: 8px;
+        right: 10px;
+    }
+}
+@media (max-width: 576px) {
+    html body .posWrap.posWrap .btnHinweis {
+        width: auto !important;
+        min-width: 62px;
+        padding: 0 10px !important;
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+    }
+}
+
+/* Lange Namen: Silbentrennung statt Überlauf */
+@media (max-width: 576px) {
+    html body .posWrap.posWrap .pos-tile-name {
+        padding-right: 1.9rem;
+        min-width: 0;
+        max-width: 100%;
+    }
+    html body .posWrap.posWrap .pos-tile-name .pos-first-word {
+        font-size: 1.5em;
+        overflow-wrap: normal;
+        word-break: normal;
+    }
+    html body .posWrap.posWrap .pos-tile-name .pos-rest-name {
+        hyphens: auto;
+        -webkit-hyphens: auto;
+        overflow-wrap: anywhere;
+    }
+}
+
+/* Handy: Abschicken-Leiste, Statuszeile neben Tabs, weniger Leerraum oben */
+@media (max-width: 576px) {
+    html body .app-content:has(.tisch-bestellungen-wrap) {
+        padding-top: 0.3rem !important;
+        padding-bottom: 0.5rem !important;
+    }
+    .ff-order-tabs-head {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .ff-order-tabs-head .ff-order-waitline {
+        white-space: normal;
+        align-self: center;
+        max-width: 42%;
+        font-size: 0.7rem;
+        line-height: 1.25;
+        margin: 0;
+    }
+    .tisch-order-footer {
+        padding: 8px 8px max(10px, env(safe-area-inset-bottom, 0px)) 8px;
+        background: #fff;
+        border-top: 1px solid #dee2e6;
+        box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+    }
+    .tisch-order-footer .btn {
+        width: 100%;
+        min-width: 0;
+        min-height: 52px;
+        font-size: 1.05rem;
+        border-radius: 12px;
+        margin: 0 !important;
+    }
+    .tisch-order-footer .ff-send-info {
+        font-weight: 800;
+    }
+}
+
+/* UX: Feedback beim Tippen, Hinweis-Schnellauswahl */
+@keyframes ffTapPop {
+    0% { transform: scale(1); }
+    40% { transform: scale(0.94); }
+    100% { transform: scale(1); }
+}
+.pos-menu-tile.ff-tap-pop {
+    animation: ffTapPop 0.18s ease-out;
+}
+.ff-hinweis-quick-btn.active {
+    background: #198754;
+    border-color: #198754;
+    color: #fff;
+}
+
+@media (max-width: 576px) {
+    /* 1: gelben Warenkorb-Hinweis kompakt (Details zeigt die Abschicken-Leiste) */
+    .ff-unsent-alert {
+        padding: 0.3rem 0.6rem !important;
+        margin: 0.3rem 0.5rem 0 !important;
+        font-size: 0.8rem !important;
+        line-height: 1.25;
+    }
+    .ff-unsent-alert br { display: none; }
+
+    /* 2: gewählte Kacheln deutlicher */
+    html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
+        box-shadow: inset 0 0 0 3px #fff, 0 0 0 1px rgba(17, 24, 39, 0.6) !important;
+    }
+
+    /* 3: ausverkaufte Kacheln ausgegraut, ohne Buttons, mit Badge */
+    html body .posWrap.posWrap > .pos-menu-tile.pos-tile--sold-out:not(.pos-tile--selected) {
+        background: #e5e7eb !important;
+        color: #6b7280 !important;
+        box-shadow: inset 0 0 0 2px #d1d5db !important;
+        opacity: 1;
+    }
+    html body .posWrap.posWrap > .pos-menu-tile.pos-tile--sold-out::after {
+        content: "Ausverkauft";
+        position: absolute;
+        left: 10px;
+        bottom: 8px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: #b91c1c;
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-decoration: none;
+    }
+    html body .posWrap.posWrap:has(.pos-tile--sold-out):has(.cnt:empty) > .btnMinus,
+    html body .posWrap.posWrap:has(.pos-tile--sold-out):has(.cnt:empty) > .btnHinweis {
+        display: none !important;
+    }
+
+    /* 4: größere Touch-Ziele und mehr Kontrast */
+    html body .posWrap.posWrap > .btnMinus.btnMinus,
+    html body .posWrap.posWrap > .btnHinweis.btnHinweis {
+        height: 40px !important;
+        background: #475569 !important;
+        color: #fff !important;
+        font-weight: 700;
+    }
+    html body .posWrap.posWrap > .btnMinus.btnMinus { min-width: 56px; }
+    html body .posWrap.posWrap > .pos-menu-tile.pos-menu-tile {
+        padding-bottom: 50px !important;
+    }
+
+    /* 5: Unterkategorie-Chips unterscheidbarer */
+    .tisch-order-main .pos-subcat-filter .ff-subcat-chip.btn-outline-secondary {
+        background: #f1f5f9;
+        border-color: #94a3b8;
+        color: #1e293b;
+    }
+    .tisch-order-main .pos-subcat-filter .ff-subcat-chip {
+        margin-right: 2px;
+        font-weight: 600;
+    }
+
+    /* 7: Kopfzeile: größerer Tischname und größere Buttons */
+    .app-navbar .navbar-brand {
+        font-size: 1.15rem !important;
+        font-weight: 700;
+    }
+    .app-navbar .btn.btn-sm {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 0.35rem 0.8rem;
+        font-size: 0.95rem;
+    }
+}
+
+/* ==========================================================================
+   Küche / Schank / Druckziel: Lesbarkeit, Wartezeit-Farben, Sidebar
+   ========================================================================== */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow:not(.ff-station-cols-fixed) {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)) !important;
+    gap: 1rem;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-gruppe {
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
+    border-radius: 14px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-bestellt h2,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-offen h2 {
+    font-size: 1.6rem !important;
+    line-height: 1.2;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-kellner {
+    font-size: 0.95rem;
+    color: #475569;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row button.kueche-btn-fertig--done {
+    font-size: 1.1rem !important;
+    font-weight: 700;
+    min-height: 48px;
+    padding: 8px 12px !important;
+    text-align: left;
+    line-height: 1.25;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row {
+    margin-bottom: 6px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion {
+    font-size: 1.05rem !important;
+    min-height: 50px;
+    padding: 10px 14px !important;
+    width: 100%;
+    border-radius: 10px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-wartend-zeit {
+    display: inline-block;
+    align-self: flex-start;
+    margin: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.kueche-bestellung-wrap.ff-wait-warn { box-shadow: inset 5px 0 0 #f59e0b; }
+.kueche-bestellung-wrap.ff-wait-warn .kueche-wartend-zeit { background: #fef3c7; color: #92400e; }
+.kueche-bestellung-wrap.ff-wait-late { box-shadow: inset 5px 0 0 #dc2626; background: #fef2f2; }
+.kueche-bestellung-wrap.ff-wait-late .kueche-wartend-zeit { background: #dc2626; color: #fff; }
+
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar {
+    position: sticky !important;
+    top: 70px !important;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    padding: 16px !important;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar .kueche-wartend {
+    font-size: 1.6rem !important;
+    padding: 8px 0 12px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar input[type="button"] {
+    font-size: 1.1rem !important;
+    padding: 12px 14px !important;
+    text-align: left;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row {
+    padding: 8px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-unfertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig {
+    padding: 6px;
+}
+
+/* Mengenangabe (z. B. 0.5L) direkt neben dem ersten Namensteil, gleiche Größe */
+.pos-tile-name .pos-first-word .pos-qty {
+    display: inline-block;
+    white-space: nowrap;
+    font: inherit;
+}
+
+/* Minus-Button nur bei vorhandener Bestellung (Anzahl > 0) */
+:root:root body .posWrap.posWrap:has(.cnt:empty) > .btnMinus.btnMinus,
+:root:root body .posWrap.posWrap:has(.cnt[data-cnt="0"]) > .btnMinus.btnMinus {
+    display: none !important;
+}
+
+/* Unterkategorien deutlich als Gruppe abgrenzen */
+.pos-subcat-section {
+    border: 3px solid var(--sub-color, #94a3b8);
+    border-radius: 12px;
+    background: rgba(148, 163, 184, 0.10);
+    padding: 0 0.5rem 0.5rem;
+    margin: 0.75rem 0;
+    overflow: hidden;
+}
+.pos-subcat-section > .pos-menu-subheading {
+    margin: 0 -0.5rem 0.5rem !important;
+    padding: 0.4rem 0.75rem !important;
+    background: var(--sub-color, #475569);
+    color: var(--sub-text, #fff) !important;
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+}
+
+/* ==========================================================================
+   Kellner-Bestellseite: Feinschliff (Handy)
+   ========================================================================== */
+/* Bestellte Kachel: zweilagiger Ring (dunkel + weiß), auch auf hellen Farben sichtbar */
+.pos-tile--selected,
+html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
+    box-shadow: inset 0 0 0 2px #111827, inset 0 0 0 4px #fff, 0 0 0 1px #111827 !important;
+}
+
+/* Kategorie-Rahmen: dünner, Randfarbe abgedunkelt */
+.pos-subcat-section {
+    border: 2px solid #94a3b8;
+    border: 2px solid color-mix(in srgb, var(--sub-color, #94a3b8) 70%, #000);
+}
+
+/* Filter-Chips: Verlauf am rechten Rand zeigt, dass man scrollen kann */
+.tisch-order-main .pos-subcat-filter {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+    padding-right: 26px;
+}
+
+/* Hinweis-Button nur als Symbol */
+.posWrap .btnHinweis {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+/* Wartezeit mit Symbol */
+.ff-order-waitline .ff-order-wait-icon { margin: 0 0.25rem 0 0; }
+
+@media (max-width: 576px) {
+    /* 4: Warenkorb-Hinweis oben entfällt, die Abschicken-Leiste zeigt es bereits */
+    .ff-unsent-alert { display: none !important; }
+
+    /* 7: weniger Rand, mehr Platz für Kacheln */
+    .tisch-order-main .tab-content.p-2 { padding: 0.35rem !important; }
+    .pos-subcat-section {
+        padding: 0 0.3rem 0.3rem;
+        margin: 0.5rem 0;
+    }
+    .pos-subcat-section > .pos-menu-subheading {
+        margin: 0 -0.3rem 0.35rem !important;
+    }
+
+    /* 9: Tischname größer */
+    :root:root:root .navbar.app-navbar .navbar-brand { font-size: 1.3rem !important; }
+
+    /* 3: Hinweis-Symbol-Button kompakt */
+    html body .posWrap.posWrap > .btnHinweis.btnHinweis {
+        min-width: 46px;
+        width: 46px !important;
+        padding: 0 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* 10: Abschicken-Leiste einheitlich grün, nur grau wenn nichts zu senden ist */
+    .tisch-order-footer .btn:not(.disabled):not(:disabled) {
+        background: #16a34a !important;
+        color: #fff !important;
+        border-color: #15803d !important;
+        opacity: 1 !important;
+    }
+}
+
+/* Zahlen: Gruppen nach Küche-fertig-Zeit */
+#BestellungZahlen .ff-pay-group-head {
+    cursor: pointer;
+    background: #e2e8f0;
+}
+#BestellungZahlen .ff-pay-group-head > td {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.6rem !important;
+    border-top: 3px solid #475569;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+#BestellungZahlen .ff-pay-group-pick {
+    flex: 0 0 auto;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid #475569;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+#BestellungZahlen .ff-pay-group-head.is-all-selected { background: #86efac; }
+#BestellungZahlen .ff-pay-group-head.is-all-selected .ff-pay-group-pick { background: #16a34a; color: #fff; border-color: #15803d; }
+
+/* Zahlen: Gruppenkopf zweizeilig, Auswahlkreise, Stepper, kompakte Fußleiste */
+#BestellungZahlen .ff-pay-group-title {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    min-width: 0;
+}
+#BestellungZahlen .ff-pay-group-time { font-size: 1.05rem; }
+#BestellungZahlen .ff-pay-group-sub { font-size: 0.85rem; font-weight: 600; color: #475569; }
+#BestellungZahlen .ff-pay-group-head.is-part-selected { background: #fef08a; }
+
+#BestellungZahlen .ff-pay-toggle-btn.pay-plus,
+#BestellungZahlen .ff-pay-toggle-btn.pay-minus {
+    width: 2.5rem;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    font-size: 0;
+    border-width: 2px;
+    padding: 0;
+    box-sizing: border-box;
+    height: 2.5rem !important;
+    min-height: 2.5rem !important;
+    max-height: 2.5rem !important;
+    width: 2.5rem !important;
+    align-self: center;
+    flex: none;
+    overflow: hidden;
+    color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+#BestellungZahlen .ff-pay-toggle-btn.pay-plus {
+    background: #fff;
+    border-color: #94a3b8;
+}
+#BestellungZahlen .ff-pay-toggle-btn.pay-minus {
+    background: #16a34a;
+    border-color: #15803d;
+}
+#BestellungZahlen .ff-pay-toggle-btn.pay-minus::before {
+    content: '✓';
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #fff;
+}
+
+#BestellungZahlen .ff-pay-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+#BestellungZahlen .ff-pay-stepper .btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 1.3rem;
+    line-height: 1;
+    border: 2px solid #94a3b8;
+    background: #fff;
+}
+#BestellungZahlen .ff-pay-stepper .ff-pay-grp-plus { border-color: #15803d; color: #15803d; }
+#BestellungZahlen .ff-pay-grp-count {
+    min-width: 2.4rem;
+    text-align: center;
+    font-weight: 800;
+    font-size: 1rem;
+}
+#BestellungZahlen .ff-pay-merged-row { cursor: pointer; }
+
+@media (max-width: 576px) {
+    #BestellungZahlen .ff-pay-total-row h2 { font-size: 1.05rem; }
+    #BestellungZahlen #summeZahlung { font-size: 1.55rem; }
+    #BestellungZahlen .pay-actions-primary { gap: 0.4rem !important; margin: 0.4rem 0 0 !important; }
+    #BestellungZahlen .pay-actions-primary .pay-action-btn {
+        flex: 1 1 40%;
+        padding: 0.45rem 0.5rem !important;
+        min-height: 44px;
+        font-size: 0.95rem;
+    }
+}
+
+/* Zahlen: Auswahlkreise auch im Terminal-Modus rund */
+:root:root:root #BestellungZahlen .ff-pay-toggle-btn.pay-plus,
+:root:root:root #BestellungZahlen .ff-pay-toggle-btn.pay-minus {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-height: 2.5rem !important;
+    max-height: 2.5rem !important;
+    min-width: 2.5rem !important;
+}
+
+/* Zahlen: Stepper/Kreise und Summe immer an gleicher Stelle */
+@media (max-width: 576px) {
+    :root:root:root #BestellungZahlen .ff-pay-row {
+        grid-template-columns: minmax(0, 1fr) 8.6rem 4.8rem !important;
+    }
+    :root:root:root #BestellungZahlen .ff-pay-merged-row > td {
+        height: auto !important;
+        min-height: 2.5rem;
+        align-self: center;
+    }
+    #BestellungZahlen .ff-pay-col-controls { justify-self: end; }
+    :root:root:root #BestellungZahlen .ff-pay-merged-row > .ff-pay-col-sum { grid-row: 1 / span 2 !important; display: flex !important; align-items: center; justify-content: flex-end; padding-top: 0 !important; padding-bottom: 0 !important; }
+    #BestellungZahlen .ff-pay-col-sum { text-align: right; justify-self: end; white-space: nowrap; }
+}
+
+/* Zahlen: Feinschliff (einheitliche Zeilen, helles Grün, einklappbare Gruppen, Mehr-Menü) */
+#BestellungZahlen .ff-pay-group-title { flex: 1 1 auto; }
+#BestellungZahlen .ff-pay-group-toggle {
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0;
+    transition: transform 0.15s;
+}
+#BestellungZahlen .ff-pay-group-head.is-collapsed .ff-pay-group-toggle { transform: rotate(-90deg); }
+:root:root:root #BestellungZahlen .ff-pay-collapsed { display: none !important; }
+#BestellungZahlen .ff-pay-group-head.is-part-selected { background: #dcfce7; }
+#BestellungZahlen .ff-pay-group-head.is-all-selected { background: #bbf7d0; }
+#BestellungZahlen .ff-pay-row[style*="220, 252, 231"],
+#BestellungZahlen .ff-pay-row.is-sel { box-shadow: inset 4px 0 0 #16a34a; }
+
+@media (max-width: 576px) {
+    :root:root:root #BestellungZahlen .ff-pay-row > td {
+        height: auto !important;
+        align-self: center !important;
+    }
+    :root:root:root #BestellungZahlen .ff-pay-row > .ff-pay-col-sum {
+        grid-row: 1 / span 2 !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: flex-end;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    :root:root:root #BestellungZahlen .ff-pay-row > .ff-pay-col-controls {
+        grid-row: 1 / span 2 !important;
+        display: flex !important;
+        justify-content: flex-end;
+        align-items: center;
+    }
+    #BestellungZahlen .ff-pay-meta-inline { margin-top: 0.1rem; }
+}
+
+#BestellungZahlen .ff-pay-more > summary {
+    list-style: none;
+    cursor: pointer;
+    text-align: center;
+    padding: 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    color: #475569;
+}
+#BestellungZahlen .ff-pay-more > summary::-webkit-details-marker { display: none; }
+#BestellungZahlen .ff-pay-more .pay-actions-secondary { border-top: 0 !important; }
+#BestellungZahlen .ff-pay-more .pay-actions-secondary > * { flex: 1 1 45%; }
+
+/* Zahlen: Runde 3 (kompakte Fußleiste, größere Gruppen-Buttons, ruhigere Zeilen) */
+#BestellungZahlen .ff-pay-group-ord { font-weight: 600; color: #475569; }
+#BestellungZahlen .ff-pay-group-pick {
+    padding: 0.5rem 0.9rem;
+    min-height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.9rem;
+    border-width: 2px;
+}
+#BestellungZahlen .ff-pay-single-count { opacity: 0.55; }
+#BestellungZahlen .ff-pay-row { border-bottom: 1px solid #d5dde8; }
+#BestellungZahlen .ff-pay-row:not(.is-sel):not([style*="220, 252, 231"]):nth-of-type(even) { background-color: #f8fafc; }
+#summeZahlung.ff-pay-sum-selected { color: #15803d; }
+#BestellungZahlen .ff-pay-more > summary { display: block; }
+
+@media (max-width: 576px) {
+    :root:root:root #BestellungZahlen .ff-pay-col-name { font-size: 1.1rem; line-height: 1.25; }
+    :root:root:root #BestellungZahlen .ff-pay-meta-chip { font-size: 0.78rem; }
+    :root:root:root #BestellungZahlen .pay-actions-primary {
+        flex-wrap: nowrap !important;
+        align-items: stretch;
+        gap: 0.35rem !important;
+    }
+    :root:root:root #BestellungZahlen .pay-actions-primary .pay-action-btn {
+        flex: 1 1 0 !important;
+        min-width: 0;
+        font-size: 0.82rem !important;
+        line-height: 1.15;
+        padding: 0.3rem 0.2rem !important;
+        min-height: 48px !important;
+    }
+    #BestellungZahlen .ff-pay-more-inline { position: relative; flex: 0 0 48px; margin: 0; }
+    #BestellungZahlen .ff-pay-more-inline > summary {
+        width: 48px;
+        height: 100%;
+        min-height: 48px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        line-height: 1;
+    }
+    #BestellungZahlen .ff-pay-more-inline .pay-actions-secondary {
+        position: absolute;
+        right: 0;
+        bottom: calc(100% + 0.4rem);
+        width: min(18rem, 86vw);
+        flex-direction: column;
+        padding: 0.5rem;
+        background: #fff;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.6rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+        z-index: 30;
+    }
+    #BestellungZahlen .ff-pay-more-inline .pay-actions-secondary > * { flex: 0 0 auto; width: 100%; }
+}
+
+/* Zahlen: Innenabstände (Text nicht am Rand, Gruppenkopf nicht abgeschnitten) */
+@media (max-width: 576px) {
+    :root:root:root #BestellungZahlen .ff-pay-row > .ff-pay-col-name { padding-left: 0.9rem !important; }
+    :root:root:root #BestellungZahlen .ff-pay-row > .ff-pay-col-sum { padding-right: 0.8rem !important; }
+    :root:root:root #BestellungZahlen .ff-pay-group-head > td {
+        height: auto !important;
+        min-height: 3.6rem;
+        padding: 0.75rem 0.8rem 0.65rem !important;
+        gap: 0.6rem;
+        border-top-width: 3px;
+    }
+    #BestellungZahlen .ff-pay-group-head { margin-top: 0.4rem; }
+    #BestellungZahlen .ff-pay-group-sub { display: flex; flex-wrap: wrap; column-gap: 0.1rem; }
+    #BestellungZahlen .ff-pay-group-ord { white-space: nowrap; }
+    #BestellungZahlen .ff-pay-group-pick { white-space: nowrap; padding: 0.5rem 0.75rem; }
+    #BestellungZahlen .ff-pay-row[style*="220, 252, 231"],
+    #BestellungZahlen .ff-pay-row.is-sel { box-shadow: inset 5px 0 0 #16a34a; }
+    :root:root:root #BestellungZahlen .pay-actions-primary .pay-action-btn { white-space: normal; font-size: 0.8rem !important; }
+    #btnBezahlenGesamtEinzeln { word-break: keep-all; }
+}
+@media (max-width: 576px) {
+    #BestellungZahlen .ff-pay-group-sub { flex-wrap: nowrap; font-size: 0.78rem; white-space: nowrap; }
+    #BestellungZahlen .ff-pay-group-sub > span { font-size: inherit; }
+    :root:root:root #BestellungZahlen .pay-actions-primary #btnBezahlenGesamtEinzeln { white-space: nowrap; font-size: 0.74rem !important; }
+}
+
+/* Zahlen: Runde 5 */
+#BestellungZahlen .ff-pay-row:nth-of-type(even):not(.is-sel) { background-color: transparent !important; }
+#BestellungZahlen .ff-pay-row { border-bottom: 1px solid #e2e8f0; }
+#BestellungZahlen .ff-pay-hint { font-size: 0.8rem; color: #64748b; padding: 0.3rem 0.8rem 0.5rem; }
+#BestellungZahlen .ff-pay-group-head.is-all-selected .ff-pay-group-pick { min-width: 7.5rem; justify-content: center; }
+@media (max-width: 576px) {
+    :root:root:root #BestellungZahlen .ff-pay-group-head > td { min-height: 3.2rem; padding: 0.55rem 0.8rem !important; }
+    #BestellungZahlen .ff-pay-group-sub { font-size: 0.88rem; }
+    #BestellungZahlen .ff-pay-group-pick { min-width: 7.5rem; justify-content: center; }
+    :root:root:root #BestellungZahlen .ff-pay-toggle-btn.pay-plus,
+    :root:root:root #BestellungZahlen .ff-pay-toggle-btn.pay-minus,
+    :root:root:root #BestellungZahlen .ff-pay-grp-minus,
+    :root:root:root #BestellungZahlen .ff-pay-grp-plus {
+        width: 2.25rem !important;
+        min-width: 2.25rem !important;
+        height: 2.25rem !important;
+        min-height: 2.25rem !important;
+        max-height: 2.25rem !important;
+        border-width: 1.5px;
+    }
+    :root:root:root #BestellungZahlen .pay-actions-primary .pay-action-btn { font-size: 0.9rem !important; font-weight: 600; }
 }

@@ -236,7 +236,7 @@ document.getElementById('btnCreate').addEventListener('click', function() {
                     + (teEsc ? ' <code class="small">' + teEsc + '</code>' : ' Queue / Print-Client prüfen.')
                     + '</p>';
             }
-            msgEl.innerHTML = '<strong class="text-success">OK:</strong> ' + r.rechnungsnummer + ' (' + Number(r.total).toFixed(2) + ' EUR)'
+            msgEl.innerHTML = '<strong class="text-success">OK:</strong> ' + r.rechnungsnummer + ' (' + Number(r.total).toFixed(2).replace('.', ',') + ' €)'
                 + '<br><br>'
                 + '<a href="rechnung_pdf.php?id=' + r.rechnung_id + '" target="_blank" rel="noopener" class="btn btn-primary">PDF erneut öffnen (A4)</a>'
                 + extra;
