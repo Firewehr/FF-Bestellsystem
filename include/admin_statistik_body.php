@@ -17,10 +17,6 @@ function ff_stat_out(string $s): string {
 
 function ff_stat_format_eur($amount): string {
     $amount = (float)$amount;
-    if (class_exists('NumberFormatter')) {
-        $fmt = new \NumberFormatter('de_AT', \NumberFormatter::CURRENCY);
-        return (string)$fmt->formatCurrency($amount, 'EUR');
-    }
     return number_format($amount, 2, ',', '.') . ' €';
 }
 
@@ -268,6 +264,50 @@ function ff_admin_render_statistik_inner(
         }
         ff_admin_info_panel('statHintOverview', $overviewHtml);
 
+        $qrOrderSql = 'SELECT
+                CASE WHEN bestellungen.kellner LIKE \'QR-Tisch-%\'
+                    THEN \'QR-Code\'
+                    ELSE \'Ohne QR-Code\'
+                END AS bestellart,
+                COUNT(*) AS anzahl
+            FROM bestellungen
+            WHERE bestellungen.`delete` = 0 '
+            . ($hasF ? $F['fBeidesPlain'] : '')
+            . $captureDate['sql']
+            . ' GROUP BY bestellart';
+        $qrOrderResult = mysqli_query($conn, $qrOrderSql);
+        $qrOrderCounts = ['QR-Code' => 0, 'Ohne QR-Code' => 0];
+        if ($qrOrderResult) {
+            while ($qrOrderRow = mysqli_fetch_assoc($qrOrderResult)) {
+                $orderType = (string)($qrOrderRow['bestellart'] ?? '');
+                if (isset($qrOrderCounts[$orderType])) {
+                    $qrOrderCounts[$orderType] = (int)$qrOrderRow['anzahl'];
+                }
+            }
+        }
+        $qrOrderTotal =
+            $qrOrderCounts['QR-Code'] +
+            $qrOrderCounts['Ohne QR-Code'];
+        $qrOrderQrPercent = $qrOrderTotal > 0
+            ? ($qrOrderCounts['QR-Code'] * 100 / $qrOrderTotal)
+            : 0;
+        $qrOrderClassicPercent = $qrOrderTotal > 0
+            ? ($qrOrderCounts['Ohne QR-Code'] * 100 / $qrOrderTotal)
+            : 0;
+        echo '<div class="card border-secondary mb-3">';
+        echo '<div class="card-body">';
+        echo '<h5 class="card-title">Bestellzeilen mit und ohne QR-Code</h5>';
+        echo '<div class="row align-items-center g-3">';
+        echo '<div class="col-md-5"><canvas id="qrOrderTypeChart" height="220"'
+            . ' data-qr-count="' . $qrOrderCounts['QR-Code'] . '"'
+            . ' data-classic-count="' . $qrOrderCounts['Ohne QR-Code'] . '"></canvas></div>';
+        echo '<div class="col-md-7 small">';
+        echo '<div><strong>QR-Code:</strong> ' . $qrOrderCounts['QR-Code']
+            . ' (' . number_format($qrOrderQrPercent, 1, ',', '.') . ' %)</div>';
+        echo '<div><strong>Ohne QR-Code:</strong> ' . $qrOrderCounts['Ohne QR-Code']
+            . ' (' . number_format($qrOrderClassicPercent, 1, ',', '.') . ' %)</div>';
+        echo '</div></div></div></div>';
+
         if ($hasF) {
             $qAll = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 0 ' . $F['fBeidesPlain'] . $captureDate['sql'];
             $qDel = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 1 ' . $F['fBeidesPlain'];
@@ -416,6 +456,9 @@ function ff_admin_render_statistik_inner(
             'statHintPosition',
             '<p class="mb-0">Stückanzahl: alle <strong>bestellten</strong> Gästezeilen (inkl. Gratis, Schreibaus) + Mitarbeiter-Verpflegung. '
             . 'Ein Tag: 15-Minuten-Grafik; mehrere Tage: pro Tag. CSV mit Spalten Gratis/Schreibaus zum Filtern.</p>'
+            . '<p class="mb-0 mt-2">Zusätzlich: Ø-Wartezeit „Bestellung → Küche fertig“ je Zeitabschnitt (gestrichelte Linie, rechte Achse) '
+            . 'sowie ein Streudiagramm mit der Wartezeit jeder einzelnen Bestellung. Punkte/Linienpunkte über der Schwelle (Standard 15 Min) '
+            . 'werden rot markiert, um kritische Zeiträume mit langen Küchenzeiten hervorzuheben.</p>'
         );
         echo '<div class="row g-2 mb-2 align-items-end">';
         echo '<div class="col-md-2"><label class="form-label">Von Datum</label><input type="date" id="posStatVon" class="form-control form-control-sm" value="' . ff_stat_out($captureDate['from_date']) . '"></div>';
@@ -437,6 +480,15 @@ function ff_admin_render_statistik_inner(
         echo '<p class="mb-2"><strong id="posStatTitel"></strong></p>';
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead id="posStatThead"><tr><th>Datum</th><th>Uhrzeit</th><th>Art</th><th>Menge</th><th>Tisch / Bereich</th><th>Notiz</th></tr></thead><tbody id="posStatTbody"></tbody></table></div>';
         echo '<div class="mb-2"><canvas id="posStatChart" width="400" height="200"></canvas></div>';
+        echo '<div id="posStatWaitWrap" class="mb-2" style="display:none;">';
+        echo '<h6 class="mt-3">Wartezeit je Bestellung (Bestellung → Küche fertig)</h6>';
+        echo '<p class="small text-muted mb-1">Jeder Punkt = eine Bestellung, chronologisch sortiert. Rot = Wartezeit über der kritischen Schwelle.</p>';
+        echo '<canvas id="posStatWaitChart" width="400" height="160"></canvas>';
+        echo '<h6 class="mt-3">Zeitstrahl: Bearbeitungsdauer je Bestellung</h6>';
+        echo '<p class="small text-muted mb-1">Jede Linie reicht von Bestellzeit bis Küche-fertig-Zeit. Farbe = Druckziel (z.B. Küche/Schank); rot umrandet = längste Bearbeitungsdauer im Zeitraum.</p>';
+        echo '<div id="posStatWaitTimelineLegend" class="d-flex flex-wrap gap-3 small mb-1"></div>';
+        echo '<div style="height:420px;"><canvas id="posStatWaitTimelineChart"></canvas></div>';
+        echo '</div>';
         echo '<div class="d-flex flex-wrap gap-2 align-items-center">';
         echo '<button type="button" class="btn btn-outline-success btn-sm" onclick="posStatExportCsv();">Excel / CSV exportieren</button>';
         echo ff_admin_info_btn('statHintPosCsv', 'Hinweis: Positions-CSV');

@@ -12,6 +12,8 @@
  * laufendem Fest“ zeigt – im Normalfall mit nur einem aktiven Fest entspricht das genau der Erwartung.
  */
 
+require_once __DIR__ . '/ff_schema_login.php';
+
 if (!function_exists('ff_fest_scope_ensure_columns')) {
     /**
      * Stellt die Spalte `fest_id` (NULL) auf positionen / position_subcategories / beilagen sicher.
@@ -19,6 +21,9 @@ if (!function_exists('ff_fest_scope_ensure_columns')) {
      */
     function ff_fest_scope_ensure_columns(mysqli $conn): void
     {
+        if (ff_schema_session_ok()) {
+            return;
+        }
         static $tables = ['positionen', 'position_subcategories', 'beilagen'];
         foreach ($tables as $tbl) {
             $r = @mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $tbl) . "'");
@@ -69,6 +74,32 @@ if (!function_exists('ff_fest_scope_attach_last')) {
             return;
         }
         @mysqli_query($conn, "UPDATE `{$table}` SET `fest_id`={$fid} WHERE `{$pk}`=" . (int) $insertId . ' LIMIT 1');
+    }
+}
+
+if (!function_exists('ff_fest_scope_current_id')) {
+    function ff_fest_scope_current_id(mysqli $conn): int
+    {
+        require_once __DIR__ . '/settings.php';
+        $id = (int) setting_get($conn, 'current_fest_id', '0');
+        if ($id > 0) {
+            return $id;
+        }
+        $result = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
+        $row = $result ? mysqli_fetch_assoc($result) : null;
+        return (int) ($row['id'] ?? 0);
+    }
+}
+
+if (!function_exists('ff_fest_scope_position_sql')) {
+    function ff_fest_scope_position_sql(mysqli $conn, string $alias = 'p'): string
+    {
+        $safeAlias = preg_replace('/[^a-zA-Z0-9_]/', '', $alias) ?: 'p';
+        $festId = ff_fest_scope_current_id($conn);
+        if ($festId <= 0) {
+            return ' AND 1=0 ';
+        }
+        return ' AND (' . $safeAlias . '.fest_id IS NULL OR ' . $safeAlias . '.fest_id = ' . $festId . ') ';
     }
 }
 

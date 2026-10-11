@@ -4,13 +4,14 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_login.php';
 require_once __DIR__ . '/user_landing.php';
 
 /** Spalte users.can_direktverkauf (Migration, läuft auch bei gesetztem Schema-Flag). */
 function ff_users_ensure_direktverkauf_column(mysqli $conn): void
 {
     static $done = false;
-    if ($done) {
+    if ($done || ff_schema_session_ok()) {
         return;
     }
     $done = true;
