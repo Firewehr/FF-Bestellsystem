@@ -43,26 +43,29 @@ try {
     $result = mysqli_query($conn, $sql);
     ?>
     <div class="manage-fragment-header mb-4 pb-3 border-bottom">
-        <h4 class="text-primary fw-semibold mb-1">Getränke · Kurzliste</h4>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1"><h4 class="text-primary fw-semibold mb-1">Getränke · Kurzliste</h4><button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button></div>
         <p class="small text-muted mb-0">Schnellpflege wie bei Speisen, nur für Getränke (Typ 2).</p>
     </div>
 
-    <form class="card border-0 bg-light mb-4" onsubmit="addMeal(); return false;">
-        <div class="card-body py-3">
+    <div id="ffNewPosModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);overflow:auto;padding:1rem" onclick="if(event.target===this)ffCloseNewPosModal()">
+    <div class="bg-white rounded shadow mx-auto position-relative" style="max-width:520px;margin-top:5vh">
+    <button type="button" class="btn-close position-absolute top-0 end-0 m-3" aria-label="Schließen" onclick="ffCloseNewPosModal()"></button>
+    <form class="card border-0 mb-0" onsubmit="addMeal(); return false;">
+        <div class="card-body p-4">
             <h6 class="fw-semibold mb-3">Neue Position</h6>
-            <div class="row g-2 align-items-end">
-                <div class="col-md-3">
+            <div class="row g-3 ">
+                <div class="col-12">
                     <label class="form-label" for="positionsname">Positionsname</label>
-                    <input type="text" id="positionsname" class="form-control form-control-sm" autocomplete="off">
+                    <input type="text" id="positionsname" class="form-control" autocomplete="off">
                 </div>
-                <div class="col-md-2">
+                <div class="col-12">
                     <label class="form-label" for="kurzbezeichnung">Kurzbezeichnung</label>
-                    <input type="text" id="kurzbezeichnung" class="form-control form-control-sm" autocomplete="off">
+                    <input type="text" id="kurzbezeichnung" class="form-control" autocomplete="off">
                 </div>
                 <input type="hidden" id="type" value="2">
-                <div class="col-md-2">
+                <div class="col-12">
                     <label class="form-label" for="print_target">Druckziel</label>
-                    <select name="print_target" id="print_target" class="form-select form-select-sm">
+                    <select name="print_target" id="print_target" class="form-select">
                         <?php
                         if (count($printTargets) > 0) {
                             foreach ($printTargets as $pt) {
@@ -77,28 +80,31 @@ try {
                         ?>
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-12">
                     <label class="form-label" for="betrag">Betrag</label>
-                    <input type="text" id="betrag" class="form-control form-control-sm" placeholder="0.00">
+                    <input type="text" id="betrag" class="form-control" placeholder="0.00">
                 </div>
-                <div class="col-md-2">
+                <div class="col-12">
                     <label class="form-label" for="selbstkosten_neu">EK (optional)</label>
-                    <input type="text" id="selbstkosten_neu" class="form-control form-control-sm" placeholder="0">
+                    <input type="text" id="selbstkosten_neu" class="form-control" placeholder="0">
                 </div>
-                <div class="col-md-2">
+                <div class="col-12">
                     <label class="form-label" for="kapazitaet">Kapazität</label>
-                    <input type="text" id="kapazitaet" class="form-control form-control-sm" value="-1" placeholder="-1 = ∞">
+                    <input type="text" id="kapazitaet" class="form-control" value="-1" placeholder="-1 = ∞">
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary btn-sm">Anlegen</button>
+                <div class="col-12 text-end">
+                    <button type="submit" class="btn btn-primary">Anlegen</button>
                 </div>
             </div>
         </div>
     </form>
+    </div>
+    </div>
 
     <h6 class="fw-semibold mb-2">Bestehende Getränke</h6>
+    <p class="manage-table-scroll-hint small text-muted mb-2">Tabelle seitlich wischen oder scrollen, um alle Felder zu erreichen.</p>
     <div class="table-responsive border rounded">
-    <table class="table table-sm table-hover align-middle mb-0" id="tischTable">
+    <table class="table table-sm table-hover align-middle mb-0 manage-pos-short-table" id="tischTable">
         <thead class="table-light">
             <tr>
                 <th>Reihenfolge</th>
@@ -186,7 +192,7 @@ try {
                 echo '<td><input type="color" class="form-control form-control-color form-control-sm" onchange="farbeSpeiseSpeichern(' . $rowid . ')" id="html5colorpickerM' . $rowid . '" value="' . htmlspecialchars($color, ENT_QUOTES, 'UTF-8') . '" title="Kachelfarbe"></td>';
 
                 echo '<td>';
-                echo ' <button type="button" class="btn btn-sm btn-outline-danger py-0" onclick="deleteMeal(' . $rowid . ')">Löschen</button>';
+                echo ' <button type="button" class="btn btn-sm btn-outline-danger py-0 ff-icon-action" onclick="deleteMeal(' . $rowid . ')" title="Getränk löschen" aria-label="Getränk löschen">&#128465;</button>';
                 echo '</td>';
 
                 echo '</tr>';

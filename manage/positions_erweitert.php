@@ -16,8 +16,10 @@ if (!is_readable($ffMenuHelpersPath)) {
 require_once $ffMenuHelpersPath;
 require_once __DIR__ . '/../include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/../include/ff_position_stock_summary.php';
+require_once __DIR__ . '/../include/ff_fest_scope.php';
 
 ff_menu_ensure_schema($conn);
+ff_fest_scope_ensure_columns($conn);
 
 $printTargets = [];
 $srPt = mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
@@ -35,31 +37,40 @@ if ($srSub) {
     }
 }
 
+$adminFeste = [];
+$srFeste = mysqli_query($conn, 'SELECT id, name, code, aktiv FROM feste ORDER BY aktiv DESC, created_at DESC, name ASC');
+if ($srFeste) {
+    while ($fest = mysqli_fetch_assoc($srFeste)) {
+        $adminFeste[] = $fest;
+    }
+}
+
 function m_out(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
 }
 ?>
-<div class="manage-fragment-header mb-4 pb-3 border-bottom">
-    <h4 class="text-primary fw-semibold mb-1">Alle Positionen (erweitert)</h4>
-    <p class="small text-muted mb-0">Typ, Preis, EK, Druckziel, Unterkategorien und Kachel-/Schriftfarben.</p>
-</div>
-<div class="mb-3">
-    <h5 class="mb-2 fw-semibold">Position anlegen</h5>
+<div>
+    <div id="ffNewPosModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);overflow:auto;padding:1rem" onclick="if(event.target===this)ffCloseNewPosModal()">
+    <div class="bg-white rounded shadow mx-auto position-relative" style="max-width:520px;margin-top:5vh">
+    <button type="button" class="btn-close position-absolute top-0 end-0 m-3" aria-label="Schließen" onclick="ffCloseNewPosModal()"></button>
+    <div class="p-4">
+    <h5 class="mb-3 fw-semibold">Neue Position</h5>
     <form onsubmit="manageProduktNeu(); return false;">
-    <div class="row g-2 mb-3">
-        <div class="col-md-3"><label class="form-label">Positionsname</label><input type="text" id="Positionsname" class="form-control form-control-sm"></div>
-        <div class="col-md-2"><label class="form-label">Kategorie</label><select id="produktkategorie" class="form-select form-select-sm" onchange="ffSyncPosSubcategoryOptions(); ffSyncPosPrintTargetDefault();"><option value="1">Speise</option><option value="2">Getränk</option></select></div>
-        <div class="col-md-3"><label class="form-label">Unterkategorie</label><select id="posSubcategory" class="form-select form-select-sm" onchange="ffSyncPosKassaFromSubcategory();">
+    <div class="row g-3">
+        <div class="col-12"><label class="form-label">Positionsname</label><input type="text" id="Positionsname" class="form-control"></div>
+        <div class="col-12"><label class="form-label">Kurzbezeichnung</label><input type="text" id="pos_new_kurz" class="form-control"></div>
+        <div class="col-12"><label class="form-label">Kategorie</label><select id="produktkategorie" class="form-select" onchange="ffSyncPosSubcategoryOptions(); ffSyncPosPrintTargetDefault();"><option value="1">Speise</option><option value="2">Getränk</option></select></div>
+        <div class="col-12"><label class="form-label">Unterkategorie</label><select id="posSubcategory" class="form-select" onchange="ffSyncPosKassaFromSubcategory();">
             <option value="0" data-type="0" data-kassa-only="0">— keine —</option>
             <?php foreach ($adminSubs as $sx): ?>
             <option value="<?php echo (int)$sx['id']; ?>" data-type="<?php echo (int)$sx['type']; ?>" data-kassa-only="<?php echo (int)($sx['kassa_only'] ?? 0); ?>"><?php echo ((int)$sx['type'] === 2 ? '[G] ' : '[S] ') . m_out((string)$sx['name']); ?><?php echo (int)($sx['kassa_only'] ?? 0) === 1 ? ' (Kasse)' : ''; ?></option>
             <?php endforeach; ?>
         </select></div>
-        <div class="col-md-2"><label class="form-label">Kachel-Hintergrund</label><input type="color" id="pos_tile_bg" class="form-control form-control-sm" value="#ffffff"></div>
-        <div class="col-md-2"><label class="form-label">Preis (VK)</label><input type="text" id="Betrag" class="form-control form-control-sm" placeholder="z. B. 3,50"></div>
-        <div class="col-md-2"><label class="form-label">Selbstkosten (EK)</label><input type="text" id="Selbstkosten" class="form-control form-control-sm" value="0" placeholder="z. B. 1,50"></div>
-        <div class="col-md-2"><label class="form-label">Kapazität</label><input type="number" id="Kapazitaet" class="form-control form-control-sm" value="-1" placeholder="-1 = unendlich"></div>
-        <div class="col-md-2"><label class="form-label">Druckziel</label><div class="ff-print-target-cell"><select id="pos_print_target" class="form-select form-select-sm ff-pos-print-target" data-rowid="0">
+        <div class="col-12"><label class="form-label">Kachel-Hintergrund</label><input type="color" id="pos_tile_bg" class="form-control" value="#ffffff"></div>
+        <div class="col-12"><label class="form-label">Preis (VK)</label><input type="text" id="Betrag" class="form-control" placeholder="z. B. 3,50"></div>
+        <div class="col-12"><label class="form-label">Selbstkosten (EK)</label><input type="text" id="Selbstkosten" class="form-control" value="0" placeholder="z. B. 1,50"></div>
+        <div class="col-12"><label class="form-label">Kapazität</label><input type="number" id="Kapazitaet" class="form-control" value="-1" placeholder="-1 = unendlich"></div>
+        <div class="col-12"><label class="form-label">Druckziel</label><div class="ff-print-target-cell"><select id="pos_print_target" class="form-select ff-pos-print-target" data-rowid="0">
             <?php
             if (count($printTargets) > 0) {
                 foreach ($printTargets as $pt) {
@@ -71,12 +82,15 @@ function m_out(string $s): string {
             }
             ?>
         </select></div></div>
-        <div class="col-md-2 d-flex align-items-end pb-1">
+        <div class="col-12">
             <label class="form-check-label small mb-0" title="Nur Direktverkauf/Kasse"><input type="checkbox" class="form-check-input" id="pos_new_kassa_only" onchange="ffSyncPrintTargetForKassa(document.getElementById(\'pos_print_target\'), this.checked)"> Nur Kasse</label>
         </div>
-        <div class="col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary btn-sm">Anlegen</button></div>
+        <div class="col-12 text-end"><button type="submit" class="btn btn-primary">Anlegen</button></div>
     </div>
     </form>
+    </div>
+    </div>
+    </div>
 </div>
 
 <?php
@@ -93,10 +107,61 @@ if ($result4) {
     }
 }
 ?>
-<p class="small text-muted d-md-none mb-2">Schmale Anzeige: Tabelle <strong>horizontal wischen</strong>, um Kapazität und Rest zu erreichen.</p>
-<div class="table-responsive border rounded manage-pos-table-wide">
-<table class="table table-hover table-sm align-middle mb-0 manage-pos-table-stretch" id="mySpeisekarteManage">
-<thead><tr><th class="ff-drag-col" title="Zum Sortieren ziehen"><span class="text-muted user-select-none" aria-hidden="true">⠿</span></th><th>Reihung</th><th>Position</th><th>Typ</th><th>Unterkategorie</th><th>Kachel &amp; Schrift</th><th>VK</th><th>EK</th><th>Druckziel</th><th title="Nur Direktverkauf/Kasse, nicht für Kellner">Nur Kasse</th><th title="Verbraucht: Gäste-Bestellungen + Mitarbeiter-Verpflegung">Verbrauch</th><th>Kapazität</th><th>Rest</th><th></th></tr></thead>
+<div id="ffRezepturModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);overflow:auto;padding:1rem" onclick="if(event.target===this)ffCloseRezepturModal()">
+    <div class="bg-white rounded shadow mx-auto position-relative" style="max-width:900px;margin-top:5vh">
+        <button type="button" class="btn-close position-absolute top-0 end-0 m-3" aria-label="Schließen" onclick="ffCloseRezepturModal()"></button>
+        <div class="p-4">
+            <h6 class="fw-semibold mb-3">Rezeptur: <span id="ffRezepturModalTitle"></span></h6>
+            <div class="table-responsive">
+                <table id="ffRezepturModalTable" class="table table-sm align-middle mb-2">
+                    <thead class="table-light"><tr><th style="width:32%">Komponente</th><th style="width:12%">Menge</th><th>Optional</th><th>Standard</th><th style="width:18%">Gruppe</th><th style="width:10%">Sort</th><th></th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="ffRezepturModalAddRow()">+ Komponente</button>
+                <div>
+                    <button type="button" class="btn btn-danger me-2" onclick="ffCloseRezepturModal()">Abbrechen</button>
+                    <button type="button" class="btn btn-success" onclick="ffRezepturModalSave()">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+.ff-pos-scroll { overflow-x: auto; overflow-y: visible; }
+.ff-pos-scroll td:last-child, .ff-pos-scroll th:last-child { position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -4px 0 6px -4px rgba(0,0,0,.25); }
+.ff-pos-scroll th:last-child { background: #f8f9fa; z-index: 4; }
+.ff-pos-scroll tr.ff-manage-pos-row:hover td:last-child { background: #f5f5f5; }
+.ff-pos-scroll .ff-pos-display-cell { min-width: 17rem; }
+.ff-pos-scroll .ff-pos-color { width: 1.9rem !important; min-width: 1.9rem; padding: 0 !important; flex: 0 0 auto; }
+.ff-pos-scroll .ff-pos-display-cell .ff-pos-print-target { flex: 1 1 6rem; min-width: 6rem; }
+.ff-pos-scroll .ff-pos-display-cell input[type=checkbox] { width: auto; }
+.ff-pos-scroll .ff-manage-pos-tbody[data-type="2"] tr:first-child td { border-top: 3px solid #adb5bd; }
+.ff-pos-scroll tr.ff-manage-pos-row:focus-within td { background: #fffbe6; }
+</style>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="ffPosFilterBar">
+    <h5 class="text-primary fw-semibold mb-0 me-1">Alle Positionen</h5>
+    <span class="badge rounded-pill text-bg-secondary" style="cursor:help" title="Typ, Preis, EK, Druckziel, Unterkategorien und Kachel-/Schriftfarben. Unterkategorie, Kachel, Schrift, VK und EK werden automatisch gespeichert. Typ und Druckziel: direkte Auswahl. Nur Kasse: Position nur im Direktverkauf, nicht für Kellner. Reihenfolge: Spalte ⠿ ziehen (innerhalb Speisen bzw. Getränke) oder die Zahl anklicken.">i</span>
+    <button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button>
+    <input type="search" id="posFilterQ" class="form-control form-control-sm" style="max-width:260px" placeholder="Suchen (Name / Kurzbezeichnung)" oninput="ffFilterPosRows()" autocomplete="off">
+    <select id="posFilterType" class="form-select form-select-sm" style="max-width:150px" onchange="ffFilterPosRows()">
+        <option value="">Speisen + Getränke</option>
+        <option value="1">Nur Speisen</option>
+        <option value="2">Nur Getränke</option>
+    </select>
+    <select id="posFilterSub" class="form-select form-select-sm" style="max-width:200px" onchange="ffFilterPosRows()">
+        <option value="">Alle Unterkategorien</option>
+        <?php foreach ($adminSubs as $sx): ?>
+        <option value="<?php echo (int)$sx['id']; ?>"><?php echo ((int)$sx['type'] === 2 ? '[G] ' : '[S] ') . m_out((string)$sx['name']); ?></option>
+        <?php endforeach; ?>
+    </select>
+    <label class="form-check-label small mb-0 text-nowrap"><input type="checkbox" class="form-check-input" id="posFilterKassa" onchange="ffFilterPosRows()"> Nur Kasse</label>
+    <span class="small text-muted ms-auto" id="posFilterCount"></span>
+</div>
+<div class="table-responsive border rounded manage-pos-table-wide ff-pos-scroll">
+<table class="table table-hover table-sm align-middle mb-0 manage-pos-table-stretch ff-pos-fixed" id="mySpeisekarteManage">
+<thead><tr><th class="ff-drag-col" title="Zum Sortieren ziehen"><span class="text-muted user-select-none" aria-hidden="true">⠿</span></th><th>Reihung</th><th>Position</th><th>Fest</th><th>Typ</th><th>Unterkategorie</th><th>Darstellung / Ausgabe</th><th>VK</th><th>EK</th><th title="Nur Direktverkauf/Kasse, nicht für Kellner">Nur Kasse</th><th title="Verbraucht: Gäste-Bestellungen + Mitarbeiter-Verpflegung">Verbrauch</th><th>Kapazität</th><th>Rest</th><th></th></tr></thead>
 <?php
 $curType = null;
 $ffOrderCounts = ff_position_batch_order_counts($conn);
@@ -155,6 +220,17 @@ foreach ($allRows as $row4) {
         . ' data-rowid="' . $rid . '" data-field="Kurzbezeichnung" data-prev="' . $kurz_js . '"'
         . ' value="' . $kurz_js . '" aria-label="Kurzbezeichnung" placeholder="Kurzbezeichnung">';
     echo '</td>';
+    echo '<td><select class="form-select form-select-sm ff-position-fest" onchange="updatePositionFest(' . $rid . ', this.value)" title="Gültigkeit der Position">';
+    echo '<option value="0"' . (empty($row4['fest_id']) ? ' selected' : '') . '>Alle Feste</option>';
+    foreach ($adminFeste as $fest) {
+        $festId = (int)$fest['id'];
+        $festLabel = (string)$fest['name'];
+        if ((string)($fest['code'] ?? '') !== '') {
+            $festLabel .= ' (' . (string)$fest['code'] . ')';
+        }
+        echo '<option value="' . $festId . '"' . ($festId === (int)($row4['fest_id'] ?? 0) ? ' selected' : '') . '>' . m_out($festLabel) . '</option>';
+    }
+    echo '</select></td>';
     echo '<td><select class="form-select form-select-sm" onchange="updateType(' . $rid . ', this.value)" title="Speise / Getränk">';
     echo '<option value="1"' . ($rowType === 1 ? ' selected' : '') . '>Speise</option>';
     echo '<option value="2"' . ($rowType === 2 ? ' selected' : '') . '>Getränk</option>';
@@ -169,13 +245,14 @@ foreach ($allRows as $row4) {
         echo '<option value="' . $sid . '"' . ($sid === $curSub ? ' selected' : '') . '>' . m_out((string)$sx['name']) . '</option>';
     }
     echo '</select></td>';
-    echo '<td class="small">';
-    echo '<div class="d-flex flex-wrap align-items-center gap-1 mb-1">';
-    echo '<input type="color" class="form-control form-control-color form-control-sm" id="pm_tile_' . $rid . '" value="' . m_out((string)$tilePicker) . '" title="Kachel-Hintergrund"' . ($hasTileOv ? '' : ' disabled') . '>';
-    echo '<input type="color" class="form-control form-control-color form-control-sm" id="pm_color_' . $rid . '" value="' . m_out((string)$fontPicker) . '" title="Schriftfarbe">';
-    echo '</div>';
-    echo '<label class="d-block"><input type="checkbox" id="pm_tile_def_' . $rid . '"' . ($hasTileOv ? '' : ' checked') . ' onchange="ffPmTileDefSync(' . $rid . ')"> Standard-Kachel (Gruppe)</label>';
-    echo '</td>';
+    echo '<td class="small ff-pos-display-cell"><div class="d-flex flex-nowrap align-items-center gap-1">';
+    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_tile_' . $rid . '" value="' . m_out((string)$tilePicker) . '" title="Kachel-Hintergrund"' . ($hasTileOv ? '' : ' style="opacity:.45"') . '>';
+    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_color_' . $rid . '" value="' . m_out((string)$fontPicker) . '" title="Schriftfarbe">';
+    echo '<label class="mb-0 text-nowrap" title="Std. = Hintergrundfarbe der Unterkategorie verwenden. Wird abgehakt, sobald eine eigene Hintergrundfarbe gewählt wird."><input type="checkbox" id="pm_tile_def_' . $rid . '"' . ($hasTileOv ? '' : ' checked') . ' onchange="ffPmTileDefSync(' . $rid . ')"> Std.</label>';
+    echo '<select class="form-select form-select-sm ff-pos-print-target" data-rowid="' . $rid . '" onchange="updatePrintTarget(' . $rid . ', this.value)" title="Druckziel">';
+    echo ff_manage_print_target_select_options($conn, $curPrintTarget);
+    echo '</select>';
+    echo '</div></td>';
     echo '<td><input type="text" class="form-control form-control-sm ff-pos-field"'
         . ' data-rowid="' . $rid . '" data-field="Betrag" data-prev="' . $betragJs . '"'
         . ' value="' . $betragJs . '" inputmode="decimal" aria-label="VK"></td>';
@@ -186,9 +263,6 @@ foreach ($allRows as $row4) {
             . ' data-rowid="' . $rid . '" data-field="Selbstkosten" data-prev="' . $ekJs . '"'
             . ' value="' . $ekJs . '" inputmode="decimal" aria-label="EK">'
         : '<span class="text-muted">—</span>') . '</td>';
-    echo '<td class="ff-print-target-cell"><select class="form-select form-select-sm ff-pos-print-target" data-rowid="' . $rid . '" onchange="updatePrintTarget(' . $rid . ', this.value)" title="Druckziel">';
-    echo ff_manage_print_target_select_options($conn, $curPrintTarget);
-    echo '</select></td>';
     echo '<td class="text-center"><label class="mb-0" title="Nur Direktverkauf (Kasse): nicht für Kellner, nicht in Küche/Schank/Druckziel">';
     echo '<input type="checkbox" class="form-check-input" onchange="updateKassaOnly(' . $rid . ', this.checked)"' . ($isKassaOnly ? ' checked' : '') . '>';
     echo '</label></td>';
@@ -196,9 +270,9 @@ foreach ($allRows as $row4) {
     echo '<td title="' . htmlspecialchars($verbrauchTitle, ENT_QUOTES, 'UTF-8') . '">' . $verbraucht . ' / ' . $maxBestellbar . '</td>';
     echo '<td><button type="button" class="btn btn-sm btn-outline-primary" onclick="manageUpdateKapazitaet(' . $rid . ',' . $maxBestellbar . ')">' . $maxBestellbar . '</button></td>';
     echo '<td>' . (int)$rest . ' ' . m_out($text) . '</td>';
-    echo '<td class="text-end text-nowrap"><div class="d-inline-flex flex-wrap gap-1 justify-content-end">';
-    echo '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadRezepturen(' . $rid . ')">Rezeptur</button>';
-    echo '<button type="button" class="btn btn-sm btn-outline-danger" onclick="manageProduktLoeschen(' . $rid . ')">Löschen</button>';
+    echo '<td class="text-end text-nowrap"><div class="d-inline-flex flex-nowrap gap-1 justify-content-end">';
+    echo '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="ffOpenRezepturModal(' . $rid . ')" title="Rezeptur bearbeiten">Rezeptur</button>';
+    echo '<button type="button" class="btn btn-sm btn-outline-danger ff-icon-action" onclick="manageProduktLoeschen(' . $rid . ')" title="Position löschen" aria-label="Position löschen">&#128465;</button>';
     echo '</div></td>';
     echo '</tr>';
 }
@@ -208,4 +282,3 @@ foreach ($allRows as $row4) {
 }
 ?>
 </table></div>
-<p class="text-muted small mb-0">Unterkategorie, Kachel, Schrift, <strong>VK</strong> und <strong>EK</strong>: Änderungen werden <strong>automatisch gespeichert</strong>. Typ und Druckziel: direkte Auswahl. <strong>Nur Kasse:</strong> Position nur im Direktverkauf, nicht für Kellner. <strong>Reihenfolge:</strong> Spalte <em>⠿</em> ziehen (innerhalb Speisen bzw. Getränke) oder die Zahl anklicken. Alternativ: Kurzlisten.</p>

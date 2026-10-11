@@ -13,8 +13,9 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
     <link href="../style.css" rel="stylesheet">
     <link href="../admin.css" rel="stylesheet">
     </head>
-<body class="admin-page manage-stammdaten">
+<body class="admin-page manage-stammdaten<?php echo isset($_GET['embed']) ? ' manage-embedded' : ''; ?><?php echo isset($_GET['view']) && $_GET['view'] === 'tische' ? ' manage-embedded-tische' : ''; ?>">
 
+<?php if (!isset($_GET['embed'])): ?>
 <nav class="navbar navbar-expand-lg admin-navbar sticky-top shadow-sm">
     <div class="container-fluid">
         <a class="btn btn-link text-white text-decoration-none px-2 fw-semibold" href="../index.php">← Zurück</a>
@@ -29,6 +30,7 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="beilagen" onclick="loadBeilagenZusatzinfos(); return false;">Beilagen / Zusatzinfos</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="apidevice" onclick="loadApiDeviceConfig(); return false;">API Device</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="sub" onclick="loadSubcategories(); return false;">Unterkategorien</a></li>
+                <li class="nav-item"><a class="nav-link" href="#" data-nav="bestandteile" onclick="loadBestandteile(); return false;">Bestandteile</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="rez" onclick="loadRezepturen(); return false;">Rezepturen</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="tische" onclick="loadTische(); return false;">Tische</a></li>
                 <li class="nav-item"><a class="nav-link" href="#" data-nav="lock" onclick="loadSperren(); return false;">Sperren</a></li>
@@ -36,8 +38,10 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
                         </div>
             </div>
         </nav>
+                <?php endif; ?>
 
 <div class="admin-content">
+                    <?php if (!isset($_GET['embed'])): ?>
     <div class="card border-0 shadow-sm mb-3 manage-intro-card">
         <div class="card-body py-3">
             <p class="small text-muted mb-2 mb-md-0">
@@ -52,6 +56,7 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <div class="card shadow-sm border mb-4">
         <div class="card-body p-0" id="manageMainCardBody">
@@ -71,7 +76,13 @@ function $(id) { return document.getElementById(id); }
 
 function manageNavActive(key) {
     document.querySelectorAll('[data-nav]').forEach(function(a) {
-        a.classList.toggle('active', a.getAttribute('data-nav') === key);
+        var active = a.getAttribute('data-nav') === key;
+        a.classList.toggle('active', active);
+        if (active) {
+            a.setAttribute('aria-current', 'page');
+        } else {
+            a.removeAttribute('aria-current');
+        }
     });
 }
 
@@ -247,7 +258,7 @@ function ffInitBeilagenZusatzinfosAdmin() {
                     var rid = row.rowid;
                     tr.innerHTML = '<td>' + ffBeilagenEsc(row.name) + '</td>'
                         + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm ff-beilage-bet" data-rowid="' + rid + '" data-prev="' + betVal + '" value="' + betVal + '" title="Beim Verlassen speichern (' + betDisplay + ' €)"></td>'
-                        + '<td><button type="button" class="btn btn-sm btn-outline-danger ff-beilage-del" data-rowid="' + rid + '">Löschen</button></td>';
+                        + '<td><button type="button" class="btn btn-sm btn-outline-danger ff-beilage-del ff-icon-action" data-rowid="' + rid + '" title="Eintrag löschen" aria-label="Eintrag löschen">&#128465;</button></td>';
                     var betInp = tr.querySelector('.ff-beilage-bet');
                     if (betInp) {
                         betInp.addEventListener('blur', function() {
@@ -380,7 +391,7 @@ function ffApiDeviceCfgRenderRows(rows) {
             '<td><select class="form-select form-select-sm ff-ad-match-mode">' + ffApiDeviceCfgMatchModeOptions(matchMode) + '</select></td>' +
             '<td><select class="form-select form-select-sm ff-ad-print-target">' + ffApiDeviceCfgTargetOptions(printTarget) + '</select></td>' +
             '<td><div class="form-check"><input type="checkbox" class="form-check-input ff-ad-enabled" ' + (enabled ? 'checked' : '') + '></div></td>' +
-            '<td><button type="button" class="btn btn-sm btn-outline-danger ff-ad-del">Entfernen</button></td>';
+            '<td><button type="button" class="btn btn-sm btn-outline-danger ff-ad-del ff-icon-action" title="Zuordnung löschen" aria-label="Zuordnung löschen">&#128465;</button></td>';
         tr.querySelector('.ff-ad-del').onclick = function() {
             tr.remove();
             if (tb.querySelectorAll('tr').length === 0) {
@@ -575,6 +586,30 @@ function ffInitManagePositionsErweitertTable() {
     });
 }
 
+function ffFilterPosRows() {
+    var q = (($('posFilterQ') || {}).value || '').trim().toLowerCase();
+    var type = ($('posFilterType') || {}).value || '';
+    var sub = ($('posFilterSub') || {}).value || '';
+    var kassa = !!($('posFilterKassa') && $('posFilterKassa').checked);
+    var rows = document.querySelectorAll('tr.ff-manage-pos-row');
+    var shown = 0;
+    rows.forEach(function(tr) {
+        var n = tr.querySelector('[data-field="Positionsname"]');
+        var k = tr.querySelector('[data-field="Kurzbezeichnung"]');
+        var text = ((n ? n.value : '') + ' ' + (k ? k.value : '')).toLowerCase();
+        var subSel = tr.querySelector('.ff-pm-sub');
+        var kassaChk = tr.querySelector('input[onchange^="updateKassaOnly"]');
+        var ok = (!q || text.indexOf(q) !== -1)
+            && (!type || tr.getAttribute('data-type') === type)
+            && (!sub || (subSel && subSel.value === sub))
+            && (!kassa || (kassaChk && kassaChk.checked));
+        tr.style.display = ok ? '' : 'none';
+        if (ok) shown++;
+    });
+    var c = $('posFilterCount');
+    if (c) c.textContent = shown + ' von ' + rows.length + ' Positionen';
+}
+
 function loadPositionsErweitert() {
     manageNavActive('pos');
     window._managePosReload = loadPositionsErweitert;
@@ -583,6 +618,7 @@ function loadPositionsErweitert() {
         if (typeof ffSyncPosPrintTargetDefault === 'function') ffSyncPosPrintTargetDefault();
         ffInitManagePositionsErweitertTable();
         ffInitPrintTargetKassaRows();
+        ffFilterPosRows();
     });
 }
 
@@ -619,6 +655,13 @@ function ffRezepturGetPositionList() {
     return rows;
 }
 
+function ffRezepturGetBestandteilList() {
+    if (Array.isArray(window._ffManageRezepturenBestandteile) && window._ffManageRezepturenBestandteile.length) {
+        return window._ffManageRezepturenBestandteile;
+    }
+    return [];
+}
+
 function ffRezepturBuildPositionOptions(selected) {
     var list = ffRezepturGetPositionList();
     var sel = parseInt(selected, 10) || 0;
@@ -637,14 +680,16 @@ function ffRezepturBuildPositionOptions(selected) {
 }
 
 function ffRezepturBuildComponentOptions(selected) {
-    var list = ffRezepturGetPositionList();
+    var list = ffRezepturGetBestandteilList();
     var sel = parseInt(selected, 10) || 0;
-    var html = '<option value="0">— Komponente wählen —</option>';
-    list.forEach(function(pos) {
-        var id = parseInt(pos.rowid, 10) || 0;
+    var html = '<option value="0">— Bestandteil wählen —</option>';
+    list.forEach(function(item) {
+        var id = parseInt(item.id, 10) || 0;
         if (!id) return;
-        var label = (parseInt(pos.type, 10) === 2 ? '[G] ' : '[S] ') + (pos.Positionsname || '');
-        if (pos.Kurzbezeichnung) label += ' · ' + pos.Kurzbezeichnung;
+        var label = item.name || '';
+        if (item.einheit) label += ' [' + item.einheit + ']';
+        var kap = parseInt(item.kapazitaet, 10);
+        if (!isNaN(kap) && kap >= 0) label += ' (Kap: ' + kap + ')';
         html += '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + ffRezepturEsc(label) + '</option>';
     });
     return html;
@@ -652,14 +697,20 @@ function ffRezepturBuildComponentOptions(selected) {
 
 function ffRezepturRowHtml(row) {
     var rid = row && row.id ? parseInt(row.id, 10) : 0;
-    var bestandteilId = row && row.bestandteil_position_id ? parseInt(row.bestandteil_position_id, 10) : 0;
+    var bestandteilId = row && row.bestandteil_id ? parseInt(row.bestandteil_id, 10) : 0;
     var menge = row && row.menge !== undefined && row.menge !== null ? String(row.menge) : '1.000';
+    var optionalEnabled = row && parseInt(row.optional_enabled, 10) === 1;
+    var defaultSelected = !(row && parseInt(row.default_selected, 10) === 0);
+    var optionGroup = row && row.option_group ? String(row.option_group) : '';
     var reihenfolge = row && row.reihenfolge !== undefined && row.reihenfolge !== null ? String(row.reihenfolge) : '0';
     return '<tr data-rowid="' + rid + '">' 
         + '<td><select class="form-select form-select-sm ff-rez-comp">' + ffRezepturBuildComponentOptions(bestandteilId) + '</select></td>' 
         + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm ff-rez-qty" value="' + ffRezepturEsc(menge) + '"></td>' 
+        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-optional"' + (optionalEnabled ? ' checked' : '') + '></td>' 
+        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-default"' + (defaultSelected ? ' checked' : '') + '></td>' 
+        + '<td><input type="text" maxlength="64" class="form-control form-control-sm ff-rez-group" placeholder="z. B. brotwahl" value="' + ffRezepturEsc(optionGroup) + '"></td>' 
         + '<td><input type="number" step="1" class="form-control form-control-sm ff-rez-order" value="' + ffRezepturEsc(reihenfolge) + '"></td>' 
-        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-del">Löschen</button></td>' 
+        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-del ff-icon-action" title="Bestandteil löschen" aria-label="Bestandteil löschen">&#128465;</button></td>' 
         + '</tr>';
 }
 
@@ -675,12 +726,203 @@ function ffRezepturBindRowEvents() {
     });
 }
 
+function ffRezepturGroupRowHtml(row) {
+    var bestandteilId = row && row.bestandteil_id ? parseInt(row.bestandteil_id, 10) : 0;
+    var menge = row && row.menge !== undefined && row.menge !== null ? String(row.menge) : '1.000';
+    var optionalEnabled = row && parseInt(row.optional_enabled, 10) === 1;
+    var defaultSelected = !(row && parseInt(row.default_selected, 10) === 0);
+    var optionGroup = row && row.option_group ? String(row.option_group) : '';
+    var reihenfolge = row && row.reihenfolge !== undefined && row.reihenfolge !== null ? String(row.reihenfolge) : '0';
+    return '<tr data-group-row="1">'
+        + '<td><select class="form-select form-select-sm ff-rez-group-comp">' + ffRezepturBuildComponentOptions(bestandteilId) + '</select></td>'
+        + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm ff-rez-group-qty" value="' + ffRezepturEsc(menge) + '"></td>'
+        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-group-optional"' + (optionalEnabled ? ' checked' : '') + '></td>'
+        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-group-default"' + (defaultSelected ? ' checked' : '') + '></td>'
+        + '<td><input type="text" maxlength="64" class="form-control form-control-sm ff-rez-group-option" placeholder="z. B. brotwahl" value="' + ffRezepturEsc(optionGroup) + '"></td>'
+        + '<td><input type="number" step="1" class="form-control form-control-sm ff-rez-group-order" value="' + ffRezepturEsc(reihenfolge) + '"></td>'
+        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-group-del ff-icon-action" title="Optionsgruppe löschen" aria-label="Optionsgruppe löschen">&#128465;</button></td>'
+        + '</tr>';
+}
+
+function ffRezepturCollectRowsFromTable(table) {
+    if (!table) return [];
+    var rows = [];
+    table.querySelectorAll('tr[data-group-row="1"]').forEach(function(tr) {
+        var compEl = tr.querySelector('.ff-rez-group-comp');
+        var qtyEl = tr.querySelector('.ff-rez-group-qty');
+        var optionalEl = tr.querySelector('.ff-rez-group-optional');
+        var defaultEl = tr.querySelector('.ff-rez-group-default');
+        var groupEl = tr.querySelector('.ff-rez-group-option');
+        var orderEl = tr.querySelector('.ff-rez-group-order');
+        if (!compEl || !qtyEl || !orderEl) return;
+        var comp = parseInt(compEl.value, 10) || 0;
+        var qtyRaw = String(qtyEl.value || '').replace(',', '.');
+        var qty = parseFloat(qtyRaw);
+        var optionalEnabled = optionalEl && optionalEl.checked ? 1 : 0;
+        var defaultSelected = defaultEl && defaultEl.checked ? 1 : 0;
+        var optionGroup = groupEl ? String(groupEl.value || '').trim() : '';
+        var order = parseInt(orderEl.value, 10) || 0;
+        if (comp <= 0) return;
+        if (!isFinite(qty) || qty <= 0) qty = 1;
+        rows.push({
+            bestandteil_id: comp,
+            menge: qty,
+            optional_enabled: optionalEnabled,
+            default_selected: defaultSelected,
+            option_group: optionGroup,
+            reihenfolge: order
+        });
+    });
+    return rows;
+}
+
+function ffRezepturScheduleGroupAutosave(positionId, table) {
+    if (!positionId || positionId <= 0 || !table) return;
+    window._ffRezepturGroupAutoSaveTimers = window._ffRezepturGroupAutoSaveTimers || {};
+    var key = 'group_' + positionId;
+    if (window._ffRezepturGroupAutoSaveTimers[key]) {
+        clearTimeout(window._ffRezepturGroupAutoSaveTimers[key]);
+    }
+    window._ffRezepturGroupAutoSaveTimers[key] = setTimeout(function() {
+        ffRezepturSaveGroup(positionId, table);
+        delete window._ffRezepturGroupAutoSaveTimers[key];
+    }, 350);
+}
+
+function ffRezepturSaveGroup(positionId, table) {
+    var status = $('rezepturStatus');
+    var rows = ffRezepturCollectRowsFromTable(table);
+    if (!positionId || positionId <= 0) {
+        alert('Bitte zuerst eine Zielposition wählen.');
+        return;
+    }
+    if (status) status.textContent = 'Speichere Gruppe ...';
+    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(positionId), rows_json: JSON.stringify(rows) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) {
+                if (status) status.textContent = 'Gruppe speichern fehlgeschlagen.';
+                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
+                return;
+            }
+            if (status) status.textContent = 'Gespeichert.';
+            try { ffShowToast('Gespeichert.', 'success', 1400); } catch (e) {}
+            ffRezepturLoad(positionId);
+        })
+        .catch(function() {
+            if (status) status.textContent = 'Netzwerkfehler beim Speichern der Gruppe.';
+        });
+}
+
+function ffRezepturModalBindDelete(tr) {
+    var del = tr.querySelector('.ff-rez-group-del');
+    if (!del) return;
+    del.onclick = function() {
+        tr.remove();
+        var tbody = $('ffRezepturModalTable').querySelector('tbody');
+        if (!tbody.querySelector('tr[data-group-row="1"]')) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
+        }
+    };
+}
+
+function ffRezepturModalAddRow(row) {
+    var tbody = $('ffRezepturModalTable').querySelector('tbody');
+    var empty = tbody.querySelector('td[colspan]');
+    if (empty) empty.closest('tr').remove();
+    var wrap = document.createElement('tbody');
+    wrap.innerHTML = ffRezepturGroupRowHtml(row || { bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
+    var tr = wrap.firstElementChild;
+    tbody.appendChild(tr);
+    ffRezepturModalBindDelete(tr);
+}
+
+function ffOpenRezepturModal(positionId) {
+    var m = $('ffRezepturModal');
+    if (!m) return;
+    apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(positionId))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert('Rezeptur konnte nicht geladen werden.'); return; }
+            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
+            m.setAttribute('data-position-id', String(positionId));
+            $('ffRezepturModalTitle').textContent = d.position_name || ('#' + positionId);
+            $('ffRezepturModalTable').querySelector('tbody').innerHTML = '';
+            if (d.rows && d.rows.length) {
+                d.rows.forEach(function(row) { ffRezepturModalAddRow(row); });
+            } else {
+                $('ffRezepturModalTable').querySelector('tbody').innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
+            }
+            m.style.display = 'block';
+        })
+        .catch(function() { alert('Rezeptur konnte nicht geladen werden.'); });
+}
+
+function ffCloseRezepturModal() {
+    var m = $('ffRezepturModal');
+    if (m) m.style.display = 'none';
+}
+
+function ffRezepturModalSave() {
+    var m = $('ffRezepturModal');
+    var pid = parseInt(m.getAttribute('data-position-id'), 10) || 0;
+    var rows = ffRezepturCollectRowsFromTable($('ffRezepturModalTable'));
+    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(pid), rows_json: JSON.stringify(rows) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt')); return; }
+            ffCloseRezepturModal();
+            ffShowToast('Rezeptur gespeichert.', 'success');
+        })
+        .catch(function() { alert('Netzwerkfehler beim Speichern.'); });
+}
+
+function ffRezepturAddGroupRow(positionId) {
+    if (!Array.isArray(window._ffManageRezepturenBestandteile) || !window._ffManageRezepturenBestandteile.length) {
+        apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(positionId))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d && d.ok) {
+                    window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
+                    ffRezepturAddGroupRow(positionId);
+                } else {
+                    ffShowToast('Bestandteile konnten nicht geladen werden.', 'danger', 2500);
+                }
+            })
+            .catch(function() { ffShowToast('Bestandteile konnten nicht geladen werden.', 'danger', 2500); });
+        return;
+    }
+    var table = document.getElementById('rezepturGroupTable_' + positionId);
+    if (!table) return;
+    var tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    var emptyRow = tbody.querySelector('td[colspan]');
+    if (emptyRow && emptyRow.closest('tr')) {
+        emptyRow.closest('tr').remove();
+    }
+    var wrap = document.createElement('tbody');
+    wrap.innerHTML = ffRezepturGroupRowHtml({ bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
+    tbody.appendChild(wrap.firstElementChild);
+    var delBtn = tbody.querySelector('.ff-rez-group-del:last-of-type');
+    if (delBtn) {
+        delBtn.addEventListener('click', function(ev) {
+            var tr = ev.target.closest('tr');
+            if (tr) tr.remove();
+            if (!tbody.querySelector('tr[data-group-row="1"]')) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
+            }
+            ffRezepturScheduleGroupAutosave(positionId, table);
+        });
+    }
+    ffRezepturScheduleGroupAutosave(positionId, table);
+}
+
 function ffRezepturRenderRows(rows) {
     var tbody = $('rezepturenTbody');
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!rows || !rows.length) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Noch keine Komponenten hinterlegt.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Noch keine Komponenten hinterlegt.</td></tr>';
         return;
     }
     rows.forEach(function(row) {
@@ -696,7 +938,7 @@ function ffRezepturAddRow() {
     if (!tbody) return;
     if (tbody.children.length === 1 && /Noch keine Komponenten/.test(tbody.textContent || '')) tbody.innerHTML = '';
     var wrap = document.createElement('tbody');
-    wrap.innerHTML = ffRezepturRowHtml({ bestandteil_position_id: 0, menge: '1.000', reihenfolge: 0 });
+    wrap.innerHTML = ffRezepturRowHtml({ bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
     tbody.appendChild(wrap.firstElementChild);
     ffRezepturBindRowEvents();
 }
@@ -717,6 +959,7 @@ function ffRezepturLoad(selectedId) {
                 return;
             }
             window._ffManageRezepturenPositionen = Array.isArray(d.positions) ? d.positions : [];
+            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
             posSel.innerHTML = ffRezepturBuildPositionOptions(posId);
             ffRezepturRenderRows(d.rows || []);
             if (status) {
@@ -742,15 +985,28 @@ function ffRezepturSave() {
     tbody.querySelectorAll('tr').forEach(function(tr) {
         var compEl = tr.querySelector('.ff-rez-comp');
         var qtyEl = tr.querySelector('.ff-rez-qty');
+        var optionalEl = tr.querySelector('.ff-rez-optional');
+        var defaultEl = tr.querySelector('.ff-rez-default');
+        var groupEl = tr.querySelector('.ff-rez-group');
         var orderEl = tr.querySelector('.ff-rez-order');
         if (!compEl || !qtyEl || !orderEl) return;
         var comp = parseInt(compEl.value, 10) || 0;
         var qtyRaw = String(qtyEl.value || '').replace(',', '.');
         var qty = parseFloat(qtyRaw);
+        var optionalEnabled = optionalEl && optionalEl.checked ? 1 : 0;
+        var defaultSelected = defaultEl && defaultEl.checked ? 1 : 0;
+        var optionGroup = groupEl ? String(groupEl.value || '').trim() : '';
         var order = parseInt(orderEl.value, 10) || 0;
         if (comp <= 0) return;
         if (!isFinite(qty) || qty <= 0) qty = 1;
-        rows.push({ bestandteil_position_id: comp, menge: qty, reihenfolge: order });
+        rows.push({
+            bestandteil_id: comp,
+            menge: qty,
+            optional_enabled: optionalEnabled,
+            default_selected: defaultSelected,
+            option_group: optionGroup,
+            reihenfolge: order
+        });
     });
     if (status) status.textContent = 'Speichere ...';
     apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(positionId), rows_json: JSON.stringify(rows) })
@@ -769,13 +1025,299 @@ function ffRezepturSave() {
         });
 }
 
+function ffRezepturRefreshBestandteileTable() {
+    var table = document.getElementById('bestandteileTable');
+    if (!table) return;
+    var tbody = table.querySelector('tbody');
+    if (!tbody) return;
+
+    var existingRows = [];
+    table.querySelectorAll('tr[data-bestandteil-id]').forEach(function(tr) {
+        var id = parseInt(tr.getAttribute('data-bestandteil-id'), 10) || 0;
+        if (!id) return;
+        var nameEl = tr.querySelector('.ff-bestandteil-name');
+        var einheitEl = tr.querySelector('.ff-bestandteil-einheit');
+        var kapEl = tr.querySelector('.ff-bestandteil-kapazitaet');
+        var sortEl = tr.querySelector('.ff-bestandteil-sort');
+        var allergeneEl = tr.querySelector('.ff-bestandteil-allergene');
+        if (!nameEl || !einheitEl || !kapEl || !sortEl) return;
+        var kap = parseInt(kapEl.value, 10);
+        if (isNaN(kap)) kap = -1;
+        existingRows.push({
+            id: id,
+            name: String(nameEl.value || ''),
+            einheit: String(einheitEl.value || 'Stk'),
+            kapazitaet: kap,
+            sort_order: parseInt(sortEl.value, 10) || 0,
+            allergene: allergeneEl ? String(allergeneEl.value || '') : ''
+        });
+    });
+
+    if (existingRows.length) {
+        window._ffManageRezepturenBestandteile = existingRows;
+    }
+
+    var list = Array.isArray(window._ffManageRezepturenBestandteile) && window._ffManageRezepturenBestandteile.length
+        ? window._ffManageRezepturenBestandteile
+        : existingRows;
+
+    if (!list.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = list.map(function(item) {
+        var id = parseInt(item && item.id, 10) || 0;
+        var name = String(item && item.name ? item.name : '');
+        var einheit = String(item && item.einheit ? item.einheit : 'Stk');
+        var kap = parseInt(item && item.kapazitaet, 10);
+        if (isNaN(kap)) kap = -1;
+        var sort = parseInt(item && item.sort_order, 10) || 0;
+        var allergene = String(item && item.allergene ? item.allergene : '');
+        return `<tr data-bestandteil-id="${id}">
+            <td><input type="text" class="form-control form-control-sm ff-bestandteil-name" value="${ffRezepturEsc(name)}"></td>
+            <td><input type="text" class="form-control form-control-sm ff-bestandteil-einheit" value="${ffRezepturEsc(einheit)}" maxlength="30"></td>
+            <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet" value="${kap}" title="-1 = unbegrenzt"></td>
+            <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="${sort}"></td>
+            <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="${ffRezepturEsc(allergene)}" placeholder="z. B. Gluten, Milch"></td>
+        </tr>`;
+    }).join('');
+    ffRezepturBindBestandteileAutosave();
+}
+
+function ffFilterBestandteileRows() {
+    var table = $('bestandteileTable');
+    if (!table) return;
+    var query = String(($('bestandteileFilter') || {}).value || '').trim().toLocaleLowerCase();
+    var rows = Array.from(table.querySelectorAll('tr[data-bestandteil-id]'));
+    var shown = 0;
+    rows.forEach(function(row) {
+        var searchable = Array.from(row.querySelectorAll('input')).map(function(input) {
+            return input.value;
+        }).join(' ');
+        var matches = !query || searchable.toLocaleLowerCase().indexOf(query) !== -1;
+        row.hidden = !matches;
+        if (matches) shown++;
+    });
+    var count = $('bestandteileCount');
+    if (count) count.textContent = shown + ' von ' + rows.length + ' Bestandteilen';
+    var noResults = $('bestandteileNoResults');
+    if (noResults) noResults.hidden = shown !== 0 || rows.length === 0;
+}
+
+function ffRezepturBindBestandteileAutosave() {
+    var table = document.getElementById('bestandteileTable');
+    if (!table || table.getAttribute('data-autosave-bound') === '1') return;
+    table.setAttribute('data-autosave-bound', '1');
+    table.addEventListener('input', function(ev) {
+        if (!ev.target.matches('input')) return;
+        ev.target.dataset.ffDirty = '1';
+        ffRezepturScheduleBestandteileAutosave(ev.target.closest('tr'));
+    });
+    table.addEventListener('blur', function(ev) {
+        if (!ev.target.matches('input')) return;
+        var row = ev.target.closest('tr');
+        if (!ev.target.dataset.ffDirty) return;
+        if (window._ffBestandteileAutosaveTimers && row) {
+            var timer = window._ffBestandteileAutosaveTimers.get(row);
+            if (timer) clearTimeout(timer);
+            window._ffBestandteileAutosaveTimers.delete(row);
+        }
+        ffRezepturSaveBestandteile(true, row);
+    }, true);
+}
+
+function ffRezepturScheduleBestandteileAutosave(row) {
+    if (!row) return;
+    window._ffBestandteileAutosaveTimers = window._ffBestandteileAutosaveTimers || new WeakMap();
+    var oldTimer = window._ffBestandteileAutosaveTimers.get(row);
+    if (oldTimer) clearTimeout(oldTimer);
+    window._ffBestandteileAutosaveTimers.set(row, setTimeout(function() {
+        window._ffBestandteileAutosaveTimers.delete(row);
+        ffRezepturSaveBestandteile(true, row);
+    }, 700));
+}
+
+function ffRezepturSaveBestandteile(autoSave, changedRow) {
+    var table = document.getElementById('bestandteileTable');
+    var status = $('rezepturStatus');
+    if (!table) return;
+    var rows = [];
+    table.querySelectorAll('tr[data-bestandteil-id]').forEach(function(tr) {
+        var id = parseInt(tr.getAttribute('data-bestandteil-id'), 10) || 0;
+        if (!id) return;
+        var nameEl = tr.querySelector('.ff-bestandteil-name');
+        var einheitEl = tr.querySelector('.ff-bestandteil-einheit');
+        var kapEl = tr.querySelector('.ff-bestandteil-kapazitaet');
+        var sortEl = tr.querySelector('.ff-bestandteil-sort');
+        var allergeneEl = tr.querySelector('.ff-bestandteil-allergene');
+        if (!nameEl || !einheitEl || !kapEl || !sortEl) return;
+        var name = String(nameEl.value || '').trim();
+        var einheit = String(einheitEl.value || '').trim() || 'Stk';
+        var kapazitaet = parseInt(kapEl.value, 10);
+        var sortOrder = parseInt(sortEl.value, 10) || 0;
+        if (isNaN(kapazitaet)) kapazitaet = -1;
+        if (!name) {
+            if (!autoSave) alert('Bitte für alle Bestandteile einen Namen eingeben.');
+            return;
+        }
+        rows.push({
+            id: id,
+            name: name,
+            einheit: einheit,
+            kapazitaet: kapazitaet,
+            sort_order: sortOrder,
+            allergene: allergeneEl ? String(allergeneEl.value || '') : ''
+        });
+    });
+    if (!rows.length) {
+        if (status) status.textContent = 'Keine Bestandteile zum Speichern vorhanden.';
+        return;
+    }
+    if (status) status.textContent = 'Speichere Bestandteile ...';
+    apiPost('manage/rezepturen_admin_api.php', { action: 'save_bestandteile', rows_json: JSON.stringify(rows) })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) {
+                if (status) status.textContent = 'Bestandteile speichern fehlgeschlagen.';
+                if (autoSave) {
+                    if (typeof ffShowToast === 'function') ffShowToast('Bestandteile konnten nicht gespeichert werden.', 'danger', 2500);
+                } else {
+                    alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
+                }
+                return;
+            }
+            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
+            if (status) status.textContent = 'Bestandteile automatisch gespeichert.';
+            if (changedRow) changedRow.querySelectorAll('input').forEach(function(input) { delete input.dataset.ffDirty; });
+            if (typeof ffShowToast === 'function') ffShowToast('Bestandteile gespeichert.', 'success', 1400);
+        })
+        .catch(function() {
+            if (status) status.textContent = 'Netzwerkfehler beim Speichern der Bestandteile.';
+        });
+}
+
+function ffOpenNewBestandteilModal() {
+    var m = $('ffNewBestandteilModal');
+    if (!m) return;
+    m.style.display = 'block';
+    if ($('rezepturNewBestandteilName')) $('rezepturNewBestandteilName').focus();
+}
+
+function ffCloseNewBestandteilModal() {
+    var m = $('ffNewBestandteilModal');
+    if (m) m.style.display = 'none';
+}
+
+function ffRezepturAddBestandteil() {
+    var nameEl = $('rezepturNewBestandteilName');
+    var einheitEl = $('rezepturNewBestandteilEinheit');
+    var sortEl = $('rezepturNewBestandteilSort');
+    var kapEl = $('rezepturNewBestandteilKapazitaet');
+    var allergeneEl = $('rezepturNewBestandteilAllergene');
+    var status = $('rezepturStatus');
+    if (!nameEl) return;
+    var name = String(nameEl.value || '').trim();
+    var einheit = einheitEl ? String(einheitEl.value || '').trim() : 'Stk';
+    var sortOrder = sortEl ? (parseInt(sortEl.value, 10) || 0) : 0;
+    var kapazitaet = kapEl ? (parseInt(kapEl.value, 10)) : -1;
+    if (isNaN(kapazitaet)) kapazitaet = -1;
+    if (!name) {
+        alert('Bitte Namen für den Bestandteil eingeben.');
+        return;
+    }
+    if (status) status.textContent = 'Lege Bestandteil an ...';
+    apiPost('manage/rezepturen_admin_api.php', {
+        action: 'add_bestandteil',
+        name: name,
+        einheit: einheit,
+        kapazitaet: String(kapazitaet),
+        sort_order: String(sortOrder),
+        allergene: allergeneEl ? String(allergeneEl.value || '') : ''
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) {
+                if (status) status.textContent = 'Bestandteil anlegen fehlgeschlagen.';
+                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
+                return;
+            }
+            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
+            if (nameEl) nameEl.value = '';
+            if (allergeneEl) allergeneEl.value = '';
+            if (status) status.textContent = 'Bestandteil angelegt.';
+            ffCloseNewBestandteilModal();
+            ffRezepturRefreshBestandteileTable();
+            ffFilterBestandteileRows();
+            ffRezepturRenderRows((function() {
+                var out = [];
+                var tbody = $('rezepturenTbody');
+                if (!tbody) return out;
+                tbody.querySelectorAll('tr').forEach(function(tr) {
+                    var compEl = tr.querySelector('.ff-rez-comp');
+                    var qtyEl = tr.querySelector('.ff-rez-qty');
+                    var orderEl = tr.querySelector('.ff-rez-order');
+                    if (!compEl || !qtyEl || !orderEl) return;
+                    out.push({
+                        id: parseInt(tr.getAttribute('data-rowid') || '0', 10) || 0,
+                        bestandteil_id: parseInt(compEl.value, 10) || 0,
+                        menge: String(qtyEl.value || '1'),
+                        optional_enabled: (tr.querySelector('.ff-rez-optional') || {}).checked ? 1 : 0,
+                        default_selected: (tr.querySelector('.ff-rez-default') || {}).checked ? 1 : 0,
+                        option_group: String(((tr.querySelector('.ff-rez-group') || {}).value) || '').trim(),
+                        reihenfolge: parseInt(orderEl.value, 10) || 0
+                    });
+                });
+                return out;
+            })());
+        })
+        .catch(function() {
+            if (status) status.textContent = 'Netzwerkfehler beim Anlegen des Bestandteils.';
+        });
+}
+
+function loadBestandteile() {
+    manageNavActive('bestandteile');
+    window._managePosReload = null;
+    loadContent('rezepturen_admin.php?view=bestandteile', function() {
+        window._ffManageRezepturenPositionen = window._ffManageRezepturenPositionen || [];
+        window._ffManageRezepturenBestandteile = window._ffManageRezepturenBestandteile || [];
+        ffRezepturRefreshBestandteileTable();
+        ffFilterBestandteileRows();
+    });
+}
+
+function ffFilterRezepturPositions() {
+    var query = String(($('rezepturPositionFilter') || {}).value || '').trim().toLocaleLowerCase();
+    var positions = Array.from(document.querySelectorAll('#rezepturPositionList .manage-rezeptur-position-block'));
+    var shown = 0;
+    positions.forEach(function(position) {
+        var searchText = String(position.getAttribute('data-search') || '').toLocaleLowerCase();
+        var matches = !query || searchText.indexOf(query) !== -1;
+        position.hidden = !matches;
+        if (matches) shown++;
+    });
+    var count = $('rezepturPositionCount');
+    if (count) count.textContent = shown + ' von ' + positions.length + ' Positionen';
+}
+
+function ffSetRezepturPositionsExpanded(expanded) {
+    document.querySelectorAll('#rezepturPositionList .manage-rezeptur-position-block:not([hidden])').forEach(function(position) {
+        position.open = !!expanded;
+    });
+}
+
 function loadRezepturen(positionId) {
     manageNavActive('rez');
     window._managePosReload = null;
     loadContent('rezepturen_admin.php' + (positionId ? ('?position_id=' + encodeURIComponent(positionId)) : ''), function() {
         window._ffManageRezepturenPositionen = window._ffManageRezepturenPositionen || [];
+        window._ffManageRezepturenBestandteile = window._ffManageRezepturenBestandteile || [];
+        ffFilterRezepturPositions();
         ffRezepturBindRowEvents();
-        ffRezepturLoad(positionId || null);
+        if (document.getElementById('rezepturPosition') && document.getElementById('rezepturenTbody')) {
+            ffRezepturLoad(positionId || null);
+        }
     });
 }
 
@@ -904,12 +1446,16 @@ function ffInitTischAdminGrid() {
         if (cell.classList.contains('tisch-admin-cell--busy')) return;
         var tx = cell.getAttribute('data-x'), ty = cell.getAttribute('data-y');
         if (tx === null || ty === null) return;
-        var name = window.prompt('Tischname für Spalte ' + tx + ', Zeile ' + ty + ':', '');
-        if (name === null) return;
-        ffSaveNewTable(name, tx, ty);
+        ffOpenTischCreateModal(tx, ty);
     }
     root.addEventListener('click', function(e) {
         if (e.button !== 0) return;
+        var deleteBtn = e.target.closest('.tisch-delete-btn');
+        if (deleteBtn && root.contains(deleteBtn)) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+        }
         var flagBtn = e.target.closest('.tisch-flag-toggle');
         if (flagBtn && root.contains(flagBtn)) {
             e.preventDefault();
@@ -962,6 +1508,206 @@ function ffInitTischAdminGrid() {
         fetchGet('update_xy.php?tischnummer=' + encodeURIComponent(dragTn) + '&x=' + encodeURIComponent(tx) + '&y=' + encodeURIComponent(ty))
             .then(function() { loadTische(); });
     });
+}
+
+function ffCenterTischModalOnScreen(modalEl) {
+    if (!modalEl) return;
+    var targetWin = window;
+    var targetDoc = document;
+    var targetBody = targetDoc.body;
+    if (window.parent && window.parent !== window && window.parent.document && window.parent.document.body) {
+        targetWin = window.parent;
+        targetDoc = targetWin.document;
+        targetBody = targetDoc.body;
+    }
+    if (modalEl.ownerDocument !== targetDoc) {
+        targetBody.appendChild(modalEl);
+    } else if (modalEl.parentNode !== targetBody) {
+        targetBody.appendChild(modalEl);
+    }
+    modalEl.style.position = 'fixed';
+    modalEl.style.inset = '0';
+    modalEl.style.display = 'flex';
+    modalEl.style.alignItems = 'center';
+    modalEl.style.justifyContent = 'center';
+    modalEl.style.padding = '1rem';
+    modalEl.style.overflowY = 'auto';
+    modalEl.style.maxHeight = '100vh';
+    modalEl.style.zIndex = '2147483647';
+    modalEl.style.background = 'rgba(0, 0, 0, 0.5)';
+    var dialog = modalEl.querySelector('.modal-dialog');
+    if (dialog) {
+        dialog.style.margin = '0';
+        dialog.style.width = 'min(92vw, 420px)';
+        dialog.style.maxWidth = '420px';
+        dialog.style.maxHeight = 'calc(100vh - 2rem)';
+        dialog.style.position = 'relative';
+        dialog.style.transform = 'none';
+    }
+    var content = modalEl.querySelector('.modal-content');
+    if (content) {
+        content.style.maxHeight = 'calc(100vh - 2rem)';
+        content.style.overflow = 'hidden';
+    }
+    var body = modalEl.querySelector('.modal-body');
+    if (body) {
+        body.style.maxHeight = 'calc(100vh - 12rem)';
+        body.style.overflowY = 'auto';
+    }
+    return targetWin;
+}
+
+function ffGetTischModalRoot() {
+    var parentWin = (window.parent && window.parent !== window) ? window.parent : null;
+    var parentDoc = parentWin && parentWin.document ? parentWin.document : null;
+    if (parentDoc) {
+        var parentModal = parentDoc.getElementById('ffTischEditModal');
+        if (parentModal) {
+            return { modalEl: parentModal, win: parentWin, doc: parentDoc };
+        }
+    }
+    var currentModal = document.getElementById('ffTischEditModal');
+    if (parentDoc && currentModal) {
+        var injectedModal = currentModal.cloneNode(true);
+        parentDoc.body.appendChild(injectedModal);
+        return { modalEl: injectedModal, win: parentWin, doc: parentDoc };
+    }
+    return { modalEl: currentModal, win: window, doc: document };
+}
+
+function ffOpenTischCreateModal(x, y) {
+    var modalRoot = ffGetTischModalRoot();
+    var modalEl = modalRoot.modalEl;
+    if (!modalEl) return;
+    var doc = modalRoot.doc || document;
+    ffCenterTischModalOnScreen(modalEl);
+    var bootstrapRef = (modalRoot.win && modalRoot.win.bootstrap) ? modalRoot.win.bootstrap : bootstrap;
+    var modal = bootstrapRef.Modal.getOrCreateInstance(modalEl);
+    var xVal = parseInt(String(x || '1'), 10);
+    var yVal = parseInt(String(y || '1'), 10);
+    if (!xVal || xVal < 1) xVal = 1;
+    if (!yVal || yVal < 1) yVal = 1;
+    var titleEl = doc.getElementById('ffTischEditModalLabel');
+    if (titleEl) titleEl.textContent = 'Neuen Tisch anlegen';
+    doc.getElementById('ffTischEditId').value = '';
+    doc.getElementById('ffTischEditName').value = '';
+    doc.getElementById('ffTischEditX').value = String(xVal);
+    doc.getElementById('ffTischEditY').value = String(yVal);
+    doc.getElementById('ffTischEditColor').value = '#000000';
+    var srBox = doc.getElementById('ffTischEditSr');
+    var egBox = doc.getElementById('ffTischEditEg');
+    if (srBox) srBox.checked = false;
+    if (egBox) egBox.checked = false;
+    var delBtn = doc.getElementById('ffTischEditDeleteBtn');
+    if (delBtn) {
+        delBtn.style.display = 'none';
+        delBtn.disabled = true;
+    }
+    var saveBtn = doc.getElementById('ffTischEditSaveBtn');
+    if (saveBtn) saveBtn.textContent = 'Anlegen';
+    doc.getElementById('ffTischEditSaveBtn').onclick = function() {
+        var nameSave = (doc.getElementById('ffTischEditName').value || '').trim();
+        var xSave = parseInt(doc.getElementById('ffTischEditX').value || '1', 10);
+        var ySave = parseInt(doc.getElementById('ffTischEditY').value || '1', 10);
+        var colorSave = doc.getElementById('ffTischEditColor').value || '#000000';
+        if (!nameSave) {
+            alert('Bitte einen Namen für den Tisch eingeben.');
+            return;
+        }
+        if (xSave < 1 || ySave < 1) {
+            alert('x und y müssen größer 0 sein.');
+            return;
+        }
+        fetchPost('../neuerTisch_save.php', {
+            neuerTischName: nameSave,
+            neueTischX: xSave,
+            neueTischY: ySave,
+            neueTischFarbe: colorSave
+        })
+            .then(function() {
+                modal.hide();
+                ffShowToast('Tisch angelegt.', 'success');
+                loadTische();
+            })
+            .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Anlegen fehlgeschlagen.', 'danger'); });
+    };
+    modal.show();
+}
+
+function ffOpenTischEditModal(btn) {
+    if (!btn) return;
+    var modalRoot = ffGetTischModalRoot();
+    var modalEl = modalRoot.modalEl;
+    if (!modalEl) return;
+    var doc = modalRoot.doc || document;
+    ffCenterTischModalOnScreen(modalEl);
+    var bootstrapRef = (modalRoot.win && modalRoot.win.bootstrap) ? modalRoot.win.bootstrap : bootstrap;
+    var modal = bootstrapRef.Modal.getOrCreateInstance(modalEl);
+    var tid = parseInt(btn.getAttribute('data-tischnummer') || '0', 10);
+    if (!tid) return;
+    var name = btn.getAttribute('data-tischname') || '';
+    var color = btn.getAttribute('data-color') || '#000000';
+    var x = btn.getAttribute('data-x') || '1';
+    var y = btn.getAttribute('data-y') || '1';
+    var sr = btn.getAttribute('data-sr') === '1';
+    var eg = btn.getAttribute('data-eg') === '1';
+    var titleEl = doc.getElementById('ffTischEditModalLabel');
+    if (titleEl) titleEl.textContent = 'Tisch bearbeiten';
+    doc.getElementById('ffTischEditId').value = String(tid);
+    doc.getElementById('ffTischEditName').value = name;
+    doc.getElementById('ffTischEditX').value = x;
+    doc.getElementById('ffTischEditY').value = y;
+    doc.getElementById('ffTischEditColor').value = color;
+    var srBox = doc.getElementById('ffTischEditSr');
+    var egBox = doc.getElementById('ffTischEditEg');
+    if (srBox) srBox.checked = sr;
+    if (egBox) egBox.checked = eg;
+    var delBtn = doc.getElementById('ffTischEditDeleteBtn');
+    if (delBtn) {
+        delBtn.style.display = 'inline-block';
+        delBtn.disabled = false;
+    }
+    delBtn.onclick = function() {
+        modal.hide();
+        deleteTable(tid);
+    };
+    var saveBtn = doc.getElementById('ffTischEditSaveBtn');
+    if (saveBtn) saveBtn.textContent = 'Speichern';
+    doc.getElementById('ffTischEditSaveBtn').onclick = function() {
+        var tidSave = parseInt(doc.getElementById('ffTischEditId').value || '0', 10);
+        var nameSave = doc.getElementById('ffTischEditName').value || '';
+        var xSave = parseInt(doc.getElementById('ffTischEditX').value || '1', 10);
+        var ySave = parseInt(doc.getElementById('ffTischEditY').value || '1', 10);
+        var colorSave = doc.getElementById('ffTischEditColor').value || '#000000';
+        var srSave = doc.getElementById('ffTischEditSr').checked ? 1 : 0;
+        var egSave = doc.getElementById('ffTischEditEg').checked ? 1 : 0;
+        if (xSave < 1 || ySave < 1) {
+            alert('x und y müssen größer 0 sein.');
+            return;
+        }
+        if (srSave && egSave) {
+            egSave = 0;
+            doc.getElementById('ffTischEditEg').checked = false;
+        }
+        var ops = [
+            fetchGet('update_tischname.php?tischname=' + encodeURIComponent(nameSave) + '&tischnummer=' + encodeURIComponent(tidSave)),
+            fetchGet('update_xy.php?x=' + encodeURIComponent(xSave) + '&y=' + encodeURIComponent(ySave) + '&tischnummer=' + encodeURIComponent(tidSave)),
+            fetchPost('save_tisch_flags.php', {
+                tischnummer: tidSave,
+                is_sammelrechnung: srSave,
+                is_ehrengast: egSave
+            }),
+            fetchPost('update_color.php', { color: colorSave, tischnummer: tidSave })
+        ];
+        Promise.all(ops)
+            .then(function() {
+                modal.hide();
+                ffShowToast('Tisch gespeichert.', 'success');
+                loadTische();
+            })
+            .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Speichern fehlgeschlagen.', 'danger'); });
+    };
+    modal.show();
 }
 
 function updateTischname(tischname, tischnummer) {
@@ -1187,6 +1933,23 @@ document.addEventListener('keydown', function(ev) {
     ffSaveNewTable(tn.value, xEl ? xEl.value : 1, yEl ? yEl.value : 1);
 }
 
+function ffOpenNewPosModal() {
+    var m = $('ffNewPosModal');
+    if (!m) return;
+    m.style.display = 'block';
+    var first = m.querySelector('input[type="text"]');
+    if (first) first.focus();
+}
+
+function ffCloseNewPosModal() {
+    var m = $('ffNewPosModal');
+    if (m) m.style.display = 'none';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') { ffCloseNewPosModal(); ffCloseNewSubcatModal(); ffCloseNewBestandteilModal(); ffCloseRezepturModal(); }
+});
+
 function addMeal() {
     var positionsname = $('positionsname').value, kurzbezeichnung = $('kurzbezeichnung').value, type = $('type').value;
     var betrag = $('betrag').value, kapazitaet = $('kapazitaet').value, print_target = $('print_target').value;
@@ -1234,6 +1997,31 @@ function updatePrintTarget(rowid, print_target) {
             manageReloadPositionsList();
         })
         .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
+}
+
+function updatePositionFest(rowid, festId) {
+    rowid = parseInt(rowid, 10) || 0;
+    festId = parseInt(festId, 10) || 0;
+    if (rowid <= 0) return;
+    var endpoint = window.location.pathname.indexOf('/manage/') !== -1
+        ? 'update_position_fest.php'
+        : 'manage/update_position_fest.php';
+    fetch(new URL(endpoint, window.location.href), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ rowid: String(rowid), fest_id: String(festId) }).toString(),
+        cache: 'no-store',
+        credentials: 'same-origin'
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d && d.ok) {
+                ffShowToast(festId > 0 ? 'Position dem Fest zugeordnet.' : 'Position für alle Feste freigegeben.', 'success', 1800);
+            } else {
+                ffShowToast('Fest-Zuordnung konnte nicht gespeichert werden.', 'danger', 2500);
+            }
+        })
+        .catch(function() { ffShowToast('Fehler beim Speichern der Fest-Zuordnung.', 'danger', 2500); });
 }
 
 /** Druckziel bei „Nur Kasse“: ausgegraut, Anzeige „—“ (Wert bleibt in DB für späteres Abwählen). */
@@ -1354,7 +2142,7 @@ function ffSyncPosSubcategoryOptions() {
 function ffPmTileDefSync(rowid) {
     var def = $('pm_tile_def_' + rowid), tile = $('pm_tile_' + rowid);
     if (!def || !tile) return;
-    tile.disabled = def.checked;
+    tile.style.opacity = def.checked ? '0.45' : '';
 }
 
 function manageApplySubcategoryRowsToSelects(rows) {
@@ -1408,9 +2196,27 @@ document.addEventListener('change', function(ev) {
             var tr = t.closest('tr.ff-manage-pos-row');
             if (tr) rowid = tr.getAttribute('data-rowid');
         }
-        if (!rowid) return;
+        if (!rowid) {
+            if (t.matches && t.matches('.ff-rez-group-comp, .ff-rez-group-qty, .ff-rez-group-optional, .ff-rez-group-default, .ff-rez-group-option, .ff-rez-group-order')) {
+                var groupTable = t.closest('table[data-position-id]');
+                if (groupTable) {
+                    var pid = parseInt(groupTable.getAttribute('data-position-id'), 10) || 0;
+                    if (pid > 0) {
+                        ffRezepturScheduleGroupAutosave(pid, groupTable);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
         rowid = parseInt(rowid, 10) || 0;
         if (rowid <= 0) return;
+        // Farbe der Kachel gewählt: eigene Farbe statt Standard der Unterkategorie
+        if (/^pm_tile_\d+$/.test(id)) {
+            var defBox = $('pm_tile_def_' + rowid);
+            if (defBox) defBox.checked = false;
+            try { ffPmTileDefSync(rowid); } catch (e) {}
+        }
         // If tile default checkbox changed, update UI immediately
         if (id.indexOf('pm_tile_def_') === 0) {
             try { ffPmTileDefSync(rowid); } catch (e) {}
@@ -1493,6 +2299,7 @@ function manageProduktNeu() {
     var tileBg = ($('pos_tile_bg') && $('pos_tile_bg').value) ? $('pos_tile_bg').value : '';
     var d = {
         Positionsname: $('Positionsname').value,
+        Kurzbezeichnung: ($('pos_new_kurz') ? $('pos_new_kurz').value : ''),
         type: $('produktkategorie').value,
         Betrag: $('Betrag').value,
         Kapazitaet: $('Kapazitaet').value,
@@ -1563,23 +2370,65 @@ function manageSubcategoryReload() {
                         }
                         var tr = document.createElement('tr');
                         var kassaChk = parseInt(r.kassa_only, 10) === 1 ? ' checked' : '';
-                        tr.innerHTML = '<td>' + typ + '</td><td>' + String(r.name) + '</td><td><input type="number" class="form-control form-control-sm" id="subcat_sort_' + id + '" value="' + String(r.sort_order) + '"></td>' +
-                            '<td><input type="color" class="form-control form-control-color form-control-sm" id="subcat_color_' + id + '" value="' + pick + '"></td>' +
-                            '<td class="text-center"><input type="checkbox" class="form-check-input" id="subcat_kassa_' + id + '"' + kassaChk + ' title="Nur Direktverkauf"></td>' +
-                            '<td><button type="button" class="btn btn-sm btn-outline-primary" data-sid="' + id + '">Speichern</button> <button type="button" class="btn btn-sm btn-outline-danger" data-did="' + id + '">Löschen</button></td>';
-                        tr.querySelector('[data-sid]').onclick = function() { manageSubcategorySave(id); };
+                        tr.setAttribute('data-subcategory-id', String(id));
+                        tr.innerHTML = '<td class="py-0 px-1"><input type="number" class="form-control form-control-sm px-1 py-0" style="width:3.8em" id="subcat_sort_' + id + '" value="' + String(r.sort_order) + '"></td>' +
+                            '<td class="py-0 text-nowrap">' + typ + '</td><td class="py-0">' + String(r.name) + '</td>' +
+                            '<td class="py-0 px-1"><input type="color" class="form-control form-control-color p-0" style="width:2em;height:1.6em" id="subcat_color_' + id + '" value="' + pick + '"></td>' +
+                            '<td class="py-0 px-1 text-center"><input type="checkbox" class="form-check-input" id="subcat_kassa_' + id + '"' + kassaChk + ' title="Nur Direktverkauf"></td>' +
+                            '<td class="py-0 px-1"><button type="button" class="btn btn-sm btn-outline-danger ff-icon-action py-0 px-1" data-did="' + id + '" title="Unterkategorie löschen" aria-label="Unterkategorie löschen">&#128465;</button></td>';
                         tr.querySelector('[data-did]').onclick = function() { manageSubcategoryDelete(id); };
                         tbody.appendChild(tr);
                     });
                 }
             }
+            manageSubcategoryBindAutosave();
             manageApplySubcategoryRowsToSelects(d.rows || []);
         })
         .catch(function() { alert('Unterkategorien konnten nicht geladen werden.'); });
 }
 
-function manageSubcategorySave(id) {
-    id = parseInt(id, 10);
+function manageSubcategoryBindAutosave() {
+    var tbody = $('subcategoriesTbodyManage');
+    if (!tbody || tbody.getAttribute('data-autosave-bound') === '1') return;
+    tbody.setAttribute('data-autosave-bound', '1');
+    tbody.addEventListener('input', function(ev) {
+        if (!ev.target.matches('input')) return;
+        ev.target.dataset.ffDirty = '1';
+        manageSubcategoryScheduleAutosave(ev.target.closest('tr'));
+    });
+    tbody.addEventListener('change', function(ev) {
+        if (!ev.target.matches('input')) return;
+        ev.target.dataset.ffDirty = '1';
+        manageSubcategoryScheduleAutosave(ev.target.closest('tr'));
+    });
+    tbody.addEventListener('blur', function(ev) {
+        if (!ev.target.matches('input') || !ev.target.dataset.ffDirty) return;
+        var row = ev.target.closest('tr');
+        manageSubcategoryCancelTimer(row);
+        manageSubcategorySave(true, row);
+    }, true);
+}
+
+function manageSubcategoryScheduleAutosave(row) {
+    if (!row) return;
+    window._ffSubcategoryAutosaveTimers = window._ffSubcategoryAutosaveTimers || new WeakMap();
+    manageSubcategoryCancelTimer(row);
+    window._ffSubcategoryAutosaveTimers.set(row, setTimeout(function() {
+        window._ffSubcategoryAutosaveTimers.delete(row);
+        manageSubcategorySave(true, row);
+    }, 700));
+}
+
+function manageSubcategoryCancelTimer(row) {
+    if (!row || !window._ffSubcategoryAutosaveTimers) return;
+    var timer = window._ffSubcategoryAutosaveTimers.get(row);
+    if (timer) clearTimeout(timer);
+    window._ffSubcategoryAutosaveTimers.delete(row);
+}
+
+function manageSubcategorySave(autoSave, changedRow) {
+    manageSubcategoryCancelTimer(changedRow);
+    var id = changedRow ? parseInt(changedRow.getAttribute('data-subcategory-id'), 10) : 0;
     if (!id) return;
     var sortEl = $('subcat_sort_' + id), colEl = $('subcat_color_' + id), kassaEl = $('subcat_kassa_' + id);
     if (!sortEl || !colEl) return;
@@ -1592,10 +2441,26 @@ function manageSubcategorySave(id) {
     })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-            if (d && d.ok) { ffShowToast('Gespeichert.', 'success'); manageSubcategoryReload(); }
-            else ffShowToast('Fehler: ' + (d && d.error === 'bad_tile_bg' ? savePositionMetaErr('bad_tile_bg') : (d && d.error ? d.error : '')), 'danger');
+            if (d && d.ok) {
+                if (changedRow) changedRow.querySelectorAll('input').forEach(function(input) { delete input.dataset.ffDirty; });
+                ffShowToast('Unterkategorie gespeichert.', 'success', 1400);
+            } else {
+                ffShowToast('Unterkategorie konnte nicht gespeichert werden.', 'danger', 2500);
+            }
         })
         .catch(function() { ffShowToast('Fehler (Netzwerk).', 'danger'); });
+}
+
+function ffOpenNewSubcatModal() {
+    var m = $('ffNewSubcatModal');
+    if (!m) return;
+    m.style.display = 'block';
+    if ($('subcat_new_name')) $('subcat_new_name').focus();
+}
+
+function ffCloseNewSubcatModal() {
+    var m = $('ffNewSubcatModal');
+    if (m) m.style.display = 'none';
 }
 
 function manageSubcategoryAdd() {
@@ -1610,6 +2475,7 @@ function manageSubcategoryAdd() {
         .then(function(d) {
             if (d && d.ok) {
                 if ($('subcat_new_name')) $('subcat_new_name').value = '';
+                ffCloseNewSubcatModal();
                 manageSubcategoryReload();
                 ffShowToast('Unterkategorie angelegt.', 'success');
             } else alert('Fehler: ' + (d && d.error ? d.error : ''));
@@ -1632,6 +2498,20 @@ document.addEventListener('DOMContentLoaded', function() {
     var h = window.location.hash || '';
     if (h === '#beilagen') {
         loadBeilagenZusatzinfos();
+    } else if (h === '#speisen') {
+        loadSpeisen();
+    } else if (h === '#getraenke') {
+        loadGetraenke();
+    } else if (h === '#apidevice') {
+        loadApiDeviceConfig();
+    } else if (h === '#sub') {
+        loadSubcategories();
+    } else if (h === '#bestandteile') {
+        loadBestandteile();
+    } else if (h === '#rez') {
+        loadRezepturen();
+    } else if (h === '#lock') {
+        loadSperren();
     } else if (h === '#tische') {
         loadTische();
     } else {

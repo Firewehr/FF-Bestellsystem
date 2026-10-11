@@ -84,29 +84,12 @@ try {
 
 <div class="manage-fragment-header mb-4 pb-3 border-bottom">
     <h4 class="text-primary fw-semibold mb-1">Tische</h4>
-    <p class="small text-muted mb-0">Raster mit Drag&nbsp;&amp;&nbsp;Drop; <strong>leeres Feld anklicken</strong> legt dort einen Tisch an. Oben alternativ Name und Koordinaten eintragen.</p>
+    <p class="small text-muted mb-0">Raster mit Drag&nbsp;&amp;&nbsp;Drop; <strong>einfach in ein leeres weißes Feld klicken</strong>, um dort einen neuen Tisch anzulegen.</p>
 </div>
 
-<div class="mb-3">
-    <h5 class="mb-2 fw-semibold">Neuen Tisch anlegen</h5>
-    <form class="row g-2 align-items-end" id="ffNeuerTischForm" onsubmit="event.preventDefault(); if (typeof addTable === 'function') { addTable(); } return false;">
-        <div class="col-md-4">
-            <label class="form-label mb-0" for="tischname">Tischname</label>
-            <input type="text" class="form-control form-control-sm" id="tischname" name="tischname" autocomplete="off">
-        </div>
-        <div class="col-md-2 col-6">
-            <label class="form-label mb-0" for="x">Spalte (x)</label>
-            <input type="number" class="form-control form-control-sm" id="x" name="x" min="1" value="1">
-        </div>
-        <div class="col-md-2 col-6">
-            <label class="form-label mb-0" for="y">Zeile (y)</label>
-            <input type="number" class="form-control form-control-sm" id="y" name="y" min="1" value="1">
-        </div>
-        <div class="col-md-2">
-            <button type="submit" class="btn btn-primary btn-sm">Anlegen</button>
-        </div>
-    </form>
-</div>
+<p class="small text-muted mb-3">
+    <strong>Neuen Tisch anlegen:</strong> Klicken Sie auf ein leeres weißes Feld im Raster. Der Tisch wird dann automatisch erstellt.
+</p>
 
 <p class="tisch-admin-legend text-muted mb-2">
     <strong>Raster:</strong> Tische per Drag&nbsp;&amp;&nbsp;Drop verschieben; Name anklicken zum Umbenennen.
@@ -151,9 +134,15 @@ try {
                     echo '<div class="tisch-grid-stack">';
                     echo '<button type="button" class="' . htmlspecialchars(trim($btnCls), ENT_QUOTES, 'UTF-8') . '" draggable="true" '
                         . 'data-tischnummer="' . $tn . '" data-x="' . (int)$gx . '" data-y="' . (int)$gy . '" '
-                        . 'onclick="updateTischname(' . $nameJs . ',' . $tn . ')" '
+                        . 'data-tischname="' . htmlspecialchars((string)$tbl['tischname'], ENT_QUOTES, 'UTF-8') . '" '
+                        . 'data-color="' . htmlspecialchars($fc, ENT_QUOTES, 'UTF-8') . '" '
+                        . 'data-sr="' . ((int)($tbl['is_sammelrechnung'] ?? 0)) . '" '
+                        . 'data-eg="' . ((int)($tbl['is_ehrengast'] ?? 0)) . '" '
+                        . 'onclick="event.preventDefault(); event.stopPropagation(); ffOpenTischEditModal(this);" '
                         . 'style="background:' . htmlspecialchars($st['bg'], ENT_QUOTES, 'UTF-8') . ';color:' . htmlspecialchars($fc, ENT_QUOTES, 'UTF-8') . ';">'
                         . $nameHtml . '</button>';
+                    echo '<button type="button" class="tisch-delete-btn" data-tischnummer="' . $tn . '" title="Tisch löschen" aria-label="Tisch löschen" '
+                        . 'onclick="event.preventDefault(); event.stopPropagation(); deleteTable(' . $tn . ');">&times;</button>';
                     echo '<div class="tisch-grid-flags" role="group" aria-label="Tisch-Typ">';
                     echo '<button type="button" class="tisch-flag-toggle' . ($srOn ? ' tisch-flag-toggle--on' : '') . '" '
                         . 'data-flag="sr" data-tischnummer="' . $tn . '" title="Sammelrechnung-Tisch">SR</button>';
@@ -168,51 +157,48 @@ try {
     </div>
 </div>
 
-<h6 class="mt-4 mb-2 fw-semibold">Farbe, Sammelrechnung, Ehrengast &amp; Löschen</h6>
-<p class="small text-muted mb-2">Sammelrechnung und Ehrengast schließen sich aus und werden beim Anklicken sofort gespeichert.</p>
-<div class="table-responsive border rounded">
-<table class="table table-sm table-hover align-middle mb-0" id="tischTable">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>x</th>
-            <th>y</th>
-            <th>Sammelrechnung</th>
-            <th>Ehrengast</th>
-            <th>Farbe</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php
-        foreach ($tables as $row) {
-            $tid = (int)$row['tischnummer'];
-            $cv = trim((string)($row['color'] ?? ''));
-            if ($cv === '' || !preg_match('/^#[0-9A-Fa-f]{6}$/', $cv)) {
-                $cv = '#000000';
-            }
-            if (strpos($cv, '#') !== 0 && preg_match('/^[0-9A-Fa-f]{6}$/', $cv)) {
-                $cv = '#' . $cv;
-            }
-            echo '<tr>';
-            echo '<td><button type="button" class="btn btn-link btn-sm p-0 text-start" onclick="updateTischname('
-                . htmlspecialchars(json_encode($row['tischname'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8')
-                . ',' . $tid . ')">' . htmlspecialchars($row['tischname'], ENT_QUOTES, 'UTF-8') . '</button></td>';
-            echo '<td>' . (int)$row['x'] . '</td>';
-            echo '<td>' . (int)$row['y'] . '</td>';
-            $sm = (int)($row['is_sammelrechnung'] ?? 0);
-            $eh = (int)($row['is_ehrengast'] ?? 0);
-            echo '<td><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="sr" id="sr_' . $tid . '" ' . ($sm === 1 ? 'checked' : '') . ' aria-label="Sammelrechnung"></td>';
-            echo '<td><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="eg" id="eg_' . $tid . '" ' . ($eh === 1 ? 'checked' : '') . ' aria-label="Ehrengast"></td>';
-            echo '<td><input type="color" class="form-control form-control-color form-control-sm" onchange="farbeSpeichern('
-                . $tid . ')" id="html5colorpicker' . $tid . '" value="' . htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') . '"></td>';
-            echo '<td class="text-nowrap"><button type="button" class="btn btn-outline-danger btn-sm" onclick="deleteTable(' . $tid . ')">löschen</button></td>';
-            echo '</tr>';
-        }
-        if (count($tables) === 0) {
-            echo '<tr><td colspan="7" class="text-muted">Keine Tische mit Koordinaten.</td></tr>';
-        }
-        ?>
-    </tbody>
-</table>
+<div class="modal fade" id="ffTischEditModal" tabindex="-1" aria-labelledby="ffTischEditModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h5 class="modal-title" id="ffTischEditModalLabel">Tisch bearbeiten</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="ffTischEditId">
+                <div class="mb-3">
+                    <label class="form-label" for="ffTischEditName">Name</label>
+                    <input type="text" class="form-control form-control-sm" id="ffTischEditName">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label" for="ffTischEditX">x</label>
+                        <input type="number" class="form-control form-control-sm" id="ffTischEditX" min="1">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label" for="ffTischEditY">y</label>
+                        <input type="number" class="form-control form-control-sm" id="ffTischEditY" min="1">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="ffTischEditColor">Farbe</label>
+                    <input type="color" class="form-control form-control-color form-control-sm" id="ffTischEditColor" value="#000000">
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="ffTischEditSr">
+                    <label class="form-check-label" for="ffTischEditSr">Sammelrechnung</label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="ffTischEditEg">
+                    <label class="form-check-label" for="ffTischEditEg">Ehrengast</label>
+                </div>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-outline-danger btn-sm" id="ffTischEditDeleteBtn">Tisch löschen</button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Abbrechen</button>
+                <button type="button" class="btn btn-primary btn-sm" id="ffTischEditSaveBtn">Speichern</button>
+            </div>
+        </div>
+    </div>
 </div>
+
