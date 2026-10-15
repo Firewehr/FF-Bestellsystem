@@ -1,0 +1,31 @@
+# Apache/LiteSpeed (z. B. bplaced.de)
+# ───────────────────────────────────
+# Schützt sensible Dateien vor direktem Aufruf im Browser (<URL>/include/sql.sql).
+# PHP-include/require aus Skripten funktioniert unverändert (Dateizugriff, kein HTTP).
+
+# Keine automatischen Ordnerliste (Index)
+Options -Indexes
+
+# Datenbank-Dumps/-Skripte, Backups nie per HTTP ausliefern
+<IfModule mod_authz_core.c>
+  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3)$">
+    Order deny,allow
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
+# Repo-Konfig versehentlich hochgeladen → nicht auslesbar
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^\.git/ - [F,L]
+  # Authorization-Header an PHP durchreichen (CGI/FastCGI, z. B. für mcp.php)
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+# nginx-Anwender analog: deny für ~*\.sql$, plus location ^~ /include/ und ^~ /documentation/

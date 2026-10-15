@@ -12,6 +12,7 @@ require_once __DIR__ . '/include/ff_schema_helpers.php';
 require_once __DIR__ . '/include/ff_favicon_helpers.php';
 require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
 require_once __DIR__ . '/include/ff_user_permissions.php';
+require_once __DIR__ . '/include/ff_auto_print.php';
 require_once __DIR__ . '/include/ff_user_status.php';
 require_once __DIR__ . '/include/ff_system_broadcast.php';
 require_once __DIR__ . '/include/ff_app_title.php';
@@ -61,6 +62,7 @@ $setting_seller_uid = setting_get($conn, 'seller_uid', '');
 $setting_rechnung_prefix = setting_get($conn, 'rechnung_prefix', 'R');
 $setting_rechnung_next_seq = ff_rechnung_next_read($conn);
 $setting_printer_token = setting_get($conn, 'printer_token', '');
+$setting_print_event_mode = (string) setting_get($conn, 'print_event_mode', '0') === '1';
 $setting_offline_backup_token = setting_get($conn, 'offline_backup_token', '');
 $setting_rechnung_festname = setting_get($conn, 'rechnung_festname', '');
 $setting_rechnung_logo = setting_get($conn, 'rechnung_logo', '');
@@ -88,6 +90,14 @@ $setting_pay_cash_modal = setting_get($conn, 'pay_cash_modal', '0');
 $setting_sumup_affiliate_key = setting_get($conn, 'sumup_affiliate_key', '');
 $setting_sumup_app_id = setting_get($conn, 'sumup_app_id', 'at.ff.bestellsystem.web');
 $setting_app_title = setting_get($conn, 'app_title', '');
+$setting_mcp_token_configured = (string) setting_get($conn, 'mcp_token_hash', '') !== '';
+$ff_mcp_env_token = getenv('FF_MCP_TOKEN');
+$setting_mcp_token_configured = $setting_mcp_token_configured
+    || ($ff_mcp_env_token !== false && $ff_mcp_env_token !== '');
+if (empty($_SESSION['csrf_mcp_token'])) {
+    $_SESSION['csrf_mcp_token'] = bin2hex(random_bytes(32));
+}
+$csrfMcpToken = (string)$_SESSION['csrf_mcp_token'];
 $ffAppTitle = ff_app_title($conn);
 $ffAppTitleFallback = ff_app_title_fallback_from_globals();
 if ($ffAppTitleFallback === '') {
@@ -706,6 +716,22 @@ function BenutzerNeu() {
             <div id="SystemEinstellungen" class="collapse">
                 <div class="card-body">
                     <form class="mb-4">
+                        <input type="hidden" id="set_mcp_token_csrf" value="<?php echo out($csrfMcpToken); ?>">
+                        <div class="mb-3 border rounded p-3">
+                            <label class="form-label" for="set_mcp_token">MCP-HTTP-Token</label>
+                            <div class="input-group input-group-sm">
+                                <input type="password" class="form-control" id="set_mcp_token" maxlength="256" autocomplete="new-password" placeholder="Neues Token eingeben oder erzeugen">
+                                <button type="button" class="btn btn-outline-secondary" onclick="ffGenerateMcpToken();">Token erzeugen</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="ffToggleMcpTokenVisibility();">Anzeigen</button>
+                            </div>
+                            <div class="form-text">Ein neues Token überschreibt das bisherige. Kopiere es vor dem Speichern in deine MCP-Client-Konfiguration; der gespeicherte Wert wird aus Sicherheitsgründen nicht erneut angezeigt. Mindestens 32 Zeichen.</div>
+                            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="ffSaveMcpToken();">Token speichern</button>
+                                <button type="button" class="btn btn-outline-danger btn-sm" onclick="ffRemoveMcpToken();">Token entfernen</button>
+                                <span class="small text-muted" id="ffMcpTokenStatus" aria-live="polite"><?php echo $setting_mcp_token_configured ? 'MCP-Token ist konfiguriert.' : 'Kein MCP-Token konfiguriert.'; ?></span>
+                            </div>
+                            <div class="form-text">Der MCP-Endpunkt verwendet zuerst dieses Token. Ist hier keines gespeichert, wird ersatzweise die Server-Umgebungsvariable <code>FF_MCP_TOKEN</code> verwendet.</div>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label" for="set_app_title">Anzeigename der Anwendung</label>
                             <input type="text" class="form-control form-control-sm" id="set_app_title" maxlength="80" value="<?php echo htmlspecialchars((string) $setting_app_title, ENT_QUOTES, 'UTF-8'); ?>" placeholder="<?php echo htmlspecialchars($ffAppTitleFallback, ENT_QUOTES, 'UTF-8'); ?>">
@@ -919,8 +945,9 @@ function BenutzerNeu() {
                     <div class="alert alert-info small py-2 mb-3"><strong>Hinweis:</strong> Ein Druckziel erscheint nur im Hauptmenü, wenn mindestens eine Speisekarten-Position diesem Druckziel zugewiesen ist.</div>
                     <?php
                     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-                    $ptRes = mysqli_query($conn, "SELECT print_target, name, active, sort_order FROM print_targets ORDER BY sort_order, name");
-                    echo '<div class="table-responsive mb-3"><table class="table table-hover table-sm" id="printTargetsTable"><thead><tr><th>ID</th><th>Name</th><th>Reihenfolge</th><th>Aktiv</th><th class="text-nowrap">Aktion</th></tr></thead><tbody>';
+                    ff_auto_print_ensure_schema($conn);
+                    $ptRes = mysqli_query($conn, "SELECT print_target, name, active, sort_order, auto_print_limit FROM print_targets ORDER BY sort_order, name");
+                    echo '<div class="table-responsive mb-3"><table class="table table-hover table-sm" id="printTargetsTable"><thead><tr><th>ID</th><th>Name</th><th>Reihenfolge</th><th>Aktiv</th><th title="Wird eine Bestellung abgeschickt und sind in dieser Station weniger Bestellungen offen, wird sie sofort gedruckt. 0 = aus.">Auto-Druck bis</th><th class="text-nowrap">Aktion</th></tr></thead><tbody>';
                     if ($ptRes) {
                         while ($pt = mysqli_fetch_assoc($ptRes)) {
                             $pid = (int)$pt['print_target'];
@@ -929,6 +956,7 @@ function BenutzerNeu() {
                             echo '<td><input type="text" id="pt_name_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" value="'.out($pt['name']).'"></td>';
                             echo '<td><input type="number" id="pt_sort_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:5em" value="'.(int)$pt['sort_order'].'"></td>';
                             echo '<td><input type="checkbox" class="form-check-input ff-pt-autosave" id="pt_active_'.$pid.'" data-ptid="'.$pid.'" '.(((int)$pt['active']===1)?'checked':'').'></td>';
+                            echo '<td><input type="number" min="0" max="50" id="pt_autoprint_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:5em" value="'.(int)$pt['auto_print_limit'].'" title="Sofort drucken, solange weniger als N Bestellungen offen sind (0 = aus)"></td>';
                             echo '<td class="text-nowrap">';
                             if (!$ptBuiltIn) {
                                 echo '<button type="button" class="btn btn-sm btn-outline-danger ff-icon-action" onclick="deletePrintTarget('.$pid.');" title="Druckziel löschen" aria-label="Druckziel löschen">&#128465;</button>';
@@ -939,7 +967,7 @@ function BenutzerNeu() {
                         }
                     }
                     echo '</tbody></table></div>';
-                    echo '<p class="small text-muted mb-3">Name/Reihenfolge beim Verlassen des Feldes, Aktiv-Häkchen sofort — ohne Speichern-Button.</p>';
+                    echo '<p class="small text-muted mb-3">Name/Reihenfolge/Auto-Druck beim Verlassen des Feldes, Aktiv-Häkchen sofort — ohne Speichern-Button. <strong>Auto-Druck bis N:</strong> Sind beim Abschicken einer Bestellung weniger als N Bestellungen in der Station offen (nicht ausgeliefert), wird sie sofort gedruckt, ohne auf „Bestellung abschließen“ zu warten (0 = aus).</p>';
                     ?>
                     <div class="row g-2 align-items-end mb-4">
                         <div class="col-auto"><label class="form-label">ID</label><input type="number" id="pt_new_id" class="form-control form-control-sm" value="13" min="1" style="width:5em"></div>
@@ -960,6 +988,11 @@ function BenutzerNeu() {
                             <div class="col-md-4"><label class="form-label">Festname (z.B. "FF Fest Obritzberg 2026")</label><input type="text" name="rechnung_festname" class="form-control form-control-sm" placeholder="z.B. FF Fest Obritzberg 2026" value="<?php echo out($setting_rechnung_festname); ?>"></div>
                             <div class="col-md-4"><label class="form-label">Drucker-Token</label><input type="text" name="printer_token" class="form-control form-control-sm" value="<?php echo out($setting_printer_token); ?>"></div>
                             <div class="col-md-4"><label class="form-label">Offline-Backup-Token</label><input type="text" name="offline_backup_token" class="form-control form-control-sm" value="<?php echo out($setting_offline_backup_token); ?>" placeholder="für Python / Skripte" autocomplete="off"></div>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" role="switch" id="printEventMode" name="print_event_mode" value="1"<?php echo $setting_print_event_mode ? ' checked' : ''; ?>>
+                            <label class="form-check-label" for="printEventMode">Druck per Event (Server-Sent Events)</label>
+                            <div class="text-muted small">Der Druck-Client wird sofort bei „Bestellung abschließen“ (bzw. manuellem Bon) benachrichtigt, statt alle paar Sekunden nachzufragen. Benötigt <code>print_client.py</code> mit Event-Unterstützung; ältere Clients pollen weiter. Hält pro Druck-Client eine PHP-Verbindung offen.</div>
                         </div>
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
