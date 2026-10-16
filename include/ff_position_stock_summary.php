@@ -23,6 +23,63 @@ function ff_position_mv_table_exists(mysqli $conn): bool
     return $cache;
 }
 
+/**
+ * Verbrauch je Bestandteil aus Bestellungen und Mitarbeiter-Verpflegung.
+ *
+ * @param list<int> $bestandteilIds Leer bedeutet: alle Bestandteile
+ * @return array<int, float>
+ */
+function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): array
+{
+    if (!function_exists('ff_rezepturen_table_exists')
+        || !ff_rezepturen_table_exists($conn, 'bestandteile')
+        || !ff_rezepturen_table_exists($conn, 'position_rezepturen')
+    ) {
+        return [];
+    }
+
+    $ids = array_values(array_unique(array_filter(array_map('intval', $bestandteilIds), static fn(int $id): bool => $id > 0)));
+    $filter = $ids === [] ? '' : ' AND pr.bestandteil_id IN (' . implode(',', $ids) . ')';
+    $consumed = [];
+
+    $orders = mysqli_query(
+        $conn,
+        'SELECT pr.bestandteil_id AS id, COALESCE(SUM(pr.menge), 0) AS qty
+         FROM bestellungen b
+         JOIN position_rezepturen pr ON pr.position_id = b.position
+         WHERE b.`delete` = 0' . $filter . '
+         GROUP BY pr.bestandteil_id'
+    );
+    if (!$orders) {
+        throw new RuntimeException('Bestellte Bestandteil-Mengen konnten nicht geladen werden.');
+    }
+    while ($row = mysqli_fetch_assoc($orders)) {
+        $consumed[(int) $row['id']] = (float) $row['qty'];
+    }
+    mysqli_free_result($orders);
+
+    if (ff_position_mv_table_exists($conn)) {
+        $staffMeals = mysqli_query(
+            $conn,
+            'SELECT pr.bestandteil_id AS id, COALESCE(SUM(v.menge * pr.menge), 0) AS qty
+             FROM mitarbeiter_verpflegung v
+             JOIN position_rezepturen pr ON pr.position_id = v.position_id
+             WHERE 1 = 1' . $filter . '
+             GROUP BY pr.bestandteil_id'
+        );
+        if (!$staffMeals) {
+            throw new RuntimeException('Bestandteil-Mengen der Mitarbeiter-Verpflegung konnten nicht geladen werden.');
+        }
+        while ($row = mysqli_fetch_assoc($staffMeals)) {
+            $id = (int) $row['id'];
+            $consumed[$id] = ($consumed[$id] ?? 0.0) + (float) $row['qty'];
+        }
+        mysqli_free_result($staffMeals);
+    }
+
+    return $consumed;
+}
+
 function ff_position_consumed_orders(mysqli $conn, int $positionId, string $orderExtraWhereSql = ''): int
 {
     if ($positionId <= 0) {
@@ -128,8 +185,86 @@ function ff_position_batch_consumed_totals(mysqli $conn, string $orderExtraWhere
  * Liefert die kapazitätsbegrenzten Rezeptur-Bestandteile einer Position
  * (leer, falls keine Rezeptur hinterlegt ist oder keiner der Bestandteile begrenzt ist).
  */
+/**
+ * Request-lokaler Snapshot für Listenseiten (Speisen/Getränke): lädt Rezeptur-Komponenten und
+ * Bestandteil-Verbrauch mit wenigen Abfragen statt pro Kachel. Nur dort aktivieren, wo innerhalb
+ * des Requests nichts mehr bestellt wird (sonst wären die Werte veraltet).
+ */
+function ff_position_stock_snapshot(?mysqli $conn = null, bool $load = false): ?array
+{
+    static $snapshot = null;
+    if ($load && $conn !== null) {
+        $snapshot = ['components' => [], 'consumed' => []];
+        if (!function_exists('ff_rezepturen_table_exists')
+            || !ff_rezepturen_table_exists($conn, 'bestandteile')
+            || !ff_rezepturen_table_exists($conn, 'position_rezepturen')
+        ) {
+            return $snapshot;
+        }
+        $res = mysqli_query(
+            $conn,
+            'SELECT pr.position_id, pr.bestandteil_id, pr.menge, b.name, b.kapazitaet
+             FROM position_rezepturen pr
+             INNER JOIN bestandteile b ON b.id = pr.bestandteil_id
+             WHERE b.aktiv = 1 AND b.kapazitaet > 0 AND pr.menge > 0'
+        );
+        if (!$res) {
+            $snapshot = null;
+            return null;
+        }
+        $ids = [];
+        while ($row = mysqli_fetch_assoc($res)) {
+            $bid = (int) $row['bestandteil_id'];
+            $ids[$bid] = true;
+            $snapshot['components'][(int) $row['position_id']][] = [
+                'bestandteil_id' => $bid,
+                'name' => (string) ($row['name'] ?? 'Bestandteil'),
+                'menge' => (float) $row['menge'],
+                'kapazitaet' => (int) $row['kapazitaet'],
+            ];
+        }
+        mysqli_free_result($res);
+        if ($ids === []) {
+            return $snapshot;
+        }
+        $idList = implode(',', array_keys($ids));
+        $queries = [
+            'SELECT pr.bestandteil_id AS bid, SUM(pr.menge) AS cnt FROM bestellungen b
+             JOIN position_rezepturen pr ON pr.position_id = b.position
+             WHERE b.`delete` = 0 AND pr.bestandteil_id IN (' . $idList . ') GROUP BY pr.bestandteil_id',
+        ];
+        if (ff_position_mv_table_exists($conn)) {
+            $queries[] = 'SELECT pr.bestandteil_id AS bid, SUM(v.menge * pr.menge) AS cnt FROM mitarbeiter_verpflegung v
+             JOIN position_rezepturen pr ON pr.position_id = v.position_id
+             WHERE pr.bestandteil_id IN (' . $idList . ') GROUP BY pr.bestandteil_id';
+        }
+        foreach ($queries as $q) {
+            $r = mysqli_query($conn, $q);
+            if (!$r) {
+                $snapshot = null;
+                return null;
+            }
+            while ($row = mysqli_fetch_assoc($r)) {
+                $bid = (int) $row['bid'];
+                $snapshot['consumed'][$bid] = ($snapshot['consumed'][$bid] ?? 0.0) + (float) $row['cnt'];
+            }
+            mysqli_free_result($r);
+        }
+    }
+    return $snapshot;
+}
+
+function ff_position_stock_snapshot_begin(mysqli $conn): void
+{
+    ff_position_stock_snapshot($conn, true);
+}
+
 function ff_position_recipe_components(mysqli $conn, int $positionId): array
 {
+    $snap = ff_position_stock_snapshot();
+    if ($snap !== null) {
+        return $snap['components'][$positionId] ?? [];
+    }
     if ($positionId <= 0
         || !function_exists('ff_rezepturen_table_exists')
         || !ff_rezepturen_table_exists($conn, 'bestandteile')
@@ -167,6 +302,10 @@ function ff_position_recipe_components(mysqli $conn, int $positionId): array
  */
 function ff_bestandteil_consumed_total(mysqli $conn, int $bestandteilId): float
 {
+    $snap = ff_position_stock_snapshot();
+    if ($snap !== null) {
+        return (float) ($snap['consumed'][$bestandteilId] ?? 0.0);
+    }
     if ($bestandteilId <= 0
         || !function_exists('ff_rezepturen_table_exists')
         || !ff_rezepturen_table_exists($conn, 'position_rezepturen')
@@ -1023,4 +1162,37 @@ function ff_mv_render_list_rows(mysqli $conn, string $datum, string $currentUser
     }
 
     return $html;
+}
+
+/* Diagnose: Phasenzeiten der Kartenlisten als Server-Timing-Header (DevTools > Netzwerk > Timing). */
+function ff_timing_mark(string $name): void
+{
+    static $last = null;
+    if (!isset($GLOBALS['ff_timing_marks'])) {
+        $GLOBALS['ff_timing_marks'] = [];
+        ob_start();
+        $last = microtime(true);
+        $GLOBALS['ff_timing_marks']['pre'] = (($last - (float) ($_SERVER['REQUEST_TIME_FLOAT'] ?? $last))) * 1000;
+    }
+    $now = microtime(true);
+    $GLOBALS['ff_timing_marks'][$name] = ($GLOBALS['ff_timing_marks'][$name] ?? 0) + ($now - $last) * 1000;
+    $last = $now;
+}
+
+function ff_timing_flush(): void
+{
+    if (!isset($GLOBALS['ff_timing_marks'])) {
+        return;
+    }
+    $parts = [];
+    foreach ($GLOBALS['ff_timing_marks'] as $k => $ms) {
+        $parts[] = $k . ';dur=' . round($ms);
+    }
+    if (!headers_sent()) {
+        header('Server-Timing: ' . implode(', ', $parts), false);
+    }
+    unset($GLOBALS['ff_timing_marks']);
+    while (ob_get_level() > 0) {
+        ob_end_flush();
+    }
 }
