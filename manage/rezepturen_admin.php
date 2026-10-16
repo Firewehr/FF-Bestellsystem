@@ -186,7 +186,7 @@ function rez_h(string $value): string {
                         <th class="text-end">Kapazität</th>
                         <th class="text-end">Bereits bestellt</th>
                         <th class="text-end">Rest</th>
-                        <th>Kapazität erhöhen</th>
+                        <th>Kapazität berechnen</th>
                         <th>Sort.</th>
                         <th>Allergene</th>
                     </tr>
@@ -211,7 +211,7 @@ function rez_h(string $value): string {
                                 <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet text-end" value="<?php echo $kapazitaet; ?>" title="-1 = unbegrenzt"></td>
                                 <td class="text-end ff-bestandteil-bestellt"><?php echo $formatBestandteilMenge($bestellt); ?> <span class="text-muted"><?php echo rez_h((string)($bestandteil['einheit'] ?? 'Stk')); ?></span></td>
                                 <td class="text-end fw-semibold ff-bestandteil-rest"><?php echo $rest === null ? '—' : $formatBestandteilMenge((float) $rest); ?><?php if ($rest !== null): ?> <span class="text-muted"><?php echo rez_h((string)($bestandteil['einheit'] ?? 'Stk')); ?></span><?php endif; ?></td>
-                                <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(<?php echo $bestandteilId; ?>)">＋ Menge</button></td>
+                                <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(<?php echo $bestandteilId; ?>)">Berechnen</button></td>
                                 <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="<?php echo (int)($bestandteil['sort_order'] ?? 0); ?>"></td>
                                 <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="<?php echo rez_h((string)($bestandteil['allergene'] ?? '')); ?>" placeholder="z. B. Gluten, Milch"></td>
                             </tr>
@@ -237,7 +237,18 @@ function rez_h(string $value): string {
                             <div class="col-4"><div class="small text-muted">Bestellt</div><strong id="bestandteilKapazitaetBestellt">—</strong></div>
                             <div class="col-4"><div class="small text-muted">Rest</div><strong id="bestandteilKapazitaetRest">—</strong></div>
                         </div>
-                        <label for="bestandteilKapazitaetPlus" class="form-label">Zusätzliche Kapazität</label>
+                        <fieldset class="mb-3">
+                            <legend class="form-label fs-6">Berechnung</legend>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="bestandteilKapazitaetModus" id="bestandteilKapazitaetModusPlus" value="plus" checked>
+                                <label class="form-check-label" for="bestandteilKapazitaetModusPlus">Kapazität um eine Menge erhöhen</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="bestandteilKapazitaetModus" id="bestandteilKapazitaetModusRest" value="rest">
+                                <label class="form-check-label" for="bestandteilKapazitaetModusRest">Gewünschten Restbestand festlegen</label>
+                            </div>
+                        </fieldset>
+                        <label for="bestandteilKapazitaetPlus" class="form-label" id="bestandteilKapazitaetEingabeLabel">Zusätzliche Kapazität</label>
                         <div class="input-group">
                             <input type="number" class="form-control" id="bestandteilKapazitaetPlus" min="1" step="1" value="50" inputmode="numeric">
                             <span class="input-group-text" id="bestandteilKapazitaetEinheit">Stk</span>
@@ -246,7 +257,7 @@ function rez_h(string $value): string {
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
-                        <button type="button" class="btn btn-primary" id="bestandteilKapazitaetAnwenden">Kapazität erhöhen</button>
+                        <button type="button" class="btn btn-primary" id="bestandteilKapazitaetAnwenden">Kapazität übernehmen</button>
                     </div>
                 </div>
             </div>

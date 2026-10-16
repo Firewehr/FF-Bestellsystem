@@ -1107,7 +1107,7 @@ function ffRezepturRefreshBestandteileTable() {
             <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet" value="${kap}" title="-1 = unbegrenzt"></td>
             <td class="text-end ff-bestandteil-bestellt">${ffFormatBestandteilMenge(bestellt)} <span class="text-muted">${einheitEsc}</span></td>
             <td class="text-end fw-semibold ff-bestandteil-rest">${rest === null ? '—' : ffFormatBestandteilMenge(rest) + ' <span class="text-muted">' + einheitEsc + '</span>'}</td>
-            <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(${id})">＋ Menge</button></td>
+            <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(${id})">Berechnen</button></td>
             <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="${sort}"></td>
             <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="${ffRezepturEsc(allergene)}" placeholder="z. B. Gluten, Milch"></td>
         </tr>`;
@@ -1169,30 +1169,47 @@ function ffOpenBestandteilKapazitaetModal(id) {
         : '—';
     document.getElementById('bestandteilKapazitaetEinheit').textContent = unit;
     var input = document.getElementById('bestandteilKapazitaetPlus');
+    var plusMode = document.getElementById('bestandteilKapazitaetModusPlus');
+    var restMode = document.getElementById('bestandteilKapazitaetModusRest');
+    var inputLabel = document.getElementById('bestandteilKapazitaetEingabeLabel');
     input.value = '50';
     input.min = '1';
     input.step = '1';
     function updatePreview() {
-        var increase = Number(input.value);
+        var inputValue = input.value.trim();
+        var increase = Number(inputValue);
         var preview = document.getElementById('bestandteilKapazitaetVorschau');
-        if (!Number.isInteger(increase) || increase < 1) {
-            preview.textContent = 'Bitte eine positive ganze Zahl eingeben.';
+        var setRest = restMode.checked;
+        input.min = setRest ? '0' : '1';
+        inputLabel.textContent = setRest ? 'Gewünschter Restbestand' : 'Zusätzliche Kapazität';
+        if (inputValue === '' || !Number.isInteger(increase) || increase < (setRest ? 0 : 1)) {
+            preview.textContent = setRest
+                ? 'Bitte eine nicht negative ganze Zahl eingeben.'
+                : 'Bitte eine positive ganze Zahl eingeben.';
             return;
         }
-        var newCapacity = Math.ceil((capacity > 0 ? capacity : consumed) + increase);
+        var newCapacity = Math.ceil(setRest ? consumed + increase : (capacity > 0 ? capacity : consumed) + increase);
+        if (newCapacity <= 0) {
+            preview.textContent = 'Bei 0 bereits bestellt kann ein Restbestand von 0 nicht gesetzt werden (0 bedeutet unbegrenzte Kapazität).';
+            return;
+        }
         var newRest = newCapacity - consumed;
         preview.textContent = 'Neue Kapazität: ' + ffFormatBestandteilMenge(newCapacity) + ' ' + unit
             + ' · voraussichtlicher Rest: ' + ffFormatBestandteilMenge(newRest) + ' ' + unit;
     }
     input.oninput = updatePreview;
+    plusMode.onchange = updatePreview;
+    restMode.onchange = updatePreview;
     updatePreview();
     document.getElementById('bestandteilKapazitaetAnwenden').onclick = function() {
-        var increase = Number(input.value);
-        if (!Number.isInteger(increase) || increase < 1) {
+        var inputValue = input.value.trim();
+        var increase = Number(inputValue);
+        var setRest = restMode.checked;
+        var newCapacity = Math.ceil(setRest ? consumed + increase : (capacity > 0 ? capacity : consumed) + increase);
+        if (inputValue === '' || !Number.isInteger(increase) || increase < (setRest ? 0 : 1) || newCapacity <= 0) {
             input.focus();
             return;
         }
-        var newCapacity = Math.ceil((capacity > 0 ? capacity : consumed) + increase);
         var capacityInput = row.querySelector('.ff-bestandteil-kapazitaet');
         if (!capacityInput) return;
         capacityInput.value = String(newCapacity);
