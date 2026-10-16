@@ -75,6 +75,7 @@ require_once __DIR__ . '/../include/ff_favicon_helpers.php';
 function $(id) { return document.getElementById(id); }
 
 function manageNavActive(key) {
+    document.body.classList.toggle('manage-embedded-card-rezepte', ['pos', 'speisen', 'getraenke', 'sub', 'bestandteile', 'rez'].indexOf(key) !== -1);
     document.querySelectorAll('[data-nav]').forEach(function(a) {
         var active = a.getAttribute('data-nav') === key;
         a.classList.toggle('active', active);
@@ -91,6 +92,7 @@ function loadContent(url, callback) {
         .then(function(r) { return r.text(); })
         .then(function(html) {
             $('mainContent').innerHTML = html;
+            ffManageCardRecipeSticky();
             if (callback) callback();
         })
         .catch(function() {
@@ -177,6 +179,25 @@ function loadGetraenke() {
     manageNavActive('getraenke');
     window._managePosReload = loadGetraenke;
     loadContent('list_getraenkekarte_admin.php', function() { ffInitPrintTargetKassaRows(); });
+}
+
+function ffManageCardRecipeSticky() {
+    var content = $('mainContent');
+    if (!content || !document.body.classList.contains('manage-embedded-card-rezepte')) return;
+    var sticky = content.querySelector('.manage-shortlist-drinks__sticky, .manage-fragment-header, #ffPosFilterBar');
+    var updateStickyOffset = function() {
+        var stickyHeight = sticky ? sticky.getBoundingClientRect().height + parseFloat(getComputedStyle(sticky).marginBottom || '0') : 0;
+        content.style.setProperty('--manage-card-sticky-height', Math.ceil(stickyHeight) + 'px');
+    };
+    if (window._manageCardRecipeStickyObserver) {
+        window._manageCardRecipeStickyObserver.disconnect();
+        window._manageCardRecipeStickyObserver = null;
+    }
+    if (sticky && typeof ResizeObserver === 'function') {
+        window._manageCardRecipeStickyObserver = new ResizeObserver(updateStickyOffset);
+        window._manageCardRecipeStickyObserver.observe(sticky);
+    }
+    updateStickyOffset();
 }
 
 function ffBeilagenEsc(s) {
@@ -1049,7 +1070,8 @@ function ffRezepturRefreshBestandteileTable() {
             einheit: String(einheitEl.value || 'Stk'),
             kapazitaet: kap,
             sort_order: parseInt(sortEl.value, 10) || 0,
-            allergene: allergeneEl ? String(allergeneEl.value || '') : ''
+            allergene: allergeneEl ? String(allergeneEl.value || '') : '',
+            bestellt: parseFloat(tr.getAttribute('data-bestellt') || '0') || 0
         });
     });
 
@@ -1062,7 +1084,7 @@ function ffRezepturRefreshBestandteileTable() {
         : existingRows;
 
     if (!list.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>';
         return;
     }
 
@@ -1074,15 +1096,110 @@ function ffRezepturRefreshBestandteileTable() {
         if (isNaN(kap)) kap = -1;
         var sort = parseInt(item && item.sort_order, 10) || 0;
         var allergene = String(item && item.allergene ? item.allergene : '');
-        return `<tr data-bestandteil-id="${id}">
+        var bestellt = parseFloat(item && item.bestellt) || 0;
+        var begrenzt = kap > 0;
+        var rest = begrenzt ? kap - bestellt : null;
+        var rowClass = rest !== null && rest < 0 ? 'table-danger' : (rest !== null && bestellt >= kap * 0.8 ? 'table-warning' : '');
+        var einheitEsc = ffRezepturEsc(einheit);
+        return `<tr data-bestandteil-id="${id}" data-bestellt="${bestellt}" class="${rowClass}">
             <td><input type="text" class="form-control form-control-sm ff-bestandteil-name" value="${ffRezepturEsc(name)}"></td>
             <td><input type="text" class="form-control form-control-sm ff-bestandteil-einheit" value="${ffRezepturEsc(einheit)}" maxlength="30"></td>
             <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet" value="${kap}" title="-1 = unbegrenzt"></td>
+            <td class="text-end ff-bestandteil-bestellt">${ffFormatBestandteilMenge(bestellt)} <span class="text-muted">${einheitEsc}</span></td>
+            <td class="text-end fw-semibold ff-bestandteil-rest">${rest === null ? '—' : ffFormatBestandteilMenge(rest) + ' <span class="text-muted">' + einheitEsc + '</span>'}</td>
+            <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(${id})">＋ Menge</button></td>
             <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="${sort}"></td>
             <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="${ffRezepturEsc(allergene)}" placeholder="z. B. Gluten, Milch"></td>
         </tr>`;
     }).join('');
     ffRezepturBindBestandteileAutosave();
+}
+
+function ffFormatBestandteilMenge(value) {
+    var number = Number(value) || 0;
+    return number.toLocaleString('de-AT', { maximumFractionDigits: 2 });
+}
+
+function ffRezepturUpdateBestandteilCapacityRows(bestandteile) {
+    var table = document.getElementById('bestandteileTable');
+    if (!table || !Array.isArray(bestandteile)) return;
+    bestandteile.forEach(function(item) {
+        var row = table.querySelector('tr[data-bestandteil-id="' + (parseInt(item.id, 10) || 0) + '"]');
+        if (!row) return;
+        var consumed = Number(item.bestellt) || 0;
+        var capacity = parseInt((row.querySelector('.ff-bestandteil-kapazitaet') || {}).value, 10);
+        if (isNaN(capacity)) capacity = parseInt(item.kapazitaet, 10);
+        var unit = String((row.querySelector('.ff-bestandteil-einheit') || {}).value || item.einheit || 'Stk');
+        var limited = capacity > 0;
+        var rest = limited ? capacity - consumed : null;
+        row.setAttribute('data-bestellt', String(consumed));
+        var consumedCell = row.querySelector('.ff-bestandteil-bestellt');
+        var restCell = row.querySelector('.ff-bestandteil-rest');
+        if (consumedCell) consumedCell.innerHTML = ffFormatBestandteilMenge(consumed) + ' <span class="text-muted">' + ffRezepturEsc(unit) + '</span>';
+        if (restCell) restCell.innerHTML = rest === null
+            ? '—'
+            : ffFormatBestandteilMenge(rest) + ' <span class="text-muted">' + ffRezepturEsc(unit) + '</span>';
+        row.classList.remove('table-warning', 'table-danger');
+        if (rest !== null && rest < 0) row.classList.add('table-danger');
+        else if (rest !== null && consumed >= capacity * 0.8) row.classList.add('table-warning');
+        item.bestellt = consumed;
+    });
+}
+
+function ffOpenBestandteilKapazitaetModal(id) {
+    var row = document.querySelector('#bestandteileTable tr[data-bestandteil-id="' + id + '"]');
+    var modalEl = document.getElementById('bestandteilKapazitaetModal');
+    if (!row || !modalEl || !window.bootstrap || !window.bootstrap.Modal) {
+        if (typeof ffShowToast === 'function') ffShowToast('Kapazitätsrechner konnte nicht geöffnet werden.', 'danger');
+        return;
+    }
+    var name = String((row.querySelector('.ff-bestandteil-name') || {}).value || 'Bestandteil');
+    var unit = String((row.querySelector('.ff-bestandteil-einheit') || {}).value || 'Stk');
+    var capacity = parseInt((row.querySelector('.ff-bestandteil-kapazitaet') || {}).value, 10);
+    var consumed = parseFloat(row.getAttribute('data-bestellt') || '0') || 0;
+    if (isNaN(capacity)) capacity = -1;
+    modalEl.setAttribute('data-bestandteil-id', String(id));
+    document.getElementById('bestandteilKapazitaetModalName').textContent = name;
+    document.getElementById('bestandteilKapazitaetAktuell').textContent = capacity > 0
+        ? ffFormatBestandteilMenge(capacity) + ' ' + unit
+        : 'Unbegrenzt';
+    document.getElementById('bestandteilKapazitaetBestellt').textContent = ffFormatBestandteilMenge(consumed) + ' ' + unit;
+    document.getElementById('bestandteilKapazitaetRest').textContent = capacity > 0
+        ? ffFormatBestandteilMenge(capacity - consumed) + ' ' + unit
+        : '—';
+    document.getElementById('bestandteilKapazitaetEinheit').textContent = unit;
+    var input = document.getElementById('bestandteilKapazitaetPlus');
+    input.value = '50';
+    input.min = '1';
+    input.step = '1';
+    function updatePreview() {
+        var increase = Number(input.value);
+        var preview = document.getElementById('bestandteilKapazitaetVorschau');
+        if (!Number.isInteger(increase) || increase < 1) {
+            preview.textContent = 'Bitte eine positive ganze Zahl eingeben.';
+            return;
+        }
+        var newCapacity = Math.ceil((capacity > 0 ? capacity : consumed) + increase);
+        var newRest = newCapacity - consumed;
+        preview.textContent = 'Neue Kapazität: ' + ffFormatBestandteilMenge(newCapacity) + ' ' + unit
+            + ' · voraussichtlicher Rest: ' + ffFormatBestandteilMenge(newRest) + ' ' + unit;
+    }
+    input.oninput = updatePreview;
+    updatePreview();
+    document.getElementById('bestandteilKapazitaetAnwenden').onclick = function() {
+        var increase = Number(input.value);
+        if (!Number.isInteger(increase) || increase < 1) {
+            input.focus();
+            return;
+        }
+        var newCapacity = Math.ceil((capacity > 0 ? capacity : consumed) + increase);
+        var capacityInput = row.querySelector('.ff-bestandteil-kapazitaet');
+        if (!capacityInput) return;
+        capacityInput.value = String(newCapacity);
+        capacityInput.dispatchEvent(new Event('input', { bubbles: true }));
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    };
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 function ffFilterBestandteileRows() {
@@ -1188,6 +1305,7 @@ function ffRezepturSaveBestandteile(autoSave, changedRow) {
                 return;
             }
             window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
+            ffRezepturUpdateBestandteilCapacityRows(window._ffManageRezepturenBestandteile);
             if (status) status.textContent = 'Bestandteile automatisch gespeichert.';
             if (changedRow) changedRow.querySelectorAll('input').forEach(function(input) { delete input.dataset.ffDirty; });
             if (typeof ffShowToast === 'function') ffShowToast('Bestandteile gespeichert.', 'success', 1400);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../auth.php';
 require_once __DIR__ . '/../include/db.php';
 require_once __DIR__ . '/../include/ff_rezepturen_schema.php';
+require_once __DIR__ . '/../include/ff_position_stock_summary.php';
 
 mysqli_set_charset($conn, 'utf8mb4');
 if (function_exists('ff_rezepturen_ensure_schema')) {
@@ -40,6 +41,13 @@ if ($hasBestandteileTable) {
         }
         @mysqli_free_result($resultBestandteile);
     }
+}
+$bestandteilVerbrauch = [];
+if ($bestandteile !== []) {
+    $bestandteilVerbrauch = ff_bestandteil_consumed_map(
+        $conn,
+        array_map(static fn(array $row): int => (int) $row['id'], $bestandteile)
+    );
 }
 
 $positionRecipeGroups = [];
@@ -80,6 +88,7 @@ $showRezepturenOnly = $view === 'rezepturen';
 
 $selectedPositionName = '';
 $recipeRows = [];
+$formatBestandteilMenge = static fn(float $menge): string => rtrim(rtrim(number_format($menge, 2, ',', '.'), '0'), ',');
 if ($selectedPositionId > 0) {
     foreach ($positions as $position) {
         if ((int)$position['rowid'] === $selectedPositionId) {
@@ -110,14 +119,21 @@ function rez_h(string $value): string {
 }
 ?>
 <div class="manage-fragment-header mb-4 pb-3 border-bottom">
-    <h4 class="text-primary fw-semibold mb-1">Rezepturen</h4>
-    <p class="small text-muted mb-0">Hier werden zusammengesetzte Positionen gepflegt, z. B. 0.5 + 0.5 für Radler oder 2 Schnitzel + 1 Salat.</p>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+        <h4 class="text-primary fw-semibold mb-1"><?php echo $showBestandteileOnly ? 'Bestandteile' : 'Rezepturen'; ?></h4>
+        <?php if ($showBestandteileOnly): ?>
+            <button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewBestandteilModal()">+ Neuer Bestandteil</button>
+        <?php endif; ?>
+    </div>
+    <p class="small text-muted mb-0"><?php echo $showBestandteileOnly
+        ? 'Bestandteile anlegen und verwalten, die in den Rezepturen der Positionen verwendet werden.'
+        : 'Zusammengesetzte Positionen pflegen, z. B. 0.5 + 0.5 für Radler oder 2 Schnitzel + 1 Salat.'; ?></p>
 </div>
 <p id="rezepturStatus" class="manage-rezeptur-status small text-muted" role="status" aria-live="polite">Bereit. Bestandteile werden automatisch gespeichert; Rezepturen erst mit „Speichern“.</p>
 
 <?php if (!$showRezepturenOnly): ?>
 <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-light fw-semibold d-flex justify-content-between align-items-center">Bestandteile <button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewBestandteilModal()">+ Neuer Bestandteil</button></div>
+    <div class="card-header bg-light fw-semibold d-flex justify-content-between align-items-center">Bestandteile<?php if (!$showBestandteileOnly): ?> <button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewBestandteilModal()">+ Neuer Bestandteil</button><?php endif; ?></div>
     <div class="card-body">
         <div id="ffNewBestandteilModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);overflow:auto;padding:1rem" onclick="if(event.target===this)ffCloseNewBestandteilModal()">
             <div class="bg-white rounded shadow mx-auto position-relative" style="max-width:520px;margin-top:5vh">
@@ -155,7 +171,11 @@ function rez_h(string $value): string {
             <input type="search" id="bestandteileFilter" class="form-control form-control-sm manage-filter-input" placeholder="Bestandteile suchen …" oninput="ffFilterBestandteileRows()">
             <span id="bestandteileCount" class="small text-muted" aria-live="polite"></span>
         </div>
-        <p class="small text-muted mb-2">Änderungen werden beim Verlassen eines Feldes oder kurz nach der Eingabe automatisch gespeichert.</p>
+        <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
+            <span>Änderungen werden automatisch gespeichert.</span>
+            <span><span class="badge text-bg-warning">Knapp</span> ab 80 % der Kapazität</span>
+            <span><span class="badge text-bg-danger">Überschritten</span> mehr bestellt als verfügbar</span>
+        </div>
 
         <div class="table-responsive border rounded">
             <table id="bestandteileTable" class="table table-sm table-hover align-middle mb-0">
@@ -163,20 +183,35 @@ function rez_h(string $value): string {
                     <tr>
                         <th>Name</th>
                         <th>Einheit</th>
-                        <th>Kapazität</th>
-                        <th>Sort</th>
+                        <th class="text-end">Kapazität</th>
+                        <th class="text-end">Bereits bestellt</th>
+                        <th class="text-end">Rest</th>
+                        <th>Kapazität erhöhen</th>
+                        <th>Sort.</th>
                         <th>Allergene</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php if ($bestandteile === []): ?>
-                        <tr><td colspan="5" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>
+                        <tr><td colspan="8" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>
                     <?php else: ?>
                         <?php foreach ($bestandteile as $bestandteil): ?>
-                            <tr data-bestandteil-id="<?php echo (int)$bestandteil['id']; ?>">
+                            <?php
+                                $bestandteilId = (int) $bestandteil['id'];
+                                $kapazitaet = (int) ($bestandteil['kapazitaet'] ?? -1);
+                                $bestellt = (float) ($bestandteilVerbrauch[$bestandteilId] ?? 0);
+                                $rest = $kapazitaet > 0 ? $kapazitaet - $bestellt : null;
+                                $warnClass = $rest !== null && $rest < 0
+                                    ? 'table-danger'
+                                    : ($rest !== null && $bestellt >= $kapazitaet * 0.8 ? 'table-warning' : '');
+                            ?>
+                            <tr data-bestandteil-id="<?php echo $bestandteilId; ?>" data-bestellt="<?php echo rez_h((string) $bestellt); ?>" class="<?php echo $warnClass; ?>">
                                 <td><input type="text" class="form-control form-control-sm ff-bestandteil-name" value="<?php echo rez_h((string)$bestandteil['name']); ?>"></td>
                                 <td><input type="text" class="form-control form-control-sm ff-bestandteil-einheit" value="<?php echo rez_h((string)($bestandteil['einheit'] ?? 'Stk')); ?>" maxlength="30"></td>
-                                <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet" value="<?php echo (int)($bestandteil['kapazitaet'] ?? -1); ?>" title="-1 = unbegrenzt"></td>
+                                <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet text-end" value="<?php echo $kapazitaet; ?>" title="-1 = unbegrenzt"></td>
+                                <td class="text-end ff-bestandteil-bestellt"><?php echo $formatBestandteilMenge($bestellt); ?> <span class="text-muted"><?php echo rez_h((string)($bestandteil['einheit'] ?? 'Stk')); ?></span></td>
+                                <td class="text-end fw-semibold ff-bestandteil-rest"><?php echo $rest === null ? '—' : $formatBestandteilMenge((float) $rest); ?><?php if ($rest !== null): ?> <span class="text-muted"><?php echo rez_h((string)($bestandteil['einheit'] ?? 'Stk')); ?></span><?php endif; ?></td>
+                                <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(<?php echo $bestandteilId; ?>)">＋ Menge</button></td>
                                 <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="<?php echo (int)($bestandteil['sort_order'] ?? 0); ?>"></td>
                                 <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="<?php echo rez_h((string)($bestandteil['allergene'] ?? '')); ?>" placeholder="z. B. Gluten, Milch"></td>
                             </tr>
@@ -186,6 +221,36 @@ function rez_h(string $value): string {
             </table>
         </div>
         <p id="bestandteileNoResults" class="small text-muted mt-2 mb-0" hidden>Keine passenden Bestandteile gefunden.</p>
+        <div id="bestandteilKapazitaetModal" class="modal fade" tabindex="-1" aria-labelledby="bestandteilKapazitaetModalTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <div>
+                            <h5 class="modal-title" id="bestandteilKapazitaetModalTitle">Kapazität anpassen</h5>
+                            <div class="small text-muted" id="bestandteilKapazitaetModalName"></div>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-4"><div class="small text-muted">Kapazität</div><strong id="bestandteilKapazitaetAktuell">—</strong></div>
+                            <div class="col-4"><div class="small text-muted">Bestellt</div><strong id="bestandteilKapazitaetBestellt">—</strong></div>
+                            <div class="col-4"><div class="small text-muted">Rest</div><strong id="bestandteilKapazitaetRest">—</strong></div>
+                        </div>
+                        <label for="bestandteilKapazitaetPlus" class="form-label">Zusätzliche Kapazität</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="bestandteilKapazitaetPlus" min="1" step="1" value="50" inputmode="numeric">
+                            <span class="input-group-text" id="bestandteilKapazitaetEinheit">Stk</span>
+                        </div>
+                        <div class="form-text" id="bestandteilKapazitaetVorschau" aria-live="polite"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                        <button type="button" class="btn btn-primary" id="bestandteilKapazitaetAnwenden">Kapazität erhöhen</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 <?php endif; ?>
