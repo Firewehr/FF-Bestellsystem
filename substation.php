@@ -326,45 +326,92 @@ if (!$isScopedAccess && $station !== '' && isset($config[$station])) {
 <title><?php echo $station !== '' ? $h($station) : 'Sub-Stationen'; ?></title>
 <link rel="stylesheet" href="<?php echo $h($bsCss); ?>">
 <style>
-body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
-.ss-head{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
-.ss-head h1{font-size:clamp(2rem,4vw,3.5rem);font-weight:700;margin:0;margin-right:auto}
-.ss-dot{display:inline-block;width:.8rem;height:.8rem;border-radius:50%;background:#2ecc71;margin-right:.4rem}
-.ss-dot.off{background:#e74c3c}
-.ss-status{color:#9aa7b4;font-size:1rem}
-.ss-chips{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.2rem}
-.ss-chip{background:#1d2630;border:1px solid #2c3948;border-radius:2rem;padding:.3rem .9rem;font-size:1.15rem}
-.ss-chip.warn{border-color:#f39c12;color:#f39c12}
-.ss-chip.crit{border-color:#e74c3c;color:#ff6b5b}
-.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
-.ss-tile{background:#1d2630;border:2px solid #2ecc71;border-radius:1rem;padding:1rem 1.2rem;text-align:center;transition:background .4s,border-color .4s}
-.ss-tile .nm{font-size:clamp(1.2rem,2vw,1.8rem);color:#c9d3dc}
-.ss-tile .q{font-size:clamp(4rem,11vw,10rem);font-weight:800;line-height:1.05;color:#2ecc71}
-.ss-tile.mid{border-color:#f39c12}.ss-tile.mid .q{color:#f39c12}
-.ss-tile.high{border-color:#e74c3c}.ss-tile.high .q{color:#ff6b5b}
-.ss-tile.changed{background:#2f4258}
-.ss-empty{grid-column:1/-1;text-align:center;font-size:clamp(2rem,5vw,4rem);color:#2ecc71;padding:3rem 0}
-.ss-pos-list{max-height:16rem;overflow:auto}
-.ss-qr-overlay{position:fixed;inset:0;z-index:1050;background:#000b;display:grid;place-items:center;padding:1rem}
+.ss-page{--ss-ink:#142033;--ss-muted:#65758b;--ss-line:#e3e9f0;--ss-primary:#1769aa;max-width:1060px}
+.ss-page-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem}
+.ss-page-header h1{margin:0;font-weight:750;letter-spacing:-.035em}
+.ss-page-header .ss-page-intro{margin:.3rem 0 0;color:var(--ss-muted)}
+.ss-page-header .ss-back{flex:0 0 auto}
+.ss-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:1rem}
+.ss-overview-card{position:relative;display:block;padding:1.25rem 1.35rem;border:1px solid var(--ss-line);border-radius:1rem;background:#fff;color:var(--ss-ink);text-decoration:none;box-shadow:0 5px 18px #1420330a;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.ss-overview-card:hover,.ss-overview-card:focus-visible{transform:translateY(-2px);border-color:#9bc3e3;box-shadow:0 12px 28px #14203314;color:var(--ss-ink)}
+.ss-overview-card:focus-visible{outline:3px solid #82bde8;outline-offset:3px}
+.ss-overview-title{display:block;margin-bottom:.65rem;font-size:1.25rem;font-weight:700}
+.ss-overview-meta{display:flex;gap:.5rem;flex-wrap:wrap}
+.ss-overview-meta span{padding:.3rem .65rem;border-radius:2rem;background:#f1f5f9;color:#47566b;font-size:.82rem}
+.ss-overview-arrow{position:absolute;right:1.25rem;top:1.25rem;color:#8493a7;font-size:1.3rem}
+.ss-section-head{display:flex;align-items:end;justify-content:space-between;gap:1rem;margin:2rem 0 .9rem}
+.ss-section-head h2{margin:0;font-size:1.25rem;font-weight:700}
+.ss-section-head p{margin:.25rem 0 0;color:var(--ss-muted);font-size:.9rem}
+.ss-config-list{display:grid;gap:.9rem}
+.ss-card{border:1px solid var(--ss-line)!important;border-radius:.9rem!important;box-shadow:0 4px 16px #1420330a}
+.ss-card .card-body{padding:1.1rem}
+.ss-card-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,170px) auto;align-items:end;gap:.75rem;margin-bottom:.85rem}
+.ss-field-label{display:block;margin-bottom:.35rem;color:#53647a;font-size:.8rem;font-weight:650}
+.ss-pos-list{max-height:16rem;overflow:auto;padding:.65rem!important;border-color:#e2e8f0!important;background:#f8fafc}
+.ss-pos-group{margin:.25rem 0 .35rem;color:#596a80;font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.ss-pos-list label.form-check{padding:.28rem .4rem .28rem 1.8rem;border-radius:.4rem}
+.ss-pos-list label.form-check:hover{background:#edf4fa}
+.ss-config-actions{position:sticky;bottom:.5rem;z-index:5;display:flex;align-items:center;gap:.6rem;margin-top:1rem;padding:.75rem;border:1px solid var(--ss-line);border-radius:.8rem;background:#ffffffed;box-shadow:0 6px 20px #14203312;backdrop-filter:blur(8px)}
+.ss-config-actions .ss-save{margin-left:auto;min-width:132px}
+.ss-empty-config{padding:1.25rem;border:1px dashed #cbd5e1;border-radius:.8rem;color:var(--ss-muted);background:#f8fafc}
+.ss-live{background:#0d141c!important;color:#edf3f8;overflow-x:hidden}
+.ss-live .ss-page{max-width:none}
+.ss-live-layout{min-height:100vh;padding:clamp(.75rem,2vw,1.5rem)}
+.ss-head{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin:-.5rem -.5rem 1rem;padding:.75rem .5rem;background:#0d141ceF;backdrop-filter:blur(10px)}
+.ss-head h1{font-size:clamp(1.7rem,4vw,3.2rem);font-weight:750;letter-spacing:-.035em;margin:0 auto 0 0}
+.ss-head .btn{min-height:40px}
+.ss-live-status{display:inline-flex;align-items:center;gap:.55rem;padding:.45rem .75rem;border:1px solid #354354;border-radius:2rem;background:#17212c}
+.ss-dot{display:inline-block;width:.7rem;height:.7rem;border-radius:50%;background:#2ecc71;box-shadow:0 0 0 4px #2ecc7125}
+.ss-dot.off{background:#e74c3c;box-shadow:0 0 0 4px #e74c3c25}
+.ss-status{color:#d3dde7;font-size:.9rem}
+.ss-chips{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.ss-chip{background:#192430;border:1px solid #344353;border-radius:2rem;padding:.35rem .8rem;font-size:.95rem;font-variant-numeric:tabular-nums}
+.ss-chip.warn{border-color:#a86e08;color:#ffd27d;background:#382b16}
+.ss-chip.crit{border-color:#a63f39;color:#ffaaa3;background:#381f20}
+.ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,255px),1fr));gap:clamp(.65rem,1.5vw,1rem)}
+.ss-tile{display:flex;min-height:clamp(185px,24vh,280px);flex-direction:column;justify-content:center;align-items:center;gap:.35rem;background:linear-gradient(155deg,#1b2835,#17212c);border:1px solid #2ecc7180;border-left:5px solid #2ecc71;border-radius:1rem;padding:1.2rem;text-align:center;box-shadow:0 8px 24px #0002;transition:background .4s,border-color .4s,transform .3s}
+.ss-tile .nm{font-size:clamp(1rem,2vw,1.45rem);font-weight:600;color:#cbd6e0}
+.ss-tile .q{font-size:clamp(4rem,10vw,8.5rem);font-weight:800;line-height:1;color:#2ecc71;font-variant-numeric:tabular-nums}
+.ss-tile.mid{border-color:#f39c1280;border-left-color:#f39c12}.ss-tile.mid .q{color:#ffc04d}
+.ss-tile.high{border-color:#e74c3c80;border-left-color:#e74c3c}.ss-tile.high .q{color:#ff766d}
+.ss-tile.changed{background:#2f4258;transform:scale(1.015)}
+.ss-empty{grid-column:1/-1;display:grid;place-items:center;min-height:45vh;text-align:center;font-size:clamp(2rem,5vw,4rem);font-weight:700;color:#55dc8e}
+.ss-qr-overlay{position:fixed;inset:0;z-index:1050;background:#07101dcc;display:grid;place-items:center;padding:1rem;backdrop-filter:blur(5px)}
 .ss-qr-overlay[hidden]{display:none}
-.ss-qr-card{background:#fff;color:#212529;border-radius:1rem;padding:1.5rem;max-width:25rem;width:100%;text-align:center}
-.ss-qr-card h2{font-size:1.35rem}
-.ss-qr-code{display:flex;justify-content:center;margin:1rem 0}
+.ss-qr-card{background:#fff;color:#212529;border-radius:1rem;padding:1.5rem;max-width:27rem;width:100%;text-align:center;box-shadow:0 24px 80px #0005}
+.ss-qr-card h2{font-size:1.35rem;font-weight:700}
+.ss-qr-code{display:flex;justify-content:center;margin:1.25rem 0;padding:1rem;border:1px solid #e5eaf0;border-radius:.8rem;background:#f8fafc}
 .ss-qr-code img,.ss-qr-code canvas{max-width:100%;height:auto}
+@media(max-width:600px){
+    .ss-page-header{align-items:flex-start}
+    .ss-page-header .ss-back{margin-top:.25rem}
+    .ss-page-header h1{font-size:1.55rem}
+    .ss-head{gap:.5rem}
+    .ss-head h1{width:100%;order:-1}
+    .ss-live-status{margin-right:auto}
+    .ss-head .btn{font-size:.82rem;padding:.45rem .6rem}
+    .ss-tile{min-height:180px}
+    .ss-card-top{grid-template-columns:minmax(0,1fr) auto}
+    .ss-card-top .ss-order-field{grid-column:1}
+    .ss-card-top .ss-delete{grid-column:2;grid-row:1 / span 2}
+}
+@media(prefers-reduced-motion:reduce){
+    *,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}
+}
 </style>
 </head>
 <?php $ssLive = $station !== '' && isset($config[$station]); ?>
 <body class="<?php echo $ssLive ? 'ss-live' : 'bg-light'; ?>">
-<div class="container-fluid py-3"<?php echo $ssLive ? '' : ' style="max-width:900px"'; ?>>
+<div class="container-fluid py-3 ss-page<?php echo $ssLive ? ' ss-live-layout' : ''; ?>">
 <?php if ($ssLive) : ?>
     <div class="ss-head">
         <?php if (!$isScopedAccess) : ?>
-        <a class="btn btn-outline-light btn-sm" href="substation.php">← Sub-Stationen</a>
+        <a class="btn btn-outline-light btn-sm" href="substation.php">← Übersicht</a>
         <?php endif; ?>
         <h1><?php echo $h($station); ?></h1>
-        <span class="ss-status"><span class="ss-dot off" id="ssDot"></span><span id="ssAge">JavaScript wird gestartet…</span></span>
+        <span class="ss-live-status"><span class="ss-dot off" id="ssDot"></span><span class="ss-status" id="ssAge">JavaScript wird gestartet…</span></span>
         <?php if (!$isScopedAccess) : ?>
-        <button class="btn btn-outline-light btn-sm" id="ssQrOpen" type="button">Anzeige per QR öffnen</button>
+        <button class="btn btn-primary btn-sm" id="ssQrOpen" type="button">📱 Anzeige per QR</button>
         <?php else : ?>
         <a class="btn btn-outline-light btn-sm" href="substation_qr.php?action=close">Anzeige beenden</a>
         <?php endif; ?>
@@ -389,22 +436,35 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
         data-csrf-token="<?php echo $h((string) ($_SESSION['csrf_substation_qr'] ?? '')); ?>"></div>
     <script src="js/substation_live.js?v=2" defer></script>
 <?php else : ?>
-    <div class="d-flex align-items-center gap-2 mb-3">
-        <a class="btn btn-outline-secondary btn-sm" href="index.php">← Zurück</a>
-        <h1 class="h3 mb-0">Sub-Stationen</h1>
+    <header class="ss-page-header">
+        <a class="btn btn-outline-secondary btn-sm ss-back" href="index.php" aria-label="Zurück zur Hauptseite">← Zurück</a>
+        <div>
+            <h1 class="h3">Sub-Stationen</h1>
+            <p class="ss-page-intro">Live-Anzeigen öffnen oder Stationen und ihre Positionen verwalten.</p>
+        </div>
+    </header>
+    <div class="ss-section-head">
+        <div>
+            <h2>Live-Anzeigen</h2>
+            <p><?php echo count($config); ?> Sub-Station<?php echo count($config) === 1 ? '' : 'en'; ?> eingerichtet</p>
+        </div>
     </div>
     <?php if ($station !== '') : ?>
-        <div class="alert alert-warning">Sub-Station „<?php echo $h($station); ?>“ existiert nicht.</div>
+        <div class="alert alert-warning" role="alert">Die Sub-Station „<?php echo $h($station); ?>“ existiert nicht mehr.</div>
     <?php endif; ?>
-    <div class="list-group mb-4" id="ssOverview">
+    <div class="ss-overview mb-4" id="ssOverview">
         <?php foreach ($config as $name => $cfg) : ?>
-            <a class="list-group-item list-group-item-action d-flex justify-content-between" href="substation.php?station=<?php echo rawurlencode($name); ?>">
-                <span class="fw-semibold"><?php echo $h($name); ?></span>
-                <span class="text-muted">nächste <?php echo (int) $cfg['orders']; ?> Bestellungen · <?php echo count($cfg['positions']); ?> Positionen</span>
+            <a class="ss-overview-card" href="substation.php?station=<?php echo rawurlencode($name); ?>">
+                <span class="ss-overview-title"><?php echo $h($name); ?></span>
+                <span class="ss-overview-meta">
+                    <span>Nächste <?php echo (int) $cfg['orders']; ?> Bestellungen</span>
+                    <span><?php echo count($cfg['positions']); ?> Positionen</span>
+                </span>
+                <span class="ss-overview-arrow" aria-hidden="true">›</span>
             </a>
         <?php endforeach; ?>
         <?php if (!$config) : ?>
-            <div class="list-group-item text-muted">Noch keine Sub-Station angelegt.</div>
+            <div class="ss-empty-config">Noch keine Sub-Station eingerichtet. Lege unten eine Station an und weise ihr Positionen zu.</div>
         <?php endif; ?>
     </div>
     <?php if ($isAdmin) :
@@ -412,13 +472,18 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
         $allComponents = ff_substation_all_components($conn);
         $typeLabels = [1 => 'Speisen', 2 => 'Getränke', 3 => 'Desserts'];
         ?>
-    <h2 class="h5">Konfiguration</h2>
-    <div class="alert alert-danger d-none" id="ssCfgError"></div>
-    <div id="ssCfg"></div>
-    <div class="d-flex gap-2 mt-2">
-        <button class="btn btn-outline-primary btn-sm" id="ssAdd" type="button">+ Sub-Station</button>
-        <button class="btn btn-primary btn-sm" id="ssSave" type="button">Speichern</button>
-        <span class="text-success small align-self-center d-none" id="ssSaved">Gespeichert</span>
+    <div class="ss-section-head">
+        <div>
+            <h2>Konfiguration</h2>
+            <p>Wähle pro Station die angezeigten Positionen und die Anzahl offener Bestellungen.</p>
+        </div>
+    </div>
+    <div class="alert alert-danger d-none" id="ssCfgError" role="alert"></div>
+    <div class="ss-config-list" id="ssCfg"></div>
+    <div class="ss-config-actions">
+        <button class="btn btn-outline-primary" id="ssAdd" type="button">＋ Station hinzufügen</button>
+        <span class="text-success small align-self-center d-none" id="ssSaved" role="status">Gespeichert</span>
+        <button class="btn btn-primary ss-save" id="ssSave" type="button">Änderungen speichern</button>
     </div>
     <script>
     (function () {
@@ -428,6 +493,7 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
         var cfg = <?php echo json_encode($config ?: new stdClass(), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
         var root = document.getElementById('ssCfg');
         var errBox = document.getElementById('ssCfgError');
+        var nextCardId = 0;
 
         function card(name, data) {
             var wrap = document.createElement('div');
@@ -435,26 +501,56 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
             var body = document.createElement('div');
             body.className = 'card-body';
             var top = document.createElement('div');
-            top.className = 'row g-2 mb-2';
-            var c1 = document.createElement('div'); c1.className = 'col-7';
+            top.className = 'ss-card-top';
+            var c1 = document.createElement('div');
+            var nameLabel = document.createElement('label');
+            nameLabel.className = 'ss-field-label';
+            nameLabel.textContent = 'Stationsname';
             var nameIn = document.createElement('input');
-            nameIn.className = 'form-control form-control-sm ss-name'; nameIn.maxLength = 40;
-            nameIn.placeholder = 'Name (z. B. Zapfanlage)'; nameIn.value = name;
+            nameIn.className = 'form-control ss-name';
+            nameIn.maxLength = 40;
+            nameIn.placeholder = 'z. B. Zapfanlage';
+            nameIn.value = name;
+            nameIn.id = 'ss-name-' + nextCardId;
+            nameLabel.htmlFor = nameIn.id;
+            c1.appendChild(nameLabel);
             c1.appendChild(nameIn);
-            var c2 = document.createElement('div'); c2.className = 'col-3';
+            var c2 = document.createElement('div');
+            c2.className = 'ss-order-field';
+            var ordLabel = document.createElement('label');
+            ordLabel.className = 'ss-field-label';
+            ordLabel.textContent = 'Offene Bestellungen';
             var ordIn = document.createElement('input');
-            ordIn.type = 'number'; ordIn.min = 1; ordIn.max = 50; ordIn.className = 'form-control form-control-sm ss-orders';
-            ordIn.title = 'Anzahl der nächsten Bestellungen'; ordIn.value = data.orders || 5;
+            ordIn.type = 'number';
+            ordIn.min = 1;
+            ordIn.max = 50;
+            ordIn.required = true;
+            ordIn.className = 'form-control ss-orders';
+            ordIn.title = 'Anzahl der nächsten Bestellungen';
+            ordIn.value = data.orders || 5;
+            ordIn.id = 'ss-orders-' + nextCardId;
+            ordLabel.htmlFor = ordIn.id;
+            c2.appendChild(ordLabel);
             c2.appendChild(ordIn);
-            var c3 = document.createElement('div'); c3.className = 'col-2 text-end';
+            var c3 = document.createElement('div');
+            c3.className = 'ss-delete';
             var del = document.createElement('button');
-            del.type = 'button'; del.className = 'btn btn-outline-danger btn-sm'; del.textContent = '✕';
+            del.type = 'button';
+            del.className = 'btn btn-outline-danger';
+            del.textContent = 'Löschen';
             del.title = 'Sub-Station löschen';
-            del.addEventListener('click', function () { wrap.remove(); });
+            del.addEventListener('click', function () {
+                if (nameIn.value.trim() && !window.confirm('Sub-Station „' + nameIn.value.trim() + '“ entfernen?')) return;
+                wrap.remove();
+            });
             c3.appendChild(del);
             top.appendChild(c1); top.appendChild(c2); top.appendChild(c3);
             body.appendChild(top);
 
+            var positionLabel = document.createElement('div');
+            positionLabel.className = 'ss-field-label';
+            positionLabel.textContent = 'Angezeigte Positionen';
+            body.appendChild(positionLabel);
             var list = document.createElement('div');
             list.className = 'ss-pos-list border rounded p-2';
             var lastGroup = null;
@@ -464,35 +560,46 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
                 var g = (typeLabels[p.type] || 'Sonstige') + (p.subcategory ? ' – ' + p.subcategory : '');
                 if (g !== lastGroup) {
                     var gh = document.createElement('div');
-                    gh.className = 'small fw-semibold text-secondary mt-1';
+                    gh.className = 'ss-pos-group';
                     gh.textContent = g;
                     list.appendChild(gh);
                     lastGroup = g;
                 }
                 var lab = document.createElement('label');
-                lab.className = 'form-check d-block';
+                lab.className = 'form-check';
                 var cb = document.createElement('input');
                 cb.type = 'checkbox'; cb.className = 'form-check-input ss-pos'; cb.value = String(p.id);
                 cb.checked = !!selected[p.id];
                 var span = document.createElement('span');
                 span.className = 'form-check-label'; span.textContent = p.name;
+                cb.setAttribute('aria-label', p.name);
                 lab.appendChild(cb); lab.appendChild(span);
                 list.appendChild(lab);
             });
+            if (!positions.length) {
+                var noPositions = document.createElement('div');
+                noPositions.className = 'text-muted small';
+                noPositions.textContent = 'Keine Positionen verfügbar.';
+                list.appendChild(noPositions);
+            }
             body.appendChild(list);
 
             if (components.length) {
                 var ch = document.createElement('div');
-                ch.className = 'small fw-semibold text-secondary mt-2';
-                ch.textContent = 'Nach Bestandteilen zusammenfassen (leer = Positionen einzeln anzeigen):';
+                ch.className = 'ss-field-label mt-3';
+                ch.textContent = 'Optional: Nach Bestandteilen zusammenfassen';
                 body.appendChild(ch);
+                var chHelp = document.createElement('div');
+                chHelp.className = 'small text-muted mb-2';
+                chHelp.textContent = 'Wenn nichts ausgewählt ist, werden die Positionen einzeln angezeigt.';
+                body.appendChild(chHelp);
                 var clist = document.createElement('div');
                 clist.className = 'ss-pos-list border rounded p-2';
                 var csel = {};
                 (data.components || []).forEach(function (id) { csel[id] = true; });
                 components.forEach(function (c) {
                     var lab = document.createElement('label');
-                    lab.className = 'form-check d-block';
+                    lab.className = 'form-check';
                     var cb = document.createElement('input');
                     cb.type = 'checkbox'; cb.className = 'form-check-input ss-comp'; cb.value = String(c.id);
                     cb.checked = !!csel[c.id];
@@ -504,44 +611,75 @@ body.ss-live{background:#0f1419!important;color:#e8edf2;overflow-x:hidden}
                 body.appendChild(clist);
             }
             wrap.appendChild(body);
+            nextCardId++;
             return wrap;
         }
 
         Object.keys(cfg).forEach(function (n) { root.appendChild(card(n, cfg[n])); });
         document.getElementById('ssAdd').addEventListener('click', function () {
-            root.appendChild(card('', { orders: 5, positions: [] }));
+            savedMessage.classList.add('d-none');
+            var newCard = card('', { orders: 5, positions: [] });
+            root.appendChild(newCard);
+            newCard.querySelector('.ss-name').focus();
+            newCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
-        document.getElementById('ssSave').addEventListener('click', function () {
+        var saveButton = document.getElementById('ssSave');
+        var savedMessage = document.getElementById('ssSaved');
+        root.addEventListener('input', function () {
+            savedMessage.classList.add('d-none');
+        });
+        saveButton.addEventListener('click', function () {
             var out = {};
             var bad = '';
             root.querySelectorAll('.ss-card').forEach(function (c) {
                 var n = c.querySelector('.ss-name').value.trim();
                 if (!n) { bad = 'Jede Sub-Station braucht einen Namen.'; return; }
-                if (out[n]) { bad = 'Name doppelt: ' + n; return; }
+                if (Object.prototype.hasOwnProperty.call(out, n)) { bad = 'Name doppelt: ' + n; return; }
+                var orderInput = c.querySelector('.ss-orders');
+                var orders = parseInt(orderInput.value, 10);
+                if (!Number.isInteger(orders) || orders < 1 || orders > 50) {
+                    bad = 'Die Anzahl offener Bestellungen muss zwischen 1 und 50 liegen.';
+                    return;
+                }
                 out[n] = {
-                    orders: parseInt(c.querySelector('.ss-orders').value, 10) || 5,
+                    orders: orders,
                     positions: Array.prototype.map.call(c.querySelectorAll('.ss-pos:checked'), function (cb) { return parseInt(cb.value, 10); }),
                     components: Array.prototype.map.call(c.querySelectorAll('.ss-comp:checked'), function (cb) { return parseInt(cb.value, 10); })
                 };
             });
-            if (bad) { errBox.textContent = bad; errBox.classList.remove('d-none'); return; }
+            if (bad) {
+                errBox.textContent = bad;
+                errBox.classList.remove('d-none');
+                return;
+            }
             errBox.classList.add('d-none');
+            saveButton.disabled = true;
+            saveButton.textContent = 'Speichert…';
             fetch('substation.php?action=save', {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 body: JSON.stringify({ stations: out })
-            }).then(function (r) { return r.json(); }).then(function (j) {
-                if (!j || !j.ok) throw new Error('save');
-                location.reload();
-            }).catch(function () {
-                errBox.textContent = 'Speichern fehlgeschlagen.';
+            }).then(function (r) {
+                return r.json().then(function (j) {
+                    if (!r.ok || !j || !j.ok) throw new Error(j && j.error ? j.error : 'Speichern fehlgeschlagen.');
+                    return j;
+                });
+            }).then(function () {
+                savedMessage.classList.remove('d-none');
+                savedMessage.textContent = 'Gespeichert';
+                window.setTimeout(function () { location.reload(); }, 600);
+            }).catch(function (error) {
+                errBox.textContent = error.message || 'Speichern fehlgeschlagen. Bitte erneut versuchen.';
                 errBox.classList.remove('d-none');
+            }).finally(function () {
+                saveButton.disabled = false;
+                saveButton.textContent = 'Änderungen speichern';
             });
         });
     })();
     </script>
     <?php else : ?>
-        <p class="text-muted small">Konfiguration nur für Administratoren.</p>
+        <p class="text-muted small">Die Konfiguration ist nur für Administratoren verfügbar.</p>
     <?php endif; ?>
 <?php endif; ?>
 </div>
