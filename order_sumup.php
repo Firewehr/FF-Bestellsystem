@@ -7,6 +7,7 @@ require_once __DIR__ . '/include/menu_lock_helpers.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
 require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
+require_once __DIR__ . '/include/ff_schreibaus.php';
 
 
 /*
@@ -88,6 +89,9 @@ if (!$table) {
         <p>Dieser QR-Code ist nicht mehr gültig.</p>
     ');
 }
+
+$rawTischname = trim((string)($table['tischname'] ?? ''));
+$displayTischLabel = ff_format_table_label($rawTischname, $tischnummer);
 
 
 /*
@@ -1203,17 +1207,7 @@ body {
     </h1>
 
     <div class="table">
-
-        Tisch
-        <?= (int)$tischnummer ?>
-
-        <?php if (!empty($table['tischname'])): ?>
-
-            –
-            <?= h($table['tischname']) ?>
-
-        <?php endif; ?>
-
+        <?= h($displayTischLabel) ?>
     </div>
 
 </header>
