@@ -8,10 +8,19 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/include/settings.php';
 $user = api_require_auth();
 
 $username = (string)$user['username'];
 $usernameEsc = mysqli_real_escape_string($conn, $username);
+
+$sumupEnabled = (setting_get($conn, 'sumup_open_app_button', '0') === '1');
+$payCashModal = (setting_get($conn, 'pay_cash_modal', '0') === '1');
+$sumupAffiliateKey = trim((string)setting_get($conn, 'sumup_affiliate_key', ''));
+$sumupAppId = trim((string)setting_get($conn, 'sumup_app_id', 'at.ff.bestellsystem.web'));
+if ($sumupAppId === '') {
+    $sumupAppId = 'at.ff.bestellsystem.web';
+}
 
 $activeFest = null;
 $festRes = mysqli_query($conn, 'SELECT id, name, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
@@ -151,6 +160,12 @@ api_response([
     'ok' => true,
     'fest' => $activeFest,
     'wait_times' => $waitTimes,
+    'pay_cash_modal' => $payCashModal,
+    'sumup' => [
+        'enabled' => $sumupEnabled && !empty($sumupAffiliateKey),
+        'affiliate_key' => $sumupAffiliateKey,
+        'app_id' => $sumupAppId,
+    ],
     'bereiche' => $orderedBereiche,
     'tables' => $tables,
 ]);

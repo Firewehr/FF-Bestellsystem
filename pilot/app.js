@@ -20,6 +20,8 @@ createApp({
     // -------------------------------------------------------------------------
     const waitTimes = ref({ drink: 0, food: 0 });
     const paymentMode = ref('after'); // 'after' | 'instant'
+    const payCashModal = ref(true);
+    const sumupSettings = ref({ enabled: false, affiliate_key: '', app_id: '' });
 
     // -------------------------------------------------------------------------
     // 3. Tische
@@ -123,6 +125,7 @@ createApp({
     const isPayLoading = ref(false);
     const splitQuantities = ref({}); // { [groupKey]: number }
     const showPayModal = ref(false);
+    const isCartPayMode = ref(false);
     const payModeAll = ref(true); // true = alles bezahlen, false = ausgewählte
     const calcWishRaw = ref('0,00');
     const calcGivenRaw = ref('0,00');
@@ -227,6 +230,12 @@ createApp({
           if (data.fest) {
             activeFest.value = data.fest;
             if (data.fest.payment_mode) paymentMode.value = data.fest.payment_mode;
+          }
+          if (data.pay_cash_modal !== undefined) {
+            payCashModal.value = !!data.pay_cash_modal;
+          }
+          if (data.sumup) {
+            sumupSettings.value = data.sumup;
           }
 
           // Aktuellen Tisch synchronisieren falls vorhanden
@@ -1307,10 +1316,26 @@ createApp({
     };
 
     const amountToPay = computed(() => {
+      if (isCartPayMode.value) {
+        return cartTotal.value;
+      }
       if (payModeAll.value) {
         return tableOrders.value ? tableOrders.value.total_amount : 0;
       }
       return selectedPayAmount.value;
+    });
+
+    const isSumupEnabled = computed(() => {
+      if (tableOrders.value && tableOrders.value.sumup && tableOrders.value.sumup.enabled !== undefined) {
+        return !!tableOrders.value.sumup.enabled;
+      }
+      return !!sumupSettings.value?.enabled;
+    });
+
+    const activePayTableName = computed(() => {
+      if (selectedTable.value && selectedTable.value.tischname) return selectedTable.value.tischname;
+      if (tableOrders.value && tableOrders.value.table && tableOrders.value.table.tischname) return tableOrders.value.table.tischname;
+      return '';
     });
 
     const calcWish = computed(() => parseMoneyInput(calcWishRaw.value));
@@ -1352,6 +1377,7 @@ createApp({
       const wish = calcWish.value || due;
       const tip = calcTip.value;
       const change = calcChange.value;
+      const isInstant = isCartPayMode.value;
 
       if (calcMethod.value === 'sumup') {
         if (tip > 0) {
@@ -1362,16 +1388,24 @@ createApp({
 
       if (change > 0) {
         if (tip > 0) {
-          return `✓ Bezahlt · Rückgeld ${formatPrice(change)} (Trinkgeld ${formatPrice(tip)})`;
+          return isInstant
+            ? `✓ Bezahlt · Rückgeld ${formatPrice(change)} (Trinkgeld ${formatPrice(tip)}) abschicken`
+            : `✓ Bezahlt · Rückgeld ${formatPrice(change)} (Trinkgeld ${formatPrice(tip)})`;
         }
-        return `✓ Bezahlt · Rückgeld ${formatPrice(change)}`;
+        return isInstant
+          ? `✓ Bezahlt · Rückgeld ${formatPrice(change)} abschicken`
+          : `✓ Bezahlt · Rückgeld ${formatPrice(change)}`;
       }
 
       if (tip > 0) {
-        return `✓ Bezahlt (${formatPrice(wish)}) · Trinkgeld ${formatPrice(tip)}`;
+        return isInstant
+          ? `✓ Bezahlt (${formatPrice(wish)}) · Trinkgeld ${formatPrice(tip)} abschicken`
+          : `✓ Bezahlt (${formatPrice(wish)}) · Trinkgeld ${formatPrice(tip)}`;
       }
 
-      return `✓ Passend bezahlt (${formatPrice(due)})`;
+      return isInstant
+        ? `✓ Passend bezahlt (${formatPrice(due)}) & abschicken`
+        : `✓ Passend bezahlt (${formatPrice(due)})`;
     });
 
     watch(calcWish, (newWish) => {
@@ -1380,7 +1414,35 @@ createApp({
       }
     });
 
+    const openCartPayDialog = (method = 'bar') => {
+      if (!selectedTable.value || cart.value.length === 0) return;
+      const needed = cartTotal.value;
+      if (needed <= 0) {
+        submitOrder('instant');
+        return;
+      }
+
+      // Wenn Rückgeld-Rechner deaktiviert ist und Bar gewählt wurde (Direktabschluss):
+      if (!payCashModal.value && method === 'bar') {
+        submitOrder('instant');
+        return;
+      }
+
+      isCartPayMode.value = true;
+      showSubmitModal.value = false;
+      showCartModal.value = false;
+
+      const initialStr = needed > 0 ? (Math.round(needed * 100) / 100).toFixed(2).replace('.', ',') : '0,00';
+      calcWishRaw.value = initialStr;
+      calcGivenRaw.value = initialStr;
+      calcMethod.value = method;
+      selectedThermoTarget.value = 0;
+      showPayModal.value = true;
+      vibrate(30);
+    };
+
     const openPayDialog = (isAll = true, forcedMethod = null, forceModal = false) => {
+      isCartPayMode.value = false;
       payModeAll.value = isAll;
       const needed = isAll ? (tableOrders.value ? tableOrders.value.total_amount : 0) : selectedPayAmount.value;
       if (needed <= 0 && (!tableOrders.value || !tableOrders.value.table.is_ehrengast)) {
@@ -1388,7 +1450,7 @@ createApp({
         return;
       }
 
-      const isCashModalEnabled = tableOrders.value ? (tableOrders.value.pay_cash_modal !== false) : true;
+      const isCashModalEnabled = tableOrders.value ? (tableOrders.value.pay_cash_modal !== false) : payCashModal.value;
 
       // Wenn Rückgeld-Rechner in den Systemeinstellungen deaktiviert ist und kein Modal erzwungen wird:
       if (!isCashModalEnabled && !forceModal && !forcedMethod) {
@@ -1562,15 +1624,28 @@ createApp({
       }
     };
 
+    const onPayModalConfirm = async () => {
+      if (isCartPayMode.value) {
+        showPayModal.value = false;
+        await submitOrder('instant');
+      } else {
+        await executePayment();
+      }
+    };
+
     const launchSumup = (amount) => {
-      if (!tableOrders.value || !tableOrders.value.sumup.enabled) {
+      const sumup = (tableOrders.value && tableOrders.value.sumup && tableOrders.value.sumup.enabled)
+        ? tableOrders.value.sumup
+        : sumupSettings.value;
+
+      if (!sumup || !sumup.enabled) {
         showToast('SumUp ist nicht konfiguriert', '⚠');
         return;
       }
-      const sumup = tableOrders.value.sumup;
       const amt = calcWish.value || Number(amount) || amountToPay.value || 0;
       const amtStr = amt.toFixed(2);
-      const title = encodeURIComponent(`Tisch ${tableOrders.value.table.tischname}`);
+      const tableName = activePayTableName.value || 'Tisch';
+      const title = encodeURIComponent(`Tisch ${tableName}`);
       const scheme = `sumupmerchant://pay/1.0?affiliate-key=${sumup.affiliate_key}&total=${amtStr}&currency=EUR&title=${title}`;
       window.location.href = scheme;
     };
@@ -1891,6 +1966,11 @@ createApp({
       isPayLoading,
       splitQuantities,
       showPayModal,
+      isCartPayMode,
+      isSumupEnabled,
+      activePayTableName,
+      payCashModal,
+      sumupSettings,
       payModeAll,
       calcWishRaw,
       calcGivenRaw,
@@ -1939,6 +2019,8 @@ createApp({
       submitOrder,
       setSplitQty,
       openPayDialog,
+      openCartPayDialog,
+      onPayModalConfirm,
       setCalcWish,
       setCalcGiven,
       setCalcGivenExact,

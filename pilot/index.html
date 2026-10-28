@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261028_6">
+  <link rel="stylesheet" href="style.css?v=20261028_7">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -1058,6 +1058,27 @@
 
           <!-- Absende-Aktionen -->
           <div class="summary-actions-col">
+            <!-- Bei Sofortzahlung: Bar kassieren (öffnet Rechner-Modal) -->
+            <button 
+              v-if="paymentMode === 'instant' && (!selectedTable || (!selectedTable.is_ehrengast && !selectedTable.is_sammelrechnung))"
+              class="btn-primary-block" 
+              style="background: var(--ff-success); font-size: 1.05rem;"
+              :disabled="isSubmitting"
+              @click="openCartPayDialog('bar')">
+              💵 Sofort Bar bezahlt ({{ formatPrice(cartTotal) }})
+            </button>
+
+            <!-- Bei Sofortzahlung: SumUp (falls aktiv) -->
+            <button 
+              v-if="paymentMode === 'instant' && isSumupEnabled && (!selectedTable || (!selectedTable.is_ehrengast && !selectedTable.is_sammelrechnung))"
+              class="btn-primary-block" 
+              style="background: #0284c7; font-size: 1.05rem;"
+              :disabled="isSubmitting"
+              @click="openCartPayDialog('sumup')">
+              💳 Sofort mit SumUp zahlen ({{ formatPrice(cartTotal) }})
+            </button>
+
+            <!-- Später zahlen (wenn paymentMode != instant oder Ehrengast / Sammelrechnung) -->
             <button 
               v-if="paymentMode !== 'instant' || (selectedTable && (selectedTable.is_ehrengast || selectedTable.is_sammelrechnung))"
               class="btn-primary-block" 
@@ -1065,15 +1086,6 @@
               :disabled="isSubmitting"
               @click="submitOrder('later')">
               📝 Bestellung aufgeben (Später zahlen)
-            </button>
-
-            <button 
-              v-if="!selectedTable || (!selectedTable.is_ehrengast && !selectedTable.is_sammelrechnung)"
-              class="btn-primary-block" 
-              style="background: var(--ff-success);"
-              :disabled="isSubmitting"
-              @click="submitOrder('instant')">
-              💵 Sofort Bar bezahlt ({{ formatPrice(cartTotal) }})
             </button>
 
             <button 
@@ -1089,10 +1101,10 @@
     </div>
 
     <!-- MODAL 5: Abrechnung & Rückgeld-Rechner -->
-    <div v-if="showPayModal && tableOrders" class="modal-overlay" @click.self="showPayModal = false">
+    <div v-if="showPayModal && (tableOrders || isCartPayMode)" class="modal-overlay" @click.self="showPayModal = false">
       <div class="bottom-sheet">
         <div class="sheet-header">
-          <span class="sheet-title">Abrechnen · Tisch {{ tableOrders.table.tischname }}</span>
+          <span class="sheet-title">Abrechnen · Tisch {{ activePayTableName }} {{ isCartPayMode ? '(Sofortzahlung)' : '' }}</span>
           <button class="sheet-close-btn" @click="showPayModal = false">✕</button>
         </div>
         <div class="sheet-body">
@@ -1105,13 +1117,14 @@
               💵 Bar
             </button>
             <button 
-              v-if="tableOrders && tableOrders.sumup.enabled"
+              v-if="isSumupEnabled"
               class="bill-btn" 
               :class="{ active: calcMethod === 'sumup' }"
               @click="calcMethod = 'sumup'">
               💳 SumUp
             </button>
             <button 
+              v-if="!isCartPayMode"
               class="bill-btn" 
               :class="{ active: calcMethod === 'with_invoice' }"
               @click="calcMethod = 'with_invoice'">
@@ -1246,8 +1259,8 @@
               class="btn-primary-block" 
               style="background:var(--ff-success);"
               :disabled="isWishTooLow || isSubmitting"
-              @click="executePayment">
-              ✓ Als SumUp bezahlt buchen ({{ formatPrice(amountToPay) }})
+              @click="onPayModalConfirm">
+              ✓ Als SumUp bezahlt {{ isCartPayMode ? 'abschicken' : 'buchen' }} ({{ formatPrice(amountToPay) }})
             </button>
           </div>
           <button 
@@ -1255,7 +1268,7 @@
             class="btn-primary-block" 
             style="background:var(--ff-success);"
             :disabled="isWishTooLow || isGivenTooLow || isSubmitting"
-            @click="executePayment">
+            @click="onPayModalConfirm">
             {{ payButtonText }}
           </button>
         </div>
@@ -1401,6 +1414,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261028_6"></script>
+  <script type="module" src="app.js?v=20261028_7"></script>
 </body>
 </html>
