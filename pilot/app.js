@@ -124,7 +124,8 @@ createApp({
     const splitQuantities = ref({}); // { [groupKey]: number }
     const showPayModal = ref(false);
     const payModeAll = ref(true); // true = alles bezahlen, false = ausgewählte
-    const calcGiven = ref(0);
+    const calcWishRaw = ref('0,00');
+    const calcGivenRaw = ref('0,00');
     const calcMethod = ref('bar'); // 'bar' | 'sumup' | 'with_invoice'
     const selectedThermoTarget = ref(0);
 
@@ -1280,6 +1281,31 @@ createApp({
       return sum;
     });
 
+    const parseMoneyInput = (val) => {
+      if (typeof val === 'number') return isFinite(val) ? Math.round(val * 100) / 100 : 0;
+      if (!val) return 0;
+      const str = String(val).trim().replace(',', '.');
+      const num = parseFloat(str);
+      return isFinite(num) ? Math.round(num * 100) / 100 : 0;
+    };
+
+    const getCashSuggestions = (amount) => {
+      const a = Math.round((Number(amount) || 0) * 100) / 100;
+      if (a <= 0) return [];
+      const maxTip = Math.max(a * 1.25, a + 5);
+      const tipTarget = Math.round(a * 110) / 100;
+      const set = {};
+      const add = (v) => {
+        v = Math.round(v * 100) / 100;
+        if (v > a && v <= maxTip) set[v.toFixed(2)] = v;
+      };
+      [1, 5, 10, 20, 50].forEach((step) => {
+        add(Math.ceil(a / step) * step);
+        add(Math.ceil(tipTarget / step) * step);
+      });
+      return Object.keys(set).map(k => set[k]).sort((x, y) => x - y).slice(0, 5);
+    };
+
     const amountToPay = computed(() => {
       if (payModeAll.value) {
         return tableOrders.value ? tableOrders.value.total_amount : 0;
@@ -1287,10 +1313,71 @@ createApp({
       return selectedPayAmount.value;
     });
 
+    const calcWish = computed(() => parseMoneyInput(calcWishRaw.value));
+    const calcGiven = computed(() => parseMoneyInput(calcGivenRaw.value));
+
+    const calcTip = computed(() => {
+      const due = Number(amountToPay.value) || 0;
+      const wish = calcWish.value;
+      return Math.max(0, Math.round((wish - due) * 100) / 100);
+    });
+
     const calcChange = computed(() => {
-      const given = Number(calcGiven.value) || 0;
-      const toPay = Number(amountToPay.value) || 0;
-      return Math.max(0, given - toPay);
+      const given = calcGiven.value;
+      const wish = calcWish.value || Number(amountToPay.value) || 0;
+      return Math.max(0, Math.round((given - wish) * 100) / 100);
+    });
+
+    const cashSuggestions = computed(() => getCashSuggestions(amountToPay.value));
+
+    const availableBills = computed(() => {
+      const target = calcWish.value || Number(amountToPay.value) || 0;
+      const all = [5, 10, 20, 50, 100, 200];
+      const filtered = all.filter(b => b >= target);
+      return filtered.length > 0 ? filtered : [50, 100, 200];
+    });
+
+    const isWishTooLow = computed(() => {
+      const due = Number(amountToPay.value) || 0;
+      return due > 0 && calcWish.value < (due - 0.005);
+    });
+
+    const isGivenTooLow = computed(() => {
+      const wish = calcWish.value || Number(amountToPay.value) || 0;
+      return wish > 0 && calcGiven.value > 0 && calcGiven.value < (wish - 0.005);
+    });
+
+    const payButtonText = computed(() => {
+      const due = Number(amountToPay.value) || 0;
+      const wish = calcWish.value || due;
+      const tip = calcTip.value;
+      const change = calcChange.value;
+
+      if (calcMethod.value === 'sumup') {
+        if (tip > 0) {
+          return `SumUp (${formatPrice(wish)}) · inkl. ${formatPrice(tip)} Trinkgeld`;
+        }
+        return `SumUp App öffnen (${formatPrice(wish)})`;
+      }
+
+      if (change > 0) {
+        if (tip > 0) {
+          return `✓ Bezahlt · Rückgeld ${formatPrice(change)} (Trinkgeld ${formatPrice(tip)})`;
+        }
+        return `✓ Bezahlt · Rückgeld ${formatPrice(change)}`;
+      }
+
+      if (tip > 0) {
+        return `✓ Bezahlt (${formatPrice(wish)}) · Trinkgeld ${formatPrice(tip)}`;
+      }
+
+      return `✓ Passend bezahlt (${formatPrice(due)})`;
+    });
+
+    watch(calcWish, (newWish) => {
+      if (calcGiven.value < newWish) {
+        calcGivenRaw.value = newWish > 0 ? newWish.toFixed(2).replace('.', ',') : '0,00';
+      }
     });
 
     const openPayDialog = (isAll = true) => {
@@ -1300,21 +1387,40 @@ createApp({
         showToast('Kein Betrag zum Abrechnen vorhanden', '⚠');
         return;
       }
-      calcGiven.value = needed; // Standardmäßig passend vorausfüllen
+      const initialStr = needed > 0 ? (Math.round(needed * 100) / 100).toFixed(2).replace('.', ',') : '0,00';
+      calcWishRaw.value = initialStr;
+      calcGivenRaw.value = initialStr;
       calcMethod.value = 'bar';
       selectedThermoTarget.value = (tableOrders.value && tableOrders.value.print_targets.length > 0) ? tableOrders.value.print_targets[0].id : 0;
       showPayModal.value = true;
       vibrate(30);
     };
 
+    const setCalcWish = (val) => {
+      const v = Math.round((Number(val) || 0) * 100) / 100;
+      calcWishRaw.value = v > 0 ? v.toFixed(2).replace('.', ',') : '0,00';
+      if (calcGiven.value < v) {
+        calcGivenRaw.value = v > 0 ? v.toFixed(2).replace('.', ',') : '0,00';
+      }
+      vibrate(20);
+    };
+
+    const setCalcGiven = (val) => {
+      const v = Math.round((Number(val) || 0) * 100) / 100;
+      calcGivenRaw.value = v > 0 ? v.toFixed(2).replace('.', ',') : '0,00';
+      vibrate(20);
+    };
+
     const setCalcGivenExact = () => {
-      calcGiven.value = amountToPay.value;
+      const v = calcWish.value || Number(amountToPay.value) || 0;
+      calcGivenRaw.value = v > 0 ? v.toFixed(2).replace('.', ',') : '0,00';
       vibrate(20);
     };
 
     const addCalcGiven = (val) => {
-      const cur = Number(calcGiven.value) || 0;
-      calcGiven.value = Math.round((cur + val) * 100) / 100;
+      const cur = calcGiven.value || 0;
+      const v = Math.round((cur + val) * 100) / 100;
+      calcGivenRaw.value = v > 0 ? v.toFixed(2).replace('.', ',') : '0,00';
       vibrate(20);
     };
 
@@ -1452,7 +1558,8 @@ createApp({
         return;
       }
       const sumup = tableOrders.value.sumup;
-      const amtStr = (Number(amount) || 0).toFixed(2);
+      const amt = calcWish.value || Number(amount) || amountToPay.value || 0;
+      const amtStr = amt.toFixed(2);
       const title = encodeURIComponent(`Tisch ${tableOrders.value.table.tischname}`);
       const scheme = `sumupmerchant://pay/1.0?affiliate-key=${sumup.affiliate_key}&total=${amtStr}&currency=EUR&title=${title}`;
       window.location.href = scheme;
@@ -1775,13 +1882,22 @@ createApp({
       splitQuantities,
       showPayModal,
       payModeAll,
+      calcWishRaw,
+      calcGivenRaw,
+      calcWish,
       calcGiven,
+      calcTip,
+      calcChange,
+      cashSuggestions,
+      availableBills,
+      isWishTooLow,
+      isGivenTooLow,
+      payButtonText,
       calcMethod,
       selectedThermoTarget,
       hasPartialSelection,
       selectedPayAmount,
       amountToPay,
-      calcChange,
       tableHistory,
       isHistoryLoading,
       showMoveModal,
@@ -1813,6 +1929,8 @@ createApp({
       submitOrder,
       setSplitQty,
       openPayDialog,
+      setCalcWish,
+      setCalcGiven,
       setCalcGivenExact,
       addCalcGiven,
       executePayment,

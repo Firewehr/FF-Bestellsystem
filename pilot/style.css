@@ -1176,11 +1176,78 @@ button:disabled {
   font-size: 0.95rem;
   font-weight: 800;
   color: var(--ff-text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.bill-btn:active {
+  transform: scale(0.97);
 }
 .bill-btn.active {
   background: #0f172a;
   color: #fff;
   border-color: #0f172a;
+}
+
+/* Steps for Tip & Cash Calculations */
+.ff-calc-step {
+  background: var(--ff-surface);
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ff-calc-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ff-calc-step-num {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: #0f172a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 850;
+  flex-shrink: 0;
+}
+.tip-badge {
+  margin-left: auto;
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 2px 8px;
+}
+.tip-badge-sm {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 8px;
+}
+.input-highlight {
+  border-color: #22c55e !important;
+  background: #f0fdf4 !important;
+  color: #15803d !important;
+}
+.input-warn {
+  border-color: #ef4444 !important;
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
 }
 
 .calc-change-box {

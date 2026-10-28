@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=20261028_5">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -1079,90 +1079,167 @@
           <button class="sheet-close-btn" @click="showPayModal = false">✕</button>
         </div>
         <div class="sheet-body">
+          <!-- Zahlungsart & Rechnungs-Optionen -->
+          <div style="display:flex; gap:8px;">
+            <button 
+              class="bill-btn" 
+              :class="{ active: calcMethod === 'bar' }"
+              @click="calcMethod = 'bar'">
+              💵 Bar
+            </button>
+            <button 
+              v-if="tableOrders && tableOrders.sumup.enabled"
+              class="bill-btn" 
+              :class="{ active: calcMethod === 'sumup' }"
+              @click="calcMethod = 'sumup'">
+              💳 SumUp
+            </button>
+            <button 
+              class="bill-btn" 
+              :class="{ active: calcMethod === 'with_invoice' }"
+              @click="calcMethod = 'with_invoice'">
+              📄 + Rechnung
+            </button>
+          </div>
+
           <!-- Zu zahlender Betrag -->
           <div class="calc-display-box">
             <span class="calc-label">Zu zahlender Betrag</span>
             <span class="calc-amount-large">{{ formatPrice(amountToPay) }}</span>
           </div>
 
-          <!-- Erhalten / Gegeben Eingabe & Schnellwahltasten -->
-          <div>
-            <span class="calc-label">Erhalten / Gegeben</span>
-            <div class="calc-quick-bills" style="margin-top:6px; margin-bottom:8px;">
-              <button class="bill-btn" @click="setCalcGivenExact">Passend</button>
-              <button class="bill-btn" @click="addCalcGiven(5)">+ 5 €</button>
-              <button class="bill-btn" @click="addCalcGiven(10)">+ 10 €</button>
-              <button class="bill-btn" @click="addCalcGiven(20)">+ 20 €</button>
-              <button class="bill-btn" @click="addCalcGiven(50)">+ 50 €</button>
-              <button class="bill-btn" @click="addCalcGiven(100)">+ 100 €</button>
+          <!-- SCHRITT 1: Kunde zahlt (inkl. Trinkgeld) -->
+          <section class="ff-calc-step">
+            <div class="ff-calc-step-header">
+              <span class="ff-calc-step-num">1</span>
+              <div>
+                <strong style="font-size:0.95rem; color:var(--ff-text);">Kunde zahlt</strong>
+                <span style="font-size:0.75rem; color:var(--ff-text-muted); margin-left:4px;">inkl. Trinkgeld</span>
+              </div>
+              <span v-if="calcTip > 0" class="tip-badge">+ {{ formatPrice(calcTip) }} Trinkgeld</span>
             </div>
-            <input 
-              type="number" 
-              step="0.10"
-              v-model="calcGiven" 
-              class="text-input" 
-              style="font-size:1.2rem; font-weight:800; text-align:center;">
+
+            <!-- Rundungsvorschläge -->
+            <div class="calc-quick-bills" style="margin-top:8px; margin-bottom:8px;">
+              <button 
+                class="bill-btn" 
+                :class="{ active: Math.abs(calcWish - amountToPay) < 0.005 }"
+                @click="setCalcWish(amountToPay)">
+                Passend
+              </button>
+              <button 
+                v-for="sug in cashSuggestions" 
+                :key="sug" 
+                class="bill-btn"
+                :class="{ active: Math.abs(calcWish - sug) < 0.005 }"
+                @click="setCalcWish(sug)">
+                {{ formatPrice(sug) }}
+              </button>
+            </div>
+
+            <div style="position:relative;">
+              <label class="calc-label" style="display:block; margin-bottom:4px;">Zahlbetrag (€)</label>
+              <input 
+                type="text" 
+                inputmode="decimal"
+                v-model="calcWishRaw" 
+                class="text-input" 
+                :class="{ 'input-highlight': calcTip > 0, 'input-warn': isWishTooLow }"
+                style="font-size:1.25rem; font-weight:800; text-align:center;">
+            </div>
+            <div v-if="isWishTooLow" style="color:var(--ff-danger); font-size:0.8rem; font-weight:700; margin-top:4px; text-align:center;">
+              ⚠ Betrag ist kleiner als der offene Betrag ({{ formatPrice(amountToPay) }})
+            </div>
+          </section>
+
+          <!-- SCHRITT 2: Gast gibt Bargeld (nur bei Bar / mit Rechnung) -->
+          <section v-if="calcMethod !== 'sumup'" class="ff-calc-step">
+            <div class="ff-calc-step-header">
+              <span class="ff-calc-step-num">2</span>
+              <div>
+                <strong style="font-size:0.95rem; color:var(--ff-text);">Gast gibt Bargeld</strong>
+                <span style="font-size:0.75rem; color:var(--ff-text-muted); margin-left:4px;">Scheine / Münzen</span>
+              </div>
+            </div>
+
+            <!-- Scheine Schnellwahltasten -->
+            <div class="calc-quick-bills" style="margin-top:8px; margin-bottom:8px;">
+              <button 
+                class="bill-btn" 
+                :class="{ active: Math.abs(calcGiven - calcWish) < 0.005 }"
+                @click="setCalcGivenExact">
+                Passend
+              </button>
+              <button 
+                v-for="bill in availableBills" 
+                :key="bill" 
+                class="bill-btn"
+                :class="{ active: Math.abs(calcGiven - bill) < 0.005 }"
+                @click="setCalcGiven(bill)">
+                {{ bill }} €
+              </button>
+            </div>
+
+            <div style="position:relative;">
+              <label class="calc-label" style="display:block; margin-bottom:4px;">Bargeld erhalten (€)</label>
+              <input 
+                type="text" 
+                inputmode="decimal"
+                v-model="calcGivenRaw" 
+                class="text-input" 
+                :class="{ 'input-warn': isGivenTooLow }"
+                style="font-size:1.25rem; font-weight:800; text-align:center;">
+            </div>
+            <div v-if="isGivenTooLow" style="color:var(--ff-danger); font-size:0.8rem; font-weight:700; margin-top:4px; text-align:center;">
+              ⚠ Noch {{ formatPrice(calcWish - calcGiven) }} zu wenig
+            </div>
+          </section>
+
+          <!-- Rückgeld Anzeige (nur bei Bar / mit Rechnung) -->
+          <div v-if="calcMethod !== 'sumup'" class="calc-change-box">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="calc-label" style="color:var(--ff-success-dark); margin:0;">Rückgeld</span>
+              <span v-if="calcTip > 0" class="tip-badge-sm">Trinkgeld: + {{ formatPrice(calcTip) }}</span>
+            </div>
+            <div class="calc-change-val" style="margin-top:4px;">{{ formatPrice(calcChange) }}</div>
           </div>
 
-          <!-- Rückgeld Anzeige -->
-          <div class="calc-change-box">
-            <span class="calc-label" style="color:var(--ff-success-dark);">Rückgeld</span>
-            <span class="calc-change-val">{{ formatPrice(calcChange) }}</span>
-          </div>
-
-          <!-- Zahlungsart & Bon-Druck -->
-          <div>
-            <span class="calc-label">Zahlungsart</span>
-            <div style="display:flex; gap:8px; margin-top:6px;">
-              <button 
-                class="bill-btn" 
-                :class="{ active: calcMethod === 'bar' }"
-                @click="calcMethod = 'bar'">
-                💵 Bar
-              </button>
-              <button 
-                v-if="tableOrders && tableOrders.sumup.enabled"
-                class="bill-btn" 
-                :class="{ active: calcMethod === 'sumup' }"
-                @click="calcMethod = 'sumup'">
-                💳 SumUp
-              </button>
-              <button 
-                class="bill-btn" 
-                :class="{ active: calcMethod === 'with_invoice' }"
-                @click="calcMethod = 'with_invoice'">
-                📄 + Rechnung
-              </button>
-            </div>
-
-            <!-- Drucker-Auswahl für Thermobon bei Rechnung -->
-            <div v-if="calcMethod === 'with_invoice' && tableOrders.print_targets.length > 0" style="margin-top:10px;">
-              <span class="calc-label">Thermodrucker</span>
-              <select v-model="selectedThermoTarget" class="text-input" style="margin-top:4px;">
-                <option :value="0">Kein Druck (Nur Belegnummer)</option>
-                <option v-for="pt in tableOrders.print_targets" :key="pt.id" :value="pt.id">
-                  🖨 {{ pt.name }}
-                </option>
-              </select>
-            </div>
+          <!-- Drucker-Auswahl für Thermobon bei Rechnung -->
+          <div v-if="calcMethod === 'with_invoice' && tableOrders.print_targets.length > 0" style="margin-top:6px;">
+            <span class="calc-label">Thermodrucker</span>
+            <select v-model="selectedThermoTarget" class="text-input" style="margin-top:4px;">
+              <option :value="0">Kein Druck (Nur Belegnummer)</option>
+              <option v-for="pt in tableOrders.print_targets" :key="pt.id" :value="pt.id">
+                🖨 {{ pt.name }}
+              </option>
+            </select>
           </div>
         </div>
 
         <div class="sheet-footer">
-          <button 
-            v-if="calcMethod === 'sumup'"
-            class="btn-primary-block" 
-            style="background:#0284c7;"
-            @click="launchSumup(amountToPay)">
-            SumUp App öffnen ({{ formatPrice(amountToPay) }})
-          </button>
+          <div v-if="calcMethod === 'sumup'" style="display:flex; flex-direction:column; gap:8px; width:100%;">
+            <button 
+              class="btn-primary-block" 
+              style="background:#0284c7;"
+              :disabled="isWishTooLow"
+              @click="launchSumup(calcWish)">
+              📱 SumUp App öffnen ({{ formatPrice(calcWish) }})
+            </button>
+            <button 
+              class="btn-primary-block" 
+              style="background:var(--ff-success);"
+              :disabled="isWishTooLow || isSubmitting"
+              @click="executePayment">
+              ✓ Als SumUp bezahlt buchen ({{ formatPrice(amountToPay) }})
+            </button>
+          </div>
           <button 
             v-else
             class="btn-primary-block" 
             style="background:var(--ff-success);"
-            :disabled="isSubmitting"
+            :disabled="isWishTooLow || isGivenTooLow || isSubmitting"
             @click="executePayment">
-            ✓ Zahlung abschließen ({{ formatPrice(amountToPay) }})
+            {{ payButtonText }}
           </button>
         </div>
       </div>
@@ -1307,6 +1384,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=9"></script>
+  <script type="module" src="app.js?v=20261028_5"></script>
 </body>
 </html>
