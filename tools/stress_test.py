@@ -154,17 +154,32 @@ def run_stress_test(
 
     # 3. Tisch-IDs laden
     print("🍽️ Lade Tischübersicht...", end=" ", flush=True)
-    _, tables_res, _ = master.request("GET", "list_tische_json.php")
     table_ids = []
-    if isinstance(tables_res, list):
-        for t in tables_res:
-            tid = t.get("tischnummer") or t.get("id")
-            if tid:
-                table_ids.append(int(tid))
 
-    # Fallback Tische falls JSON-Endpunkt anders formatiert
+    # Zuerst moderne REST-API api/v1/tables.php versuchen
+    _, v1_tables, _ = master.request("GET", "api/v1/tables.php")
+    raw_list = []
+    if isinstance(v1_tables, dict) and "tables" in v1_tables:
+        raw_list = v1_tables["tables"]
+    elif isinstance(v1_tables, list):
+        raw_list = v1_tables
+
+    if not raw_list:
+        # Fallback auf list_tische_json.php
+        _, legacy_tables, _ = master.request("GET", "list_tische_json.php")
+        if isinstance(legacy_tables, dict) and "tische" in legacy_tables:
+            raw_list = legacy_tables["tische"]
+        elif isinstance(legacy_tables, list):
+            raw_list = legacy_tables
+
+    for t in raw_list:
+        tid = t.get("tischnummer") or t.get("id")
+        if tid:
+            table_ids.append(int(tid))
+
     if not table_ids:
-        table_ids = [100138, 100139, 100140, 100141, 100142, 100143, 100144, 7191, 7192]
+        print(f"{C_RED}FEHLER: Keine Tische im System gefunden! Bitte zuerst im Admin-Bereich Tische anlegen.{C_RESET}")
+        sys.exit(1)
 
     # Auf die gewünschte Tischanzahl begrenzen
     table_pool = table_ids[:num_tables]
@@ -304,14 +319,34 @@ def run_stress_test(
     # 6. Bereinigung der Testdaten
     if cleanup:
         print(f"\n🧹 Bereinige Test-Bestellungen (Tag: {run_id})...", end=" ", flush=True)
-        # Über MySQL Befehl oder PHP Skript direkt löschen
-        import subprocess
-        clean_cmd = f"php -r \"require_once 'include/db.php'; mysqli_query(\\$conn, \\\"DELETE FROM bestellungen WHERE Zusatzinfo LIKE '%{run_id}%'\\\"); echo mysqli_affected_rows(\\$conn);\""
-        try:
-            out = subprocess.check_output(clean_cmd, shell=True).decode().strip()
-            print(f"{C_GREEN}OK{C_RESET} ({out} Test-Positionen entfernt)")
-        except Exception as e:
-            print(f"{C_YELLOW}Manuelle Bereinigung erforderlich: {e}{C_RESET}")
+        cleaned = False
+
+        # 1. Bereinigung über Remote-API versuchen (funktioniert auch remote!)
+        status, clean_res, _ = master.request(
+            "POST",
+            "api/v1/admin.php",
+            {"action": "stress_test_cleanup", "tag": run_id, "csrf_token": csrf_token},
+        )
+        if status == 200 and clean_res.get("ok"):
+            count = clean_res.get("deleted_positions", 0)
+            print(f"{C_GREEN}OK{C_RESET} ({count} Test-Positionen via Remote-API entfernt)")
+            cleaned = True
+        else:
+            # 2. Lokaler Fallback via PHP CLI (falls der Test direkt auf dem POS-Server läuft)
+            if "localhost" in base_url or "127.0.0.1" in base_url or "pos.ballner.ipv64.de" in base_url:
+                import subprocess
+                clean_cmd = f"php -r \"require_once 'include/db.php'; mysqli_query(\\$conn, \\\"DELETE FROM bestellungen WHERE Zusatzinfo LIKE '%{run_id}%'\\\"); echo mysqli_affected_rows(\\$conn);\""
+                try:
+                    out = subprocess.check_output(clean_cmd, shell=True).decode().strip()
+                    print(f"{C_GREEN}OK{C_RESET} ({out} Test-Positionen lokal via DB entfernt)")
+                    cleaned = True
+                except Exception:
+                    pass
+
+        if not cleaned:
+            print(
+                f"{C_YELLOW}Hinweis: Remote-Bereinigung nicht verfügbar. Die Testbestellungen können im Admin-Bereich unter 'Abrechnung & Sicherheit' -> 'Fest-Start vorbereiten' entfernt werden.{C_RESET}"
+            )
 
     print("-" * 60)
     print(f"{C_BOLD}Stresstest abgeschlossen.{C_RESET}\n")

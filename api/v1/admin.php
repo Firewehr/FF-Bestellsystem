@@ -493,6 +493,17 @@ if ($action === 'preflight_check') {
     api_response(['ok' => true, 'preflight' => $res]);
 }
 
+if ($action === 'stress_test_cleanup') {
+    $tag = trim((string)($data['tag'] ?? ''));
+    if ($tag === '' || !preg_match('/^STRESS_\d+_\d+$/', $tag)) {
+        api_error('Ungültiges Stresstest-Tag.');
+    }
+    $tagEsc = mysqli_real_escape_string($conn, $tag);
+    $res = mysqli_query($conn, "DELETE FROM bestellungen WHERE Zusatzinfo LIKE '%{$tagEsc}%'");
+    $affected = mysqli_affected_rows($conn);
+    api_response(['ok' => true, 'deleted_positions' => $affected]);
+}
+
 if ($action === 'print_target_delete') {
     $id = (int)($data['print_target'] ?? 0);
     if ($id <= 0) {
