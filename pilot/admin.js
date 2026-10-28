@@ -574,33 +574,67 @@ createApp({
     }
 
     // -------------------------------------------------------------------------
-    // 6. Stammdaten: Druckziele
+    // 6. Stammdaten: Druckziele & Netzwerk-Bondrucker (RAW Port 9100)
     // -------------------------------------------------------------------------
-    const targetModal = ref({ open: false, data: { print_target: 1, name: '', sort_order: 10, active: 1, auto_print_limit: 0 } });
+    const targetModal = ref({
+      open: false,
+      data: {
+        print_target: 1,
+        name: '',
+        sort_order: 10,
+        active: 1,
+        auto_print_limit: 0,
+        connection_type: 'client',
+        ip_address: '',
+        port: 9100,
+      },
+    });
+    const testingTargetId = ref(null);
+    const testingTargetModal = ref(false);
 
     function openNewTargetModal() {
       const nextId = overview.value?.print_targets?.length ? Math.max(...overview.value.print_targets.map(t => t.print_target)) + 1 : 11;
       targetModal.value = {
         open: true,
-        data: { print_target: nextId, name: '', sort_order: nextId * 10, active: 1, auto_print_limit: 0 },
+        data: {
+          print_target: nextId,
+          name: '',
+          sort_order: nextId * 10,
+          active: 1,
+          auto_print_limit: 0,
+          connection_type: 'client',
+          ip_address: '',
+          port: 9100,
+        },
       };
     }
 
     function openEditTargetModal(pt) {
       targetModal.value = {
         open: true,
-        data: { ...pt },
+        data: {
+          print_target: pt.print_target,
+          name: pt.name || '',
+          sort_order: pt.sort_order ?? 10,
+          active: pt.active ? 1 : 0,
+          auto_print_limit: pt.auto_print_limit ?? 0,
+          connection_type: pt.connection_type || 'client',
+          ip_address: pt.ip_address || '',
+          port: pt.port || 9100,
+        },
       };
     }
 
-    async function savePrintTarget() {
+    async function savePrintTarget(closeModal = true) {
       try {
         await apiRequest('../api/v1/admin.php', {
           method: 'POST',
           body: { action: 'print_target_save', ...targetModal.value.data },
         });
         showToast(`Druckziel "${targetModal.value.data.name}" gespeichert.`);
-        targetModal.value.open = false;
+        if (closeModal) {
+          targetModal.value.open = false;
+        }
         loadOverview();
       } catch (e) {}
     }
@@ -615,6 +649,70 @@ createApp({
         showToast(`Druckziel ${id} entfernt.`);
         loadOverview();
       } catch (e) {}
+    }
+
+    async function testPrintTarget(pt) {
+      const id = pt.print_target || pt.id;
+      testingTargetId.value = id;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'print_target_test', print_target: id, test_type: 'test_print' },
+        });
+        showToast(res.message || `Testbon erfolgreich an ${pt.name || ('Druckziel #' + id)} gesendet!`);
+        if (preflightData.value) {
+          loadPreflight();
+        }
+      } catch (e) {
+        showToast(e.message || 'Testdruck fehlgeschlagen.', 'danger');
+      } finally {
+        testingTargetId.value = null;
+      }
+    }
+
+    async function testPrintModalTarget() {
+      if (!targetModal.value.data.ip_address) {
+        showToast('Bitte zuerst eine IP-Adresse eintragen.', 'warning');
+        return;
+      }
+      testingTargetModal.value = true;
+      try {
+        await savePrintTarget(false);
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: {
+            action: 'print_target_test',
+            print_target: targetModal.value.data.print_target,
+            test_type: 'test_print',
+          },
+        });
+        showToast(res.message || 'Testbon erfolgreich gesendet!');
+      } catch (e) {
+        showToast(e.message || 'Testdruck fehlgeschlagen.', 'danger');
+      } finally {
+        testingTargetModal.value = false;
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Pre-Flight Checkliste (Fest-Vorbereitungsassistent)
+    // -------------------------------------------------------------------------
+    const preflightData = ref(null);
+    const preflightLoading = ref(false);
+
+    async function loadPreflight() {
+      preflightLoading.value = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'preflight_check' },
+        });
+        preflightData.value = res.preflight || null;
+      } catch (e) {
+        showToast('Pre-Flight Prüfung konnte nicht geladen werden.', 'danger');
+      } finally {
+        preflightLoading.value = false;
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -2392,6 +2490,7 @@ createApp({
     function switchSubTab(group, tab) {
       activeSubTab.value[group] = tab;
       if (group === 'stammdaten') {
+        if (tab === 'preflight') loadPreflight();
         if (tab === 'tische' || tab === 'tischplan') loadTables();
         if (tab === 'mcp') loadMcpStatus();
         if (tab === 'abrechnung') previewSchreibaus();
@@ -2494,12 +2593,20 @@ createApp({
       openEditFestModal,
       saveFest,
       deleteFest,
-      // Druckziele
+      // Druckziele & Netzwerk-Drucker
       targetModal,
       openNewTargetModal,
       openEditTargetModal,
       savePrintTarget,
       deletePrintTarget,
+      testingTargetId,
+      testingTargetModal,
+      testPrintTarget,
+      testPrintModalTarget,
+      // Pre-Flight Checkliste
+      preflightData,
+      preflightLoading,
+      loadPreflight,
       // Speisekarte & Rezepturen
       menuPositions,
       menuSubcategories,

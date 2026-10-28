@@ -86,8 +86,10 @@ if ($action === 'overview') {
     }
 
     // Aktuelle Druckziele
+    require_once __DIR__ . '/../../include/ff_socket_printer.php';
+    ff_socket_printer_ensure_schema($conn);
     $printTargets = [];
-    $resPt = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit FROM print_targets ORDER BY sort_order ASC, name ASC');
+    $resPt = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
     if ($resPt) {
         while ($rpt = mysqli_fetch_assoc($resPt)) {
             $printTargets[] = [
@@ -96,6 +98,9 @@ if ($action === 'overview') {
                 'sort_order' => (int)$rpt['sort_order'],
                 'active' => (int)$rpt['active'],
                 'auto_print_limit' => (int)$rpt['auto_print_limit'],
+                'connection_type' => (string)($rpt['connection_type'] ?? 'client'),
+                'ip_address' => (string)($rpt['ip_address'] ?? ''),
+                'port' => (int)($rpt['port'] ?? 9100),
             ];
         }
     }
@@ -378,8 +383,10 @@ if ($action === 'fest_delete') {
 // AKTION: DRUCKZIELE (Print Targets)
 // -----------------------------------------------------------------------------
 if ($action === 'print_targets_list') {
+    require_once __DIR__ . '/../../include/ff_socket_printer.php';
+    ff_socket_printer_ensure_schema($conn);
     $targets = [];
-    $res = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit FROM print_targets ORDER BY sort_order ASC, name ASC');
+    $res = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $targets[] = [
@@ -388,6 +395,9 @@ if ($action === 'print_targets_list') {
                 'sort_order' => (int)$r['sort_order'],
                 'active' => (int)$r['active'],
                 'auto_print_limit' => (int)$r['auto_print_limit'],
+                'connection_type' => (string)($r['connection_type'] ?? 'client'),
+                'ip_address' => (string)($r['ip_address'] ?? ''),
+                'port' => (int)($r['port'] ?? 9100),
             ];
         }
     }
@@ -400,20 +410,87 @@ if ($action === 'print_target_save') {
     $sortOrder = (int)($data['sort_order'] ?? 10);
     $active = !empty($data['active']) ? 1 : 0;
     $autoPrintLimit = (int)($data['auto_print_limit'] ?? 0);
+    $connectionType = (isset($data['connection_type']) && $data['connection_type'] === 'network') ? 'network' : 'client';
+    $ipAddress = isset($data['ip_address']) && trim((string)$data['ip_address']) !== '' ? trim((string)$data['ip_address']) : null;
+    $port = isset($data['port']) && (int)$data['port'] > 0 ? (int)$data['port'] : 9100;
 
     if ($id <= 0 || $name === '') {
         api_error('Druckziel-ID und Name erforderlich.');
     }
 
-    $stmt = mysqli_prepare($conn, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit)');
+    require_once __DIR__ . '/../../include/ff_socket_printer.php';
+    ff_socket_printer_ensure_schema($conn);
+
+    $stmt = mysqli_prepare($conn, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit, connection_type, ip_address, port) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit), connection_type=VALUES(connection_type), ip_address=VALUES(ip_address), port=VALUES(port)');
     if (!$stmt) {
         api_error('Datenbankfehler beim Speichern des Druckziels: ' . mysqli_error($conn));
     }
-    mysqli_stmt_bind_param($stmt, 'isiii', $id, $name, $sortOrder, $active, $autoPrintLimit);
+    mysqli_stmt_bind_param($stmt, 'isiiissi', $id, $name, $sortOrder, $active, $autoPrintLimit, $connectionType, $ipAddress, $port);
     mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Druckziel gespeichert.']);
+}
+
+if ($action === 'print_target_test') {
+    $id = (int)($data['print_target'] ?? 0);
+    $testType = (string)($data['test_type'] ?? 'test_print'); // 'test_connect' | 'test_print'
+    if ($id <= 0) {
+        api_error('Ungültiges Druckziel.');
+    }
+    require_once __DIR__ . '/../../include/ff_socket_printer.php';
+    require_once __DIR__ . '/../../include/settings.php';
+    ff_socket_printer_ensure_schema($conn);
+
+    $ptRes = mysqli_query($conn, "SELECT * FROM print_targets WHERE print_target = {$id} LIMIT 1");
+    if (!$ptRes || mysqli_num_rows($ptRes) === 0) {
+        api_error('Druckziel nicht gefunden.');
+    }
+    $target = mysqli_fetch_assoc($ptRes);
+    mysqli_free_result($ptRes);
+
+    $targetName = (string)($target['name'] ?? ('Druckziel ' . $id));
+    $connType = (string)($target['connection_type'] ?? 'client');
+    $ip = trim((string)($target['ip_address'] ?? ''));
+    $port = (int)($target['port'] ?? 9100) ?: 9100;
+
+    if ($ip === '') {
+        api_error('Keine IP-Adresse hinterlegt. Bitte zuerst eine IP-Adresse eintragen.');
+    }
+
+    if ($testType === 'test_connect') {
+        $check = ff_socket_printer_check_alive($ip, $port, 2.0);
+        if ($check['ok']) {
+            api_response([
+                'ok' => true,
+                'message' => "Verbindung erfolgreich! Port {$port} auf {$ip} antwortet in {$check['time_ms']} ms.",
+                'details' => $check,
+            ]);
+        } else {
+            api_error("Verbindung fehlgeschlagen: {$check['error']} ({$ip}:{$port})");
+        }
+    }
+
+    $appName = setting_get($conn, 'app_title', 'Feuerwehr-Bestellsystem');
+    $nowStr = date('d.m.Y H:i:s');
+    $testPayload = ff_socket_printer_build_test_receipt($targetName, $appName, $nowStr);
+
+    $send = ff_socket_printer_send_raw($ip, $port, $testPayload, 3.0);
+    if ($send['ok']) {
+        api_response([
+            'ok' => true,
+            'message' => "Testbon erfolgreich an {$targetName} ({$ip}:{$port}) gesendet ({$send['bytes_sent']} Bytes in {$send['time_ms']} ms)!",
+            'details' => $send,
+        ]);
+    } else {
+        api_error("Druck fehlgeschlagen: {$send['error']} ({$ip}:{$port})");
+    }
+}
+
+if ($action === 'preflight_check') {
+    require_once __DIR__ . '/../../include/ff_preflight.php';
+    $res = ff_preflight_check($conn);
+    api_response(['ok' => true, 'preflight' => $res]);
 }
 
 if ($action === 'print_target_delete') {

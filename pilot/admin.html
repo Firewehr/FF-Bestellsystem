@@ -88,6 +88,7 @@
 
     <!-- 2. SUB NAVIGATION (Kontextabhängig) -->
     <nav v-if="activeTab === 'stammdaten'" class="sub-nav">
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'preflight' }" @click="switchSubTab('stammdaten', 'preflight')">✈️ Pre-Flight</button>
       <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tische' }" @click="switchSubTab('stammdaten', 'tische')">Tische</button>
       <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tischplan' }" @click="switchSubTab('stammdaten', 'tischplan')">Tischplan (Visuell)</button>
       <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'einstellungen' }" @click="switchSubTab('stammdaten', 'einstellungen')">Allgemeine Einstellungen</button>
@@ -219,13 +220,18 @@
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
+                  <span style="font-size: 0.88rem;">Pre-Flight Checkliste (Fest-Start)</span>
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'preflight'); activeTab = 'stammdaten'">Pre-Flight prüfen</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
                   <span style="font-size: 0.88rem;">Schema- &amp; Abfrage-Cache</span>
                   <button type="button" class="btn btn-outline btn-sm" @click="clearCache">Cache jetzt leeren</button>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                   <span style="font-size: 0.88rem;">Automatisierte Selbsttests</span>
-                  <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">68 Tests ausführen</button>
+                  <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">79 Tests ausführen</button>
                 </div>
               </div>
             </div>
@@ -280,6 +286,167 @@
            =================================================================== -->
       <section v-if="activeTab === 'stammdaten'">
         
+        <!-- SUB: Pre-Flight Checkliste -->
+        <div v-if="activeSubTab.stammdaten === 'preflight'">
+          <div class="toolbar" style="margin-bottom: 16px;">
+            <div>
+              <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0;">✈️ Fest-Vorbereitungsassistent („Pre-Flight Checklist“)</h3>
+              <p style="margin: 0; font-size: 0.85rem; color: var(--ff-text-muted);">
+                Sicherheitsüberprüfung vor Festbeginn: Testdaten bereinigt, Netzwerk-Bondrucker &amp; Stationen online, Rechnungsnummernkreis und Datensicherung.
+              </p>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm" :disabled="preflightLoading" @click="loadPreflight">
+              {{ preflightLoading ? 'Prüft...' : '🔄 Prüfung jetzt aktualisieren' }}
+            </button>
+          </div>
+
+          <!-- Status Banner -->
+          <div v-if="preflightData" class="admin-card" :style="{ borderLeft: '5px solid ' + (preflightData.overall === 'ok' ? 'var(--ff-success)' : 'var(--ff-warning)'), marginBottom: '20px' }">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+              <div>
+                <span class="badge" :class="preflightData.overall === 'ok' ? 'badge-success' : 'badge-warning'" style="font-size: 0.9rem; padding: 4px 10px;">
+                  {{ preflightData.overall === 'ok' ? '✓ BEREIT FÜR DEN FESTSTART' : '⚠️ VORBEREITUNG ERFORDERLICH' }}
+                </span>
+                <span style="font-size: 0.9rem; margin-left: 10px; color: var(--ff-text-muted);">
+                  Fest: <strong>{{ preflightData.fest_name }}</strong> (ID: {{ preflightData.fest_id }})
+                </span>
+              </div>
+              <div style="font-size: 0.82rem; color: var(--ff-text-muted);">
+                Zuletzt geprüft: {{ preflightData.checked_at }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 Checks Grid -->
+          <div v-if="preflightData" style="display: flex; flex-direction: column; gap: 16px;">
+            
+            <!-- Check 1: Testdaten -->
+            <div class="admin-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.orders?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">1. Test-Bestellungen und Queues bereinigt</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.orders?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.orders?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.orders?.details }}</p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'abrechnung')">Zu Fest-Start vorbereiten / Bereinigen</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check 2: Netzwerk-Bondrucker & Stationen -->
+            <div class="admin-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.printers?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">2. Netzwerk-Bondrucker &amp; Stationen (Alle Drucker online &amp; Testbon)</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.printers?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.printers?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.printers?.details }}</p>
+                
+                <div class="table-responsive" style="margin-bottom: 12px;">
+                  <table class="data-table" style="font-size: 0.88rem;">
+                    <thead>
+                      <tr>
+                        <th>Druckziel</th>
+                        <th>Typ</th>
+                        <th>IP : Port (Port 9100)</th>
+                        <th>Verbindungsstatus</th>
+                        <th>Latenz</th>
+                        <th>Testen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="target in (preflightData.checks?.printers?.targets || [])" :key="target.id">
+                        <td><strong>#{{ target.id }} – {{ target.name }}</strong></td>
+                        <td>
+                          <span class="badge" :class="target.type === 'network' ? 'badge-primary' : 'badge-secondary'">
+                            {{ target.type === 'network' ? 'Netzwerk (Port 9100)' : 'Client (Python)' }}
+                          </span>
+                        </td>
+                        <td>
+                          <span v-if="target.ip" class="font-mono text-sm" style="background: var(--ff-bg-card); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ff-border-light);">
+                            {{ target.ip }}:{{ target.port }}
+                          </span>
+                          <span v-else style="color: var(--ff-text-muted);">—</span>
+                        </td>
+                        <td>
+                          <span class="badge" :class="target.online ? 'badge-success' : 'badge-danger'">
+                            {{ target.status_text }}
+                          </span>
+                        </td>
+                        <td>{{ target.latency_ms !== null ? target.latency_ms + ' ms' : '—' }}</td>
+                        <td>
+                          <div style="display: flex; gap: 6px;">
+                            <button v-if="target.type === 'network'" type="button" class="btn btn-outline btn-sm" :disabled="testingTargetId === target.id" @click="testPrintTarget({ print_target: target.id, name: target.name })">
+                              {{ testingTargetId === target.id ? 'Sende…' : '🔌 Testbon' }}
+                            </button>
+                            <span v-else style="color: var(--ff-text-muted); font-size: 0.82rem; align-self: center;">Heartbeat aktiv</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele &amp; IP-Adressen konfigurieren</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check 3: Rechnungsnummernkreis -->
+            <div class="admin-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.invoice_seq?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">3. Rechnungsnummernkreis &amp; Stammdaten</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.invoice_seq?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.invoice_seq?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.invoice_seq?.details }}</p>
+                <div style="display: flex; gap: 10px;">
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'nummern')">Nummernkreise anpassen</button>
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'rechnungsdaten')">Rechnungsdaten prüfen</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check 4: Offline-Backup -->
+            <div class="admin-card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.offline_backup?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">4. Offline-Backup &amp; Ausfallsicherung</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.offline_backup?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.offline_backup?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.offline_backup?.details }}</p>
+                <div style="display: flex; gap: 10px;">
+                  <a href="../fest_offline_snapshot.php" class="btn btn-outline btn-sm" target="_blank">Offline-Snapshot herunterladen ↗</a>
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'feste')">Feste &amp; Backups verwalten</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         <!-- SUB: Tische -->
         <div v-if="activeSubTab.stammdaten === 'tische'">
           <div class="toolbar">
@@ -549,6 +716,10 @@
             <h3 style="font-size: 1.1rem; font-weight: 700;">Druckziele (Stationen &amp; Kassen)</h3>
             <button type="button" class="btn btn-primary" @click="openNewTargetModal">＋ Neues Druckziel</button>
           </div>
+          <div style="background: rgba(37, 99, 235, 0.08); border-left: 4px solid var(--ff-primary); padding: 12px 16px; border-radius: var(--ff-radius); margin-bottom: 16px; font-size: 0.88rem; line-height: 1.45;">
+            <strong>🔌 Netzwerk-Bondrucker (RAW ESC/POS via Port 9100):</strong>
+            Druckt bei Verbindungstyp <em>„Netzwerk“</em> direkt aus PHP via TCP-Socket an die hinterlegte IP-Adresse (Sub-Sekunden-Ausgabe ohne Client-PC). Der Python-Client bleibt bei Nichterreichbarkeit automatisch als Fallback aktiv.
+          </div>
           <div class="admin-card">
             <div class="table-responsive">
               <table class="data-table">
@@ -556,16 +727,29 @@
                   <tr>
                     <th>ID</th>
                     <th>Bezeichnung</th>
+                    <th>Typ / Verbindung</th>
+                    <th>IP : Port (Port 9100)</th>
                     <th>Sortierung</th>
                     <th>Auto-Druck Limit</th>
                     <th>Status</th>
-                    <th>Aktionen</th>
+                    <th>Aktionen &amp; Test</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="pt in overview?.print_targets" :key="pt.print_target">
                     <td><strong>#{{ pt.print_target }}</strong></td>
-                    <td>{{ pt.name }}</td>
+                    <td><strong>{{ pt.name }}</strong></td>
+                    <td>
+                      <span class="badge" :class="pt.connection_type === 'network' ? 'badge-primary' : 'badge-secondary'">
+                        {{ pt.connection_type === 'network' ? 'Netzwerk (Port 9100)' : 'Client (Python)' }}
+                      </span>
+                    </td>
+                    <td>
+                      <span v-if="pt.connection_type === 'network' && pt.ip_address" class="font-mono text-sm" style="background: var(--ff-bg-card); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ff-border-light);">
+                        {{ pt.ip_address }}:{{ pt.port || 9100 }}
+                      </span>
+                      <span v-else style="color: var(--ff-text-muted);">—</span>
+                    </td>
                     <td>{{ pt.sort_order }}</td>
                     <td>{{ pt.auto_print_limit > 0 ? pt.auto_print_limit + ' Posten' : 'Aus' }}</td>
                     <td>
@@ -575,6 +759,9 @@
                     </td>
                     <td>
                       <div style="display: flex; gap: 6px;">
+                        <button v-if="pt.connection_type === 'network' || pt.ip_address" type="button" class="btn btn-outline btn-sm" :disabled="testingTargetId === pt.print_target" @click="testPrintTarget(pt)" title="RAW Testbon an Drucker senden">
+                          {{ testingTargetId === pt.print_target ? 'Druckt…' : '🔌 Testbon' }}
+                        </button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditTargetModal(pt)">Bearbeiten</button>
                         <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deletePrintTarget(pt.print_target)">Entfernen</button>
                       </div>
@@ -2045,6 +2232,26 @@
             <input type="text" v-model="targetModal.data.name" class="form-control" placeholder="z. B. Grill / Küche / Schank">
           </div>
           <div class="form-group">
+            <label>Verbindungstyp</label>
+            <select v-model="targetModal.data.connection_type" class="form-select">
+              <option value="client">Client (Python / USB / Seriell)</option>
+              <option value="network">Netzwerk (RAW ESC/POS Port 9100)</option>
+            </select>
+            <small style="color: var(--ff-text-muted); font-size: 0.78rem;">
+              Netzwerk druckt direkt via TCP-Socket über Port 9100 ohne Client-PC.
+            </small>
+          </div>
+          <div v-if="targetModal.data.connection_type === 'network'" style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>IP-Adresse</label>
+              <input type="text" v-model="targetModal.data.ip_address" class="form-control" placeholder="z. B. 192.168.1.150">
+            </div>
+            <div class="form-group">
+              <label>Port</label>
+              <input type="number" v-model="targetModal.data.port" class="form-control" placeholder="9100">
+            </div>
+          </div>
+          <div class="form-group">
             <label>Sortierung</label>
             <input type="number" v-model="targetModal.data.sort_order" class="form-control">
           </div>
@@ -2057,9 +2264,16 @@
             <label for="chkPt">Druckziel aktiv</label>
           </div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline" @click="targetModal.open = false">Abbrechen</button>
-          <button type="button" class="btn btn-primary" @click="savePrintTarget">Speichern</button>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <button v-if="targetModal.data.connection_type === 'network' && targetModal.data.ip_address" type="button" class="btn btn-outline" :disabled="testingTargetModal" @click="testPrintModalTarget">
+              {{ testingTargetModal ? 'Sende…' : '🔌 Testbon an IP senden' }}
+            </button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-outline" @click="targetModal.open = false">Abbrechen</button>
+            <button type="button" class="btn btn-primary" @click="savePrintTarget">Speichern</button>
+          </div>
         </div>
       </div>
     </div>
