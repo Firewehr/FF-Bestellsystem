@@ -11,7 +11,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="station.css?v=2">
+  <link rel="stylesheet" href="station.css?v=3">
+  <script src="../assets/qrcode.min.js"></script>
 </head>
 <body>
   <div id="app" v-cloak>
@@ -125,6 +126,13 @@
             :class="{ active: viewMode === 'history' }"
             @click="switchViewMode('history')">
             📜 Historie
+          </button>
+          <button 
+            type="button" 
+            class="view-mode-btn" 
+            :class="{ active: viewMode === 'substations' }"
+            @click="switchViewMode('substations')">
+            ⚡ Sub-Stationen
           </button>
         </div>
 
@@ -592,6 +600,199 @@
           </article>
         </div>
 
+        <!-- ================================================================= -->
+        <!-- ANSICHT 4: SUB-STATIONEN (Grill, Zapfanlage, Fritter, etc.)       -->
+        <!-- ================================================================= -->
+        <div v-else-if="viewMode === 'substations'" class="substation-view">
+          
+          <!-- Substation Navigation & Toolbar -->
+          <div class="substation-topbar">
+            <div class="substation-tabs">
+              <button 
+                type="button" 
+                class="substation-tab-btn"
+                :class="{ active: selectedSubstation === '' }"
+                @click="selectSubstation('')">
+                📊 Alle Übersicht
+              </button>
+              <button 
+                v-for="s in substationsList" 
+                :key="s.name"
+                type="button" 
+                class="substation-tab-btn"
+                :class="{ active: selectedSubstation === s.name }"
+                @click="selectSubstation(s.name)">
+                ⚡ {{ s.name }}
+                <span v-if="s.open_orders_total > 0" class="substation-pill-badge">
+                  {{ s.open_orders_total }}
+                </span>
+              </button>
+            </div>
+
+            <div class="substation-topbar-actions">
+              <button 
+                v-if="selectedSubstation" 
+                type="button" 
+                class="h-btn" 
+                style="background: #0284c7; color: #fff;"
+                title="QR-Code zur Anzeige auf Smartphone/Tablet generieren"
+                @click="openSubstationQr(selectedSubstation)">
+                📱 QR-Koppeln
+              </button>
+              <button 
+                v-if="currentUser && currentUser.admin >= 1" 
+                type="button" 
+                class="h-btn" 
+                style="background: var(--ff-primary); color: #fff;"
+                @click="openSubstationsConfig">
+                ⚙️ Konfigurieren
+              </button>
+            </div>
+          </div>
+
+          <!-- 4.1 SUB-STATIONEN ÜBERSICHT (Alle Stationen) -->
+          <div v-if="!selectedSubstation" class="substation-overview-container">
+            <div class="prep-hero" style="margin-bottom: 16px;">
+              <div>
+                <h2 class="prep-title">Sub-Stationen Live-Überblick</h2>
+                <p class="prep-subtitle">
+                  Spezialisierte Monitore für Grill, Zapfanlage, Fritteuse usw. Zeigt kumulierte Mengen der nächsten offenen Bestellungen.
+                </p>
+              </div>
+              <button 
+                v-if="currentUser && currentUser.admin >= 1" 
+                type="button" 
+                class="h-btn" 
+                style="background: var(--ff-primary); color: #fff;"
+                @click="openSubstationsConfig">
+                ⚙️ Sub-Stationen verwalten
+              </button>
+            </div>
+
+            <div v-if="substationsList.length === 0" class="empty-state">
+              <span class="empty-icon">⚡</span>
+              <h3 class="empty-title">Keine Sub-Stationen eingerichtet</h3>
+              <p class="empty-desc">Klicke oben auf „Konfigurieren“, um Stationen wie Grill oder Zapfanlage anzulegen.</p>
+              <button 
+                v-if="currentUser && currentUser.admin >= 1"
+                type="button" 
+                class="btn-primary-block" 
+                style="max-width: 260px; margin-top: 14px;"
+                @click="openSubstationsConfig">
+                ＋ Erste Sub-Station anlegen
+              </button>
+            </div>
+
+            <div v-else class="substation-overview-grid">
+              <article 
+                v-for="s in substationsList" 
+                :key="s.name"
+                class="substation-card"
+                @click="selectSubstation(s.name)">
+                <header class="substation-card-head">
+                  <div class="substation-card-title-box">
+                    <span class="substation-card-icon">⚡</span>
+                    <h3 class="substation-card-title">{{ s.name }}</h3>
+                  </div>
+                  <span 
+                    class="substation-card-badge"
+                    :class="{ 'badge-busy': s.open_orders_total > 0 }">
+                    {{ s.open_orders_total }} offen (Fokus: {{ s.orders_limit }})
+                  </span>
+                </header>
+
+                <!-- Artikel-Mengen Preview -->
+                <div class="substation-card-items">
+                  <div v-if="s.items.length === 0" class="substation-no-items">
+                    Keine Positionen in den nächsten {{ s.orders_limit }} Bestellungen offen.
+                  </div>
+                  <div 
+                    v-for="it in s.items.slice(0, 5)" 
+                    :key="it.name" 
+                    class="substation-item-row">
+                    <span class="substation-item-name">{{ it.name }}</span>
+                    <span class="substation-item-qty">{{ it.qty }}×</span>
+                  </div>
+                  <div v-if="s.items.length > 5" class="substation-more-hint">
+                    + {{ s.items.length - 5 }} weitere Positionen...
+                  </div>
+                </div>
+
+                <!-- Footer mit Orders Chips -->
+                <footer class="substation-card-footer">
+                  <div class="substation-orders-chips">
+                    <span 
+                      v-for="(o, oIdx) in s.orders.slice(0, 4)" 
+                      :key="oIdx" 
+                      class="substation-order-chip">
+                      {{ o.label }} ({{ o.age_min }}m)
+                    </span>
+                  </div>
+                  <span class="substation-open-link">Live-Monitor öffnen ›</span>
+                </footer>
+              </article>
+            </div>
+          </div>
+
+          <!-- 4.2 EINZEL-SUB-STATION LIVE MONITOR (Kiosk Mode) -->
+          <div v-else class="substation-monitor-container">
+            <header class="ss-monitor-hero">
+              <div class="ss-monitor-title-row">
+                <button 
+                  type="button" 
+                  class="h-btn ss-monitor-back"
+                  @click="selectSubstation('')">
+                  ← Alle Stationen
+                </button>
+                <h1 class="ss-monitor-name">⚡ {{ selectedSubstation }}</h1>
+                <div class="ss-monitor-stats">
+                  <span class="ss-status-pill">
+                    <span class="ss-live-dot"></span>
+                    <span>Live-Sync</span>
+                  </span>
+                  <span class="ss-orders-counter" v-if="currentSubstationData">
+                    {{ currentSubstationData.open_orders_total }} offene Bestellungen (Nächste {{ currentSubstationData.limit }} im Fokus)
+                  </span>
+                </div>
+              </div>
+
+              <!-- Upcoming Order Chips -->
+              <div v-if="currentSubstationData && currentSubstationData.orders && currentSubstationData.orders.length > 0" class="ss-monitor-chips">
+                <span class="ss-chips-label">Nächste Bestellungen:</span>
+                <span 
+                  v-for="(ord, ordIdx) in currentSubstationData.orders" 
+                  :key="ordIdx" 
+                  class="ss-chip"
+                  :class="{ 'warn': ord.age_min >= 10, 'crit': ord.age_min >= 20 }">
+                  {{ ord.label }} <small>{{ ord.age_min }}m</small>
+                </span>
+              </div>
+            </header>
+
+            <!-- Kiosk Big Tiles Grid -->
+            <div v-if="!currentSubstationData || currentSubstationData.items.length === 0" class="empty-state ss-kiosk-empty">
+              <span class="empty-icon">✨</span>
+              <h2 class="empty-title">Aktuell nichts offen für „{{ selectedSubstation }}“</h2>
+              <p class="empty-desc">Sobald neue Bestellungen mit passenden Positionen eingehen, erscheinen sie hier sofort in Großanzeige.</p>
+            </div>
+
+            <div v-else class="ss-kiosk-grid">
+              <div 
+                v-for="it in currentSubstationData.items" 
+                :key="it.name" 
+                class="ss-kiosk-tile"
+                :class="{
+                  'tile-mid': it.qty >= 5 && it.qty < 12,
+                  'tile-high': it.qty >= 12
+                }">
+                <div class="ss-kiosk-q">{{ it.qty }}</div>
+                <div class="ss-kiosk-nm">{{ it.name }}</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
       </main>
 
       <!-- 4. RECHTES DRAWER-PANEL: ARTIKEL-MENGEN (Optional einblendbar) -->
@@ -694,6 +895,17 @@
             </a>
           </div>
 
+          <!-- Sub-Stationen Konfiguration -->
+          <div v-if="currentUser && currentUser.admin > 0" class="setting-row">
+            <div>
+              <div class="setting-label">Sub-Stationen verwalten</div>
+              <div class="setting-desc">Stationen wie Grill, Zapfanlage, Fritteuse anlegen und Artikel zuweisen</div>
+            </div>
+            <button type="button" class="h-btn" style="background: #0284c7; color: #fff;" @click="showSettingsModal = false; openSubstationsConfig();">
+              ⚡ Sub-Stationen bearbeiten
+            </button>
+          </div>
+
           <!-- Admin-Bereich Link -->
           <div v-if="currentUser && currentUser.admin > 0" class="setting-row">
             <div>
@@ -715,6 +927,214 @@
       </div>
     </div>
 
+    <!-- ===================================================================== -->
+    <!-- MODAL: SUB-STATIONEN KONFIGURIEREN                                     -->
+    <!-- ===================================================================== -->
+    <div v-if="showSubstationsConfigModal" class="modal-overlay" @click.self="showSubstationsConfigModal = false">
+      <div class="station-modal config-modal" style="max-width: 860px; max-height: 90vh; display: flex; flex-direction: column; background: var(--ff-surface); border-radius: var(--ff-radius); box-shadow: var(--ff-shadow-lg); width: 95%;">
+        
+        <header class="modal-header" style="padding: 16px 20px; border-bottom: 1px solid var(--ff-border); display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h3 class="modal-title" style="margin: 0; font-size: 1.25rem; font-weight: 800;">⚙️ Sub-Stationen konfigurieren</h3>
+            <p style="font-size: 0.82rem; color: var(--ff-text-muted); margin: 3px 0 0;">
+              Legen Sie Sub-Stationen wie Grill, Zapfanlage oder Fritteuse an und weisen Sie passende Artikel zu.
+            </p>
+          </div>
+          <button type="button" class="modal-close-btn" @click="showSubstationsConfigModal = false">✕</button>
+        </header>
+
+        <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 20px;">
+          
+          <!-- Filter/Suchfeld für Positionen -->
+          <div style="margin-bottom: 16px;">
+            <input 
+              type="text" 
+              class="form-control" 
+              v-model="substationPosSearch" 
+              placeholder="🔍 Positionen filtern (z. B. Bier, Schnitzel)..."
+              style="width: 100%; font-size: 0.95rem; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--ff-border); background: var(--ff-bg); color: var(--ff-text);">
+          </div>
+
+          <div v-if="substationConfigForm.length === 0" class="empty-state" style="padding: 24px;">
+            <p>Keine Sub-Stationen vorhanden.</p>
+            <button type="button" class="btn-primary-block" style="max-width: 220px; margin: 10px auto;" @click="addSubstationToConfig">
+              ＋ Erste Station hinzufügen
+            </button>
+          </div>
+
+          <!-- Liste der Sub-Station Cards -->
+          <div v-else style="display: flex; flex-direction: column; gap: 16px;">
+            <div 
+              v-for="(st, sIdx) in substationConfigForm" 
+              :key="sIdx" 
+              class="ss-config-card"
+              style="background: var(--ff-bg); border: 1px solid var(--ff-border); border-radius: 10px; padding: 14px;">
+              
+              <!-- Card Header / Inputs -->
+              <div class="ss-config-card-top" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+                <div style="flex: 2; min-width: 180px;">
+                  <label class="ss-field-label" style="display: block; font-size: 0.82rem; font-weight: 700; margin-bottom: 4px;">Stationsname</label>
+                  <input 
+                    type="text" 
+                    class="form-control ss-config-input" 
+                    v-model="st.name" 
+                    placeholder="z. B. Grill, Zapfanlage, Fritter" 
+                    maxlength="40"
+                    style="width: 100%; padding: 8px 10px; font-weight: 700; border-radius: 6px; border: 1px solid var(--ff-border);">
+                </div>
+
+                <div style="flex: 1; min-width: 140px;">
+                  <label class="ss-field-label" style="display: block; font-size: 0.82rem; font-weight: 700; margin-bottom: 4px;">Fokus (Nächste N Best.)</label>
+                  <input 
+                    type="number" 
+                    class="form-control ss-config-input" 
+                    v-model.number="st.orders" 
+                    min="1" 
+                    max="50" 
+                    placeholder="5"
+                    style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--ff-border);">
+                </div>
+
+                <div>
+                  <button 
+                    type="button" 
+                    class="h-btn" 
+                    style="background: #fee2e2; color: #b91c1c; border-color: #fca5a5; height: 38px;"
+                    title="Station löschen"
+                    @click="removeSubstationFromConfig(sIdx)">
+                    🗑️ Löschen
+                  </button>
+                </div>
+              </div>
+
+              <!-- Positionen Zuweisung -->
+              <div style="margin-top: 14px;">
+                <label class="ss-field-label" style="display: block; font-size: 0.82rem; font-weight: 700; margin-bottom: 6px;">
+                  Zugewiesene Positionen ({{ st.positions.length }} gewählt)
+                </label>
+                
+                <div class="ss-pos-selection-box" style="max-height: 220px; overflow-y: auto; background: var(--ff-surface); border: 1px solid var(--ff-border); border-radius: 8px; padding: 8px;">
+                  <div v-for="(pList, catName) in groupedConfigPositions" :key="catName" style="margin-bottom: 8px;">
+                    <div style="font-size: 0.76rem; font-weight: 800; text-transform: uppercase; color: var(--ff-text-muted); padding: 2px 4px;">{{ catName }}</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px; padding: 2px 0;">
+                      <label 
+                        v-for="p in pList" 
+                        :key="p.id" 
+                        class="ss-pos-checkbox-label"
+                        :style="{ background: st.positions.includes(p.id) ? '#dcfce7' : 'transparent', border: st.positions.includes(p.id) ? '1px solid #86efac' : '1px solid transparent' }"
+                        style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 4px 6px; border-radius: 4px; cursor: pointer;">
+                        <input 
+                          type="checkbox" 
+                          :value="p.id" 
+                          v-model="st.positions">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ p.name }}</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Optionale Rezeptur-Bestandteile -->
+              <div v-if="allComponents.length > 0" style="margin-top: 12px;">
+                <label class="ss-field-label" style="display: block; font-size: 0.82rem; font-weight: 700; margin-bottom: 2px;">
+                  Optional: Nach Rezeptur-Bestandteilen zusammenfassen ({{ (st.components || []).length }} gewählt)
+                </label>
+                <p style="font-size: 0.74rem; color: var(--ff-text-muted); margin-bottom: 6px;">
+                  Wenn gewählt, werden die Rohstoff-Portionen (z. B. Bratwurst) statt der Verkaufsartikel summiert.
+                </p>
+                <div style="max-height: 140px; overflow-y: auto; background: var(--ff-surface); border: 1px solid var(--ff-border); border-radius: 8px; padding: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px;">
+                  <label 
+                    v-for="c in allComponents" 
+                    :key="c.id" 
+                    class="ss-pos-checkbox-label"
+                    :style="{ background: (st.components || []).includes(c.id) ? '#dbeafe' : 'transparent', border: (st.components || []).includes(c.id) ? '1px solid #93c5fd' : '1px solid transparent' }"
+                    style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; padding: 4px 6px; border-radius: 4px; cursor: pointer;">
+                    <input 
+                      type="checkbox" 
+                      :value="c.id" 
+                      v-model="st.components">
+                    <span>{{ c.name }}</span>
+                  </label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Station hinzufügen Button -->
+          <div style="margin-top: 16px;">
+            <button 
+              type="button" 
+              class="h-btn" 
+              style="width: 100%; border: 2px dashed var(--ff-border); padding: 10px; font-weight: 700; display: block; text-align: center;"
+              @click="addSubstationToConfig">
+              ＋ Weitere Sub-Station anlegen
+            </button>
+          </div>
+
+        </div>
+
+        <footer style="padding: 14px 20px; border-top: 1px solid var(--ff-border); display: flex; justify-content: flex-end; gap: 10px;">
+          <button 
+            type="button" 
+            class="h-btn" 
+            @click="showSubstationsConfigModal = false">
+            Abbrechen
+          </button>
+          <button 
+            type="button" 
+            class="h-btn" 
+            style="background: var(--ff-primary); color: #fff; min-width: 180px;"
+            :disabled="isSavingSubstations"
+            @click="saveSubstationsConfig">
+            {{ isSavingSubstations ? 'Speichern...' : '✓ Änderungen speichern' }}
+          </button>
+        </footer>
+
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL: SUB-STATION QR-KOPPELN                                          -->
+    <!-- ===================================================================== -->
+    <div v-if="showSubstationQrModal && substationQrData" class="modal-overlay" @click.self="showSubstationQrModal = false">
+      <div class="modal-card" style="max-width: 440px; text-align: center; padding: 24px;">
+        <h3 class="modal-title">📱 Sub-Station koppeln</h3>
+        <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin: 8px 0 16px;">
+          Scannen Sie diesen Link auf einem Smartphone oder Tablet (z. B. Grill-Display). Der Zugang ist bis zu 12 Stunden ohne Login auf „{{ substationQrData.station }}“ beschränkt.
+        </p>
+
+        <div style="background: #fff; padding: 16px; border-radius: 12px; border: 1px solid var(--ff-border); margin: 12px auto; display: inline-block;">
+          <div id="ssQrCodeCanvas"></div>
+        </div>
+
+        <div style="margin: 12px 0;">
+          <input 
+            type="text" 
+            readonly 
+            :value="substationQrData.full_url" 
+            style="width: 100%; font-size: 0.78rem; padding: 8px; border-radius: 6px; border: 1px solid var(--ff-border); background: var(--ff-bg); text-align: center;"
+            @click="$event.target.select()">
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;">
+          <a 
+            :href="substationQrData.url" 
+            target="_blank" 
+            class="h-btn" 
+            style="background: #0284c7; color: #fff;">
+            ↗ Im neuen Tab öffnen
+          </a>
+          <button 
+            type="button" 
+            class="h-btn" 
+            @click="showSubstationQrModal = false">
+            Schließen
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 6. TOAST NOTIFICATIONS -->
     <div v-if="toast" class="toast-container">
       <div class="toast" :class="'toast-' + toast.type">
@@ -725,6 +1145,6 @@
   </div>
 
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="station.js?v=5"></script>
+  <script type="module" src="station.js?v=6"></script>
 </body>
 </html>

@@ -43,6 +43,20 @@ createApp({
     const showSummaryDrawer = ref(false);
     const showSettingsModal = ref(false);
     const showLocksModal = ref(false);
+    const showSubstationsConfigModal = ref(false);
+    const showSubstationQrModal = ref(false);
+    const substationQrData = ref(null);
+
+    // Sub-Stationen State
+    const substationsList = ref([]);
+    const substationsConfig = ref({});
+    const selectedSubstation = ref('');
+    const currentSubstationData = ref(null);
+    const substationConfigForm = ref([]);
+    const allPositions = ref([]);
+    const allComponents = ref([]);
+    const substationPosSearch = ref('');
+    const isSavingSubstations = ref(false);
 
     // Sound Benachrichtigung
     const soundEnabled = ref(localStorage.getItem('ff_station_sound') !== '0');
@@ -152,6 +166,26 @@ createApp({
       return t ? t.name : 'Station';
     });
 
+    // Gruppierte Positionen für das Sub-Stationen Konfigurationsmodal
+    const groupedConfigPositions = computed(() => {
+      const q = (substationPosSearch.value || '').trim().toLowerCase();
+      const groups = {};
+      const typeLabels = { 1: 'Speisen', 2: 'Getränke', 3: 'Desserts' };
+
+      allPositions.value.forEach(p => {
+        if (q && !p.name.toLowerCase().includes(q) && !(p.subcategory && p.subcategory.toLowerCase().includes(q))) {
+          return;
+        }
+        const gName = (typeLabels[p.type] || 'Sonstige') + (p.subcategory ? ' – ' + p.subcategory : '');
+        if (!groups[gName]) {
+          groups[gName] = [];
+        }
+        groups[gName].push(p);
+      });
+
+      return groups;
+    });
+
     // -------------------------------------------------------------------------
     // 5. Toast & Benachrichtigungen
     // -------------------------------------------------------------------------
@@ -258,14 +292,14 @@ createApp({
       return false;
     };
 
-    const apiPost = async (payload, retryOnCsrf = true) => {
+    const apiPost = async (payload, retryOnCsrf = true, endpoint = '../api/v1/station.php') => {
       let token = getCsrfToken();
       if (!token) {
         await loadAuth();
         token = getCsrfToken();
       }
 
-      const res = await fetch('../api/v1/station.php', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -294,7 +328,7 @@ createApp({
       if (!data.ok && (res.status === 403 || data.error === 'invalid_csrf') && retryOnCsrf) {
         console.warn('CSRF-Token ungültig/abgelaufen. Erneuere Token...');
         await loadAuth();
-        return apiPost(payload, false);
+        return apiPost(payload, false, endpoint);
       }
 
       return data;
@@ -457,6 +491,150 @@ createApp({
         menuLocks.value = data.locks || [];
       } catch (e) {
         console.warn('Fehler beim Laden der Sperren:', e);
+      }
+    };
+
+    // -------------------------------------------------------------------------
+    // 7.1 Sub-Stationen Methoden
+    // -------------------------------------------------------------------------
+    const fetchSubstations = async (isSilent = false) => {
+      try {
+        let url = `../api/v1/substations.php?_t=${Date.now()}`;
+        if (selectedSubstation.value) {
+          url += `&station=${encodeURIComponent(selectedSubstation.value)}`;
+        }
+        const res = await fetch(url, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok) {
+          if (data.csrf_token) csrfToken.value = data.csrf_token;
+          if (selectedSubstation.value && data.station) {
+            currentSubstationData.value = data;
+          } else {
+            substationsList.value = data.stations || [];
+            substationsConfig.value = data.config || {};
+            allPositions.value = data.all_positions || [];
+            allComponents.value = data.all_components || [];
+          }
+        }
+      } catch (e) {
+        console.warn('Fehler beim Laden der Sub-Stationen:', e);
+      }
+    };
+
+    const selectSubstation = async (stationName) => {
+      selectedSubstation.value = stationName;
+      currentSubstationData.value = null;
+      await fetchSubstations();
+    };
+
+    const openSubstationsConfig = async () => {
+      selectedSubstation.value = '';
+      await fetchSubstations();
+      const list = [];
+      const cfg = substationsConfig.value || {};
+      for (const [name, s] of Object.entries(cfg)) {
+        list.push({
+          origName: name,
+          name: name,
+          orders: s.orders || 5,
+          positions: Array.isArray(s.positions) ? [...s.positions] : [],
+          components: Array.isArray(s.components) ? [...s.components] : [],
+        });
+      }
+      substationConfigForm.value = list;
+      substationPosSearch.value = '';
+      showSubstationsConfigModal.value = true;
+    };
+
+    const addSubstationToConfig = () => {
+      substationConfigForm.value.push({
+        origName: '',
+        name: 'Neue Station ' + (substationConfigForm.value.length + 1),
+        orders: 10,
+        positions: [],
+        components: [],
+      });
+    };
+
+    const removeSubstationFromConfig = (idx) => {
+      const s = substationConfigForm.value[idx];
+      if (s && s.name && !confirm(`Sub-Station „${s.name}“ wirklich entfernen?`)) {
+        return;
+      }
+      substationConfigForm.value.splice(idx, 1);
+    };
+
+    const saveSubstationsConfig = async () => {
+      isSavingSubstations.value = true;
+      try {
+        const stationsPayload = {};
+        for (const s of substationConfigForm.value) {
+          const trimmed = (s.name || '').trim();
+          if (!trimmed) {
+            showToast('Stationsname darf nicht leer sein', 'error');
+            isSavingSubstations.value = false;
+            return;
+          }
+          stationsPayload[trimmed] = {
+            orders: Math.max(1, Math.min(50, parseInt(s.orders || '5', 10))),
+            positions: s.positions || [],
+            components: s.components || [],
+          };
+        }
+
+        const res = await apiPost({
+          action: 'save',
+          stations: stationsPayload,
+        }, true, '../api/v1/substations.php');
+
+        if (res.ok) {
+          showToast('Sub-Stationen erfolgreich gespeichert', 'success');
+          showSubstationsConfigModal.value = false;
+          await fetchSubstations();
+        } else {
+          showToast(res.message || 'Fehler beim Speichern', 'error');
+        }
+      } catch (e) {
+        showToast('Netzwerkfehler beim Speichern: ' + e.message, 'error');
+      } finally {
+        isSavingSubstations.value = false;
+      }
+    };
+
+    const openSubstationQr = async (stationName) => {
+      try {
+        const res = await apiPost({
+          action: 'qr_token',
+          station: stationName,
+        }, true, '../api/v1/substations.php');
+        if (res.ok) {
+          substationQrData.value = res;
+          showSubstationQrModal.value = true;
+          nextTick(() => {
+            const el = document.getElementById('ssQrCodeCanvas');
+            if (el && window.QRCode) {
+              el.innerHTML = '';
+              new window.QRCode(el, {
+                text: res.full_url || res.url,
+                width: 200,
+                height: 200,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: window.QRCode.CorrectLevel.M,
+              });
+            }
+          });
+        } else {
+          showToast(res.message || 'Konnte QR-Code nicht erzeugen', 'error');
+        }
+      } catch (e) {
+        showToast('Fehler beim Erzeugen des QR-Codes: ' + e.message, 'error');
       }
     };
 
@@ -696,6 +874,8 @@ createApp({
       highlightedItem.value = null;
       if (mode === 'history') {
         fetchHistory();
+      } else if (mode === 'substations') {
+        fetchSubstations();
       } else {
         fetchStationData();
       }
@@ -807,6 +987,7 @@ createApp({
       }
 
       await fetchStationData();
+      await fetchSubstations(true);
       initSse();
 
       // Regelmäßiges Polling (alle 3,5 Sekunden) für unterbrechungsfreie Frische
@@ -817,6 +998,9 @@ createApp({
             ord.age_sec = (ord.age_sec || 0) + 3;
             if (ord.age_sec >= 1200) ord.wait_status = 'late';
             else if (ord.age_sec >= 600) ord.wait_status = 'warn';
+          }
+          if (viewMode.value === 'substations') {
+            fetchSubstations(true);
           }
           if (!isFetchingStation) {
             fetchStationData(true);
@@ -859,6 +1043,19 @@ createApp({
       showSummaryDrawer,
       showSettingsModal,
       showLocksModal,
+      showSubstationsConfigModal,
+      showSubstationQrModal,
+      substationQrData,
+      substationsList,
+      substationsConfig,
+      selectedSubstation,
+      currentSubstationData,
+      substationConfigForm,
+      allPositions,
+      allComponents,
+      substationPosSearch,
+      isSavingSubstations,
+      groupedConfigPositions,
       soundEnabled,
       audioVolume,
       highlightedItem,
@@ -888,6 +1085,13 @@ createApp({
       formatSeconds,
       showToast,
       fetchStationData,
+      fetchSubstations,
+      selectSubstation,
+      openSubstationsConfig,
+      addSubstationToConfig,
+      removeSubstationFromConfig,
+      saveSubstationsConfig,
+      openSubstationQr,
     };
   }
 }).mount('#app');
