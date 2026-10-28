@@ -396,25 +396,8 @@ if ($normalizedItems === []) {
 |--------------------------------------------------------------------------
 */
 
-$bestellerName = trim(
-    (string)($data['name'] ?? '')
-);
-
-if (
-    $bestellerName === ''
-    || !preg_match('/^0[0-9]{8,19}$/', $bestellerName)
-) {
-
-    customer_error(
-        'invalid_name',
-        'Bitte geben Sie eine Telefonnummer mit mindestens 9 Ziffern ein, zum Beispiel 06641234567.'
-    );
-}
-
-
 $bestellerName =
-    'QR-Tisch-' . $tischnummer .
-    ' - ' . $bestellerName;
+    'QR-Tisch-' . $tischnummer;
 
 
 /*

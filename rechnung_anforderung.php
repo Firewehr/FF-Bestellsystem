@@ -228,7 +228,7 @@ if ($sammelrechnung_id > 0) {
 
 $year = (int)date('Y');
 $prefix = ff_rechnung_prefix_for_fest($conn, $fest_id);
-$next = ff_rechnung_next_read($conn);
+$next = ff_rechnung_next_allocate($conn);
 $rechnungsnummer = $prefix . $year . '-' . str_pad((string)$next, 4, '0', STR_PAD_LEFT);
 
 $created_by = isset($_SESSION['user']['username']) ? (string) $_SESSION['user']['username'] : 'system';
@@ -245,10 +245,36 @@ $eoEsc = mysqli_real_escape_string($conn, $empfaenger_ort);
 $euEsc = mysqli_real_escape_string($conn, $empfaenger_uid);
 $totalSql = number_format($total, 2, '.', '');
 
-$sqlIns = 'INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, sammelrechnung_id, is_firma,
-    empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
-    VALUES (\'' . $rnEsc . '\', \'' . $cbEsc . '\', ' . $fest_id_int . ', ' . $tischnummerIns . ', ' . $sammelIns . ', ' . (int) $is_firma . ',
-    \'' . $enEsc . '\', \'' . $esEsc . '\', \'' . $epEsc . '\', \'' . $eoEsc . '\', \'' . $euEsc . '\', ' . $totalSql . ', 0, \'pending\', 0, 0, NULL)';
+$existingCols = [];
+$chkCols = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
+if ($chkCols) {
+    while ($cRow = mysqli_fetch_assoc($chkCols)) {
+        $existingCols[strtolower((string)$cRow['Field'])] = true;
+    }
+    mysqli_free_result($chkCols);
+}
+
+$cols = [
+    'rechnungsnummer', 'created_by', 'fest_id', 'tischnummer', 'sammelrechnung_id', 'is_firma',
+    'empfaenger_name', 'empfaenger_strasse', 'empfaenger_plz', 'empfaenger_ort', 'empfaenger_uid',
+    'total', 'gedruckt', 'druck_status', 'druck_attempts', 'is_proforma', 'lines_json'
+];
+$vals = [
+    "'" . $rnEsc . "'", "'" . $cbEsc . "'", $fest_id_int, $tischnummerIns, $sammelIns, (int) $is_firma,
+    "'" . $enEsc . "'", "'" . $esEsc . "'", "'" . $epEsc . "'", "'" . $eoEsc . "'", "'" . $euEsc . "'",
+    $totalSql, 0, "'pending'", 0, 0, 'NULL'
+];
+
+if (isset($existingCols['kellner'])) {
+    $cols[] = 'kellner';
+    $vals[] = "'" . $cbEsc . "'";
+}
+if (isset($existingCols['betrag'])) {
+    $cols[] = 'betrag';
+    $vals[] = $totalSql;
+}
+
+$sqlIns = 'INSERT INTO rechnungen (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $vals) . ')';
 
 if (!mysqli_query($conn, $sqlIns)) {
     respond(false, 'DB Fehler: ' . mysqli_error($conn));
@@ -289,8 +315,6 @@ if ($linkRowids && $items !== []) {
 if ($orderNrIns !== null && $orderNrIns > 0 && $rechnung_id > 0) {
     @mysqli_query($conn, 'UPDATE rechnungen SET order_nr=' . $orderNrIns . ' WHERE id=' . $rechnung_id);
 }
-
-settings_set($conn, FF_RECHNUNG_NEXT_KEY, (string)($next + 1));
 
 $thermoOk = false;
 $thermoEnqueueError = null;

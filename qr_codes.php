@@ -1,7 +1,13 @@
 <?php
 declare(strict_types=1);
 
-require_once('include/db.php');
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/include/db.php';
+
+if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
+    http_response_code(403);
+    die('Zugriff verweigert. Administratorrechte erforderlich.');
+}
 
 header('Content-Type: text/html; charset=utf-8');
 
@@ -67,11 +73,25 @@ $sql = "
     SELECT
         t.tischnummer,
         t.tischname,
-        tt.token,
-        tt.active
+        COALESCE(act.token, latest.token, '') AS token,
+        COALESCE(act.active, latest.active, 1) AS active
     FROM tische t
-    LEFT JOIN table_tokens tt
-        ON tt.table_number = t.tischnummer
+    LEFT JOIN (
+        SELECT table_number, MAX(token) AS token, 1 AS active
+        FROM table_tokens
+        WHERE active = 1
+        GROUP BY table_number
+    ) act ON act.table_number = t.tischnummer
+    LEFT JOIN (
+        SELECT tt1.table_number, tt1.token, tt1.active
+        FROM table_tokens tt1
+        INNER JOIN (
+            SELECT table_number, MAX(id) AS max_id
+            FROM table_tokens
+            GROUP BY table_number
+        ) m ON m.table_number = tt1.table_number AND m.max_id = tt1.id
+    ) latest ON latest.table_number = t.tischnummer
+    WHERE t.tischnummer <> 999999
     ORDER BY t.tischname, t.tischnummer
 ";
 
@@ -99,32 +119,30 @@ $tische = [];
 while ($row = mysqli_fetch_assoc($result)) {
 
     $tischnummer = (int)$row['tischnummer'];
-
     $token = $row['token'] ?? '';
-
-    $active = isset($row['active'])
-        ? (int)$row['active']
-        : 0;
-
+    $active = isset($row['active']) ? (int)$row['active'] : 1;
 
     /*
-     * Nur Tische mit gültigem Token anzeigen.
+     * Falls für den Tisch noch kein Token existiert, automatisch generieren
      */
-
     if ($token === '') {
-        continue;
+        $token = rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
+        $ins = mysqli_prepare($conn, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1)');
+        if ($ins) {
+            mysqli_stmt_bind_param($ins, 'is', $tischnummer, $token);
+            mysqli_stmt_execute($ins);
+            mysqli_stmt_close($ins);
+        }
+        $active = 1;
     }
-
 
     /*
      * URL für den QR-Code.
      */
-
     $orderUrl =
         $orderBaseUrl
         . '?tisch=' . rawurlencode((string)$tischnummer)
         . '&token=' . rawurlencode($token);
-
 
     $tische[] = [
         'tischnummer' => $tischnummer,
@@ -158,7 +176,8 @@ while ($row = mysqli_fetch_assoc($result)) {
         Erzeugt die QR-Codes direkt im Browser.
     -->
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="assets/qrcode.min.js"></script>
+    <script>if (!window.QRCode) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>');</script>
 
 
     <style>

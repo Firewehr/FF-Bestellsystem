@@ -1,6 +1,7 @@
 <?php
 require_once('auth.php');
 require_once('include/db.php');
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -8,6 +9,8 @@ if (!isset($_SESSION['admin']) || (int)$_SESSION['admin'] < 1) {
     echo json_encode(['ok' => false]);
     exit;
 }
+
+ff_csrf_require();
 
 $id = (int)($_POST['id'] ?? 0);
 if ($id <= 0) {

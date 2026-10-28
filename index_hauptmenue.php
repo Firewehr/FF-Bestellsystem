@@ -316,6 +316,12 @@ $ffAppTitle = ff_app_title($conn);
                 <ul class="navbar-nav ms-xl-auto flex-wrap">
                     <?php if (empty($ff_dv_only_ui)): ?>
                     <li class="nav-item">
+                        <a class="nav-link text-warning fw-bold" href="pilot/">📱 Kellner-App (Pilot)</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-info fw-bold" href="pilot/station.html">🔥 Stations-Pilot (Küche/Schank)</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="#listTische" id="TischeButton" onclick="TischAnsicht(); return false;">Tische</a>
                     </li>
                     <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
@@ -383,6 +389,8 @@ $ffAppTitle = ff_app_title($conn);
         <div class="container app-content py-4">
             <div class="list-group menu-card">
                 <?php if (empty($ff_dv_only_ui)): ?>
+                <a href="pilot/" class="list-group-item list-group-item-action" style="font-weight:700; color:#dc2626;"><span class="ff-menu-ico" aria-hidden="true">📱</span>Kellner-App (Pilot)</a>
+                <a href="pilot/station.html" class="list-group-item list-group-item-action" style="font-weight:700; color:#0284c7;"><span class="ff-menu-ico" aria-hidden="true">🔥</span>Stations-Pilot (Küche &amp; Schank)</a>
                 <a href="#listTische" class="list-group-item list-group-item-action" id="TischeButton" onclick="TischAnsicht(); return false;">Tische</a>
                 <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
                 <a href="sammelrechnung.php" class="list-group-item list-group-item-action">Sammelrechnung</a>
@@ -559,6 +567,7 @@ $ffAppTitle = ff_app_title($conn);
 
     <script src="<?php echo htmlspecialchars($ffBsJs, ENT_QUOTES, 'UTF-8'); ?>"></script>
     <script src="js/app.js?v=<?php echo @filemtime(__DIR__ . '/js/app.js') ?: '1'; ?>"></script>
+    <script src="js/station_forecast.js?v=<?php echo @filemtime(__DIR__ . '/js/station_forecast.js') ?: '1'; ?>"></script>
     <script>
         if (typeof window.ffApplyTerminalMode === 'function') {
             window.ffApplyTerminalMode(!!window.ffTerminalModeEnabled, false);

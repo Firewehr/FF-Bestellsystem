@@ -220,19 +220,21 @@ $ffFoodWaitShow = ((int)$ffFoodWait <= $ffWaitMax);
 </div>
 
 <div class="modal fade" id="ffTischOrderSummaryModal" tabindex="-1" aria-labelledby="ffTischOrderSummaryTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title fs-5" id="ffTischOrderSummaryTitle">Bestellung prüfen</h5>
+                <div>
+                <h5 class="modal-title fs-5" id="ffTischOrderSummaryTitle">Bestellung prüfen · Tisch <?php echo htmlspecialchars($tischname); ?></h5>
+                <div class="text-muted small" id="ffTischOrderSummaryInfo"></div>
+                </div>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
             </div>
             <div class="modal-body" style="font-size: 1rem; line-height: 1.5;">
-                <p class="text-muted mb-3" style="font-size: 0.95rem;">Bitte prüfe die offene Bestellung vor dem endgültigen Abschicken.</p>
                 <div id="ffTischOrderSummaryBody" style="font-size: 1rem;"></div>
             </div>
-            <div class="modal-footer flex-wrap">
+            <div class="modal-footer ff-os-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Zurück</button>
-                <button type="button" class="btn btn-primary" id="ffTischOrderSummarySubmit" style="font-size: 1rem;">Bestellung endgültig absenden</button>
+                <button type="button" class="btn btn-primary" id="ffTischOrderSummarySubmit">✓ Absenden</button>
             </div>
         </div>
     </div>
@@ -249,7 +251,10 @@ window._ffTischUnsentTable = <?php echo (int) $Tischnummer; ?>;
         var root = document.documentElement.style;
         if (navH) root.setProperty('--ff-nav-h', navH + 'px');
         if (head) root.setProperty('--ff-tabs-h', head.offsetHeight + 'px');
+        var subcat = document.querySelector('.pos-subcat-filter, .category-nav');
+        if (subcat && subcat.offsetHeight > 0) root.setProperty('--ff-subcat-h', subcat.offsetHeight + 'px');
     }
+    window.ffSyncOrderStickyHeights = sync;
     sync();
     window.addEventListener('resize', sync);
     setTimeout(sync, 300);

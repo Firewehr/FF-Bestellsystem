@@ -46,6 +46,10 @@ body {
     padding-bottom: 2rem;
 }
 
+body.app-page {
+    padding-bottom: 0;
+}
+
 .durchgestrichen {
     text-decoration: line-through;
 }
@@ -216,28 +220,59 @@ body.ff-system-broadcast-open {
 .pos-menu-grid > .posWrap {
     min-width: 0;
 }
-.pos-subcat-filter {
+.pos-subcat-filter,
+.category-nav {
     display: flex;
-    gap: 0.28rem;
+    gap: 6px;
     overflow-x: auto;
     white-space: nowrap;
     scrollbar-width: none;
     -ms-overflow-style: none;
-    padding: 0.15rem 0 0.18rem;
-    margin-bottom: 0.4rem;
+    padding: 7px 6px;
+    margin-bottom: 0.5rem;
     -webkit-overflow-scrolling: touch;
+    border-bottom: 1px solid #e2e8f0;
+    background: #ffffff;
+    align-items: center;
 }
-.pos-subcat-filter::-webkit-scrollbar {
+.pos-subcat-filter::-webkit-scrollbar,
+.category-nav::-webkit-scrollbar {
     display: none;
 }
+.category-button,
 .ff-subcat-chip {
     flex: 0 0 auto;
-    min-height: 1.75rem;
-    padding: 0.28rem 0.6rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
     border-radius: 999px;
-    font-size: 0.66rem;
-    line-height: 1.2;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s ease;
+    -webkit-tap-highlight-color: transparent;
+    line-height: 1.3;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.category-button:hover,
+.ff-subcat-chip:hover {
+    background: #f8fafc;
+    color: #0f172a;
+    border-color: #94a3b8;
+}
+.category-button.active,
+.ff-subcat-chip.active,
+.ff-subcat-chip.btn-primary {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
+    color: #ffffff !important;
     font-weight: 700;
+    box-shadow: 0 2px 6px rgba(185, 28, 28, 0.35);
 }
 @media (max-width: 576px) {
     .pos-menu-grid {
@@ -249,13 +284,17 @@ body.ff-system-broadcast-open {
         margin-top: 0.8rem !important;
         margin-bottom: 0.25rem !important;
     }
-    .pos-subcat-filter {
-        gap: 0.24rem;
+    .pos-subcat-filter,
+    .category-nav {
+        gap: 6px;
+        padding: 5px 4px;
         margin-bottom: 0.3rem;
     }
+    .category-button,
     .ff-subcat-chip {
-        font-size: 0.62rem;
-        padding: 0.26rem 0.52rem;
+        font-size: 12px;
+        padding: 5px 12px;
+        min-height: 34px;
     }
 }
 
@@ -774,6 +813,43 @@ body.ff-system-broadcast-open {
     text-align: center;
 }
 
+.navbar.ff-tisch-overview-navbar > .container-fluid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.5rem;
+}
+.ff-tisch-overview-back {
+    justify-self: start;
+}
+.ff-tisch-overview-title {
+    justify-self: center;
+    margin-right: 0;
+    text-align: center;
+}
+.ff-tisch-overview-orders {
+    justify-self: end;
+}
+@media (max-width: 576px) {
+    .navbar.ff-tisch-overview-navbar > .container-fluid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        row-gap: 0.25rem;
+    }
+    .ff-tisch-overview-title {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .ff-tisch-overview-back,
+    .ff-tisch-overview-orders {
+        grid-row: 2;
+    }
+    .ff-tisch-overview-back {
+        grid-column: 1;
+    }
+    .ff-tisch-overview-orders {
+        grid-column: 2;
+    }
+}
+
 .navbar-light.bg-light {
     background: #fff !important;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -937,9 +1013,9 @@ body.ff-system-broadcast-open {
     font-weight: 700;
 }
 
-/* Tisch-Header: bestellt = grün, nicht bestellt = rot */
+/* Tisch-Header: bestellt = blau, nicht bestellt = rot */
 :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-bestellt {
-    background: #22c55e !important;
+    background: #2563eb !important;
     color: #fff !important;
     padding: 16px 20px !important;
     margin: 8px 0 !important;
@@ -947,7 +1023,7 @@ body.ff-system-broadcast-open {
     font-weight: 700;
     border-radius: 10px;
     border: none;
-    box-shadow: 0 2px 8px rgba(34,197,94,0.3);
+    box-shadow: 0 2px 8px rgba(37,99,235,0.3);
 }
 :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-offen {
     background: #dc2626 !important;
@@ -1797,22 +1873,91 @@ body.ff-system-broadcast-open {
     font-weight: 800;
     line-height: 1.2;
 }
+#ffPosHinweisModal .ff-hinweis-block {
+    padding: 1rem !important;
+    border-color: #cbd5e1 !important;
+    background: #fff;
+    box-shadow: 0 2px 8px rgb(15 23 42 / 7%);
+}
+#ffPosHinweisModal .ff-hinweis-section {
+    padding: 0.85rem;
+    border: 1px solid #d7dee8;
+    border-radius: 0.75rem;
+}
+#ffPosHinweisModal .ff-hinweis-recipe {
+    margin-bottom: 0.8rem;
+    background: #eff6ff;
+}
+#ffPosHinweisModal .ff-hinweis-presets {
+    background: #f8fafc;
+}
+#ffPosHinweisModal .ff-hinweis-section-title {
+    margin-bottom: 0.2rem;
+    color: #172554;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+#ffPosHinweisModal .ff-hinweis-section-help {
+    margin-bottom: 0.65rem;
+    color: #475569;
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
 #ffPosHinweisModal .ff-hinweis-options-row .form-check {
-    padding-left: 1.55em;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.9rem;
+    padding: 0.45rem 0.7rem 0.45rem 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.55rem;
+    background: #fff;
 }
 #ffPosHinweisModal .ff-hinweis-options-row .form-check-input {
-    transform: scale(1.15);
-    margin-top: 0.2em;
+    flex: 0 0 auto;
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0;
+    margin-left: -1.35rem;
+    cursor: pointer;
+}
+#ffPosHinweisModal .ff-hinweis-recipe .form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 2.9rem;
+    padding: 0.45rem 0.7rem 0.45rem 2rem;
+    border: 1px solid #bfdbfe;
+    border-radius: 0.55rem;
+    background: #fff;
 }
 #ffPosHinweisModal .ff-hinweis-option-label {
+    display: inline-flex;
+    align-items: center;
     font-size: 1.05rem;
-    line-height: 1.28;
+    line-height: 1.3;
     font-weight: 600;
+    cursor: pointer;
+}
+#ffPosHinweisModal .ff-hinweis-recipe .form-check-input {
+    flex: 0 0 auto;
+    width: 1.2rem;
+    height: 1.2rem;
+    margin-top: 0;
+    margin-left: -1.35rem;
+}
+#ffPosHinweisModal .ff-hinweis-recipe .form-check-input:disabled {
+    opacity: 0.8;
+}
+#ffPosHinweisModal .ff-hinweis-block > .form-label {
+    color: #334155;
+    font-size: 0.95rem;
 }
 #ffPosHinweisModal .ff-hinweis-zeile {
-    font-size: 1.08rem;
+    font-size: 1rem;
     line-height: 1.35;
-    min-height: 5.8rem;
+    min-height: 4.6rem;
+    border-color: #94a3b8;
 }
 #ffPosHinweisModal .ff-hinweis-loading,
 #ffPosHinweisModal .ff-hinweis-zero {
@@ -1827,7 +1972,13 @@ body.ff-system-broadcast-open {
         font-size: 1.14rem;
     }
     #ffPosHinweisModal .ff-hinweis-option-label {
-        font-size: 1rem;
+        font-size: 0.98rem;
+    }
+    #ffPosHinweisModal .ff-hinweis-block {
+        padding: 0.75rem !important;
+    }
+    #ffPosHinweisModal .ff-hinweis-section {
+        padding: 0.7rem;
     }
 }
 
@@ -1930,22 +2081,26 @@ body.ff-system-broadcast-open {
     background: #fff;
     padding-top: 0.25rem;
 }
-.tisch-order-main .pos-subcat-filter {
+:is(.tisch-order-main, #Direktverkauf) .pos-subcat-filter,
+:is(.tisch-order-main, #Direktverkauf) .category-nav {
     position: sticky;
-    top: calc(var(--ff-nav-h, 56px) + var(--ff-tabs-h, 70px));
+    top: calc(var(--ff-nav-h, 56px) + var(--ff-tabs-h, 50px));
     z-index: 25;
     background: #fff;
 }
 @media (max-width: 576px) {
-    .tisch-order-main .pos-subcat-filter {
+    :is(.tisch-order-main, #Direktverkauf) .pos-subcat-filter,
+    :is(.tisch-order-main, #Direktverkauf) .category-nav {
         flex-wrap: nowrap !important;
         overflow-x: auto;
         margin-bottom: 0.2rem !important;
     }
-    .tisch-order-main .pos-subcat-filter > span {
+    :is(.tisch-order-main, #Direktverkauf) .pos-subcat-filter > span,
+    :is(.tisch-order-main, #Direktverkauf) .category-nav > span {
         display: none;
     }
-    .tisch-order-main .pos-subcat-filter .ff-subcat-chip {
+    :is(.tisch-order-main, #Direktverkauf) .pos-subcat-filter .ff-subcat-chip,
+    :is(.tisch-order-main, #Direktverkauf) .category-nav .category-button {
         flex: 0 0 auto;
         min-height: 36px;
     }
@@ -2033,7 +2188,7 @@ body.ff-system-broadcast-open {
     }
 }
 
-/* UX: Feedback beim Tippen, Hinweis-Schnellauswahl */
+/* UX: Feedback beim Tippen */
 @keyframes ffTapPop {
     0% { transform: scale(1); }
     40% { transform: scale(0.94); }
@@ -2042,12 +2197,6 @@ body.ff-system-broadcast-open {
 .pos-menu-tile.ff-tap-pop {
     animation: ffTapPop 0.18s ease-out;
 }
-.ff-hinweis-quick-btn.active {
-    background: #198754;
-    border-color: #198754;
-    color: #fff;
-}
-
 @media (max-width: 576px) {
     /* 1: gelben Warenkorb-Hinweis kompakt (Details zeigt die Abschicken-Leiste) */
     .ff-unsent-alert {
@@ -2184,11 +2333,6 @@ body.ff-system-broadcast-open {
     font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
-.kueche-bestellung-wrap.ff-wait-warn { box-shadow: inset 5px 0 0 #f59e0b; }
-.kueche-bestellung-wrap.ff-wait-warn .kueche-wartend-zeit { background: #fef3c7; color: #92400e; }
-.kueche-bestellung-wrap.ff-wait-late { box-shadow: inset 5px 0 0 #dc2626; background: #fef2f2; }
-.kueche-bestellung-wrap.ff-wait-late .kueche-wartend-zeit { background: #dc2626; color: #fff; }
-
 :root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar {
     position: sticky !important;
     top: 70px !important;
@@ -2240,7 +2384,7 @@ body.ff-system-broadcast-open {
     padding: 0.4rem 0.75rem !important;
     background: var(--sub-color, #475569);
     color: var(--sub-text, #fff) !important;
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     letter-spacing: 0.06em;
 }
 
@@ -2253,14 +2397,17 @@ html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
     box-shadow: inset 0 0 0 2px #111827, inset 0 0 0 4px #fff, 0 0 0 1px #111827 !important;
 }
 
-/* Kategorie-Rahmen: dünner, Randfarbe abgedunkelt */
-.pos-subcat-section {
+/* Kategorie-Rahmen: dünner, Randfarbe abgedunkelt, scroll-margin-top für sanftes Anspringen */
+.pos-subcat-section,
+.pos-menu-page .category {
     border: 2px solid #94a3b8;
     border: 2px solid color-mix(in srgb, var(--sub-color, #94a3b8) 70%, #000);
+    scroll-margin-top: calc(var(--ff-nav-h, 56px) + var(--ff-tabs-h, 50px) + var(--ff-subcat-h, 44px) + 8px);
 }
 
 /* Filter-Chips: Verlauf am rechten Rand zeigt, dass man scrollen kann */
-.tisch-order-main .pos-subcat-filter {
+:is(.tisch-order-main, #Direktverkauf) .pos-subcat-filter,
+:is(.tisch-order-main, #Direktverkauf) .category-nav {
     -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
     mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
     padding-right: 26px;
@@ -2516,7 +2663,7 @@ html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
 }
 #BestellungZahlen .ff-pay-single-count { opacity: 0.55; }
 #BestellungZahlen .ff-pay-row { border-bottom: 1px solid #d5dde8; }
-#BestellungZahlen .ff-pay-row:not(.is-sel):not([style*="220, 252, 231"]):nth-of-type(even) { background-color: #f8fafc; }
+#BestellungZahlen .ff-pay-row:not(.is-sel):not(.is-part-sel):not([style*="220, 252, 231"]):nth-of-type(even) { background-color: #f8fafc; }
 #summeZahlung.ff-pay-sum-selected { color: #15803d; }
 #BestellungZahlen .ff-pay-more > summary { display: block; }
 
@@ -2591,7 +2738,7 @@ html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
 }
 
 /* Zahlen: Runde 5 */
-#BestellungZahlen .ff-pay-row:nth-of-type(even):not(.is-sel) { background-color: transparent !important; }
+#BestellungZahlen .ff-pay-row:nth-of-type(even):not(.is-sel):not(.is-part-sel):not([style*="220, 252, 231"]) { background-color: transparent !important; }
 #BestellungZahlen .ff-pay-row { border-bottom: 1px solid #e2e8f0; }
 #BestellungZahlen .ff-pay-hint { font-size: 0.8rem; color: #64748b; padding: 0.3rem 0.8rem 0.5rem; }
 #BestellungZahlen .ff-pay-group-head.is-all-selected .ff-pay-group-pick { min-width: 7.5rem; justify-content: center; }
@@ -2612,3 +2759,658 @@ html body .posWrap.posWrap > .pos-menu-tile.pos-tile--selected {
     }
     :root:root:root #BestellungZahlen .pay-actions-primary .pay-action-btn { font-size: 0.9rem !important; font-weight: 600; }
 }
+
+/* ==========================================================================
+   Küche/Schank: kompakter, Wartezeit-Ampel, Extrawünsche, Zonen, Summenliste
+   ========================================================================== */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) :is([id^="druckzielOrders"], #kuecheOrders, #schankOrders).kueche-orders-flow:not(.ff-station-cols-fixed) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)) !important;
+    gap: 0.6rem;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-bestellt h2,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-tisch-offen h2 { font-size: 1.45rem !important; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row button.kueche-btn-fertig--done {
+    font-size: 1.02rem !important;
+    min-height: 40px;
+    padding: 5px 10px !important;
+    line-height: 1.2 !important;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row { margin-bottom: 4px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-pos-status {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.5rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #92400e;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.4;
+    text-decoration: none;
+    vertical-align: middle;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row--done .ff-pos-status {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-unfertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig { padding: 4px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap .kueche-order-row { padding: 4px 8px 8px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-fertig-aktion { min-height: 44px; }
+
+/* Kopf der Bestellung: Nr · Positionen · Wartezeit */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px 2px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-meta .kueche-bestellung-badge { position: static; margin: 0; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-count {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #475569;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-print-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-print-status--done {
+    background: #dcfce7;
+    color: #166534;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-print-status--partial {
+    background: #fef3c7;
+    color: #92400e;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-order-meta .kueche-wartend-zeit {
+    margin-left: auto;
+    font-size: 1.15rem;
+    padding: 2px 12px;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-ok .kueche-wartend-zeit {
+    background: #dcfce7;
+    color: #166534;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-ok { box-shadow: inset 5px 0 0 #22c55e; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-warn { box-shadow: inset 5px 0 0 #f59e0b; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-warn .kueche-wartend-zeit { background: #fef3c7; color: #92400e; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-late { box-shadow: inset 5px 0 0 #dc2626; background: #fef2f2; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-wait-late .kueche-wartend-zeit {
+    background: #dc2626;
+    color: #fff;
+    animation: none;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap.ff-closing { opacity: 0.35; pointer-events: none; }
+
+/* Positionen: Menge, Name, Extrawunsch */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-pos-qty { font-weight: 800; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-pos-extra {
+    display: block;
+    margin-top: 3px;
+    padding: 1px 8px;
+    width: fit-content;
+    max-width: 100%;
+    border-radius: 6px;
+    background: #7c3aed;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-btn-offen.ff-hl {
+    outline: 3px solid #2563eb;
+    outline-offset: 1px;
+    background: #bfdbfe !important;
+    color: #1e3a8a !important;
+}
+body.ff-hl-on .kueche-btn-offen:not(.ff-hl) { opacity: 0.55; }
+
+/* Zonen-Badge im Kartenkopf */
+.ff-zone-badge {
+    display: inline-block;
+    min-width: 1.6em;
+    margin-right: 8px;
+    padding: 0 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    font-size: 0.85em;
+    font-weight: 800;
+    text-align: center;
+}
+.ff-zone-badge[data-zone="Z"] { background: #bfdbfe; color: #1e3a8a; }
+.ff-zone-badge[data-zone="H"] { background: #fde68a; color: #78350f; }
+.ff-zone-badge[data-zone="T"] { background: #fbcfe8; color: #831843; }
+.ff-zone-badge[data-zone="B"] { background: #ddd6fe; color: #4c1d95; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap[data-zone="Z"] .kueche-bestellung-badge { background: #bfdbfe; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap[data-zone="H"] .kueche-bestellung-badge { background: #fde68a; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap[data-zone="T"] .kueche-bestellung-badge { background: #fbcfe8; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-bestellung-wrap[data-zone="B"] .kueche-bestellung-badge { background: #ddd6fe; }
+
+/* Summenliste rechts: Umbruch statt Abschneiden, Tische + Extras */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar .ff-sum-item {
+    display: block;
+    width: 100%;
+    margin: 0 0 4px;
+    padding: 6px 9px;
+    border: 3px solid transparent;
+    border-radius: 10px;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+    cursor: pointer;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-sidebar .ff-sum-item--active { border-color: #3b82f6; box-shadow: 0 0 0 2px #fff inset; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-head { display: block; font-size: 1rem; font-weight: 700; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-qty { font-weight: 800; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-tische,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-extras { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-tisch,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-extra {
+    padding: 0 5px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.2);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-sum-extra { background: #7c3aed; }
+
+/* Kennzahlen in der Kopfzeile */
+.navbar.app-navbar.ff-station-navbar {
+    background: #334155 !important;
+}
+.ff-station-navbar .ff-station-title {
+    flex: 0 1 auto;
+    max-width: clamp(5rem, 14vw, 11rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ff-station-stats {
+    align-items: center;
+    gap: 6px;
+    margin-right: 2px;
+    font-size: 0.88rem;
+    color: #fff;
+    white-space: nowrap;
+}
+.ff-station-stats > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.24);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+}
+.ff-station-stats .warn { color: #fde68a; }
+.ff-station-stats .late { color: #fecaca; font-weight: 700; }
+@media (max-width: 1100px) {
+    .ff-station-navbar .ff-station-title { max-width: 7rem; }
+    .ff-station-navbar .ff-station-actions { gap: 4px !important; }
+    .ff-station-navbar .ff-station-stats { gap: 3px; font-size: 0.78rem; }
+    .ff-station-navbar .ff-station-stats > span { padding: 2px 5px; }
+}
+
+/* Schank: zwei breite Spalten halten die Bestellreihenfolge leichter erfassbar. */
+:root:root :is(#DruckzielContent #druckzielOrders12, #Schankansicht #schankOrders).kueche-orders-flow:not(.ff-station-cols-fixed) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, clamp(250px, 26vw, 390px)), 1fr)) !important;
+    grid-auto-flow: row;
+}
+
+/* Rückgängig-Hinweis */
+#ffUndoToasts {
+    position: fixed;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.ff-undo-toast {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 1.05rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.ff-undo-toast button {
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: #fbbf24;
+    color: #1f2937;
+    font-weight: 800;
+}
+
+/* Bestätigungs-Toast rechts oben */
+#ffTopRightToasts {
+    position: fixed;
+    top: 14px;
+    right: 14px;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+.ff-topright-toast {
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: #198754;
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+    transition: opacity 0.35s ease;
+}
+.ff-topright-toast--out { opacity: 0; }
+
+/* Fertige Positionen: kleine einzeilige Zeile */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig { padding: 3px 4px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig .kueche-pos-row--done { margin-bottom: 2px; gap: 4px; }
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig .kueche-pos-row--done .kueche-btn-fertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig .kueche-pos-row--done button.kueche-btn-fertig--done {
+    min-height: 26px !important;
+    padding: 2px 8px !important;
+    font-size: 0.85rem !important;
+    font-weight: 600;
+    line-height: 1.3 !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: none;
+    border-radius: 6px !important;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig .ff-pos-extra {
+    display: inline;
+    margin: 0 0 0 6px;
+    padding: 0 5px;
+    font-size: 0.75rem;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-fertig .kueche-pos-row .kueche-btn-wieder-offen {
+    flex: 0 0 1.9rem;
+    width: 1.9rem !important;
+    min-width: 1.9rem !important;
+    min-height: 26px !important;
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+/* Planung der Küchenpositionen: abschätzende Startzeit je Station */
+.ff-forecast-dialog {
+    width: min(1180px, calc(100vw - 24px));
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+    padding: 0;
+    border: 0;
+    border-radius: 16px;
+    color: #0f172a;
+    box-shadow: 0 18px 60px rgba(15, 23, 42, 0.35);
+}
+.ff-forecast-dialog::backdrop { background: rgba(15, 23, 42, 0.62); }
+.ff-forecast-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 20px;
+    background: #f8fafc;
+    border-bottom: 1px solid #cbd5e1;
+}
+.ff-forecast-header h2 { margin: 0; font-size: 1.5rem; font-weight: 800; }
+.ff-forecast-header p { margin: 3px 0 0; color: #475569; font-size: 0.95rem; }
+.ff-forecast-header-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ff-forecast-header-actions .btn { min-height: 42px; }
+.ff-forecast-status { padding: 6px 20px; color: #475569; font-size: 0.85rem; }
+.ff-forecast-status.is-error { color: #b91c1c; font-weight: 700; }
+.ff-forecast-content { padding: 8px 20px 20px; overflow: auto; }
+.ff-forecast-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+.ff-forecast-toolbar label { font-weight: 700; }
+.ff-forecast-toolbar select { width: auto; min-width: 210px; }
+.ff-forecast-count { margin-left: auto; color: #475569; font-weight: 700; }
+.ff-forecast-note { color: #475569; font-size: 0.9rem; line-height: 1.4; }
+.ff-forecast-demand { margin: 14px 0 18px; padding: 14px; border: 1px solid #bfdbfe; border-radius: 12px; background: #eff6ff; }
+.ff-forecast-demand h3,
+.ff-forecast-config-heading { margin: 0 0 6px; font-size: 1.15rem; font-weight: 800; }
+.ff-forecast-demand > .ff-forecast-note { margin-bottom: 10px; }
+.ff-forecast-demand-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.ff-forecast-demand-card { min-width: 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.ff-forecast-demand-title { font-size: 1.05rem; font-weight: 800; }
+.ff-forecast-demand-products { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; margin: 8px 0 0; padding: 0; list-style: none; }
+.ff-forecast-demand-products li { display: contents; }
+.ff-forecast-demand-products strong { color: #1d4ed8; }
+.ff-forecast-demand-products span { overflow-wrap: anywhere; }
+.ff-forecast-production { margin: 14px 0 18px; padding: 14px; border: 1px solid #c4b5fd; border-radius: 12px; background: #f5f3ff; }
+.ff-forecast-production h3 { margin: 0 0 6px; font-size: 1.15rem; font-weight: 800; }
+.ff-forecast-production-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 10px; }
+.ff-forecast-production-card { min-width: 0; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; }
+.ff-forecast-production-card h4 { margin: 0 0 10px; font-size: 1.05rem; font-weight: 800; }
+.ff-forecast-production-station { margin-top: 8px; color: #334155; font-weight: 800; }
+.ff-forecast-production-items { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; margin: 4px 0 0; padding: 0; list-style: none; }
+.ff-forecast-production-items li { display: contents; }
+.ff-forecast-production-items > li > strong { color: #1d4ed8; }
+.ff-forecast-production-items > li > span { overflow-wrap: anywhere; }
+.ff-forecast-production-source,
+.ff-forecast-batch { grid-column: 2; color: #475569; font-size: 0.8rem; }
+.ff-forecast-production-source { margin-top: -4px; }
+.ff-forecast-batch { margin-bottom: 4px; color: #166534; font-weight: 700; }
+.ff-forecast-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 10px; }
+.ff-forecast-task {
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid #cbd5e1;
+    border-left: 5px solid #64748b;
+    border-radius: 10px;
+    background: #fff;
+}
+.ff-forecast-task:has(.ff-forecast-start--now) { border-left-color: #d97706; background: #fffbeb; }
+.ff-forecast-task:has(.ff-forecast-start--late) { border-left-color: #dc2626; background: #fef2f2; }
+.ff-forecast-task-title,
+.ff-forecast-task-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ff-forecast-station { color: #334155; font-size: 0.85rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+.ff-forecast-order { color: #475569; font-weight: 700; text-align: right; }
+.ff-forecast-product { margin: 8px 0; font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; }
+.ff-forecast-start { font-size: 1rem; font-weight: 800; }
+.ff-forecast-start--later { color: #1d4ed8; }
+.ff-forecast-start--now { color: #92400e; }
+.ff-forecast-start--late { color: #b91c1c; }
+.ff-forecast-ready { color: #475569; font-size: 0.85rem; text-align: right; }
+.ff-forecast-capacities { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 12px 0; }
+.ff-forecast-capacities h3 { flex-basis: 100%; margin: 0; font-size: 1rem; }
+.ff-forecast-capacity-row { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.ff-forecast-capacity-row input { width: 5rem; }
+.ff-forecast-search { margin: 12px 0; }
+.ff-forecast-config-scroll { max-height: min(48vh, 560px); overflow: auto; border: 1px solid #cbd5e1; border-radius: 8px; }
+.ff-forecast-config-table { margin: 0; }
+.ff-forecast-config-table thead { position: sticky; top: 0; z-index: 1; background: #e2e8f0; }
+.ff-forecast-config-table th,
+.ff-forecast-config-table td { padding: 8px; }
+.ff-forecast-config-table td:first-child { min-width: 200px; }
+.ff-forecast-config-table td:nth-child(2) { min-width: 145px; }
+.ff-forecast-config-table td:nth-child(n+3) { width: 130px; min-width: 115px; }
+.ff-forecast-config-table input { min-height: 42px; }
+.ff-forecast-config-heading { margin-top: 18px; }
+@media (max-width: 640px) {
+    .ff-forecast-header { align-items: flex-start; padding: 12px; flex-direction: column; }
+    .ff-forecast-header-actions { width: 100%; }
+    .ff-forecast-header-actions .btn { flex: 1; }
+    .ff-forecast-content { padding: 8px 12px 16px; }
+    .ff-forecast-toolbar select { flex: 1 1 100%; width: 100%; }
+    .ff-forecast-count { margin-left: 0; }
+    .ff-forecast-task-footer { align-items: flex-start; flex-direction: column; }
+    .ff-forecast-ready { text-align: left; }
+}
+
+/* Zahlen: stabiles Layout, Auswahlzeile, ruhigere Gruppen-Chips */
+#BestellungZahlen .ff-pay-hint { min-height: 2.6em; box-sizing: border-box; }
+#BestellungZahlen .ff-pay-total-sub { min-height: 1.4em; padding: 0 0.8rem; font-size: 0.85rem; color: #64748b; text-align: right; }
+#BestellungZahlen .ff-pay-total-sub.is-selected { color: #15803d; font-weight: 600; }
+#BestellungZahlen .pay-actions-primary .pay-action-btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+:root:root:root #BestellungZahlen .ff-pay-group-pick {
+    background: transparent;
+    border: 1px solid #94a3b8;
+    color: #334155;
+    font-weight: 500;
+    font-size: 0.85rem;
+    min-height: 2.2rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+}
+:root:root:root #BestellungZahlen .ff-pay-group-head.is-part-selected .ff-pay-group-pick { border-color: #ca8a04; color: #854d0e; font-weight: 600; }
+:root:root:root #BestellungZahlen .ff-pay-group-head.is-all-selected .ff-pay-group-pick { background: #16a34a; border-color: #15803d; color: #fff; font-weight: 600; }
+#BestellungZahlen .ff-pay-group-head.is-part-selected .ff-pay-group-subtxt,
+#BestellungZahlen .ff-pay-group-head.is-all-selected .ff-pay-group-subtxt { color: #15803d; font-weight: 700; }
+
+/* Zahlen: Gruppenkopf auf schmalen Displays (z. B. Pixel 7) – Text umbrechen statt mit dem Chip zu überlappen */
+#BestellungZahlen .ff-pay-group-title { min-width: 0; }
+@media (max-width: 576px) {
+    #BestellungZahlen .ff-pay-group-sub { flex-wrap: wrap !important; white-space: normal !important; row-gap: 0; }
+    #BestellungZahlen .ff-pay-group-subtxt { white-space: nowrap; }
+    #BestellungZahlen .ff-pay-group-ord { white-space: nowrap; }
+    #BestellungZahlen .ff-pay-group-pick { min-width: 0 !important; flex: 0 0 auto; }
+}
+
+/* Zahlen: Kopfzeile "Zahlen" klebt unterhalb der Navbar statt darüber */
+#BestellungZahlen .ff-pay-header { top: var(--ff-nav-h, 56px); z-index: 1019; }
+
+/* Zahlen: teilweise gewählte Sammelzeile gelb, erst vollständig gewählt grün */
+#BestellungZahlen .ff-pay-row.is-part-sel { box-shadow: inset 5px 0 0 #eab308; }
+
+/* Zahlen: Gruppenkopf auf breiten Displays über die volle Tabellenbreite, Teilauswahl gelb */
+@media (min-width: 577px) {
+    :root:root:root #BestellungZahlen .ff-pay-group-head > td { display: table-cell !important; }
+    #BestellungZahlen .ff-pay-group-inner { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+}
+:root:root:root #BestellungZahlen .ff-pay-group-head.is-part-selected { background: #fef08a; }
+@media (max-width: 576px) { #BestellungZahlen .ff-pay-group-inner { display: contents; } }
+
+/* Bestellung prüfen: Menge, Hinweise, Trennlinien, feste Fußleiste */
+#ffTischOrderSummaryModal .modal-header { align-items: flex-start; }
+#ffTischOrderSummaryModal .ff-os-name { display: flex; align-items: flex-start; gap: 0.5rem; }
+#ffTischOrderSummaryModal .ff-os-text { min-width: 0; overflow-wrap: anywhere; }
+#ffTischOrderSummaryModal .ff-os-qty { flex: 0 0 auto; min-width: 2.2rem; padding: 0 0.4rem; border-radius: 6px; background: transparent; color: #64748b; font-weight: 600; text-align: center; }
+#ffTischOrderSummaryModal .ff-os-qty.is-multi { background: #fde68a; color: #78350f; font-weight: 800; }
+#ffTischOrderSummaryModal .ff-os-unit { font-size: 0.85rem; padding-left: 2.7rem; }
+#ffTischOrderSummaryModal .ff-os-item { border-radius: 0 !important; border-bottom: 1px solid #e2e8f0 !important; }
+#ffTischOrderSummaryModal .ff-zusatzinfo-display { margin-left: 2.7rem; }
+#ffTischOrderSummaryModal .ff-zusatzinfo-display .badge,
+#ffTischOrderSummaryModal .ff-zusatzinfo-display .text-muted,
+#ffTischOrderSummaryModal .ff-zusatzinfo-display.text-muted { display: inline-block; background: #fef3c7 !important; color: #92400e !important; border: 1px solid #f59e0b !important; border-radius: 0.375rem; padding: 0.2rem 0.5rem; font-weight: 600; font-size: 0.85rem; font-style: normal !important; }
+#ffTischOrderSummaryModal .modal-body {
+    background:
+        linear-gradient(#fff 30%, rgba(255,255,255,0)) center top,
+        linear-gradient(rgba(255,255,255,0), #fff 70%) center bottom,
+        radial-gradient(farthest-side at 50% 0, rgba(0,0,0,.25), rgba(0,0,0,0)) center top,
+        radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,.25), rgba(0,0,0,0)) center bottom;
+    background-repeat: no-repeat;
+    background-size: 100% 28px, 100% 28px, 100% 10px, 100% 10px;
+    background-attachment: local, local, scroll, scroll;
+}
+#ffTischOrderSummaryModal .ff-os-footer { flex-wrap: nowrap; gap: 0.6rem; }
+#ffTischOrderSummaryModal .ff-os-footer .btn { margin: 0; min-height: 3rem; }
+#ffTischOrderSummaryModal .ff-os-footer .btn-outline-secondary { flex: 0 0 auto; padding-left: 1.1rem; padding-right: 1.1rem; color: #1e293b; border-color: #475569; border-width: 2px; font-weight: 600; }
+#ffTischOrderSummaryModal .ff-os-footer .btn-primary { flex: 1 1 auto; font-weight: 700; font-size: 1.05rem; background: #15803d; border-color: #15803d; color: #fff; }
+#ffTischOrderSummaryModal .ff-os-footer .btn-primary:disabled { background: #15803d; border-color: #15803d; opacity: 0.6; }
+#ffTischOrderSummaryModal .ff-os-group { margin: 0.9rem 0 0.2rem; padding-bottom: 0.2rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #475569; border-bottom: 2px solid #94a3b8; }
+#ffTischOrderSummaryModal .ff-os-group:first-child { margin-top: 0; }
+
+/* Barzahlung: Zahlungsbetrag, Bargeldeingabe und Rückgeld als klare Schritte */
+.ff-cash-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.62);
+}
+.ff-cash-modal {
+    width: 100%;
+    max-width: 440px;
+    max-height: 94vh;
+    max-height: 94dvh;
+    overflow-y: auto;
+    padding: 18px;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+    color: #1e293b;
+    text-align: left;
+}
+.ff-cash-modal-header { margin: 0 0 14px; text-align: center; }
+.ff-sumup-modal .ff-cash-modal-header { position: relative; padding-top: 10px; }
+.ff-sumup-close {
+    position: absolute;
+    top: -8px;
+    right: -7px;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #64748b;
+    font-size: 1.8rem;
+    line-height: 1;
+    cursor: pointer;
+}
+.ff-sumup-close:hover { background: #f1f5f9; color: #1e293b; }
+.ff-cash-modal-kicker {
+    margin-bottom: 3px;
+    color: #64748b;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.ff-cash-modal-due-label { color: #334155; font-size: 1rem; font-weight: 700; }
+.ff-cash-modal-due {
+    color: #111827;
+    font-size: clamp(2.3rem, 9vw, 3rem);
+    font-weight: 800;
+    line-height: 1.1;
+}
+.ff-cash-step {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #dbe3ec;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+.ff-cash-step h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 9px;
+    color: #1e293b;
+    font-size: 1rem;
+    font-weight: 750;
+}
+.ff-cash-step h3 > span {
+    display: inline-flex;
+    flex: 0 0 1.55rem;
+    width: 1.55rem;
+    height: 1.55rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.85rem;
+}
+.ff-cash-step h3 small { color: #64748b; font-size: 0.78rem; font-weight: 500; }
+.ff-cash-choices { display: grid; gap: 6px; }
+.ff-cash-choices--suggestions { grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); }
+.ff-cash-choices--bills { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); margin-bottom: 8px; }
+.ff-cash-choice {
+    min-height: 42px;
+    padding: 6px 5px;
+    border: 1px solid #94a3b8;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.ff-cash-choice--suggestion { border-color: #93c5fd; color: #1d4ed8; }
+.ff-cash-choice.is-selected {
+    border-color: #1d4ed8;
+    background: #dbeafe;
+    color: #1e40af;
+    box-shadow: inset 0 0 0 1px #1d4ed8;
+}
+.ff-cash-choice:focus-visible,
+.ff-cash-input:focus-visible,
+.ff-cash-modal-actions button:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.ff-cash-input-label { display: block; margin: 8px 0 4px; color: #475569; font-size: 0.82rem; font-weight: 650; }
+.ff-cash-input {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    padding: 7px 12px;
+    border: 1px solid #94a3b8;
+    border-radius: 8px;
+    background: #fff;
+    color: #1e293b;
+    font: inherit;
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-align: right;
+}
+.ff-cash-input--wish { border-color: #86c99f; background: #f0fdf4; color: #166534; }
+.ff-sumup-suggestion-label { margin: -2px 0 6px; color: #64748b; font-size: 0.78rem; }
+.ff-sumup-final-input { min-height: 58px; font-size: 1.65rem; }
+.ff-cash-tip { min-height: 1.15rem; margin-top: 3px; color: #15803d; font-size: 0.82rem; font-weight: 650; }
+.ff-cash-change {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: #ecfdf5;
+    color: #166534;
+    font-weight: 700;
+}
+.ff-cash-change strong { font-size: 1.5rem; line-height: 1.2; }
+.ff-cash-modal-actions { display: flex; gap: 10px; margin-top: 12px; }
+.ff-cash-modal-actions button {
+    min-height: 50px;
+    padding: 9px 12px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    font: inherit;
+    font-size: 1.05rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+.ff-cash-confirm { flex: 1 1 62%; background: #15803d; color: #fff; }
+.ff-cash-confirm:hover:not(:disabled) { background: #166534; }
+.ff-cash-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+.ff-cash-cancel { flex: 1 1 38%; border-color: #cbd5e1 !important; background: #fff; color: #475569; }
+@media (max-width: 400px) {
+    .ff-cash-modal { padding: 14px; }
+    .ff-cash-step { padding: 10px; }
+    .ff-cash-choice { font-size: 0.88rem; }
+    .ff-cash-modal-actions button { padding: 8px 7px; font-size: 0.9rem; }
+}
+
+/* Küche/Schank: Positionen weniger fett */
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-offen,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row .kueche-btn-fertig,
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .kueche-pos-row button.kueche-btn-fertig--done {
+    font-weight: 500;
+}
+:root:root :is(#DruckzielContent, #Kuechenansicht, #Schankansicht) .ff-pos-qty { font-weight: 700; }

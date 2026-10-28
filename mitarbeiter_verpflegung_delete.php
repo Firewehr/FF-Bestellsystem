@@ -2,8 +2,11 @@
 require_once 'auth.php';
 require_once 'include/db.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=UTF-8');
+
+ff_csrf_require();
 
 if (empty($_SESSION['user']['username'])) {
     echo json_encode(['ok' => false, 'error' => 'Bitte anmelden'], JSON_UNESCAPED_UNICODE);

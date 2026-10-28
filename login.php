@@ -60,10 +60,17 @@ if ($setup_required) {
                 mysqli_stmt_bind_param($stmt, 'ss', $u, $hash);
                 if (mysqli_stmt_execute($stmt)) {
 
+                    $newUserId = (int) mysqli_insert_id($conn);
                     $_SESSION = [];
                     session_regenerate_id(true);
                     $_SESSION['login'] = true;
-                    $_SESSION['user'] = ['username' => $u];
+                    $_SESSION['user'] = [
+                        'id' => $newUserId,
+                        'username' => $u,
+                        'admin' => 2,
+                    ];
+                    $_SESSION['user_id'] = $newUserId;
+                    $_SESSION['auth_rev'] = 0;
                     $_SESSION['admin'] = 2;
                     $_SESSION['ff_menu_compact'] = 0;
 
@@ -125,7 +132,10 @@ $ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
 
         <p class="text-muted"><strong>Ersteinrichtung:</strong> Es gibt noch keinen Benutzer. Bitte lege den Super-Admin an.</p>
 
-        <form action="login.php" method="post">
+        <form action="login.php<?php echo !empty($_REQUEST['redirect']) ? '?redirect=' . rawurlencode((string) $_REQUEST['redirect']) : ''; ?>" method="post">
+            <?php if (!empty($_REQUEST['redirect'])): ?>
+                <input type="hidden" name="redirect" value="<?php echo htmlspecialchars((string) $_REQUEST['redirect'], ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
             <div class="mb-3">
                 <label for="setup_username" class="form-label">Benutzername</label>
                 <input type="text" class="form-control" id="setup_username" name="setup[username]" value="admin">
@@ -152,6 +162,14 @@ $ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
 }
 
 if (!empty($_SESSION['login'])) {
+    $redirect = trim((string) ($_GET['redirect'] ?? ''));
+    if ($redirect !== '') {
+        $clean = str_replace(["\r", "\n"], '', $redirect);
+        if (!preg_match('#^[a-z]+://#i', $clean) && !str_starts_with($clean, '//')) {
+            header('Location: ' . $clean);
+            exit;
+        }
+    }
     header('Location: index.php');
     exit;
 }
@@ -214,10 +232,14 @@ if (!empty($_POST)) {
                         $_SESSION['login'] = true;
                         require_once __DIR__ . '/include/ff_schema_login.php';
                         ff_schema_run_login($conn);
-                        $_SESSION['user'] = ['username' => $row['username']];
+                        $_SESSION['user'] = [
+                            'id' => (int) ($row['id'] ?? 0),
+                            'username' => $row['username'],
+                            'admin' => (int) ($row['admin'] ?? 0),
+                        ];
                         $_SESSION['user_id'] = (int) ($row['id'] ?? 0);
                         $_SESSION['auth_rev'] = (int) ($row['auth_rev'] ?? 0);
-                        $_SESSION['admin'] = $row['admin'];
+                        $_SESSION['admin'] = (int) ($row['admin'] ?? 0);
                         $ffPerms = ff_user_permissions_decode($row);
                         $ffLegacy = ff_user_permissions_sync_legacy_flags($ffPerms);
                         $_SESSION['menu_permissions'] = $ffPerms;
@@ -230,6 +252,15 @@ if (!empty($_POST)) {
                         if ((int) ($row['force_password_change'] ?? 0) === 1) {
                             header('Location: index.php#pwForceChange');
                             exit;
+                        }
+
+                        $redirect = trim((string) ($_POST['redirect'] ?? $_GET['redirect'] ?? ''));
+                        if ($redirect !== '') {
+                            $clean = str_replace(["\r", "\n"], '', $redirect);
+                            if (!preg_match('#^[a-z]+://#i', $clean) && !str_starts_with($clean, '//')) {
+                                header('Location: ' . $clean);
+                                exit;
+                            }
                         }
 
                         $land = ff_user_login_landing_hash(
@@ -309,7 +340,10 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
         <div id="ffPasskeyLoginErr" class="alert alert-danger py-2 small d-none mb-2"></div>
         <div id="ffPasskeyLoginDivider" class="text-center text-muted small my-2 d-none">oder mit Benutzername/Kennwort</div>
 
-        <form action="login.php" method="post">
+        <form action="login.php<?php echo !empty($_REQUEST['redirect']) ? '?redirect=' . rawurlencode((string) $_REQUEST['redirect']) : ''; ?>" method="post">
+            <?php if (!empty($_REQUEST['redirect'])): ?>
+                <input type="hidden" name="redirect" value="<?php echo htmlspecialchars((string) $_REQUEST['redirect'], ENT_QUOTES, 'UTF-8'); ?>">
+            <?php endif; ?>
             <div class="mb-3">
                 <label for="username" class="form-label">Benutzername</label>
                 <input type="text" class="form-control" id="username" name="f[username]"
@@ -368,7 +402,8 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
                         btn.disabled = false;
                         return;
                     }
-                    window.location.href = j.redirect || 'index.php';
+                    var targetRedirect = <?php echo json_encode(!empty($_REQUEST['redirect']) ? (string) $_REQUEST['redirect'] : ''); ?>;
+                    window.location.href = targetRedirect || j.redirect || 'index.php';
                 })
                 .catch(function(e) {
                     if (e && e.name === 'NotAllowedError') {

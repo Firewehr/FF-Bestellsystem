@@ -25,6 +25,7 @@ settings_set($conn,'seller_name',$seller_name);
 settings_set($conn,'seller_address',$seller_address);
 settings_set($conn,'seller_uid',$seller_uid);
 settings_set($conn,'printer_token',$token);
+settings_set($conn,'print_event_mode',(($_POST['print_event_mode'] ?? '') === '1') ? '1' : '0');
 settings_set($conn,'offline_backup_token',$offlineBackupToken);
 settings_set($conn,'rechnung_festname',$festname);
 settings_set($conn,'thermo_bon_header',$thermo_bon_header);

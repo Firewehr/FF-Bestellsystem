@@ -27,6 +27,8 @@ if (count($tables) < 1) {
     <title>Sammelrechnung</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php echo ff_favicon_link_tags($conn); ?>
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -70,6 +72,8 @@ if ($badTables !== []) {
     <title>Sammelrechnung</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php echo ff_favicon_link_tags($conn); ?>
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -145,6 +149,8 @@ $sessionUser = (string) ($_SESSION['user']['username'] ?? '');
     <title>Sammelrechnung zahlen</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <?php echo ff_favicon_link_tags($conn); ?>
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background: #f0f2f5; }
@@ -252,8 +258,16 @@ document.getElementById('btnPaySr')?.addEventListener('click', function() {
         formData.append('umsatz_zustaendig', sel.value);
     }
     
+    var csrf = window.FF_CSRF_TOKEN || (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '') || '';
+    if (csrf) {
+        formData.append('csrf_token', csrf);
+    }
+    
     fetch('SammelrechnungBezahlt.php', {
         method: 'POST',
+        headers: {
+            'X-CSRF-Token': csrf
+        },
         body: formData,
         credentials: 'same-origin'
     })

@@ -13,16 +13,12 @@ if ($tischnummer <= 0) {
 
 require_once('include/db.php');
 require_once('include/settings.php');
+require_once __DIR__ . '/include/ff_station_events.php';
+require_once __DIR__ . '/include/ff_auto_print.php';
+require_once __DIR__ . '/include/ff_event_notifications.php';
 
-// Best-effort schema additions (ignore errors if already exists)
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(255) NOT NULL, code VARCHAR(16) NOT NULL, fest_datum DATE NULL, aktiv TINYINT(1) NOT NULL DEFAULT 1, payment_mode ENUM('after','instant') NOT NULL DEFAULT 'after', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(id), KEY aktiv(aktiv)) ENGINE=MyISAM DEFAULT CHARSET=utf8");
-
-// order_nr Spalte sicherstellen
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'order_nr'");
-if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN order_nr INT(11) NULL DEFAULT NULL COMMENT 'Bestellnummer (beim Abschicken vergeben)'");
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD KEY idx_order_nr (order_nr)");
-}
+require_once __DIR__ . '/include/ff_schema_helpers.php';
+ff_schema_ensure_hot_paths($conn);
 
 // Nächste Bestellnummer atomar holen
 mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
@@ -69,6 +65,36 @@ if ($currentFestId > 0) {
     @mysqli_query($conn, "UPDATE bestellungen SET fest_id=$currentFestId WHERE tischnummer=$tischnummer AND fest_id IS NULL AND bestellt=1");
 }
 
+// Erst nach erfolgreichem Abschicken die betroffenen Stationen benachrichtigen.
+$stationTargets = [];
+$targetResult = mysqli_query(
+    $conn,
+    'SELECT DISTINCT COALESCE(print_target, 11) AS print_target FROM bestellungen '
+    . 'WHERE tischnummer=' . (int) $tischnummer . ' AND order_nr=' . (int) $orderNr . ' AND `delete`=0'
+);
+if (!$targetResult) {
+    error_log('bestellung_abschicken.php: Druckziele für order_nr ' . (int) $orderNr . ' konnten nicht ermittelt werden: ' . mysqli_error($conn));
+} else {
+    while ($targetRow = mysqli_fetch_assoc($targetResult)) {
+        $stationTargets[] = (int) $targetRow['print_target'];
+    }
+    mysqli_free_result($targetResult);
+}
+if ($stationTargets === []) {
+    error_log('bestellung_abschicken.php: Keine Druckziele für order_nr ' . (int) $orderNr . ' gefunden; Sicherheits-Polling bleibt aktiv.');
+} else {
+    ff_station_events_publish($conn, $stationTargets, 'order_submitted');
+}
+ff_auto_print_for_order($conn, (int) $tischnummer, (int) $orderNr);
+if ($currentFestId > 0) {
+    try {
+        ff_event_notifications_evaluate($conn, $currentFestId);
+    } catch (Throwable $error) {
+        error_log('bestellung_abschicken.php: Push-Auswertung fehlgeschlagen nach Abschicken für Fest '
+            . $currentFestId . ': ' . $error->getMessage());
+    }
+}
+
 // Determine if we must force immediate payment
 $requirePayment = false;
 
@@ -98,4 +124,3 @@ echo json_encode([
     'is_ehrengast' => $isEhren,
     'fest_id' => $currentFestId
 ]);
-

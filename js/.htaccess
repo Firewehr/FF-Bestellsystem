@@ -1,0 +1,6 @@
+# Service Worker in js/ darf die App im übergeordneten Ordner steuern (backup_download.php, offline_notfall.html).
+<IfModule mod_headers.c>
+  <Files "ff-offline-backup-sw.js">
+    Header set Service-Worker-Allowed "/"
+  </Files>
+</IfModule>

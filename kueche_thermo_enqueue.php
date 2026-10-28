@@ -11,6 +11,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/kueche_thermal_lib.php';
 require_once __DIR__ . '/include/bon_nr_helper.php';
+require_once __DIR__ . '/include/ff_station_events.php';
 
 $print_target = isset($_POST['print_target']) ? (int)$_POST['print_target'] : 0;
 $rowids = [];
@@ -64,6 +65,8 @@ if (!mysqli_query($conn, $ins)) {
     echo json_encode(['ok' => false, 'error' => 'Warteschlange: ' . mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+ff_print_events_publish($conn, [$print_target]);
 
 echo json_encode([
     'ok' => true,

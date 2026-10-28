@@ -469,7 +469,12 @@ function formatEUR($amount) {
     </div>
     
     <div class="invoice-meta">
+        <?php if (!empty($rechnung['storniert'])): ?>
+        <h2 style="color: #dc2626;">STORNOBELEG</h2>
+        <p style="margin:0 0 10px 0;font-size:11pt;color:#dc2626;font-weight:700;">Diese Rechnung wurde storniert am <?php echo esc((string)($rechnung['storno_at'] ?? '')); ?><?php if (!empty($rechnung['storno_reason'])): ?> (Grund: <?php echo esc((string)$rechnung['storno_reason']); ?>)<?php endif; ?></p>
+        <?php else: ?>
         <h2>RECHNUNG</h2>
+        <?php endif; ?>
         <p class="rechnungsnummer-big"><?php echo esc($rechnung['rechnungsnummer']); ?></p>
         <?php if (!empty($rechnung['is_proforma'])): ?>
         <p style="margin:0 0 10px 0;font-size:11pt;color:#b45309;font-weight:600;">Kostenübersicht – noch nicht bezahlt</p>

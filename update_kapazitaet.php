@@ -2,10 +2,10 @@
 
 require_once('auth.php');
 
-$rowid = intval($_GET['rowid']);
-$kapazitaet = intval($_GET['kapazitaet']);
+$rowid = (int)($_REQUEST['rowid'] ?? 0);
+$kapazitaet = (int)($_REQUEST['kapazitaet'] ?? 0);
 
-if ($rowid > 0 && $rowid > 0) {
+if ($rowid > 0) {
 
     require_once 'include/db.php';
     $sql = "UPDATE `positionen` SET `maxBestellbar`='" . $kapazitaet . "' WHERE rowid=" . $rowid;

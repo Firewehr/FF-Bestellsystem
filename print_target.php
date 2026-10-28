@@ -22,6 +22,7 @@ $ffTimings = [];
 require_once('include/db.php');
 require_once('include/settings.php');
 require_once('include/bon_nr_helper.php');
+require_once __DIR__ . '/include/ff_auto_print.php';
 require_once __DIR__ . '/include/user_landing.php';
 require_once __DIR__ . '/include/ff_schema_helpers.php';
 require_once __DIR__ . '/include/ff_table_display.php';
@@ -33,6 +34,8 @@ ff_schema_ensure_hot_paths($conn);
 ff_users_ensure_landing_columns($conn);
 ff_ensure_direktverkauf_tisch_row($conn);
 $ffTimings['schema_ms'] = round((microtime(true) - $ffT1) * 1000, 1);
+
+$ffAutoPrintCol = ff_auto_print_ensure_schema($conn);
 
 // Parameter
 $print_target = isset($_GET['print_target']) ? (int)$_GET['print_target'] : 0;
@@ -85,6 +88,7 @@ $sql = "
         r.rechnungsnummer AS rechnungsnummer,
         b.bon_id,
         b.timestampBestellung,
+        " . ($ffAutoPrintCol ? 'b.auto_print' : '0') . " AS auto_print,
         UNIX_TIMESTAMP(b.zeitstempel) AS zeitstempel_unix,
         " . ff_sql_bon_tischname_select('b', 't') . "
     FROM bestellungen b
@@ -93,8 +97,7 @@ $sql = "
     LEFT JOIN rechnungen r ON r.id = b.rechnung_id
     WHERE b.`delete` = 0
       AND b.bestellt = 1
-      AND b.kueche = 1
-      AND b.print = 2
+      AND " . ($ffAutoPrintCol ? "((b.kueche = 1 AND b.print = 2) OR b.auto_print = 1)" : "(b.kueche = 1 AND b.print = 2)") . "
       AND b.print_status = 0
       AND COALESCE(b.print_target, p.print_target, 11) = " . $print_target . "
     ORDER BY b.tischnummer ASC, b.zeitstempel ASC
@@ -172,6 +175,10 @@ if (!empty($tischNummern) && !empty($rows)) {
 // Anwendung des Filters: $filteredRows enthält nur die druckbaren Kandidaten.
 $filteredRows = [];
 foreach ($rows as $r) {
+    if ((int) ($r['auto_print'] ?? 0) === 1) {
+        $filteredRows[] = $r;
+        continue;
+    }
     if (ff_print_target_passes_sibling_filter($r, $blockedByTisch_BonId, $blockedByTisch_Timestamp, $blockedByTisch_FiveMinKeys)) {
         $filteredRows[] = $r;
     }
@@ -206,6 +213,9 @@ foreach ($filteredRows as $row) {
         if ($prevF === null || $zkRow > $prevF) {
             $tische[$bucketKey]['fertig_um'] = $zkRow;
         }
+    }
+    if ((int) ($row['auto_print'] ?? 0) === 1) {
+        $tische[$bucketKey]['auto_print'] = 1;
     }
     $onr = isset($row['order_nr']) ? (int)$row['order_nr'] : 0;
     if ($onr > 0) {
@@ -277,7 +287,9 @@ foreach ($tische as $bucketKey => &$tischRef) {
     $tnr = (int) ($tischRef['tischnummer'] ?? 0);
     $onrs = $tischRef['order_nrs'] ?? [];
     $isTeil = false;
-    if ($tnr > 0 && $tnr !== FF_TISCH_DIREKTVERKAUF && $onrs !== []) {
+    if (!empty($tischRef['auto_print'])) {
+        // Sofortdruck: Bon ist die komplette Bestellung, keine Teillieferung.
+    } elseif ($tnr > 0 && $tnr !== FF_TISCH_DIREKTVERKAUF && $onrs !== []) {
         $onrList = implode(',', array_map('intval', $onrs));
         $sibOpen = @mysqli_query(
             $conn,
@@ -315,6 +327,8 @@ unset($tischRef);
 if (!$preview && count($bestellungIds) > 0) {
     $ids = implode(',', $bestellungIds);
     mysqli_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE rowid IN ($ids)");
+    // Stationsansicht sofort aktualisieren ("Bon gedruckt"-Markierung)
+    ff_station_events_publish($conn, [$print_target], 'printed');
 }
 
 // Bon-Nr vergeben (nur wenn tatsächlich gedruckt wird)

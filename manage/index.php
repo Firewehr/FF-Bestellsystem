@@ -1,2658 +1,927 @@
 <?php
 require_once __DIR__ . '/../include/ff_manage_admin.php';
 require_once __DIR__ . '/../include/ff_favicon_helpers.php';
+require_once __DIR__ . '/../include/ff_csrf.php';
+
+$isEmbedded = isset($_GET['embed']);
+$initialView = isset($_GET['view']) ? (string)$_GET['view'] : '';
 ?>
 <!DOCTYPE html>
 <html lang="de">
-    <head>
-        <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Stammdaten – Speisekarte &amp; Tische</title>
-    <?php echo ff_favicon_link_tags(null, '../'); ?>
-    <link href="../assets/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="../style.css" rel="stylesheet">
-    <link href="../admin.css" rel="stylesheet">
-    </head>
-<body class="admin-page manage-stammdaten<?php echo isset($_GET['embed']) ? ' manage-embedded' : ''; ?><?php echo isset($_GET['view']) && $_GET['view'] === 'tische' ? ' manage-embedded-tische' : ''; ?>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stammdaten &amp; Karte – Modernes Admin</title>
+  <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+  <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
+  <?php echo ff_favicon_link_tags(null, '../'); ?>
+  <link href="manage.css?v=<?php echo (int)filemtime(__DIR__ . '/manage.css'); ?>" rel="stylesheet">
+</head>
+<body class="manage-app-body<?php echo $isEmbedded ? ' manage-embedded' : ''; ?>">
 
-<?php if (!isset($_GET['embed'])): ?>
-<nav class="navbar navbar-expand-lg admin-navbar sticky-top shadow-sm">
-    <div class="container-fluid">
-        <a class="btn btn-link text-white text-decoration-none px-2 fw-semibold" href="../index.php">← Zurück</a>
-        <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain" aria-controls="navbarMain" aria-expanded="false" aria-label="Navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-        <div class="collapse navbar-collapse" id="navbarMain">
-            <ul class="navbar-nav flex-wrap ms-lg-auto mb-2 mb-lg-0 column-gap-1 py-2 py-lg-0">
-                <li class="nav-item"><a class="nav-link fw-semibold" href="#" data-nav="pos" onclick="loadPositionsErweitert(); return false;">Alle Positionen (erweitert)</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="speisen" onclick="loadSpeisen(); return false;" title="Nur Speisen (type 1)">Speisen · Kurzliste</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="getraenke" onclick="loadGetraenke(); return false;" title="Nur Getränke (type 2)">Getränke · Kurzliste</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="beilagen" onclick="loadBeilagenZusatzinfos(); return false;">Beilagen / Zusatzinfos</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="apidevice" onclick="loadApiDeviceConfig(); return false;">API Device</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="sub" onclick="loadSubcategories(); return false;">Unterkategorien</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="bestandteile" onclick="loadBestandteile(); return false;">Bestandteile</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="rez" onclick="loadRezepturen(); return false;">Rezepturen</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="tische" onclick="loadTische(); return false;">Tische</a></li>
-                <li class="nav-item"><a class="nav-link" href="#" data-nav="lock" onclick="loadSperren(); return false;">Sperren</a></li>
-            </ul>
-                        </div>
-            </div>
-        </nav>
-                <?php endif; ?>
+<div id="app" class="manage-app" v-cloak>
 
-<div class="admin-content">
-                    <?php if (!isset($_GET['embed'])): ?>
-    <div class="card border-0 shadow-sm mb-3 manage-intro-card">
-        <div class="card-body py-3">
-            <p class="small text-muted mb-2 mb-md-0">
-                Zentral: <strong>Alle Positionen (erweitert)</strong> (Typ, Preis, EK, Druckziel, Kacheln, Unterkategorien).
-                <strong>Rezepturen</strong> für zusammengesetzte Positionen mit Verbrauch pro Teil.
-                <strong>Beilagen / Zusatzinfos</strong> für den Hinweis-Dialog beim Bestellen.
-                <strong>Kurzlisten</strong> Speisen/Getränke nutzen dieselbe Logik, nur gefiltert.
-            </p>
-            <div class="d-flex flex-wrap gap-2 mt-2">
-                <a href="../admin.php" class="btn btn-sm btn-outline-primary">Haupt-Admin (admin.php)</a>
-                <a href="../index.php" class="btn btn-sm btn-outline-secondary">Startseite</a>
-            </div>
-        </div>
+  <!-- ===================================================================== -->
+  <!-- 1. SIDEBAR NAVIGATION                                                -->
+  <!-- ===================================================================== -->
+  <aside v-if="!isEmbedded" class="manage-sidebar">
+    <div class="manage-sidebar-brand">
+      <a href="../admin_page.php" title="Zurück zur Admin-Übersicht">
+        <span>⚙️</span>
+        <span>Stammdaten</span>
+      </a>
     </div>
-    <?php endif; ?>
 
-    <div class="card shadow-sm border mb-4">
-        <div class="card-body p-0" id="manageMainCardBody">
-            <div id="mainContent" class="p-3 p-md-4">
-                <div class="text-center text-muted py-5">
-                    <div class="spinner-border spinner-border-sm text-secondary mb-2" role="status" aria-hidden="true"></div>
-                    <p class="mb-0 small">Lade …</p>
+    <nav class="manage-nav">
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'positions' }" @click="switchTab('positions')">
+        <span class="nav-icon">📋</span>
+        <span>Alle Positionen</span>
+        <span class="nav-count">{{ positions.length }}</span>
+      </button>
+
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'speisen' }" @click="switchTab('speisen')">
+        <span class="nav-icon">🍔</span>
+        <span>Speisen</span>
+        <span class="nav-count">{{ positions.filter(p => p.type === 1).length }}</span>
+      </button>
+
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'getraenke' }" @click="switchTab('getraenke')">
+        <span class="nav-icon">🍺</span>
+        <span>Getränke</span>
+        <span class="nav-count">{{ positions.filter(p => p.type === 2).length }}</span>
+      </button>
+
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'subcategories' }" @click="switchTab('subcategories')">
+        <span class="nav-icon">🏷️</span>
+        <span>Unterkategorien</span>
+        <span class="nav-count">{{ subcategories.length }}</span>
+      </button>
+
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'tables' }" @click="switchTab('tables')">
+        <span class="nav-icon">🪑</span>
+        <span>Tische</span>
+        <span class="nav-count">{{ tables.length }}</span>
+      </button>
+
+      <button type="button" class="manage-nav-item" :class="{ active: currentTab === 'locks' }" @click="switchTab('locks')">
+        <span class="nav-icon">🔒</span>
+        <span>Sperren &amp; Ausverkauft</span>
+        <span v-if="activeLocksCount > 0" class="nav-count" style="background:#ef4444; color:#fff;">{{ activeLocksCount }}</span>
+      </button>
+    </nav>
+
+    <div class="manage-sidebar-footer">
+      <a href="index_legacy.php" class="btn-clean btn-outline-clean" style="color:#94a3b8; font-size:0.8rem; border-color:#334155;" title="Zurück zur klassischen Verwaltung">
+        <span>🔄 Klassische Ansicht</span>
+      </a>
+      <a href="../index.php" class="btn-clean btn-outline-clean" style="color:#94a3b8; font-size:0.8rem; border-color:#334155;">
+        <span>← Zum Hauptmenü</span>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===================================================================== -->
+  <!-- 2. HAUPTBEREICH                                                      -->
+  <!-- ===================================================================== -->
+  <main class="manage-main">
+
+    <!-- Header-Titel & Primäre Aktionen -->
+    <header class="manage-app-header">
+      <div class="manage-title-area">
+        <h1 v-if="currentTab === 'positions'">Alle Positionen</h1>
+        <h1 v-else-if="currentTab === 'speisen'">Speisen verwalten</h1>
+        <h1 v-else-if="currentTab === 'getraenke'">Getränke verwalten</h1>
+        <h1 v-else-if="currentTab === 'subcategories'">Unterkategorien &amp; Kacheln</h1>
+        <h1 v-else-if="currentTab === 'tables'">Tische &amp; Tischoptionen</h1>
+        <h1 v-else-if="currentTab === 'locks'">Menü-Sperren (Ausverkauft)</h1>
+        <p>Schnelle Stammdaten-Pflege mit Sofort-Speicherung im Live-Betrieb.</p>
+      </div>
+
+      <div class="manage-actions-area">
+        <button v-if="['positions', 'speisen', 'getraenke', 'locks'].includes(currentTab)" 
+                type="button" 
+                class="btn-clean btn-primary-clean"
+                @click="openNewPositionModal(currentTab === 'getraenke' ? 2 : 1)">
+          <span>+ Neue Position</span>
+        </button>
+
+        <button v-if="currentTab === 'subcategories'" 
+                type="button" 
+                class="btn-clean btn-primary-clean"
+                @click="openNewSubcatModal(1)">
+          <span>+ Neue Unterkategorie</span>
+        </button>
+
+        <button v-if="currentTab === 'tables'" 
+                type="button" 
+                class="btn-clean btn-primary-clean"
+                @click="openNewTableModal">
+          <span>+ Neuer Tisch</span>
+        </button>
+
+        <button type="button" class="btn-clean btn-outline-clean" @click="loadData" title="Daten neu laden">
+          <span>↻ Aktualisieren</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Toolbar / Suchleiste & Filter (für Positionen) -->
+    <div v-if="['positions', 'speisen', 'getraenke', 'locks'].includes(currentTab)" class="manage-toolbar">
+      <div class="toolbar-left">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" v-model="searchQuery" placeholder="Suchen nach Name, Kurzbez, ID...">
+        </div>
+
+        <select v-model="filterSubcat" class="filter-select">
+          <option :value="0">Alle Unterkategorien</option>
+          <option v-for="sub in subcategories" :key="sub.id" :value="sub.id">
+            {{ sub.type === 2 ? '🍺' : '🍔' }} {{ sub.name }}
+          </option>
+        </select>
+
+        <select v-if="feste.length > 1" v-model="filterFest" class="filter-select">
+          <option value="all">Alle Feste &amp; Global</option>
+          <option value="global">Nur Globale Positionen</option>
+          <option v-for="f in feste" :key="f.id" :value="String(f.id)">
+            Fest: {{ f.name }} {{ f.aktiv ? '(Aktiv)' : '' }}
+          </option>
+        </select>
+      </div>
+
+      <div class="toolbar-right">
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.88rem; cursor:pointer; font-weight:500;">
+          <input type="checkbox" v-model="filterKassaOnly">
+          <span>Nur Kassa ({{ kassaOnlyCount }})</span>
+        </label>
+        <span style="color:var(--text-muted); font-size:0.85rem;">{{ filteredPositions.length }} Positionen</span>
+      </div>
+    </div>
+
+    <!-- Ladeanzeige -->
+    <div v-if="loading" style="text-align:center; padding:60px 20px; color:var(--text-muted);">
+      <div style="font-size:2rem; margin-bottom:12px;">⏳</div>
+      <div>Daten werden geladen...</div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: POSITIONEN / SPEISEN / GETRÄNKE / LOCKS                      -->
+    <!-- =================================================================== -->
+    <div v-else-if="['positions', 'speisen', 'getraenke', 'locks'].includes(currentTab)" class="manage-card">
+      <div class="table-responsive" style="overflow-x:auto;">
+        <table class="table-clean">
+          <thead>
+            <tr>
+              <th style="width:40px;">Typ</th>
+              <th>Name &amp; Kurzbez.</th>
+              <th>Unterkategorie</th>
+              <th style="width:110px;">Preis (€)</th>
+              <th>Druckziel</th>
+              <th style="text-align:center;">Nur Kassa</th>
+              <th style="text-align:center;">Status</th>
+              <th style="text-align:center;">Zusatzinfos</th>
+              <th style="text-align:center;">Rezeptur</th>
+              <th style="text-align:right;">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="p in filteredPositions" :key="p.rowid" :style="p.is_locked ? 'background:#fff1f2;' : ''">
+              <!-- Typ Badge -->
+              <td>
+                <span class="badge-clean" :class="p.type === 2 ? 'badge-getraenk' : 'badge-speise'">
+                  {{ p.type === 2 ? '🍺' : '🍔' }}
+                </span>
+              </td>
+
+              <!-- Name & Kurzbez -->
+              <td>
+                <div style="font-weight:600; color:var(--text-main);">{{ p.Positionsname }}</div>
+                <div style="display:flex; align-items:center; gap:8px; font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+                  <span>ID: {{ p.rowid }}</span>
+                  <span v-if="p.Kurzbezeichnung">• Kurz: {{ p.Kurzbezeichnung }}</span>
+                  <span v-if="p.tile_bg" :style="'display:inline-block; width:12px; height:12px; border-radius:3px; background:' + p.tile_bg + '; border:1px solid #cbd5e1;'" title="Kachelfarbe"></span>
+                  <span v-if="p.fest_id" style="color:#d97706; font-weight:600;">• {{ p.fest_name }}</span>
                 </div>
-            </div>
-        </div>
+              </td>
+
+              <!-- Unterkategorie -->
+              <td>
+                <span v-if="p.subkat_name" class="badge-clean" :style="'background:' + (p.subkat_tile_bg || '#f1f5f9') + '; color:#0f172a; border:1px solid #e2e8f0;'">
+                  {{ p.subkat_name }}
+                </span>
+                <span v-else style="color:var(--text-muted); font-size:0.85rem;">–</span>
+              </td>
+
+              <!-- Preis (Inline Editing) -->
+              <td>
+                <div style="display:flex; align-items:center; gap:4px;">
+                  <span style="color:var(--text-muted); font-size:0.85rem;">€</span>
+                  <input type="text" 
+                         class="inline-edit-input" 
+                         :value="p.Betrag.toFixed(2)" 
+                         @change="inlineUpdateBetrag(p, $event)"
+                         title="Klicken zum schnellen Ändern">
+                </div>
+              </td>
+
+              <!-- Druckziel -->
+              <td>
+                <span style="font-size:0.85rem; font-weight:500;">
+                  {{ p.print_target_name }}
+                </span>
+              </td>
+
+              <!-- Nur Kassa Checkbox -->
+              <td style="text-align:center;">
+                <button type="button" 
+                        class="btn-icon" 
+                        :style="p.kassa_only ? 'color:#7c3aed; font-weight:bold;' : 'color:#cbd5e1;'" 
+                        @click="toggleKassaOnly(p)"
+                        title="Umschalten: Nur Kassa">
+                  {{ p.kassa_only ? '💜 Ja' : '⚪ Nein' }}
+                </button>
+              </td>
+
+              <!-- Ausverkauft / Status Toggle -->
+              <td style="text-align:center;">
+                <button type="button" 
+                        class="btn-clean" 
+                        :class="p.is_locked ? 'btn-danger-clean' : 'btn-outline-clean'"
+                        style="padding:3px 8px; font-size:0.78rem;"
+                        @click="toggleLock(p)"
+                        :title="p.is_locked ? 'Artikel ist gesperrt. Klicken zum Freigeben.' : 'Klicken zum sofortigen Ausverkauf sperren'">
+                  <span v-if="p.is_locked">🔒 Ausverkauft</span>
+                  <span v-else style="color:#059669;">🟢 Verfügbar</span>
+                </button>
+              </td>
+
+              <!-- Zusatzinfos / Beilagen Button -->
+              <td style="text-align:center;">
+                <button type="button" class="btn-clean btn-outline-clean" style="padding:3px 8px; font-size:0.78rem;" @click="openBeilagen(p)">
+                  <span>➕ Beilagen</span>
+                  <span v-if="p.beilagen_count > 0" class="badge-clean" style="background:#e0f2fe; color:#0369a1; margin-left:4px;">{{ p.beilagen_count }}</span>
+                </button>
+              </td>
+
+              <!-- Rezeptur Button -->
+              <td style="text-align:center;">
+                <button type="button" class="btn-clean btn-outline-clean" style="padding:3px 8px; font-size:0.78rem;" @click="openRezeptur(p)">
+                  <span>🥣 Rezeptur</span>
+                  <span v-if="p.rezeptur_count > 0" class="badge-clean" style="background:#fef3c7; color:#92400e; margin-left:4px;">{{ p.rezeptur_count }}</span>
+                </button>
+              </td>
+
+              <!-- Aktionen (Bearbeiten, Sortieren, Löschen) -->
+              <td style="text-align:right; white-space:nowrap;">
+                <button type="button" class="btn-icon" title="Nach oben schieben" @click="movePosition(p, -1)">▲</button>
+                <button type="button" class="btn-icon" title="Nach unten schieben" @click="movePosition(p, 1)">▼</button>
+                <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditPositionModal(p)">✏️</button>
+                <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deletePosition(p)">🗑️</button>
+              </td>
+            </tr>
+
+            <tr v-if="filteredPositions.length === 0">
+              <td colspan="10" style="text-align:center; padding:40px; color:var(--text-muted);">
+                Keine Positionen für die aktuelle Filterung gefunden.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: UNTERKATEGORIEN                                              -->
+    <!-- =================================================================== -->
+    <div v-else-if="currentTab === 'subcategories'" class="manage-card">
+      <div class="table-responsive">
+        <table class="table-clean">
+          <thead>
+            <tr>
+              <th style="width:60px;">Typ</th>
+              <th>Name der Unterkategorie</th>
+              <th style="width:120px;">Kachelfarbe</th>
+              <th style="width:100px;">Sortierung</th>
+              <th style="text-align:center; width:120px;">Nur Kassa</th>
+              <th style="text-align:right; width:120px;">Aktionen</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="s in subcategories" :key="s.id">
+              <td>
+                <span class="badge-clean" :class="s.type === 2 ? 'badge-getraenk' : 'badge-speise'">
+                  {{ s.type === 2 ? '🍺 Getränke' : '🍔 Speisen' }}
+                </span>
+              </td>
+              <td style="font-weight:600;">{{ s.name }}</td>
+              <td>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span :style="'width:20px; height:20px; border-radius:4px; border:1px solid #cbd5e1; background:' + (s.tile_bg || '#ffffff')"></span>
+                  <span style="font-size:0.8rem; color:var(--text-muted);">{{ s.tile_bg || '#ffffff' }}</span>
+                </div>
+              </td>
+              <td>{{ s.sort_order }}</td>
+              <td style="text-align:center;">
+                <span v-if="s.kassa_only" class="badge-clean badge-kassa">Nur Kassa</span>
+                <span v-else style="color:var(--text-muted); font-size:0.85rem;">Nein</span>
+              </td>
+              <td style="text-align:right;">
+                <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditSubcatModal(s)">✏️</button>
+                <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deleteSubcategory(s)">🗑️</button>
+              </td>
+            </tr>
+
+            <tr v-if="subcategories.length === 0">
+              <td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">
+                Noch keine Unterkategorien angelegt.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- =================================================================== -->
+    <!-- TAB 3: TISCHE & RAUMPLAN                                            -->
+    <!-- =================================================================== -->
+    <div v-else-if="currentTab === 'tables'">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn-clean" :class="tischViewMode === 'grid' ? 'btn-primary-clean' : 'btn-outline-clean'" @click="tischViewMode = 'grid'">
+            🗺️ Visueller Raumplan
+          </button>
+          <button type="button" class="btn-clean" :class="tischViewMode === 'list' ? 'btn-primary-clean' : 'btn-outline-clean'" @click="tischViewMode = 'list'">
+            📋 Tabellen-Liste
+          </button>
+        </div>
+        <div style="font-size:0.85rem; color:var(--text-muted);" v-if="tischViewMode === 'grid'">
+          <strong>Tipp:</strong> Tische per Drag &amp; Drop verschieben. Klick auf einen Tisch öffnet die Einstellungen. Klick auf <strong>SR</strong> oder <strong>EG</strong> schaltet Sammelrechnung bzw. Ehrengast um.
+        </div>
+      </div>
+
+      <!-- ANSICHT 1: Visueller Raumplan (Grid) -->
+      <div v-if="tischViewMode === 'grid'" class="manage-card" style="padding:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+          <h3 style="margin:0; font-size:1.05rem;">Visueller Raumplan ({{ tables.length }} Tische)</h3>
+          <div style="display:flex; gap:12px; font-size:0.8rem; align-items:center; flex-wrap:wrap;">
+            <span style="display:inline-flex; align-items:center; gap:4px;">
+              <span style="width:12px; height:12px; border-radius:3px; background:#f0fdf4; border:1px solid #bbf7d0; display:inline-block;"></span> Normal
+            </span>
+            <span style="display:inline-flex; align-items:center; gap:4px;">
+              <span style="width:12px; height:12px; border-radius:3px; background:#dbeafe; border:1px solid #93c5fd; display:inline-block;"></span> Sammelrechnung (SR)
+            </span>
+            <span style="display:inline-flex; align-items:center; gap:4px;">
+              <span style="width:12px; height:12px; border-radius:3px; background:#ede9fe; border:1px solid #c4b5fd; display:inline-block;"></span> Ehrengast (EG)
+            </span>
+          </div>
         </div>
 
-<script src="../assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js"></script>
-<script>
-function $(id) { return document.getElementById(id); }
-
-function manageNavActive(key) {
-    document.body.classList.toggle('manage-embedded-card-rezepte', ['pos', 'speisen', 'getraenke', 'sub', 'bestandteile', 'rez'].indexOf(key) !== -1);
-    document.querySelectorAll('[data-nav]').forEach(function(a) {
-        var active = a.getAttribute('data-nav') === key;
-        a.classList.toggle('active', active);
-        if (active) {
-            a.setAttribute('aria-current', 'page');
-        } else {
-            a.removeAttribute('aria-current');
-        }
-    });
-}
-
-function loadContent(url, callback) {
-    fetch(url, { cache: 'no-store', credentials: 'same-origin' })
-        .then(function(r) { return r.text(); })
-        .then(function(html) {
-            $('mainContent').innerHTML = html;
-            ffManageCardRecipeSticky();
-            if (callback) callback();
-        })
-        .catch(function() {
-            $('mainContent').innerHTML = '<div class="alert alert-danger m-0" role="alert">Inhalt konnte nicht geladen werden. Bitte Seite neu laden oder erneut anmelden.</div>';
-        });
-}
-
-function fetchGet(url) {
-    return fetch(url, { cache: 'no-store', credentials: 'same-origin' });
-}
-
-function fetchPost(url, data) {
-    var body = new URLSearchParams(data).toString();
-    return fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body,
-        cache: 'no-store',
-        credentials: 'same-origin'
-    });
-}
-
-/** API im Webroot (über manage/) */
-function apiGet(path) {
-    return fetch('../' + path.replace(/^\//, ''), { cache: 'no-store', credentials: 'same-origin' });
-}
-function apiPost(path, data) {
-    var body = new URLSearchParams(data).toString();
-    return fetch('../' + path.replace(/^\//, ''), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body,
-        cache: 'no-store',
-        credentials: 'same-origin'
-    });
-}
-
-window._managePosReload = null;
-
-function manageReloadPositionsList() {
-    if (typeof window._managePosReload === 'function') {
-        window._managePosReload();
-    }
-}
-
-function loadTische() {
-    manageNavActive('tische');
-    window._managePosReload = loadTische;
-    loadContent('list_tische_admin.php', function() { ffInitTischAdminGrid(); ffInitTischFlagsCheckboxes(); });
-}
-
-/** Sammelrechnung ↔ Ehrengast: nur eine Checkbox pro Tisch (manage-Tabelle). */
-function ffInitTischFlagsCheckboxes() {
-    var table = document.getElementById('tischTable');
-    if (!table || table.getAttribute('data-ff-flags-bound') === '1') {
-        return;
-    }
-    table.setAttribute('data-ff-flags-bound', '1');
-    table.addEventListener('change', function(ev) {
-        var t = ev.target;
-        if (!t || t.type !== 'checkbox') return;
-        var id = t.id || '';
-        var m = id.match(/^sr_(\d+)$/);
-        if (m && t.checked) {
-            var eg = document.getElementById('eg_' + m[1]);
-            if (eg) eg.checked = false;
-            return;
-        }
-        m = id.match(/^eg_(\d+)$/);
-        if (m && t.checked) {
-            var sr = document.getElementById('sr_' + m[1]);
-            if (sr) sr.checked = false;
-        }
-    });
-}
-
-function loadSpeisen() {
-    manageNavActive('speisen');
-    window._managePosReload = loadSpeisen;
-    loadContent('list_speisekarte_admin.php', function() { ffInitPrintTargetKassaRows(); });
-}
-
-function loadGetraenke() {
-    manageNavActive('getraenke');
-    window._managePosReload = loadGetraenke;
-    loadContent('list_getraenkekarte_admin.php', function() { ffInitPrintTargetKassaRows(); });
-}
-
-function ffManageCardRecipeSticky() {
-    var content = $('mainContent');
-    if (!content || !document.body.classList.contains('manage-embedded-card-rezepte')) return;
-    var sticky = content.querySelector('.manage-shortlist-drinks__sticky, .manage-fragment-header, #ffPosFilterBar');
-    var updateStickyOffset = function() {
-        var stickyHeight = sticky ? sticky.getBoundingClientRect().height + parseFloat(getComputedStyle(sticky).marginBottom || '0') : 0;
-        content.style.setProperty('--manage-card-sticky-height', Math.ceil(stickyHeight) + 'px');
-    };
-    if (window._manageCardRecipeStickyObserver) {
-        window._manageCardRecipeStickyObserver.disconnect();
-        window._manageCardRecipeStickyObserver = null;
-    }
-    if (sticky && typeof ResizeObserver === 'function') {
-        window._manageCardRecipeStickyObserver = new ResizeObserver(updateStickyOffset);
-        window._manageCardRecipeStickyObserver.observe(sticky);
-    }
-    updateStickyOffset();
-}
-
-function ffBeilagenEsc(s) {
-    var div = document.createElement('div');
-    div.textContent = s == null ? '' : String(s);
-    return div.innerHTML;
-}
-
-function ffInitBeilagenZusatzinfosAdmin() {
-    var pos = $('beilagePosition');
-    var tbody = $('beilagenTbody');
-    var ftbody = $('beilagenFreetextTbody');
-    if (!pos || !tbody) return;
-
-    function load() {
-        var pid = parseInt(pos.value, 10) || 0;
-        if (ftbody) {
-            if (pid <= 0) {
-                ftbody.innerHTML = '<tr><td colspan="3" class="text-muted">Bitte eine Position wählen.</td></tr>';
-            } else {
-                ftbody.innerHTML = '<tr><td colspan="3" class="text-muted">Laden …</td></tr>';
-            }
-        }
-        if (pid <= 0) {
-            tbody.innerHTML = '<tr><td colspan="3" class="text-muted">Bitte eine Speisekarten-Position wählen.</td></tr>';
-            return;
-        }
-        tbody.innerHTML = '<tr><td colspan="3" class="text-muted">Laden …</td></tr>';
-        apiGet('beilagen_admin_api.php?position=' + encodeURIComponent(pid))
-            .then(function(r) {
-                return r.text().then(function(t) {
-                    try {
-                        return JSON.parse(t);
-                    } catch (e) {
-                        return { ok: false, _raw: t, _status: r.status };
-                    }
-                });
-            })
-            .then(function(d) {
-                if (ftbody) {
-                    ftbody.innerHTML = '';
-                    if (!d || !d.ok) {
-                        ftbody.innerHTML = '<tr><td colspan="3" class="text-muted">—</td></tr>';
-                    } else if (!d.freetext_stats || !d.freetext_stats.length) {
-                        ftbody.innerHTML = '<tr><td colspan="3" class="text-muted">Keine Freitext-Anteile außerhalb der Beilagen für diese Position.</td></tr>';
-                    } else {
-                        d.freetext_stats.forEach(function(st) {
-                            var tr = document.createElement('tr');
-                            var t = String(st.text || '');
-                            var c = parseInt(st.count, 10) || 0;
-                            var tEsc = ffBeilagenEsc(t);
-                            tr.innerHTML = '<td><code class="small user-select-all">' + tEsc + '</code></td><td class="text-end">' + c + '</td><td><button type="button" class="btn btn-sm btn-outline-primary ff-beilage-useft">Übernehmen</button></td>';
-                            tr.querySelector('.ff-beilage-useft').onclick = function() {
-                                var ne = $('beilageName');
-                                if (ne) ne.value = t;
-                                var be = $('beilageBetrag');
-                                if (be) be.value = '';
-                                if (ne) ne.focus();
-                            };
-                            ftbody.appendChild(tr);
-                                    });
-                                }
-                            }
-                tbody.innerHTML = '';
-                if (!d || !d.ok) {
-                    var hint = (d && d.error) ? d.error : ((d && d._status === 403) ? 'Nicht angemeldet / keine Admin-Rechte (API).' : 'Fehler beim Laden.');
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-danger">' + ffBeilagenEsc(hint) + '</td></tr>';
-                    return;
-                }
-                if (!d.rows || !d.rows.length) {
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-muted">Keine Beilagen für diese Position.</td></tr>';
-                    return;
-                }
-                d.rows.forEach(function(row) {
-                    var tr = document.createElement('tr');
-                    var betNum = Number(row.betrag) || 0;
-                    var betVal = betNum.toFixed(2);
-                    var betDisplay = betNum.toLocaleString('de-AT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    var rid = row.rowid;
-                    tr.innerHTML = '<td>' + ffBeilagenEsc(row.name) + '</td>'
-                        + '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm ff-beilage-bet" data-rowid="' + rid + '" data-prev="' + betVal + '" value="' + betVal + '" title="Beim Verlassen speichern (' + betDisplay + ' €)"></td>'
-                        + '<td><button type="button" class="btn btn-sm btn-outline-danger ff-beilage-del ff-icon-action" data-rowid="' + rid + '" title="Eintrag löschen" aria-label="Eintrag löschen">&#128465;</button></td>';
-                    var betInp = tr.querySelector('.ff-beilage-bet');
-                    if (betInp) {
-                        betInp.addEventListener('blur', function() {
-                            var inp = betInp;
-                            var prev = inp.getAttribute('data-prev') || '0';
-                            var cur = String(inp.value || '0');
-                            if (cur === prev) return;
-                            apiPost('beilagen_admin_api.php', { action: 'update', rowid: String(rid), betrag: cur })
-                                .then(function(r) { return r.json(); })
-                                .then(function(x) {
-                                    if (x && x.ok) {
-                                        inp.setAttribute('data-prev', cur);
-                                    } else {
-                                        inp.value = prev;
-                                        alert('Speichern fehlgeschlagen.');
-                                    }
-                                })
-                                .catch(function() {
-                                    inp.value = prev;
-                                    alert('Netzwerkfehler.');
-                                });
-                        });
-                    }
-                    tr.querySelector('.ff-beilage-del').onclick = function() {
-                        if (!confirm('Eintrag wirklich löschen?')) return;
-                        apiPost('beilagen_admin_api.php', { action: 'delete', rowid: String(rid) })
-                            .then(function(r) { return r.json(); })
-                            .then(function(x) {
-                                if (x && x.ok) load();
-                                else alert('Fehler');
-                            })
-                            .catch(function() { alert('Fehler'); });
-                    };
-                    tbody.appendChild(tr);
-                });
-            })
-            .catch(function() {
-                tbody.innerHTML = '<tr><td colspan="3" class="text-danger">Netzwerkfehler (fetch).</td></tr>';
-                if (ftbody) ftbody.innerHTML = '<tr><td colspan="3" class="text-muted">—</td></tr>';
-            });
-    }
-
-    pos.addEventListener('change', load);
-    var addBtn = $('beilageAddBtn');
-    if (addBtn) {
-        addBtn.onclick = function() {
-            var nameEl = $('beilageName');
-            var betEl = $('beilageBetrag');
-            var name = nameEl ? String(nameEl.value).trim() : '';
-            var bet = betEl && betEl.value !== '' ? betEl.value : '0';
-            if (parseInt(pos.value, 10) <= 0) {
-                alert('Bitte eine gültige Position wählen.');
-                return;
-            }
-            if (!name) {
-                alert('Bezeichnung eingeben');
-                return;
-            }
-            apiPost('beilagen_admin_api.php', { action: 'add', position: pos.value, name: name, betrag: bet })
-                .then(function(r) { return r.json(); })
-                .then(function(d) {
-                    if (d && d.ok) {
-                        if (nameEl) nameEl.value = '';
-                        if (betEl) betEl.value = '';
-                        load();
-                    } else {
-                        alert('Fehler: ' + (d && d.error ? d.error : ''));
-                    }
-                })
-                .catch(function() { alert('Fehler'); });
-        };
-    }
-    if (parseInt(pos.value, 10) > 0) load();
-}
-
-function loadBeilagenZusatzinfos() {
-    manageNavActive('beilagen');
-    window._managePosReload = null;
-    loadContent('beilagen_zusatzinfos_admin.php', function() { ffInitBeilagenZusatzinfosAdmin(); });
-}
-
-function ffApiDeviceCfgEsc(s) {
-    var d = document.createElement('div');
-    d.textContent = s == null ? '' : String(s);
-    return d.innerHTML;
-}
-
-window._ffApiDevicePrintTargets = [];
-
-function ffApiDeviceCfgTargetOptions(selected) {
-    var opts = window._ffApiDevicePrintTargets || [];
-    if (!opts.length) {
-        opts = [{ print_target: 11, name: 'Küche' }, { print_target: 12, name: 'Schank' }];
-    }
-    var html = '<option value="0"' + ((parseInt(selected, 10) || 0) === 0 ? ' selected' : '') + '>Alle Targets</option>';
-    opts.forEach(function(o) {
-        var pt = parseInt(o.print_target, 10) || 0;
-        if (!pt) return;
-        var lbl = ffApiDeviceCfgEsc((o.name || ('Target ' + pt)) + ' (' + pt + ')');
-        html += '<option value="' + pt + '"' + (pt === (parseInt(selected, 10) || 0) ? ' selected' : '') + '>' + lbl + '</option>';
-    });
-    return html;
-}
-
-function ffApiDeviceCfgMatchModeOptions(selected) {
-    var v = String(selected || 'contains').toLowerCase();
-    if (v !== 'exact') v = 'contains';
-    return '<option value="contains"' + (v === 'contains' ? ' selected' : '') + '>enthält</option>'
-        + '<option value="exact"' + (v === 'exact' ? ' selected' : '') + '>gleich</option>';
-}
-
-function ffApiDeviceCfgRenderRows(rows) {
-    var tb = $('apiDeviceCfgTbody');
-    if (!tb) return;
-    tb.innerHTML = '';
-    if (!rows || !rows.length) {
-        tb.innerHTML = '<tr><td colspan="6" class="text-muted">Keine Einträge.</td></tr>';
-        return;
-    }
-    rows.forEach(function(r) {
-        var tr = document.createElement('tr');
-        var key = ffApiDeviceCfgEsc(r.key || '');
-        var needle = ffApiDeviceCfgEsc(r.needle || '');
-        var matchMode = (String(r.match_mode || 'contains').toLowerCase() === 'exact') ? 'exact' : 'contains';
-        var printTarget = parseInt(r.print_target, 10) || 0;
-        var enabled = !!(r.enabled === 1 || r.enabled === true || String(r.enabled) === '1');
-        tr.innerHTML =
-            '<td><input type="text" class="form-control form-control-sm ff-ad-key" value="' + key + '" placeholder="z. B. grillhuhn"></td>' +
-            '<td><input type="text" class="form-control form-control-sm ff-ad-needle" value="' + needle + '" placeholder="z. B. grillhuhn"></td>' +
-            '<td><select class="form-select form-select-sm ff-ad-match-mode">' + ffApiDeviceCfgMatchModeOptions(matchMode) + '</select></td>' +
-            '<td><select class="form-select form-select-sm ff-ad-print-target">' + ffApiDeviceCfgTargetOptions(printTarget) + '</select></td>' +
-            '<td><div class="form-check"><input type="checkbox" class="form-check-input ff-ad-enabled" ' + (enabled ? 'checked' : '') + '></div></td>' +
-            '<td><button type="button" class="btn btn-sm btn-outline-danger ff-ad-del ff-icon-action" title="Zuordnung löschen" aria-label="Zuordnung löschen">&#128465;</button></td>';
-        tr.querySelector('.ff-ad-del').onclick = function() {
-            tr.remove();
-            if (tb.querySelectorAll('tr').length === 0) {
-                ffApiDeviceCfgAddRow();
-            }
-        };
-        tb.appendChild(tr);
-    });
-}
-
-function ffApiDeviceCfgAddRow() {
-    var tb = $('apiDeviceCfgTbody');
-    if (!tb) return;
-    if (tb.children.length === 1 && /Keine Einträge/.test(tb.textContent || '')) tb.innerHTML = '';
-    ffApiDeviceCfgRenderRows([].slice.call(tb.querySelectorAll('tr')).map(function(tr) {
-        return {
-            key: (tr.querySelector('.ff-ad-key') || {}).value || '',
-            needle: (tr.querySelector('.ff-ad-needle') || {}).value || '',
-            match_mode: (tr.querySelector('.ff-ad-match-mode') || {}).value || 'contains',
-            print_target: parseInt((tr.querySelector('.ff-ad-print-target') || {}).value || '11', 10) || 11,
-            enabled: !!((tr.querySelector('.ff-ad-enabled') || {}).checked)
-        };
-    }).concat([{ key: '', needle: '', match_mode: 'contains', print_target: 11, enabled: true }]));
-}
-
-function ffApiDeviceCfgLoad() {
-    var status = $('apiDeviceCfgStatus');
-    if (status) status.textContent = 'Lade ...';
-    apiGet('api_device_admin_api.php')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Fehler beim Laden.';
-                return;
-            }
-            window._ffApiDevicePrintTargets = Array.isArray(d.print_targets) ? d.print_targets : [];
-            ffApiDeviceCfgRenderRows(d.rows || []);
-            if (status) {
-                status.textContent = d.printer_token_set
-                    ? 'Drucker-Token ist gesetzt.'
-                    : 'Achtung: printer_token ist leer (API aktuell ungeschützt).';
-            }
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Laden.';
-        });
-}
-
-function ffApiDeviceCfgSave() {
-    var status = $('apiDeviceCfgStatus');
-    var rows = [];
-    var tb = $('apiDeviceCfgTbody');
-    if (!tb) return;
-    tb.querySelectorAll('tr').forEach(function(tr) {
-        var keyEl = tr.querySelector('.ff-ad-key');
-        var needleEl = tr.querySelector('.ff-ad-needle');
-        var enEl = tr.querySelector('.ff-ad-enabled');
-        if (!keyEl || !needleEl || !enEl) return;
-        rows.push({
-            key: String(keyEl.value || ''),
-            needle: String(needleEl.value || ''),
-            match_mode: String((tr.querySelector('.ff-ad-match-mode') || {}).value || 'contains'),
-            print_target: parseInt((tr.querySelector('.ff-ad-print-target') || {}).value || '11', 10) || 11,
-            enabled: enEl.checked ? 1 : 0
-        });
-    });
-    if (status) status.textContent = 'Speichere ...';
-    apiPost('api_device_admin_api.php', { rows_json: JSON.stringify(rows) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Speichern fehlgeschlagen: ' + ((d && d.error) ? d.error : 'unbekannt');
-                return;
-            }
-            ffApiDeviceCfgRenderRows(d.rows || []);
-            if (status) status.textContent = 'Gespeichert.';
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Speichern.';
-        });
-}
-
-function loadApiDeviceConfig() {
-    manageNavActive('apidevice');
-    window._managePosReload = null;
-    loadContent('api_device_config_admin.php', function() { ffApiDeviceCfgLoad(); });
-}
-
-/** Reihenfolge in „Alle Positionen (erweitert)“ per Drag & Drop (je eigener tbody Speisen/Getränke). */
-function ffSerializePositionsOrder(table) {
-    var speisen = [];
-    var getraenke = [];
-    if (!table) return { speisen: speisen, getraenke: getraenke };
-    table.querySelectorAll('tbody.ff-manage-pos-tbody').forEach(function(tb) {
-        var t = tb.getAttribute('data-type');
-        tb.querySelectorAll('tr.ff-manage-pos-row').forEach(function(tr) {
-            var id = parseInt(tr.getAttribute('data-rowid'), 10);
-            if (!id) return;
-            if (t === '1') speisen.push(id);
-            else if (t === '2') getraenke.push(id);
-        });
-    });
-    return { speisen: speisen, getraenke: getraenke };
-}
-
-function ffGetDragAfterElement(tbody, y, dragging) {
-    var same = [];
-    var nodes = tbody.querySelectorAll('.ff-manage-pos-row');
-    for (var i = 0; i < nodes.length; i++) {
-        if (nodes[i] === dragging) continue;
-        same.push(nodes[i]);
-    }
-    var closest = { offset: Number.NEGATIVE_INFINITY, element: null };
-    for (var j = 0; j < same.length; j++) {
-        var child = same[j];
-        var box = child.getBoundingClientRect();
-        var offset = y - box.top - box.height / 2;
-        if (offset < 0 && offset > closest.offset) {
-            closest = { offset: offset, element: child };
-        }
-    }
-    return closest.element;
-}
-
-function ffPersistPositionsOrder(table, orderBefore) {
-    var o = ffSerializePositionsOrder(table);
-    var key = JSON.stringify(o);
-    if (key === orderBefore) return;
-    fetch('reorder_positionen_batch.php', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: key,
-        cache: 'no-store',
-        credentials: 'same-origin'
-    })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.ok) {
-                loadPositionsErweitert();
-            } else {
-                alert('Reihenfolge speichern fehlgeschlagen.');
-                loadPositionsErweitert();
-            }
-        })
-        .catch(function() {
-            alert('Netzwerkfehler beim Speichern der Reihenfolge.');
-            loadPositionsErweitert();
-        });
-}
-
-function ffInitManagePositionsErweitertTable() {
-    var table = document.getElementById('mySpeisekarteManage');
-    if (!table) return;
-    var orderAtDragStart = '';
-    var draggingRow = null;
-
-    table.querySelectorAll('tbody.ff-manage-pos-tbody').forEach(function(tbody) {
-        tbody.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (!draggingRow || draggingRow.closest('tbody') !== tbody) return;
-            var after = ffGetDragAfterElement(tbody, e.clientY, draggingRow);
-            if (after == null) {
-                tbody.appendChild(draggingRow);
-                                } else {
-                tbody.insertBefore(draggingRow, after);
-            }
-        });
-        tbody.addEventListener('drop', function(e) {
-            e.preventDefault();
-        });
-    });
-
-    // Nur die Griff-Zelle ist draggable (Browser unterstützen Zeilen-Drag in Tabellen unzuverlässig).
-    table.querySelectorAll('td.ff-drag-handle').forEach(function(handle) {
-        var tr = handle.closest('tr');
-        if (!tr || !tr.classList.contains('ff-manage-pos-row')) return;
-        handle.addEventListener('dragstart', function(e) {
-            draggingRow = tr;
-            orderAtDragStart = JSON.stringify(ffSerializePositionsOrder(table));
-            tr.classList.add('ff-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            try {
-                e.dataTransfer.setData('text/plain', tr.getAttribute('data-rowid') || '');
-            } catch (err) {}
-        });
-        handle.addEventListener('dragend', function() {
-            tr.classList.remove('ff-dragging');
-            draggingRow = null;
-            ffPersistPositionsOrder(table, orderAtDragStart);
-        });
-    });
-}
-
-function ffFilterPosRows() {
-    var q = (($('posFilterQ') || {}).value || '').trim().toLowerCase();
-    var type = ($('posFilterType') || {}).value || '';
-    var sub = ($('posFilterSub') || {}).value || '';
-    var kassa = !!($('posFilterKassa') && $('posFilterKassa').checked);
-    var rows = document.querySelectorAll('tr.ff-manage-pos-row');
-    var shown = 0;
-    rows.forEach(function(tr) {
-        var n = tr.querySelector('[data-field="Positionsname"]');
-        var k = tr.querySelector('[data-field="Kurzbezeichnung"]');
-        var text = ((n ? n.value : '') + ' ' + (k ? k.value : '')).toLowerCase();
-        var subSel = tr.querySelector('.ff-pm-sub');
-        var kassaChk = tr.querySelector('input[onchange^="updateKassaOnly"]');
-        var ok = (!q || text.indexOf(q) !== -1)
-            && (!type || tr.getAttribute('data-type') === type)
-            && (!sub || (subSel && subSel.value === sub))
-            && (!kassa || (kassaChk && kassaChk.checked));
-        tr.style.display = ok ? '' : 'none';
-        if (ok) shown++;
-    });
-    var c = $('posFilterCount');
-    if (c) c.textContent = shown + ' von ' + rows.length + ' Positionen';
-}
-
-function loadPositionsErweitert() {
-    manageNavActive('pos');
-    window._managePosReload = loadPositionsErweitert;
-    loadContent('positions_erweitert.php', function() {
-        if (typeof ffSyncPosSubcategoryOptions === 'function') ffSyncPosSubcategoryOptions();
-        if (typeof ffSyncPosPrintTargetDefault === 'function') ffSyncPosPrintTargetDefault();
-        ffInitManagePositionsErweitertTable();
-        ffInitPrintTargetKassaRows();
-        ffFilterPosRows();
-    });
-}
-
-function loadSubcategories() {
-    manageNavActive('sub');
-    window._managePosReload = null;
-    loadContent('subcategories_admin.php', function() { manageSubcategoryReload(); });
-}
-
-function ffRezepturEsc(s) {
-    var d = document.createElement('div');
-    d.textContent = s == null ? '' : String(s);
-    return d.innerHTML;
-}
-
-function ffRezepturGetPositionList() {
-    if (Array.isArray(window._ffManageRezepturenPositionen) && window._ffManageRezepturenPositionen.length) {
-        return window._ffManageRezepturenPositionen;
-    }
-    var sel = $('rezepturPosition');
-    if (!sel) return [];
-    var rows = [];
-    Array.prototype.forEach.call(sel.options || [], function(opt) {
-        var id = parseInt(opt.value, 10) || 0;
-        if (!id) return;
-        rows.push({
-            rowid: id,
-            Positionsname: opt.textContent || '',
-            Kurzbezeichnung: '',
-            type: /\[G\]/.test(opt.textContent || '') ? 2 : 1,
-            maxBestellbar: -1
-        });
-    });
-    return rows;
-}
-
-function ffRezepturGetBestandteilList() {
-    if (Array.isArray(window._ffManageRezepturenBestandteile) && window._ffManageRezepturenBestandteile.length) {
-        return window._ffManageRezepturenBestandteile;
-    }
-    return [];
-}
-
-function ffRezepturBuildPositionOptions(selected) {
-    var list = ffRezepturGetPositionList();
-    var sel = parseInt(selected, 10) || 0;
-    var html = '<option value="0">— bitte wählen —</option>';
-    list.forEach(function(pos) {
-        var id = parseInt(pos.rowid, 10) || 0;
-        if (!id) return;
-        var label = (parseInt(pos.type, 10) === 2 ? '[G] ' : '[S] ') + (pos.Positionsname || '');
-        if (pos.Kurzbezeichnung) label += ' · ' + pos.Kurzbezeichnung;
-        if (pos.maxBestellbar !== undefined && pos.maxBestellbar !== null && String(pos.maxBestellbar) !== '-1') {
-            label += ' (' + pos.maxBestellbar + ')';
-        }
-        html += '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + ffRezepturEsc(label) + '</option>';
-    });
-    return html;
-}
-
-function ffRezepturBuildComponentOptions(selected) {
-    var list = ffRezepturGetBestandteilList();
-    var sel = parseInt(selected, 10) || 0;
-    var html = '<option value="0">— Bestandteil wählen —</option>';
-    list.forEach(function(item) {
-        var id = parseInt(item.id, 10) || 0;
-        if (!id) return;
-        var label = item.name || '';
-        if (item.einheit) label += ' [' + item.einheit + ']';
-        var kap = parseInt(item.kapazitaet, 10);
-        if (!isNaN(kap) && kap >= 0) label += ' (Kap: ' + kap + ')';
-        html += '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + ffRezepturEsc(label) + '</option>';
-    });
-    return html;
-}
-
-function ffRezepturRowHtml(row) {
-    var rid = row && row.id ? parseInt(row.id, 10) : 0;
-    var bestandteilId = row && row.bestandteil_id ? parseInt(row.bestandteil_id, 10) : 0;
-    var menge = row && row.menge !== undefined && row.menge !== null ? String(row.menge) : '1.000';
-    var optionalEnabled = row && parseInt(row.optional_enabled, 10) === 1;
-    var defaultSelected = !(row && parseInt(row.default_selected, 10) === 0);
-    var optionGroup = row && row.option_group ? String(row.option_group) : '';
-    var reihenfolge = row && row.reihenfolge !== undefined && row.reihenfolge !== null ? String(row.reihenfolge) : '0';
-    return '<tr data-rowid="' + rid + '">' 
-        + '<td><select class="form-select form-select-sm ff-rez-comp">' + ffRezepturBuildComponentOptions(bestandteilId) + '</select></td>' 
-        + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm ff-rez-qty" value="' + ffRezepturEsc(menge) + '"></td>' 
-        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-optional"' + (optionalEnabled ? ' checked' : '') + '></td>' 
-        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-default"' + (defaultSelected ? ' checked' : '') + '></td>' 
-        + '<td><input type="text" maxlength="64" class="form-control form-control-sm ff-rez-group" placeholder="z. B. brotwahl" value="' + ffRezepturEsc(optionGroup) + '"></td>' 
-        + '<td><input type="number" step="1" class="form-control form-control-sm ff-rez-order" value="' + ffRezepturEsc(reihenfolge) + '"></td>' 
-        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-del ff-icon-action" title="Bestandteil löschen" aria-label="Bestandteil löschen">&#128465;</button></td>' 
-        + '</tr>';
-}
-
-function ffRezepturBindRowEvents() {
-    var tbody = $('rezepturenTbody');
-    if (!tbody || tbody.getAttribute('data-bound') === '1') return;
-    tbody.setAttribute('data-bound', '1');
-    tbody.addEventListener('click', function(ev) {
-        var btn = ev.target;
-        if (!btn || !btn.classList || !btn.classList.contains('ff-rez-del')) return;
-        var tr = btn.closest('tr');
-        if (tr) tr.remove();
-    });
-}
-
-function ffRezepturGroupRowHtml(row) {
-    var bestandteilId = row && row.bestandteil_id ? parseInt(row.bestandteil_id, 10) : 0;
-    var menge = row && row.menge !== undefined && row.menge !== null ? String(row.menge) : '1.000';
-    var optionalEnabled = row && parseInt(row.optional_enabled, 10) === 1;
-    var defaultSelected = !(row && parseInt(row.default_selected, 10) === 0);
-    var optionGroup = row && row.option_group ? String(row.option_group) : '';
-    var reihenfolge = row && row.reihenfolge !== undefined && row.reihenfolge !== null ? String(row.reihenfolge) : '0';
-    return '<tr data-group-row="1">'
-        + '<td><select class="form-select form-select-sm ff-rez-group-comp">' + ffRezepturBuildComponentOptions(bestandteilId) + '</select></td>'
-        + '<td><input type="number" step="0.001" min="0.001" class="form-control form-control-sm ff-rez-group-qty" value="' + ffRezepturEsc(menge) + '"></td>'
-        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-group-optional"' + (optionalEnabled ? ' checked' : '') + '></td>'
-        + '<td class="text-center"><input type="checkbox" class="form-check-input ff-rez-group-default"' + (defaultSelected ? ' checked' : '') + '></td>'
-        + '<td><input type="text" maxlength="64" class="form-control form-control-sm ff-rez-group-option" placeholder="z. B. brotwahl" value="' + ffRezepturEsc(optionGroup) + '"></td>'
-        + '<td><input type="number" step="1" class="form-control form-control-sm ff-rez-group-order" value="' + ffRezepturEsc(reihenfolge) + '"></td>'
-        + '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger ff-rez-group-del ff-icon-action" title="Optionsgruppe löschen" aria-label="Optionsgruppe löschen">&#128465;</button></td>'
-        + '</tr>';
-}
-
-function ffRezepturCollectRowsFromTable(table) {
-    if (!table) return [];
-    var rows = [];
-    table.querySelectorAll('tr[data-group-row="1"]').forEach(function(tr) {
-        var compEl = tr.querySelector('.ff-rez-group-comp');
-        var qtyEl = tr.querySelector('.ff-rez-group-qty');
-        var optionalEl = tr.querySelector('.ff-rez-group-optional');
-        var defaultEl = tr.querySelector('.ff-rez-group-default');
-        var groupEl = tr.querySelector('.ff-rez-group-option');
-        var orderEl = tr.querySelector('.ff-rez-group-order');
-        if (!compEl || !qtyEl || !orderEl) return;
-        var comp = parseInt(compEl.value, 10) || 0;
-        var qtyRaw = String(qtyEl.value || '').replace(',', '.');
-        var qty = parseFloat(qtyRaw);
-        var optionalEnabled = optionalEl && optionalEl.checked ? 1 : 0;
-        var defaultSelected = defaultEl && defaultEl.checked ? 1 : 0;
-        var optionGroup = groupEl ? String(groupEl.value || '').trim() : '';
-        var order = parseInt(orderEl.value, 10) || 0;
-        if (comp <= 0) return;
-        if (!isFinite(qty) || qty <= 0) qty = 1;
-        rows.push({
-            bestandteil_id: comp,
-            menge: qty,
-            optional_enabled: optionalEnabled,
-            default_selected: defaultSelected,
-            option_group: optionGroup,
-            reihenfolge: order
-        });
-    });
-    return rows;
-}
-
-function ffRezepturScheduleGroupAutosave(positionId, table) {
-    if (!positionId || positionId <= 0 || !table) return;
-    window._ffRezepturGroupAutoSaveTimers = window._ffRezepturGroupAutoSaveTimers || {};
-    var key = 'group_' + positionId;
-    if (window._ffRezepturGroupAutoSaveTimers[key]) {
-        clearTimeout(window._ffRezepturGroupAutoSaveTimers[key]);
-    }
-    window._ffRezepturGroupAutoSaveTimers[key] = setTimeout(function() {
-        ffRezepturSaveGroup(positionId, table);
-        delete window._ffRezepturGroupAutoSaveTimers[key];
-    }, 350);
-}
-
-function ffRezepturSaveGroup(positionId, table) {
-    var status = $('rezepturStatus');
-    var rows = ffRezepturCollectRowsFromTable(table);
-    if (!positionId || positionId <= 0) {
-        alert('Bitte zuerst eine Zielposition wählen.');
-        return;
-    }
-    if (status) status.textContent = 'Speichere Gruppe ...';
-    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(positionId), rows_json: JSON.stringify(rows) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Gruppe speichern fehlgeschlagen.';
-                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
-                return;
-            }
-            if (status) status.textContent = 'Gespeichert.';
-            try { ffShowToast('Gespeichert.', 'success', 1400); } catch (e) {}
-            ffRezepturLoad(positionId);
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Speichern der Gruppe.';
-        });
-}
-
-function ffRezepturModalBindDelete(tr) {
-    var del = tr.querySelector('.ff-rez-group-del');
-    if (!del) return;
-    del.onclick = function() {
-        tr.remove();
-        var tbody = $('ffRezepturModalTable').querySelector('tbody');
-        if (!tbody.querySelector('tr[data-group-row="1"]')) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
-        }
-    };
-}
-
-function ffRezepturModalAddRow(row) {
-    var tbody = $('ffRezepturModalTable').querySelector('tbody');
-    var empty = tbody.querySelector('td[colspan]');
-    if (empty) empty.closest('tr').remove();
-    var wrap = document.createElement('tbody');
-    wrap.innerHTML = ffRezepturGroupRowHtml(row || { bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
-    var tr = wrap.firstElementChild;
-    tbody.appendChild(tr);
-    ffRezepturModalBindDelete(tr);
-}
-
-function ffOpenRezepturModal(positionId) {
-    var m = $('ffRezepturModal');
-    if (!m) return;
-    apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(positionId))
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) { alert('Rezeptur konnte nicht geladen werden.'); return; }
-            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
-            m.setAttribute('data-position-id', String(positionId));
-            $('ffRezepturModalTitle').textContent = d.position_name || ('#' + positionId);
-            $('ffRezepturModalTable').querySelector('tbody').innerHTML = '';
-            if (d.rows && d.rows.length) {
-                d.rows.forEach(function(row) { ffRezepturModalAddRow(row); });
-            } else {
-                $('ffRezepturModalTable').querySelector('tbody').innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
-            }
-            m.style.display = 'block';
-        })
-        .catch(function() { alert('Rezeptur konnte nicht geladen werden.'); });
-}
-
-function ffCloseRezepturModal() {
-    var m = $('ffRezepturModal');
-    if (m) m.style.display = 'none';
-}
-
-function ffRezepturModalSave() {
-    var m = $('ffRezepturModal');
-    var pid = parseInt(m.getAttribute('data-position-id'), 10) || 0;
-    var rows = ffRezepturCollectRowsFromTable($('ffRezepturModalTable'));
-    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(pid), rows_json: JSON.stringify(rows) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) { alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt')); return; }
-            ffCloseRezepturModal();
-            ffShowToast('Rezeptur gespeichert.', 'success');
-        })
-        .catch(function() { alert('Netzwerkfehler beim Speichern.'); });
-}
-
-function ffRezepturAddGroupRow(positionId) {
-    if (!Array.isArray(window._ffManageRezepturenBestandteile) || !window._ffManageRezepturenBestandteile.length) {
-        apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(positionId))
-            .then(function(r) { return r.json(); })
-            .then(function(d) {
-                if (d && d.ok) {
-                    window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
-                    ffRezepturAddGroupRow(positionId);
-                } else {
-                    ffShowToast('Bestandteile konnten nicht geladen werden.', 'danger', 2500);
-                }
-            })
-            .catch(function() { ffShowToast('Bestandteile konnten nicht geladen werden.', 'danger', 2500); });
-        return;
-    }
-    var table = document.getElementById('rezepturGroupTable_' + positionId);
-    if (!table) return;
-    var tbody = table.querySelector('tbody');
-    if (!tbody) return;
-    var emptyRow = tbody.querySelector('td[colspan]');
-    if (emptyRow && emptyRow.closest('tr')) {
-        emptyRow.closest('tr').remove();
-    }
-    var wrap = document.createElement('tbody');
-    wrap.innerHTML = ffRezepturGroupRowHtml({ bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
-    tbody.appendChild(wrap.firstElementChild);
-    var delBtn = tbody.querySelector('.ff-rez-group-del:last-of-type');
-    if (delBtn) {
-        delBtn.addEventListener('click', function(ev) {
-            var tr = ev.target.closest('tr');
-            if (tr) tr.remove();
-            if (!tbody.querySelector('tr[data-group-row="1"]')) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Keine Bestandteile zugewiesen.</td></tr>';
-            }
-            ffRezepturScheduleGroupAutosave(positionId, table);
-        });
-    }
-    ffRezepturScheduleGroupAutosave(positionId, table);
-}
-
-function ffRezepturRenderRows(rows) {
-    var tbody = $('rezepturenTbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-    if (!rows || !rows.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-muted">Noch keine Komponenten hinterlegt.</td></tr>';
-        return;
-    }
-    rows.forEach(function(row) {
-        var wrap = document.createElement('tbody');
-        wrap.innerHTML = ffRezepturRowHtml(row);
-        tbody.appendChild(wrap.firstElementChild);
-    });
-    ffRezepturBindRowEvents();
-}
-
-function ffRezepturAddRow() {
-    var tbody = $('rezepturenTbody');
-    if (!tbody) return;
-    if (tbody.children.length === 1 && /Noch keine Komponenten/.test(tbody.textContent || '')) tbody.innerHTML = '';
-    var wrap = document.createElement('tbody');
-    wrap.innerHTML = ffRezepturRowHtml({ bestandteil_id: 0, menge: '1.000', optional_enabled: 0, default_selected: 1, option_group: '', reihenfolge: 0 });
-    tbody.appendChild(wrap.firstElementChild);
-    ffRezepturBindRowEvents();
-}
-
-function ffRezepturLoad(selectedId) {
-    var posSel = $('rezepturPosition');
-    if (!posSel) return;
-    var posId = parseInt(selectedId || posSel.value || '0', 10) || 0;
-    posSel.value = String(posId);
-    var status = $('rezepturStatus');
-    if (status) status.textContent = 'Lade ...';
-    apiGet('manage/rezepturen_admin_api.php?position_id=' + encodeURIComponent(posId))
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Fehler beim Laden.';
-                ffRezepturRenderRows([]);
-                return;
-            }
-            window._ffManageRezepturenPositionen = Array.isArray(d.positions) ? d.positions : [];
-            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
-            posSel.innerHTML = ffRezepturBuildPositionOptions(posId);
-            ffRezepturRenderRows(d.rows || []);
-            if (status) {
-                status.textContent = d.position_name ? ('Bearbeite Rezeptur für ' + d.position_name) : 'Bitte eine Position wählen.';
-            }
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Laden.';
-        });
-}
-
-function ffRezepturSave() {
-    var posSel = $('rezepturPosition');
-    var status = $('rezepturStatus');
-    var tbody = $('rezepturenTbody');
-    if (!posSel || !tbody) return;
-    var positionId = parseInt(posSel.value, 10) || 0;
-    if (positionId <= 0) {
-        alert('Bitte zuerst eine Zielposition wählen.');
-        return;
-    }
-    var rows = [];
-    tbody.querySelectorAll('tr').forEach(function(tr) {
-        var compEl = tr.querySelector('.ff-rez-comp');
-        var qtyEl = tr.querySelector('.ff-rez-qty');
-        var optionalEl = tr.querySelector('.ff-rez-optional');
-        var defaultEl = tr.querySelector('.ff-rez-default');
-        var groupEl = tr.querySelector('.ff-rez-group');
-        var orderEl = tr.querySelector('.ff-rez-order');
-        if (!compEl || !qtyEl || !orderEl) return;
-        var comp = parseInt(compEl.value, 10) || 0;
-        var qtyRaw = String(qtyEl.value || '').replace(',', '.');
-        var qty = parseFloat(qtyRaw);
-        var optionalEnabled = optionalEl && optionalEl.checked ? 1 : 0;
-        var defaultSelected = defaultEl && defaultEl.checked ? 1 : 0;
-        var optionGroup = groupEl ? String(groupEl.value || '').trim() : '';
-        var order = parseInt(orderEl.value, 10) || 0;
-        if (comp <= 0) return;
-        if (!isFinite(qty) || qty <= 0) qty = 1;
-        rows.push({
-            bestandteil_id: comp,
-            menge: qty,
-            optional_enabled: optionalEnabled,
-            default_selected: defaultSelected,
-            option_group: optionGroup,
-            reihenfolge: order
-        });
-    });
-    if (status) status.textContent = 'Speichere ...';
-    apiPost('manage/rezepturen_admin_api.php', { action: 'save', position_id: String(positionId), rows_json: JSON.stringify(rows) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Speichern fehlgeschlagen.';
-                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
-                return;
-            }
-            if (status) status.textContent = 'Gespeichert.';
-            ffRezepturLoad(positionId);
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Speichern.';
-        });
-}
-
-function ffRezepturRefreshBestandteileTable() {
-    var table = document.getElementById('bestandteileTable');
-    if (!table) return;
-    var tbody = table.querySelector('tbody');
-    if (!tbody) return;
-
-    var existingRows = [];
-    table.querySelectorAll('tr[data-bestandteil-id]').forEach(function(tr) {
-        var id = parseInt(tr.getAttribute('data-bestandteil-id'), 10) || 0;
-        if (!id) return;
-        var nameEl = tr.querySelector('.ff-bestandteil-name');
-        var einheitEl = tr.querySelector('.ff-bestandteil-einheit');
-        var kapEl = tr.querySelector('.ff-bestandteil-kapazitaet');
-        var sortEl = tr.querySelector('.ff-bestandteil-sort');
-        var allergeneEl = tr.querySelector('.ff-bestandteil-allergene');
-        if (!nameEl || !einheitEl || !kapEl || !sortEl) return;
-        var kap = parseInt(kapEl.value, 10);
-        if (isNaN(kap)) kap = -1;
-        existingRows.push({
-            id: id,
-            name: String(nameEl.value || ''),
-            einheit: String(einheitEl.value || 'Stk'),
-            kapazitaet: kap,
-            sort_order: parseInt(sortEl.value, 10) || 0,
-            allergene: allergeneEl ? String(allergeneEl.value || '') : '',
-            bestellt: parseFloat(tr.getAttribute('data-bestellt') || '0') || 0
-        });
-    });
-
-    if (existingRows.length) {
-        window._ffManageRezepturenBestandteile = existingRows;
-    }
-
-    var list = Array.isArray(window._ffManageRezepturenBestandteile) && window._ffManageRezepturenBestandteile.length
-        ? window._ffManageRezepturenBestandteile
-        : existingRows;
-
-    if (!list.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="text-muted">Noch keine Bestandteile angelegt.</td></tr>';
-        return;
-    }
-
-    tbody.innerHTML = list.map(function(item) {
-        var id = parseInt(item && item.id, 10) || 0;
-        var name = String(item && item.name ? item.name : '');
-        var einheit = String(item && item.einheit ? item.einheit : 'Stk');
-        var kap = parseInt(item && item.kapazitaet, 10);
-        if (isNaN(kap)) kap = -1;
-        var sort = parseInt(item && item.sort_order, 10) || 0;
-        var allergene = String(item && item.allergene ? item.allergene : '');
-        var bestellt = parseFloat(item && item.bestellt) || 0;
-        var begrenzt = kap > 0;
-        var rest = begrenzt ? kap - bestellt : null;
-        var rowClass = rest !== null && rest < 0 ? 'table-danger' : (rest !== null && bestellt >= kap * 0.8 ? 'table-warning' : '');
-        var einheitEsc = ffRezepturEsc(einheit);
-        return `<tr data-bestandteil-id="${id}" data-bestellt="${bestellt}" class="${rowClass}">
-            <td><input type="text" class="form-control form-control-sm ff-bestandteil-name" value="${ffRezepturEsc(name)}"></td>
-            <td><input type="text" class="form-control form-control-sm ff-bestandteil-einheit" value="${ffRezepturEsc(einheit)}" maxlength="30"></td>
-            <td><input type="number" class="form-control form-control-sm ff-bestandteil-kapazitaet" value="${kap}" title="-1 = unbegrenzt"></td>
-            <td class="text-end ff-bestandteil-bestellt">${ffFormatBestandteilMenge(bestellt)} <span class="text-muted">${einheitEsc}</span></td>
-            <td class="text-end fw-semibold ff-bestandteil-rest">${rest === null ? '—' : ffFormatBestandteilMenge(rest) + ' <span class="text-muted">' + einheitEsc + '</span>'}</td>
-            <td><button type="button" class="btn btn-outline-primary btn-sm" onclick="ffOpenBestandteilKapazitaetModal(${id})">Berechnen</button></td>
-            <td><input type="number" class="form-control form-control-sm ff-bestandteil-sort" value="${sort}"></td>
-            <td><input type="text" class="form-control form-control-sm ff-bestandteil-allergene" value="${ffRezepturEsc(allergene)}" placeholder="z. B. Gluten, Milch"></td>
-        </tr>`;
-    }).join('');
-    ffRezepturBindBestandteileAutosave();
-}
-
-function ffFormatBestandteilMenge(value) {
-    var number = Number(value) || 0;
-    return number.toLocaleString('de-AT', { maximumFractionDigits: 2 });
-}
-
-function ffRezepturUpdateBestandteilCapacityRows(bestandteile) {
-    var table = document.getElementById('bestandteileTable');
-    if (!table || !Array.isArray(bestandteile)) return;
-    bestandteile.forEach(function(item) {
-        var row = table.querySelector('tr[data-bestandteil-id="' + (parseInt(item.id, 10) || 0) + '"]');
-        if (!row) return;
-        var consumed = Number(item.bestellt) || 0;
-        var capacity = parseInt((row.querySelector('.ff-bestandteil-kapazitaet') || {}).value, 10);
-        if (isNaN(capacity)) capacity = parseInt(item.kapazitaet, 10);
-        var unit = String((row.querySelector('.ff-bestandteil-einheit') || {}).value || item.einheit || 'Stk');
-        var limited = capacity > 0;
-        var rest = limited ? capacity - consumed : null;
-        row.setAttribute('data-bestellt', String(consumed));
-        var consumedCell = row.querySelector('.ff-bestandteil-bestellt');
-        var restCell = row.querySelector('.ff-bestandteil-rest');
-        if (consumedCell) consumedCell.innerHTML = ffFormatBestandteilMenge(consumed) + ' <span class="text-muted">' + ffRezepturEsc(unit) + '</span>';
-        if (restCell) restCell.innerHTML = rest === null
-            ? '—'
-            : ffFormatBestandteilMenge(rest) + ' <span class="text-muted">' + ffRezepturEsc(unit) + '</span>';
-        row.classList.remove('table-warning', 'table-danger');
-        if (rest !== null && rest < 0) row.classList.add('table-danger');
-        else if (rest !== null && consumed >= capacity * 0.8) row.classList.add('table-warning');
-        item.bestellt = consumed;
-    });
-}
-
-function ffOpenBestandteilKapazitaetModal(id) {
-    var row = document.querySelector('#bestandteileTable tr[data-bestandteil-id="' + id + '"]');
-    var modalEl = document.getElementById('bestandteilKapazitaetModal');
-    if (!row || !modalEl || !window.bootstrap || !window.bootstrap.Modal) {
-        if (typeof ffShowToast === 'function') ffShowToast('Kapazitätsrechner konnte nicht geöffnet werden.', 'danger');
-        return;
-    }
-    var name = String((row.querySelector('.ff-bestandteil-name') || {}).value || 'Bestandteil');
-    var unit = String((row.querySelector('.ff-bestandteil-einheit') || {}).value || 'Stk');
-    var capacity = parseInt((row.querySelector('.ff-bestandteil-kapazitaet') || {}).value, 10);
-    var consumed = parseFloat(row.getAttribute('data-bestellt') || '0') || 0;
-    if (isNaN(capacity)) capacity = -1;
-    modalEl.setAttribute('data-bestandteil-id', String(id));
-    document.getElementById('bestandteilKapazitaetModalName').textContent = name;
-    document.getElementById('bestandteilKapazitaetAktuell').textContent = capacity > 0
-        ? ffFormatBestandteilMenge(capacity) + ' ' + unit
-        : 'Unbegrenzt';
-    document.getElementById('bestandteilKapazitaetBestellt').textContent = ffFormatBestandteilMenge(consumed) + ' ' + unit;
-    document.getElementById('bestandteilKapazitaetRest').textContent = capacity > 0
-        ? ffFormatBestandteilMenge(capacity - consumed) + ' ' + unit
-        : '—';
-    document.getElementById('bestandteilKapazitaetEinheit').textContent = unit;
-    var input = document.getElementById('bestandteilKapazitaetPlus');
-    var plusMode = document.getElementById('bestandteilKapazitaetModusPlus');
-    var restMode = document.getElementById('bestandteilKapazitaetModusRest');
-    var inputLabel = document.getElementById('bestandteilKapazitaetEingabeLabel');
-    input.value = '50';
-    input.min = '1';
-    input.step = '1';
-    function updatePreview() {
-        var inputValue = input.value.trim();
-        var increase = Number(inputValue);
-        var preview = document.getElementById('bestandteilKapazitaetVorschau');
-        var setRest = restMode.checked;
-        input.min = setRest ? '0' : '1';
-        inputLabel.textContent = setRest ? 'Gewünschter Restbestand' : 'Zusätzliche Kapazität';
-        if (inputValue === '' || !Number.isInteger(increase) || increase < (setRest ? 0 : 1)) {
-            preview.textContent = setRest
-                ? 'Bitte eine nicht negative ganze Zahl eingeben.'
-                : 'Bitte eine positive ganze Zahl eingeben.';
-            return;
-        }
-        var newCapacity = Math.ceil(setRest ? consumed + increase : (capacity > 0 ? capacity : consumed) + increase);
-        if (newCapacity <= 0) {
-            preview.textContent = 'Bei 0 bereits bestellt kann ein Restbestand von 0 nicht gesetzt werden (0 bedeutet unbegrenzte Kapazität).';
-            return;
-        }
-        var newRest = newCapacity - consumed;
-        preview.textContent = 'Neue Kapazität: ' + ffFormatBestandteilMenge(newCapacity) + ' ' + unit
-            + ' · voraussichtlicher Rest: ' + ffFormatBestandteilMenge(newRest) + ' ' + unit;
-    }
-    input.oninput = updatePreview;
-    plusMode.onchange = updatePreview;
-    restMode.onchange = updatePreview;
-    updatePreview();
-    document.getElementById('bestandteilKapazitaetAnwenden').onclick = function() {
-        var inputValue = input.value.trim();
-        var increase = Number(inputValue);
-        var setRest = restMode.checked;
-        var newCapacity = Math.ceil(setRest ? consumed + increase : (capacity > 0 ? capacity : consumed) + increase);
-        if (inputValue === '' || !Number.isInteger(increase) || increase < (setRest ? 0 : 1) || newCapacity <= 0) {
-            input.focus();
-            return;
-        }
-        var capacityInput = row.querySelector('.ff-bestandteil-kapazitaet');
-        if (!capacityInput) return;
-        capacityInput.value = String(newCapacity);
-        capacityInput.dispatchEvent(new Event('input', { bubbles: true }));
-        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-    };
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
-}
-
-function ffFilterBestandteileRows() {
-    var table = $('bestandteileTable');
-    if (!table) return;
-    var query = String(($('bestandteileFilter') || {}).value || '').trim().toLocaleLowerCase();
-    var rows = Array.from(table.querySelectorAll('tr[data-bestandteil-id]'));
-    var shown = 0;
-    rows.forEach(function(row) {
-        var searchable = Array.from(row.querySelectorAll('input')).map(function(input) {
-            return input.value;
-        }).join(' ');
-        var matches = !query || searchable.toLocaleLowerCase().indexOf(query) !== -1;
-        row.hidden = !matches;
-        if (matches) shown++;
-    });
-    var count = $('bestandteileCount');
-    if (count) count.textContent = shown + ' von ' + rows.length + ' Bestandteilen';
-    var noResults = $('bestandteileNoResults');
-    if (noResults) noResults.hidden = shown !== 0 || rows.length === 0;
-}
-
-function ffRezepturBindBestandteileAutosave() {
-    var table = document.getElementById('bestandteileTable');
-    if (!table || table.getAttribute('data-autosave-bound') === '1') return;
-    table.setAttribute('data-autosave-bound', '1');
-    table.addEventListener('input', function(ev) {
-        if (!ev.target.matches('input')) return;
-        ev.target.dataset.ffDirty = '1';
-        ffRezepturScheduleBestandteileAutosave(ev.target.closest('tr'));
-    });
-    table.addEventListener('blur', function(ev) {
-        if (!ev.target.matches('input')) return;
-        var row = ev.target.closest('tr');
-        if (!ev.target.dataset.ffDirty) return;
-        if (window._ffBestandteileAutosaveTimers && row) {
-            var timer = window._ffBestandteileAutosaveTimers.get(row);
-            if (timer) clearTimeout(timer);
-            window._ffBestandteileAutosaveTimers.delete(row);
-        }
-        ffRezepturSaveBestandteile(true, row);
-    }, true);
-}
-
-function ffRezepturScheduleBestandteileAutosave(row) {
-    if (!row) return;
-    window._ffBestandteileAutosaveTimers = window._ffBestandteileAutosaveTimers || new WeakMap();
-    var oldTimer = window._ffBestandteileAutosaveTimers.get(row);
-    if (oldTimer) clearTimeout(oldTimer);
-    window._ffBestandteileAutosaveTimers.set(row, setTimeout(function() {
-        window._ffBestandteileAutosaveTimers.delete(row);
-        ffRezepturSaveBestandteile(true, row);
-    }, 700));
-}
-
-function ffRezepturSaveBestandteile(autoSave, changedRow) {
-    var table = document.getElementById('bestandteileTable');
-    var status = $('rezepturStatus');
-    if (!table) return;
-    var rows = [];
-    table.querySelectorAll('tr[data-bestandteil-id]').forEach(function(tr) {
-        var id = parseInt(tr.getAttribute('data-bestandteil-id'), 10) || 0;
-        if (!id) return;
-        var nameEl = tr.querySelector('.ff-bestandteil-name');
-        var einheitEl = tr.querySelector('.ff-bestandteil-einheit');
-        var kapEl = tr.querySelector('.ff-bestandteil-kapazitaet');
-        var sortEl = tr.querySelector('.ff-bestandteil-sort');
-        var allergeneEl = tr.querySelector('.ff-bestandteil-allergene');
-        if (!nameEl || !einheitEl || !kapEl || !sortEl) return;
-        var name = String(nameEl.value || '').trim();
-        var einheit = String(einheitEl.value || '').trim() || 'Stk';
-        var kapazitaet = parseInt(kapEl.value, 10);
-        var sortOrder = parseInt(sortEl.value, 10) || 0;
-        if (isNaN(kapazitaet)) kapazitaet = -1;
-        if (!name) {
-            if (!autoSave) alert('Bitte für alle Bestandteile einen Namen eingeben.');
-            return;
-        }
-        rows.push({
-            id: id,
-            name: name,
-            einheit: einheit,
-            kapazitaet: kapazitaet,
-            sort_order: sortOrder,
-            allergene: allergeneEl ? String(allergeneEl.value || '') : ''
-        });
-    });
-    if (!rows.length) {
-        if (status) status.textContent = 'Keine Bestandteile zum Speichern vorhanden.';
-        return;
-    }
-    if (status) status.textContent = 'Speichere Bestandteile ...';
-    apiPost('manage/rezepturen_admin_api.php', { action: 'save_bestandteile', rows_json: JSON.stringify(rows) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Bestandteile speichern fehlgeschlagen.';
-                if (autoSave) {
-                    if (typeof ffShowToast === 'function') ffShowToast('Bestandteile konnten nicht gespeichert werden.', 'danger', 2500);
-                } else {
-                    alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
-                }
-                return;
-            }
-            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
-            ffRezepturUpdateBestandteilCapacityRows(window._ffManageRezepturenBestandteile);
-            if (status) status.textContent = 'Bestandteile automatisch gespeichert.';
-            if (changedRow) changedRow.querySelectorAll('input').forEach(function(input) { delete input.dataset.ffDirty; });
-            if (typeof ffShowToast === 'function') ffShowToast('Bestandteile gespeichert.', 'success', 1400);
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Speichern der Bestandteile.';
-        });
-}
-
-function ffOpenNewBestandteilModal() {
-    var m = $('ffNewBestandteilModal');
-    if (!m) return;
-    m.style.display = 'block';
-    if ($('rezepturNewBestandteilName')) $('rezepturNewBestandteilName').focus();
-}
-
-function ffCloseNewBestandteilModal() {
-    var m = $('ffNewBestandteilModal');
-    if (m) m.style.display = 'none';
-}
-
-function ffRezepturAddBestandteil() {
-    var nameEl = $('rezepturNewBestandteilName');
-    var einheitEl = $('rezepturNewBestandteilEinheit');
-    var sortEl = $('rezepturNewBestandteilSort');
-    var kapEl = $('rezepturNewBestandteilKapazitaet');
-    var allergeneEl = $('rezepturNewBestandteilAllergene');
-    var status = $('rezepturStatus');
-    if (!nameEl) return;
-    var name = String(nameEl.value || '').trim();
-    var einheit = einheitEl ? String(einheitEl.value || '').trim() : 'Stk';
-    var sortOrder = sortEl ? (parseInt(sortEl.value, 10) || 0) : 0;
-    var kapazitaet = kapEl ? (parseInt(kapEl.value, 10)) : -1;
-    if (isNaN(kapazitaet)) kapazitaet = -1;
-    if (!name) {
-        alert('Bitte Namen für den Bestandteil eingeben.');
-        return;
-    }
-    if (status) status.textContent = 'Lege Bestandteil an ...';
-    apiPost('manage/rezepturen_admin_api.php', {
-        action: 'add_bestandteil',
-        name: name,
-        einheit: einheit,
-        kapazitaet: String(kapazitaet),
-        sort_order: String(sortOrder),
-        allergene: allergeneEl ? String(allergeneEl.value || '') : ''
-    })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) {
-                if (status) status.textContent = 'Bestandteil anlegen fehlgeschlagen.';
-                alert('Fehler: ' + ((d && d.error) ? d.error : 'unbekannt'));
-                return;
-            }
-            window._ffManageRezepturenBestandteile = Array.isArray(d.bestandteile) ? d.bestandteile : [];
-            if (nameEl) nameEl.value = '';
-            if (allergeneEl) allergeneEl.value = '';
-            if (status) status.textContent = 'Bestandteil angelegt.';
-            ffCloseNewBestandteilModal();
-            ffRezepturRefreshBestandteileTable();
-            ffFilterBestandteileRows();
-            ffRezepturRenderRows((function() {
-                var out = [];
-                var tbody = $('rezepturenTbody');
-                if (!tbody) return out;
-                tbody.querySelectorAll('tr').forEach(function(tr) {
-                    var compEl = tr.querySelector('.ff-rez-comp');
-                    var qtyEl = tr.querySelector('.ff-rez-qty');
-                    var orderEl = tr.querySelector('.ff-rez-order');
-                    if (!compEl || !qtyEl || !orderEl) return;
-                    out.push({
-                        id: parseInt(tr.getAttribute('data-rowid') || '0', 10) || 0,
-                        bestandteil_id: parseInt(compEl.value, 10) || 0,
-                        menge: String(qtyEl.value || '1'),
-                        optional_enabled: (tr.querySelector('.ff-rez-optional') || {}).checked ? 1 : 0,
-                        default_selected: (tr.querySelector('.ff-rez-default') || {}).checked ? 1 : 0,
-                        option_group: String(((tr.querySelector('.ff-rez-group') || {}).value) || '').trim(),
-                        reihenfolge: parseInt(orderEl.value, 10) || 0
-                    });
-                });
-                return out;
-            })());
-        })
-        .catch(function() {
-            if (status) status.textContent = 'Netzwerkfehler beim Anlegen des Bestandteils.';
-        });
-}
-
-function loadBestandteile() {
-    manageNavActive('bestandteile');
-    window._managePosReload = null;
-    loadContent('rezepturen_admin.php?view=bestandteile', function() {
-        window._ffManageRezepturenPositionen = window._ffManageRezepturenPositionen || [];
-        window._ffManageRezepturenBestandteile = window._ffManageRezepturenBestandteile || [];
-        ffRezepturRefreshBestandteileTable();
-        ffFilterBestandteileRows();
-    });
-}
-
-function ffFilterRezepturPositions() {
-    var query = String(($('rezepturPositionFilter') || {}).value || '').trim().toLocaleLowerCase();
-    var positions = Array.from(document.querySelectorAll('#rezepturPositionList .manage-rezeptur-position-block'));
-    var shown = 0;
-    positions.forEach(function(position) {
-        var searchText = String(position.getAttribute('data-search') || '').toLocaleLowerCase();
-        var matches = !query || searchText.indexOf(query) !== -1;
-        position.hidden = !matches;
-        if (matches) shown++;
-    });
-    var count = $('rezepturPositionCount');
-    if (count) count.textContent = shown + ' von ' + positions.length + ' Positionen';
-}
-
-function ffSetRezepturPositionsExpanded(expanded) {
-    document.querySelectorAll('#rezepturPositionList .manage-rezeptur-position-block:not([hidden])').forEach(function(position) {
-        position.open = !!expanded;
-    });
-}
-
-function loadRezepturen(positionId) {
-    manageNavActive('rez');
-    window._managePosReload = null;
-    loadContent('rezepturen_admin.php' + (positionId ? ('?position_id=' + encodeURIComponent(positionId)) : ''), function() {
-        window._ffManageRezepturenPositionen = window._ffManageRezepturenPositionen || [];
-        window._ffManageRezepturenBestandteile = window._ffManageRezepturenBestandteile || [];
-        ffFilterRezepturPositions();
-        ffRezepturBindRowEvents();
-        if (document.getElementById('rezepturPosition') && document.getElementById('rezepturenTbody')) {
-            ffRezepturLoad(positionId || null);
-        }
-    });
-}
-
-function loadSperren() {
-    manageNavActive('lock');
-    window._managePosReload = null;
-    loadContent('../menu_locks_ui.php?embed=1');
-}
-
-function ffSaveNewTable(tischname, x, y) {
-    tischname = String(tischname == null ? '' : tischname).trim();
-    if (!tischname) return;
-    x = String(parseInt(String(x), 10) || 1);
-    y = String(parseInt(String(y), 10) || 1);
-    var tnEl = $('tischname'), xEl = $('x'), yEl = $('y');
-    if (tnEl) tnEl.value = tischname;
-    if (xEl) xEl.value = x;
-    if (yEl) yEl.value = y;
-    fetchPost('../neuerTisch_save.php', { neuerTischName: tischname, neueTischX: x, neueTischY: y, neueTischFarbe: '#000000' })
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            loadTische();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function manageApplyTischFlagsExclusive(isSammel, isEhren) {
-    if (isSammel === 1) {
-        return { is_sammelrechnung: 1, is_ehrengast: 0 };
-    }
-    if (isEhren === 1) {
-        return { is_sammelrechnung: 0, is_ehrengast: 1 };
-    }
-    return { is_sammelrechnung: 0, is_ehrengast: 0 };
-}
-
-function managePostTischFlags(tischnummer, isSammel, isEhren, opts) {
-    opts = opts || {};
-    var flags = manageApplyTischFlagsExclusive(isSammel, isEhren);
-    return apiPost('save_tisch_flags.php', {
-        tischnummer: tischnummer,
-        is_sammelrechnung: flags.is_sammelrechnung,
-        is_ehrengast: flags.is_ehrengast
-    }).then(function(r) {
-        return r.text().then(function(t) {
-            if (!r.ok) {
-                throw new Error('Speichern fehlgeschlagen (HTTP ' + r.status + ').');
-            }
-            var j = null;
-            try { j = JSON.parse(t); } catch (e) {
-                throw new Error('Ungültige Server-Antwort.');
-            }
-            if (!j || !j.ok) {
-                throw new Error((j && j.error) ? j.error : 'Speichern fehlgeschlagen.');
-            }
-            if (!opts.silent) {
-                ffShowToast('Gespeichert.', 'success');
-            }
-            loadTische();
-        });
-    });
-}
-
-function manageSaveTischFlags(tischnummer) {
-    var sr = document.getElementById('sr_' + tischnummer);
-    var eg = document.getElementById('eg_' + tischnummer);
-    if (!sr || !eg) {
-        alert('Tisch-Zeile nicht gefunden.');
-        return;
-    }
-    var isSammel = sr.checked ? 1 : 0;
-    var isEhren = eg.checked ? 1 : 0;
-    if (isSammel === 1) {
-        isEhren = 0;
-        eg.checked = false;
-    } else if (isEhren === 1) {
-        isSammel = 0;
-        sr.checked = false;
-    }
-    managePostTischFlags(tischnummer, isSammel, isEhren)
-        .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Fehler', 'danger'); });
-}
-
-document.addEventListener('change', function(ev) {
-    var t = ev.target;
-    if (!t || !t.classList || !t.classList.contains('ff-tisch-flag')) return;
-    var tid = parseInt(t.getAttribute('data-tid') || '0', 10);
-    if (tid <= 0) return;
-    var flag = t.getAttribute('data-flag');
-    if (flag === 'sr' && t.checked) {
-        var eg = document.getElementById('eg_' + tid);
-        if (eg) eg.checked = false;
-    } else if (flag === 'eg' && t.checked) {
-        var sr = document.getElementById('sr_' + tid);
-        if (sr) sr.checked = false;
-    }
-    manageSaveTischFlags(tid);
-});
-
-function manageToggleTischFlagFromGrid(btn) {
-    if (!btn) return;
-    var tn = parseInt(btn.getAttribute('data-tischnummer'), 10) || 0;
-    var flag = btn.getAttribute('data-flag');
-    if (tn <= 0 || (flag !== 'sr' && flag !== 'eg')) return;
-    var isOn = btn.classList.contains('tisch-flag-toggle--on');
-    var isSammel = 0;
-    var isEhren = 0;
-    if (flag === 'sr') {
-        isSammel = isOn ? 0 : 1;
-                                } else {
-        isEhren = isOn ? 0 : 1;
-    }
-    managePostTischFlags(tn, isSammel, isEhren)
-        .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Fehler', 'danger'); });
-}
-
-function ffInitTischAdminGrid() {
-    var root = document.getElementById('tischDragGrid');
-    if (!root) return;
-    var dragTn = null, dragFromX = null, dragFromY = null;
-    function clearOver() {
-        root.querySelectorAll('.tisch-admin-cell--over').forEach(function(c) { c.classList.remove('tisch-admin-cell--over'); });
-    }
-    function ffTryAddTableOnEmptyCell(cell) {
-        if (!cell || !root.contains(cell)) return;
-        if (cell.classList.contains('tisch-admin-cell--busy')) return;
-        var tx = cell.getAttribute('data-x'), ty = cell.getAttribute('data-y');
-        if (tx === null || ty === null) return;
-        ffOpenTischCreateModal(tx, ty);
-    }
-    root.addEventListener('click', function(e) {
-        if (e.button !== 0) return;
-        var deleteBtn = e.target.closest('.tisch-delete-btn');
-        if (deleteBtn && root.contains(deleteBtn)) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-        }
-        var flagBtn = e.target.closest('.tisch-flag-toggle');
-        if (flagBtn && root.contains(flagBtn)) {
-            e.preventDefault();
-            e.stopPropagation();
-            manageToggleTischFlagFromGrid(flagBtn);
-            return;
-        }
-        if (e.target.closest('.tisch-draggable')) return;
-        var cell = e.target.closest('.tisch-admin-cell');
-        ffTryAddTableOnEmptyCell(cell);
-    });
-    root.addEventListener('keydown', function(e) {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        var cell = e.target.closest('.tisch-admin-cell');
-        if (!cell || !cell.classList.contains('tisch-admin-cell--empty')) return;
-        e.preventDefault();
-        ffTryAddTableOnEmptyCell(cell);
-    });
-    root.addEventListener('dragstart', function(e) {
-        var btn = e.target.closest('.tisch-draggable');
-        if (!btn || !root.contains(btn)) return;
-        dragTn = btn.getAttribute('data-tischnummer');
-        dragFromX = btn.getAttribute('data-x');
-        dragFromY = btn.getAttribute('data-y');
-        e.dataTransfer.effectAllowed = 'move';
-        if (e.dataTransfer.setData) e.dataTransfer.setData('text/plain', dragTn || '');
-        btn.classList.add('dragging');
-    });
-    root.addEventListener('dragend', function(e) {
-        var btn = e.target.closest('.tisch-draggable');
-        if (btn) btn.classList.remove('dragging');
-        clearOver();
-    });
-    root.addEventListener('dragover', function(e) {
-        var cell = e.target.closest('.tisch-admin-cell');
-        if (!cell || !root.contains(cell)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        clearOver();
-        cell.classList.add('tisch-admin-cell--over');
-    });
-    root.addEventListener('drop', function(e) {
-        var cell = e.target.closest('.tisch-admin-cell');
-        if (!cell || !root.contains(cell)) return;
-        e.preventDefault();
-        clearOver();
-        var tx = cell.getAttribute('data-x'), ty = cell.getAttribute('data-y');
-        if (!dragTn || tx === null || ty === null) return;
-        if (String(dragFromX) === String(tx) && String(dragFromY) === String(ty)) return;
-        fetchGet('update_xy.php?tischnummer=' + encodeURIComponent(dragTn) + '&x=' + encodeURIComponent(tx) + '&y=' + encodeURIComponent(ty))
-            .then(function() { loadTische(); });
-    });
-}
-
-function ffCenterTischModalOnScreen(modalEl) {
-    if (!modalEl) return;
-    var targetWin = window;
-    var targetDoc = document;
-    var targetBody = targetDoc.body;
-    if (window.parent && window.parent !== window && window.parent.document && window.parent.document.body) {
-        targetWin = window.parent;
-        targetDoc = targetWin.document;
-        targetBody = targetDoc.body;
-    }
-    if (modalEl.ownerDocument !== targetDoc) {
-        targetBody.appendChild(modalEl);
-    } else if (modalEl.parentNode !== targetBody) {
-        targetBody.appendChild(modalEl);
-    }
-    modalEl.style.position = 'fixed';
-    modalEl.style.inset = '0';
-    modalEl.style.display = 'flex';
-    modalEl.style.alignItems = 'center';
-    modalEl.style.justifyContent = 'center';
-    modalEl.style.padding = '1rem';
-    modalEl.style.overflowY = 'auto';
-    modalEl.style.maxHeight = '100vh';
-    modalEl.style.zIndex = '2147483647';
-    modalEl.style.background = 'rgba(0, 0, 0, 0.5)';
-    var dialog = modalEl.querySelector('.modal-dialog');
-    if (dialog) {
-        dialog.style.margin = '0';
-        dialog.style.width = 'min(92vw, 420px)';
-        dialog.style.maxWidth = '420px';
-        dialog.style.maxHeight = 'calc(100vh - 2rem)';
-        dialog.style.position = 'relative';
-        dialog.style.transform = 'none';
-    }
-    var content = modalEl.querySelector('.modal-content');
-    if (content) {
-        content.style.maxHeight = 'calc(100vh - 2rem)';
-        content.style.overflow = 'hidden';
-    }
-    var body = modalEl.querySelector('.modal-body');
-    if (body) {
-        body.style.maxHeight = 'calc(100vh - 12rem)';
-        body.style.overflowY = 'auto';
-    }
-    return targetWin;
-}
-
-function ffGetTischModalRoot() {
-    var parentWin = (window.parent && window.parent !== window) ? window.parent : null;
-    var parentDoc = parentWin && parentWin.document ? parentWin.document : null;
-    if (parentDoc) {
-        var parentModal = parentDoc.getElementById('ffTischEditModal');
-        if (parentModal) {
-            return { modalEl: parentModal, win: parentWin, doc: parentDoc };
-        }
-    }
-    var currentModal = document.getElementById('ffTischEditModal');
-    if (parentDoc && currentModal) {
-        var injectedModal = currentModal.cloneNode(true);
-        parentDoc.body.appendChild(injectedModal);
-        return { modalEl: injectedModal, win: parentWin, doc: parentDoc };
-    }
-    return { modalEl: currentModal, win: window, doc: document };
-}
-
-function ffOpenTischCreateModal(x, y) {
-    var modalRoot = ffGetTischModalRoot();
-    var modalEl = modalRoot.modalEl;
-    if (!modalEl) return;
-    var doc = modalRoot.doc || document;
-    ffCenterTischModalOnScreen(modalEl);
-    var bootstrapRef = (modalRoot.win && modalRoot.win.bootstrap) ? modalRoot.win.bootstrap : bootstrap;
-    var modal = bootstrapRef.Modal.getOrCreateInstance(modalEl);
-    var xVal = parseInt(String(x || '1'), 10);
-    var yVal = parseInt(String(y || '1'), 10);
-    if (!xVal || xVal < 1) xVal = 1;
-    if (!yVal || yVal < 1) yVal = 1;
-    var titleEl = doc.getElementById('ffTischEditModalLabel');
-    if (titleEl) titleEl.textContent = 'Neuen Tisch anlegen';
-    doc.getElementById('ffTischEditId').value = '';
-    doc.getElementById('ffTischEditName').value = '';
-    doc.getElementById('ffTischEditX').value = String(xVal);
-    doc.getElementById('ffTischEditY').value = String(yVal);
-    doc.getElementById('ffTischEditColor').value = '#000000';
-    var srBox = doc.getElementById('ffTischEditSr');
-    var egBox = doc.getElementById('ffTischEditEg');
-    if (srBox) srBox.checked = false;
-    if (egBox) egBox.checked = false;
-    var delBtn = doc.getElementById('ffTischEditDeleteBtn');
-    if (delBtn) {
-        delBtn.style.display = 'none';
-        delBtn.disabled = true;
-    }
-    var saveBtn = doc.getElementById('ffTischEditSaveBtn');
-    if (saveBtn) saveBtn.textContent = 'Anlegen';
-    doc.getElementById('ffTischEditSaveBtn').onclick = function() {
-        var nameSave = (doc.getElementById('ffTischEditName').value || '').trim();
-        var xSave = parseInt(doc.getElementById('ffTischEditX').value || '1', 10);
-        var ySave = parseInt(doc.getElementById('ffTischEditY').value || '1', 10);
-        var colorSave = doc.getElementById('ffTischEditColor').value || '#000000';
-        if (!nameSave) {
-            alert('Bitte einen Namen für den Tisch eingeben.');
-            return;
-        }
-        if (xSave < 1 || ySave < 1) {
-            alert('x und y müssen größer 0 sein.');
-            return;
-        }
-        fetchPost('../neuerTisch_save.php', {
-            neuerTischName: nameSave,
-            neueTischX: xSave,
-            neueTischY: ySave,
-            neueTischFarbe: colorSave
-        })
-            .then(function() {
-                modal.hide();
-                ffShowToast('Tisch angelegt.', 'success');
-                loadTische();
-            })
-            .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Anlegen fehlgeschlagen.', 'danger'); });
-    };
-    modal.show();
-}
-
-function ffOpenTischEditModal(btn) {
-    if (!btn) return;
-    var modalRoot = ffGetTischModalRoot();
-    var modalEl = modalRoot.modalEl;
-    if (!modalEl) return;
-    var doc = modalRoot.doc || document;
-    ffCenterTischModalOnScreen(modalEl);
-    var bootstrapRef = (modalRoot.win && modalRoot.win.bootstrap) ? modalRoot.win.bootstrap : bootstrap;
-    var modal = bootstrapRef.Modal.getOrCreateInstance(modalEl);
-    var tid = parseInt(btn.getAttribute('data-tischnummer') || '0', 10);
-    if (!tid) return;
-    var name = btn.getAttribute('data-tischname') || '';
-    var color = btn.getAttribute('data-color') || '#000000';
-    var x = btn.getAttribute('data-x') || '1';
-    var y = btn.getAttribute('data-y') || '1';
-    var sr = btn.getAttribute('data-sr') === '1';
-    var eg = btn.getAttribute('data-eg') === '1';
-    var titleEl = doc.getElementById('ffTischEditModalLabel');
-    if (titleEl) titleEl.textContent = 'Tisch bearbeiten';
-    doc.getElementById('ffTischEditId').value = String(tid);
-    doc.getElementById('ffTischEditName').value = name;
-    doc.getElementById('ffTischEditX').value = x;
-    doc.getElementById('ffTischEditY').value = y;
-    doc.getElementById('ffTischEditColor').value = color;
-    var srBox = doc.getElementById('ffTischEditSr');
-    var egBox = doc.getElementById('ffTischEditEg');
-    if (srBox) srBox.checked = sr;
-    if (egBox) egBox.checked = eg;
-    var delBtn = doc.getElementById('ffTischEditDeleteBtn');
-    if (delBtn) {
-        delBtn.style.display = 'inline-block';
-        delBtn.disabled = false;
-    }
-    delBtn.onclick = function() {
-        modal.hide();
-        deleteTable(tid);
-    };
-    var saveBtn = doc.getElementById('ffTischEditSaveBtn');
-    if (saveBtn) saveBtn.textContent = 'Speichern';
-    doc.getElementById('ffTischEditSaveBtn').onclick = function() {
-        var tidSave = parseInt(doc.getElementById('ffTischEditId').value || '0', 10);
-        var nameSave = doc.getElementById('ffTischEditName').value || '';
-        var xSave = parseInt(doc.getElementById('ffTischEditX').value || '1', 10);
-        var ySave = parseInt(doc.getElementById('ffTischEditY').value || '1', 10);
-        var colorSave = doc.getElementById('ffTischEditColor').value || '#000000';
-        var srSave = doc.getElementById('ffTischEditSr').checked ? 1 : 0;
-        var egSave = doc.getElementById('ffTischEditEg').checked ? 1 : 0;
-        if (xSave < 1 || ySave < 1) {
-            alert('x und y müssen größer 0 sein.');
-            return;
-        }
-        if (srSave && egSave) {
-            egSave = 0;
-            doc.getElementById('ffTischEditEg').checked = false;
-        }
-        var ops = [
-            fetchGet('update_tischname.php?tischname=' + encodeURIComponent(nameSave) + '&tischnummer=' + encodeURIComponent(tidSave)),
-            fetchGet('update_xy.php?x=' + encodeURIComponent(xSave) + '&y=' + encodeURIComponent(ySave) + '&tischnummer=' + encodeURIComponent(tidSave)),
-            fetchPost('save_tisch_flags.php', {
-                tischnummer: tidSave,
-                is_sammelrechnung: srSave,
-                is_ehrengast: egSave
-            }),
-            fetchPost('update_color.php', { color: colorSave, tischnummer: tidSave })
-        ];
-        Promise.all(ops)
-            .then(function() {
-                modal.hide();
-                ffShowToast('Tisch gespeichert.', 'success');
-                loadTische();
-            })
-            .catch(function(err) { ffShowToast(err && err.message ? err.message : 'Speichern fehlgeschlagen.', 'danger'); });
-    };
-    modal.show();
-}
-
-function updateTischname(tischname, tischnummer) {
-    tischname = prompt('Neuer Tischname:', tischname);
-    if (tischname !== null) {
-        fetchGet('update_tischname.php?tischname=' + encodeURIComponent(tischname) + '&tischnummer=' + encodeURIComponent(tischnummer))
-            .then(function() {
-                ffShowToast('Gespeichert.', 'success');
-                loadTische();
-            })
-            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-    }
-}
-
-function updateXY(x, y, tischnummer) {
-    x = prompt('x neu (Spalte):', x);
-    y = prompt('y neu (Zeile):', y);
-    if (x > 0 && y > 0) {
-        fetchGet('update_xy.php?x=' + encodeURIComponent(x) + '&y=' + encodeURIComponent(y) + '&tischnummer=' + encodeURIComponent(tischnummer))
-            .then(function() {
-                ffShowToast('Gespeichert.', 'success');
-                loadTische();
-            })
-            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-    }
-}
-
-function editPositionsname(rowid, Positionsname) {
-    Positionsname = prompt('Positionsname neu:', Positionsname);
-    if (Positionsname !== null) {
-        fetchGet('update_positionsname.php?rowid=' + encodeURIComponent(rowid) + '&Positionsname=' + encodeURIComponent(Positionsname))
-            .then(function() {
-                ffShowToast('Gespeichert.', 'success');
-                manageReloadPositionsList();
-            })
-            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-    }
-}
-
-function editKurzbezeichnung(rowid, Kurzbezeichnung) {
-    Kurzbezeichnung = prompt('Kurzbezeichnung neu:', Kurzbezeichnung);
-    if (Kurzbezeichnung !== null) {
-        fetchGet('update_kurzbezeichnung.php?rowid=' + encodeURIComponent(rowid) + '&Kurzbezeichnung=' + encodeURIComponent(Kurzbezeichnung))
-            .then(function() {
-                ffShowToast('Gespeichert.', 'success');
-                manageReloadPositionsList();
-            })
-            .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-    }
-}
-
-function deleteTable(tischnummer) {
-    if (confirm('Wirklich löschen?')) {
-        fetchGet('delete_table.php?tischnummer=' + encodeURIComponent(tischnummer)).then(function() { loadTische(); });
-    }
-}
-
-function deleteMeal(rowid) {
-    if (confirm('Wirklich löschen?')) {
-        fetchGet('delete_meal.php?rowid=' + encodeURIComponent(rowid)).then(function() { manageReloadPositionsList(); });
-    }
-}
-
-function editBetrag(rowid, Betrag) {
-    Betrag = prompt('VK / Verkaufspreis neu (Komma oder Punkt erlaubt):', Betrag);
-    if (Betrag === null || String(Betrag).trim() === '') return;
-    var num = parseFloat(String(Betrag).replace(',', '.'));
-    if (isNaN(num) || num < 0) {
-        alert('Ungültiger Betrag.');
-        return;
-    }
-    fetchGet('update_betrag.php?rowid=' + encodeURIComponent(rowid) + '&Betrag=' + encodeURIComponent(Betrag))
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            manageReloadPositionsList();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function editReihenfolge(rowid, reihenfolge) {
-    reihenfolge = prompt('Reihenfolge neu:', reihenfolge);
-    if (reihenfolge === null || String(reihenfolge).trim() === '') return;
-    var n = parseInt(String(reihenfolge).replace(/\s+/g, ''), 10);
-    if (isNaN(n) || n < 0) {
-        alert('Ungültige Reihenfolge.');
-        return;
-    }
-    fetchGet('update_reihenfolge.php?rowid=' + encodeURIComponent(rowid) + '&reihenfolge=' + encodeURIComponent(n))
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            manageReloadPositionsList();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function manageSavePosField(el) {
-    if (!el || !el.getAttribute) return;
-    var rowid = parseInt(el.getAttribute('data-rowid') || '0', 10);
-    var field = el.getAttribute('data-field') || '';
-    var prev = el.getAttribute('data-prev');
-    if (prev === null || prev === undefined) prev = '';
-    var val = String(el.value || '').trim();
-    if (rowid <= 0 || !field) return;
-    if (String(prev) === val) return;
-
-    if (field === 'Betrag') {
-        var num = parseFloat(val.replace(',', '.'));
-        if (isNaN(num) || num < 0) {
-            alert('Ungültiger Betrag.');
-            el.value = prev;
-            return;
-        }
-        el.classList.add('opacity-50');
-        fetchGet('update_betrag.php?rowid=' + encodeURIComponent(rowid) + '&Betrag=' + encodeURIComponent(val))
-            .then(function() {
-                el.setAttribute('data-prev', val);
-                el.classList.remove('opacity-50');
-                ffShowToast('Gespeichert.', 'success');
-            })
-            .catch(function() {
-                el.value = prev;
-                el.classList.remove('opacity-50');
-                alert('Speichern fehlgeschlagen.');
-            });
-        return;
-    }
-    if (field === 'Selbstkosten') {
-        var ekNum = parseFloat(val.replace(',', '.'));
-        if (isNaN(ekNum) || ekNum < 0) {
-            alert('Ungültiger Betrag.');
-            el.value = prev;
-            return;
-        }
-        el.classList.add('opacity-50');
-        apiPost('update_selbstkosten.php', { rowid: rowid, selbstkosten: ekNum })
-            .then(function() {
-                el.setAttribute('data-prev', val);
-                el.classList.remove('opacity-50');
-                ffShowToast('Gespeichert.', 'success');
-            })
-            .catch(function() {
-                el.value = prev;
-                el.classList.remove('opacity-50');
-                ffShowToast('Speichern fehlgeschlagen.', 'danger');
-            });
-        return;
-    }
-    if (field === 'reihenfolge') {
-        var n = parseInt(val.replace(/\s+/g, ''), 10);
-        if (isNaN(n) || n < 0) {
-            alert('Ungültige Reihenfolge.');
-            el.value = prev;
-            return;
-        }
-        el.classList.add('opacity-50');
-        fetchGet('update_reihenfolge.php?rowid=' + encodeURIComponent(rowid) + '&reihenfolge=' + encodeURIComponent(n))
-            .then(function() {
-                el.setAttribute('data-prev', String(n));
-                el.value = String(n);
-                el.classList.remove('opacity-50');
-                ffShowToast('Gespeichert.', 'success');
-            })
-            .catch(function() {
-                el.value = prev;
-                el.classList.remove('opacity-50');
-                alert('Speichern fehlgeschlagen.');
-            });
-        return;
-    }
-    if (field === 'Positionsname') {
-        if (val === '') {
-            alert('Name darf nicht leer sein.');
-            el.value = prev;
-            return;
-        }
-        el.classList.add('opacity-50');
-        fetchGet('update_positionsname.php?rowid=' + encodeURIComponent(rowid) + '&Positionsname=' + encodeURIComponent(val))
-            .then(function() {
-                el.setAttribute('data-prev', val);
-                el.classList.remove('opacity-50');
-                ffShowToast('Gespeichert.', 'success');
-            })
-            .catch(function() {
-                el.value = prev;
-                el.classList.remove('opacity-50');
-                alert('Speichern fehlgeschlagen.');
-            });
-        return;
-    }
-    if (field === 'Kurzbezeichnung') {
-        el.classList.add('opacity-50');
-        fetchGet('update_kurzbezeichnung.php?rowid=' + encodeURIComponent(rowid) + '&Kurzbezeichnung=' + encodeURIComponent(val))
-            .then(function() {
-                el.setAttribute('data-prev', val);
-                el.classList.remove('opacity-50');
-                ffShowToast('Gespeichert.', 'success');
-            })
-            .catch(function() {
-                el.value = prev;
-                el.classList.remove('opacity-50');
-                alert('Speichern fehlgeschlagen.');
-            });
-    }
-}
-
-document.addEventListener('focusout', function(ev) {
-    var t = ev.target;
-    if (!t || !t.classList || !t.classList.contains('ff-pos-field')) return;
-    manageSavePosField(t);
-});
-document.addEventListener('keydown', function(ev) {
-    var t = ev.target;
-    if (!t || !t.classList || !t.classList.contains('ff-pos-field')) return;
-    if (ev.key === 'Enter') {
-        ev.preventDefault();
-        t.blur();
-    }
-});
-
-                            function addTable() {
-    var tn = $('tischname'), xEl = $('x'), yEl = $('y');
-    if (!tn) return;
-    ffSaveNewTable(tn.value, xEl ? xEl.value : 1, yEl ? yEl.value : 1);
-}
-
-function ffOpenNewPosModal() {
-    var m = $('ffNewPosModal');
-    if (!m) return;
-    m.style.display = 'block';
-    var first = m.querySelector('input[type="text"]');
-    if (first) first.focus();
-}
-
-function ffCloseNewPosModal() {
-    var m = $('ffNewPosModal');
-    if (m) m.style.display = 'none';
-}
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') { ffCloseNewPosModal(); ffCloseNewSubcatModal(); ffCloseNewBestandteilModal(); ffCloseRezepturModal(); }
-});
-
-function addMeal() {
-    var positionsname = $('positionsname').value, kurzbezeichnung = $('kurzbezeichnung').value, type = $('type').value;
-    var betrag = $('betrag').value, kapazitaet = $('kapazitaet').value, print_target = $('print_target').value;
-    var sk = ($('selbstkosten_neu') && $('selbstkosten_neu').value !== '') ? $('selbstkosten_neu').value : '0';
-    if (positionsname !== '') {
-        var params = 'Positionsname=' + encodeURIComponent(positionsname) + '&Kurzbezeichnung=' + encodeURIComponent(kurzbezeichnung) +
-            '&Betrag=' + encodeURIComponent(betrag) + '&type=' + encodeURIComponent(type) + '&Kapazitaet=' + encodeURIComponent(kapazitaet) +
-            '&print_target=' + encodeURIComponent(print_target) + '&Selbstkosten=' + encodeURIComponent(sk);
-        fetchGet('new_meal.php?' + params)
-            .then(function(r) { return r.text().then(function(t) { return { ok: r.ok, t: t }; }); })
-            .then(function(x) {
-                if (x.ok && String(x.t).toLowerCase().indexOf('erfolgreich') !== -1) {
-                    manageReloadPositionsList();
-                } else {
-                    alert('Anlegen fehlgeschlagen: ' + (x.t || 'Serverfehler'));
-                }
-            })
-            .catch(function() { alert('Anlegen fehlgeschlagen (Netzwerk).'); });
-    }
-}
-
-                            function farbeSpeichern(tischnummer) {
-    var color = $('html5colorpicker' + tischnummer).value;
-    fetchPost('update_color.php', { color: color, tischnummer: tischnummer }).then(function() { loadTische(); });
-}
-
-                            function farbeSpeiseSpeichern(rowid) {
-    var color = $('html5colorpickerM' + rowid).value;
-    fetchPost('update_color_meal.php', { color: color, rowid: rowid }).then(function() { manageReloadPositionsList(); });
-}
-
-function updateType(rowid, type) {
-    fetchGet('update_type.php?rowid=' + encodeURIComponent(rowid) + '&type=' + encodeURIComponent(type))
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            manageReloadPositionsList();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function updatePrintTarget(rowid, print_target) {
-    fetchGet('update_print_target.php?rowid=' + encodeURIComponent(rowid) + '&print_target=' + encodeURIComponent(print_target))
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            manageReloadPositionsList();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function updatePositionFest(rowid, festId) {
-    rowid = parseInt(rowid, 10) || 0;
-    festId = parseInt(festId, 10) || 0;
-    if (rowid <= 0) return;
-    var endpoint = window.location.pathname.indexOf('/manage/') !== -1
-        ? 'update_position_fest.php'
-        : 'manage/update_position_fest.php';
-    fetch(new URL(endpoint, window.location.href), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ rowid: String(rowid), fest_id: String(festId) }).toString(),
-        cache: 'no-store',
-        credentials: 'same-origin'
-    })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.ok) {
-                ffShowToast(festId > 0 ? 'Position dem Fest zugeordnet.' : 'Position für alle Feste freigegeben.', 'success', 1800);
-            } else {
-                ffShowToast('Fest-Zuordnung konnte nicht gespeichert werden.', 'danger', 2500);
-            }
-        })
-        .catch(function() { ffShowToast('Fehler beim Speichern der Fest-Zuordnung.', 'danger', 2500); });
-}
-
-/** Druckziel bei „Nur Kasse“: ausgegraut, Anzeige „—“ (Wert bleibt in DB für späteres Abwählen). */
-window.ffSyncPrintTargetForKassa = function(printSelect, kassaChecked) {
-    if (!printSelect) return;
-    var cell = printSelect.closest('.ff-print-target-cell');
-    if (!cell) return;
-    var dash = cell.querySelector('.ff-pt-kassa-dash');
-    if (kassaChecked) {
-        if (!printSelect.dataset.ffPtOptions) {
-            printSelect.dataset.ffPtOptions = printSelect.innerHTML;
-            printSelect.dataset.ffPtValue = printSelect.value;
-        }
-        printSelect.style.display = 'none';
-        printSelect.disabled = true;
-        if (!dash) {
-            dash = document.createElement('span');
-            dash.className = 'ff-pt-kassa-dash form-control form-control-sm bg-light text-muted';
-            dash.textContent = '—';
-            dash.setAttribute('aria-hidden', 'true');
-            cell.appendChild(dash);
-        }
-        dash.style.display = 'block';
-    } else {
-        if (printSelect.dataset.ffPtOptions) {
-            printSelect.innerHTML = printSelect.dataset.ffPtOptions;
-            printSelect.value = printSelect.dataset.ffPtValue || printSelect.value;
-        }
-        printSelect.style.display = '';
-        printSelect.disabled = false;
-        if (dash) dash.style.display = 'none';
-    }
-};
-
-window.ffInitPrintTargetKassaRows = function() {
-    var main = $('mainContent');
-    if (!main) return;
-    main.querySelectorAll('tr').forEach(function(tr) {
-        var cb = tr.querySelector('input[onchange*="updateKassaOnly"]');
-        var sel = tr.querySelector('.ff-pos-print-target');
-        if (cb && sel) {
-            window.ffSyncPrintTargetForKassa(sel, cb.checked);
-        }
-    });
-    var newCb = $('pos_new_kassa_only');
-    var newSel = $('pos_print_target');
-    if (newCb && newSel) {
-        window.ffSyncPrintTargetForKassa(newSel, newCb.checked);
-    }
-};
-
-function updateKassaOnly(rowid, checked) {
-    var sel = document.querySelector('.ff-pos-print-target[data-rowid="' + rowid + '"]');
-    if (sel) window.ffSyncPrintTargetForKassa(sel, checked);
-    fetchGet('update_kassa_only.php?rowid=' + encodeURIComponent(rowid) + '&kassa_only=' + (checked ? '1' : '0'))
-        .then(function() {
-            ffShowToast('Gespeichert.', 'success');
-            manageReloadPositionsList();
-        })
-        .catch(function() { ffShowToast('Speichern fehlgeschlagen.', 'danger'); });
-}
-
-function ffSyncPosKassaFromSubcategory() {
-    var sub = $('posSubcategory'), cb = $('pos_new_kassa_only');
-    if (!sub || !cb || !sub.selectedOptions.length) return;
-    if (sub.selectedOptions[0].getAttribute('data-kassa-only') === '1') {
-        cb.checked = true;
-    }
-    var sel = $('pos_print_target');
-    if (sel) window.ffSyncPrintTargetForKassa(sel, cb.checked);
-}
-
-function savePositionMetaErr(e) {
-    var m = {
-        forbidden: 'Keine Berechtigung.',
-        bad_rowid: 'Ungültige Position.',
-        position_not_found: 'Position nicht gefunden.',
-        bad_subcategory: 'Unterkategorie passt nicht zum Typ (Speise/Getränk).',
-        bad_tile_bg: 'Kachelfarbe ungültig oder zu knalliges Rot/Orange.',
-        bad_color: 'Schriftfarbe ungültig (#RRGGBB).',
-        update_failed: 'Speichern fehlgeschlagen.'
-    };
-    return m[e] || e || 'Fehler';
-}
-
-function ffSyncPosPrintTargetDefault() {
-    var sel = $('pos_print_target'), cat = $('produktkategorie');
-    var kcb = $('pos_new_kassa_only');
-    if (!sel || !cat) return;
-    if (kcb && kcb.checked) return;
-    var want = parseInt(cat.value, 10) === 2 ? 12 : 11;
-    var found = false;
-    for (var i = 0; i < sel.options.length; i++) {
-        if (parseInt(sel.options[i].value, 10) === want) {
-            sel.selectedIndex = i;
-            found = true;
-            break;
-        }
-    }
-    if (!found && sel.options.length) sel.selectedIndex = 0;
-}
-
-function ffSyncPosSubcategoryOptions() {
-    var sel = $('posSubcategory');
-    if (!sel) return;
-    var t = parseInt($('produktkategorie') && $('produktkategorie').value ? $('produktkategorie').value : '1', 10);
-    var keep = 0;
-    for (var i = 0; i < sel.options.length; i++) {
-        var opt = sel.options[i];
-        var ot = parseInt(opt.getAttribute('data-type') || '0', 10);
-        if (ot === 0) { opt.hidden = false; continue; }
-        opt.hidden = (ot !== t);
-        if (!opt.hidden && opt.selected) keep = 1;
-    }
-    if (!keep && sel.selectedOptions.length && sel.selectedOptions[0].hidden) sel.value = '0';
-}
-
-function ffPmTileDefSync(rowid) {
-    var def = $('pm_tile_def_' + rowid), tile = $('pm_tile_' + rowid);
-    if (!def || !tile) return;
-    tile.style.opacity = def.checked ? '0.45' : '';
-}
-
-function manageApplySubcategoryRowsToSelects(rows) {
-    var sel = $('posSubcategory');
-    if (sel && rows) {
-        sel.innerHTML = '<option value="0" data-type="0">— keine —</option>';
-        rows.forEach(function(r) {
-            var opt = document.createElement('option');
-            opt.value = String(r.id);
-            opt.setAttribute('data-type', String(r.type));
-            opt.setAttribute('data-kassa-only', String(parseInt(r.kassa_only, 10) === 1 ? 1 : 0));
-            opt.textContent = (parseInt(r.type, 10) === 2 ? '[G] ' : '[S] ') + String(r.name) + (parseInt(r.kassa_only, 10) === 1 ? ' (Kasse)' : '');
-            sel.appendChild(opt);
-        });
-        ffSyncPosSubcategoryOptions();
-    }
-    document.querySelectorAll('select.ff-pm-sub').forEach(function(pmSel) {
-        var pt = parseInt(pmSel.getAttribute('data-pos-type') || '0', 10);
-        var prev = pmSel.value;
-        pmSel.innerHTML = '';
-        var o0 = document.createElement('option');
-        o0.value = '0';
-        o0.textContent = '— keine —';
-        pmSel.appendChild(o0);
-        (rows || []).forEach(function(r) {
-            if (parseInt(r.type, 10) !== pt) return;
-            var o = document.createElement('option');
-            o.value = String(r.id);
-            o.textContent = String(r.name);
-            pmSel.appendChild(o);
-        });
-        pmSel.value = prev;
-        if (pmSel.value !== prev) pmSel.value = '0';
-    });
-}
-
-// Auto-save: when meta fields change in the "Alle Positionen (erweitert)" table,
-// save automatically instead of requiring the per-row "Speichern" button.
-window._manageSaveTimers = window._manageSaveTimers || {};
-document.addEventListener('change', function(ev) {
-    try {
-        var t = ev.target;
-        if (!t) return;
-        var id = t.id || '';
-        var rowid = null;
-        var m;
-        if ((m = id.match(/^pm_tile_(\d+)$/))) rowid = m[1];
-        else if ((m = id.match(/^pm_color_(\d+)$/))) rowid = m[1];
-        else if ((m = id.match(/^pm_tile_def_(\d+)$/))) rowid = m[1];
-        else if (t.matches && t.matches('select.ff-pm-sub')) {
-            var tr = t.closest('tr.ff-manage-pos-row');
-            if (tr) rowid = tr.getAttribute('data-rowid');
-        }
-        if (!rowid) {
-            if (t.matches && t.matches('.ff-rez-group-comp, .ff-rez-group-qty, .ff-rez-group-optional, .ff-rez-group-default, .ff-rez-group-option, .ff-rez-group-order')) {
-                var groupTable = t.closest('table[data-position-id]');
-                if (groupTable) {
-                    var pid = parseInt(groupTable.getAttribute('data-position-id'), 10) || 0;
-                    if (pid > 0) {
-                        ffRezepturScheduleGroupAutosave(pid, groupTable);
-                        return;
-                    }
-                }
-            }
-            return;
-        }
-        rowid = parseInt(rowid, 10) || 0;
-        if (rowid <= 0) return;
-        // Farbe der Kachel gewählt: eigene Farbe statt Standard der Unterkategorie
-        if (/^pm_tile_\d+$/.test(id)) {
-            var defBox = $('pm_tile_def_' + rowid);
-            if (defBox) defBox.checked = false;
-            try { ffPmTileDefSync(rowid); } catch (e) {}
-        }
-        // If tile default checkbox changed, update UI immediately
-        if (id.indexOf('pm_tile_def_') === 0) {
-            try { ffPmTileDefSync(rowid); } catch (e) {}
-        }
-        // debounce per-row
-        try { if (window._manageSaveTimers[rowid]) clearTimeout(window._manageSaveTimers[rowid]); } catch (e) {}
-        window._manageSaveTimers[rowid] = setTimeout(function() {
-            try { manageSavePositionMeta(rowid); } catch (e) {}
-            try { delete window._manageSaveTimers[rowid]; } catch (e) {}
-        }, 320);
-    } catch (e) {}
-}, { passive: true });
-
-// Lightweight top-right toast message (auto-dismiss)
-function ffShowToast(message, type, timeout) {
-    timeout = (typeof timeout === 'number') ? timeout : 5000;
-    type = type || 'info';
-    try {
-        var container = document.getElementById('ffToastContainer');
-        if (!container) {
-            container = document.createElement('div');
-            container.id = 'ffToastContainer';
-            container.style.position = 'fixed';
-            container.style.top = '1rem';
-            container.style.right = '1rem';
-            container.style.zIndex = '1060';
-            container.style.display = 'flex';
-            container.style.flexDirection = 'column';
-            container.style.gap = '0.5rem';
-            document.body.appendChild(container);
-        }
-        var el = document.createElement('div');
-        el.className = 'ff-toast ff-toast-' + type;
-        el.style.minWidth = '180px';
-        el.style.padding = '0.6rem 0.9rem';
-        el.style.borderRadius = '6px';
-        el.style.boxShadow = '0 2px 10px rgba(0,0,0,0.12)';
-        el.style.color = '#fff';
-        el.style.opacity = '0';
-        el.style.transition = 'opacity 0.25s ease';
-        if (type === 'success') el.style.background = '#198754';
-        else if (type === 'danger') el.style.background = '#dc3545';
-        else el.style.background = '#0d6efd';
-        el.textContent = String(message || '');
-        el.onclick = function() { el.style.opacity = '0'; setTimeout(function(){ try{ el.remove(); }catch(e){} }, 250); };
-        container.appendChild(el);
-        requestAnimationFrame(function(){ el.style.opacity = '1'; });
-        setTimeout(function(){ el.style.opacity = '0'; setTimeout(function(){ try{ el.remove(); }catch(e){} }, 250); }, timeout);
-    } catch (e) { try { alert(message); } catch (e2) {} }
-}
-
-function manageSavePositionMeta(rowid) {
-    var sub = $('pm_sub_' + rowid), tile = $('pm_tile_' + rowid), col = $('pm_color_' + rowid), def = $('pm_tile_def_' + rowid);
-    if (!sub || !tile || !col) return;
-    var body = {
-        rowid: String(rowid),
-        subcategory_id: sub.value,
-        color: col.value,
-        tile_use_default: (def && def.checked) ? '1' : '0',
-        tile_bg: (def && def.checked) ? '' : tile.value
-    };
-    apiPost('position_meta_save.php', body)
-        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
-        .then(function(x) {
-            if (x.j && x.j.ok) ffShowToast('Gespeichert.', 'success');
-            else ffShowToast('Fehler: ' + savePositionMetaErr(x.j && x.j.error) + (x.j && x.j.detail ? ' ' + x.j.detail : ''), 'danger');
-        })
-        .catch(function() { ffShowToast('Fehler (Netzwerk).', 'danger'); });
-}
-
-function manageProduktNeu() {
-    ffSyncPosSubcategoryOptions();
-    var subSel = $('posSubcategory'), subId = '0';
-    if (subSel && subSel.selectedOptions.length) {
-        var o = subSel.selectedOptions[0];
-        var ot = parseInt(o.getAttribute('data-type') || '0', 10);
-        var t = parseInt($('produktkategorie').value, 10);
-        if (ot === 0 || ot === t) subId = subSel.value;
-    }
-    var tileBg = ($('pos_tile_bg') && $('pos_tile_bg').value) ? $('pos_tile_bg').value : '';
-    var d = {
-        Positionsname: $('Positionsname').value,
-        Kurzbezeichnung: ($('pos_new_kurz') ? $('pos_new_kurz').value : ''),
-        type: $('produktkategorie').value,
-        Betrag: $('Betrag').value,
-        Kapazitaet: $('Kapazitaet').value,
-        Selbstkosten: ($('Selbstkosten') && $('Selbstkosten').value !== '' ? $('Selbstkosten').value : '0'),
-        subcategory_id: subId,
-        tile_bg: tileBg,
-        print_target: ($('pos_print_target') && $('pos_print_target').value) ? $('pos_print_target').value : '',
-        kassa_only: ($('pos_new_kassa_only') && $('pos_new_kassa_only').checked) ? '1' : '0'
-    };
-    if (!d.Positionsname || !d.Betrag) { alert('Name und Preis erforderlich'); return; }
-    apiPost('produktNeu.php', d)
-        .then(function(r) { return r.text().then(function(t) { return { ok: r.ok, t: t }; }); })
-        .then(function(x) {
-            if (x.ok && String(x.t).indexOf('erfolgreich') !== -1) {
-                loadPositionsErweitert();
-            } else {
-                alert('Fehler: ' + (x.t || 'Server'));
-            }
-        })
-        .catch(function() { alert('Fehler'); });
-}
-
-function manageProduktLoeschen(rowid) {
-    if (!confirm('Position wirklich löschen?')) return;
-    apiPost('produkt_loeschen.php', { rowid: rowid })
-        .then(function() { loadPositionsErweitert(); })
-        .catch(function() { alert('Fehler'); });
-}
-
-function manageUpdateSelbstkosten(rowid, currentVal) {
-    var v = prompt('EK / Selbstkosten neu in € (Komma oder Punkt erlaubt):', currentVal);
-    if (v === null || String(v).trim() === '') return;
-    var num = parseFloat(String(v).replace(',', '.'));
-    if (isNaN(num) || num < 0) {
-        alert('Ungültiger Betrag.');
-        return;
-    }
-    apiPost('update_selbstkosten.php', { rowid: rowid, selbstkosten: num })
-        .then(function() { manageReloadPositionsList(); })
-        .catch(function() { alert('Fehler'); });
-}
-
-function manageUpdateKapazitaet(position, kapazitaet) {
-    var k = prompt('Neue Kapazität:', kapazitaet);
-    if (k === null) return;
-    apiGet('update_kapazitaet.php?rowid=' + encodeURIComponent(position) + '&kapazitaet=' + encodeURIComponent(k))
-        .then(function() { loadPositionsErweitert(); })
-        .catch(function() { alert('Fehler'); });
-}
-
-function manageSubcategoryReload() {
-    apiGet('subcategories_admin_api.php')
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (!d || !d.ok) return;
-            var tbody = $('subcategoriesTbodyManage');
-            if (tbody) {
-                tbody.innerHTML = '';
-                if (!d.rows || !d.rows.length) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Noch keine Unterkategorien.</td></tr>';
-                } else {
-                    d.rows.forEach(function(r) {
-                        var typ = parseInt(r.type, 10) === 2 ? 'Getränk' : 'Speise';
-                        var id = parseInt(r.id, 10);
-                        var pick = String(r.tile_bg || '').trim();
-                        if (!/^#[0-9A-Fa-f]{6}$/i.test(pick)) {
-                            pick = /^[0-9A-Fa-f]{6}$/i.test(pick) ? ('#' + pick) : '#ffffff';
-                        }
-                        var tr = document.createElement('tr');
-                        var kassaChk = parseInt(r.kassa_only, 10) === 1 ? ' checked' : '';
-                        tr.setAttribute('data-subcategory-id', String(id));
-                        tr.innerHTML = '<td class="py-0 px-1"><input type="number" class="form-control form-control-sm px-1 py-0" style="width:3.8em" id="subcat_sort_' + id + '" value="' + String(r.sort_order) + '"></td>' +
-                            '<td class="py-0 text-nowrap">' + typ + '</td><td class="py-0">' + String(r.name) + '</td>' +
-                            '<td class="py-0 px-1"><input type="color" class="form-control form-control-color p-0" style="width:2em;height:1.6em" id="subcat_color_' + id + '" value="' + pick + '"></td>' +
-                            '<td class="py-0 px-1 text-center"><input type="checkbox" class="form-check-input" id="subcat_kassa_' + id + '"' + kassaChk + ' title="Nur Direktverkauf"></td>' +
-                            '<td class="py-0 px-1"><button type="button" class="btn btn-sm btn-outline-danger ff-icon-action py-0 px-1" data-did="' + id + '" title="Unterkategorie löschen" aria-label="Unterkategorie löschen">&#128465;</button></td>';
-                        tr.querySelector('[data-did]').onclick = function() { manageSubcategoryDelete(id); };
-                        tbody.appendChild(tr);
-                    });
-                }
-            }
-            manageSubcategoryBindAutosave();
-            manageApplySubcategoryRowsToSelects(d.rows || []);
-        })
-        .catch(function() { alert('Unterkategorien konnten nicht geladen werden.'); });
-}
-
-function manageSubcategoryBindAutosave() {
-    var tbody = $('subcategoriesTbodyManage');
-    if (!tbody || tbody.getAttribute('data-autosave-bound') === '1') return;
-    tbody.setAttribute('data-autosave-bound', '1');
-    tbody.addEventListener('input', function(ev) {
-        if (!ev.target.matches('input')) return;
-        ev.target.dataset.ffDirty = '1';
-        manageSubcategoryScheduleAutosave(ev.target.closest('tr'));
-    });
-    tbody.addEventListener('change', function(ev) {
-        if (!ev.target.matches('input')) return;
-        ev.target.dataset.ffDirty = '1';
-        manageSubcategoryScheduleAutosave(ev.target.closest('tr'));
-    });
-    tbody.addEventListener('blur', function(ev) {
-        if (!ev.target.matches('input') || !ev.target.dataset.ffDirty) return;
-        var row = ev.target.closest('tr');
-        manageSubcategoryCancelTimer(row);
-        manageSubcategorySave(true, row);
-    }, true);
-}
-
-function manageSubcategoryScheduleAutosave(row) {
-    if (!row) return;
-    window._ffSubcategoryAutosaveTimers = window._ffSubcategoryAutosaveTimers || new WeakMap();
-    manageSubcategoryCancelTimer(row);
-    window._ffSubcategoryAutosaveTimers.set(row, setTimeout(function() {
-        window._ffSubcategoryAutosaveTimers.delete(row);
-        manageSubcategorySave(true, row);
-    }, 700));
-}
-
-function manageSubcategoryCancelTimer(row) {
-    if (!row || !window._ffSubcategoryAutosaveTimers) return;
-    var timer = window._ffSubcategoryAutosaveTimers.get(row);
-    if (timer) clearTimeout(timer);
-    window._ffSubcategoryAutosaveTimers.delete(row);
-}
-
-function manageSubcategorySave(autoSave, changedRow) {
-    manageSubcategoryCancelTimer(changedRow);
-    var id = changedRow ? parseInt(changedRow.getAttribute('data-subcategory-id'), 10) : 0;
-    if (!id) return;
-    var sortEl = $('subcat_sort_' + id), colEl = $('subcat_color_' + id), kassaEl = $('subcat_kassa_' + id);
-    if (!sortEl || !colEl) return;
-    apiPost('subcategories_admin_api.php', {
-        action: 'update',
-        id: String(id),
-        sort_order: String(sortEl.value || '0'),
-        tile_bg: colEl.value || '',
-        kassa_only: (kassaEl && kassaEl.checked) ? '1' : '0'
-    })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.ok) {
-                if (changedRow) changedRow.querySelectorAll('input').forEach(function(input) { delete input.dataset.ffDirty; });
-                ffShowToast('Unterkategorie gespeichert.', 'success', 1400);
-            } else {
-                ffShowToast('Unterkategorie konnte nicht gespeichert werden.', 'danger', 2500);
-            }
-        })
-        .catch(function() { ffShowToast('Fehler (Netzwerk).', 'danger'); });
-}
-
-function ffOpenNewSubcatModal() {
-    var m = $('ffNewSubcatModal');
-    if (!m) return;
-    m.style.display = 'block';
-    if ($('subcat_new_name')) $('subcat_new_name').focus();
-}
-
-function ffCloseNewSubcatModal() {
-    var m = $('ffNewSubcatModal');
-    if (m) m.style.display = 'none';
-}
-
-function manageSubcategoryAdd() {
-    var typ = $('subcat_new_type').value;
-    var name = ($('subcat_new_name').value || '').trim();
-    var sort = parseInt($('subcat_new_sort').value, 10) || 0;
-    var col = $('subcat_new_color').value || '';
-    if (!name) { alert('Name eingeben'); return; }
-    var kassaOnly = ($('subcat_new_kassa_only') && $('subcat_new_kassa_only').checked) ? '1' : '0';
-    apiPost('subcategories_admin_api.php', { action: 'add', type: typ, name: name, sort_order: String(sort), tile_bg: col, kassa_only: kassaOnly })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.ok) {
-                if ($('subcat_new_name')) $('subcat_new_name').value = '';
-                ffCloseNewSubcatModal();
-                manageSubcategoryReload();
-                ffShowToast('Unterkategorie angelegt.', 'success');
-            } else alert('Fehler: ' + (d && d.error ? d.error : ''));
-        })
-        .catch(function() { ffShowToast('Fehler', 'danger'); });
-}
-
-function manageSubcategoryDelete(id) {
-    if (!confirm('Unterkategorie löschen? Positionen werden auf „ohne Unterkategorie“ gesetzt.')) return;
-    apiPost('subcategories_admin_api.php', { action: 'delete', id: String(id) })
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            if (d && d.ok) { manageSubcategoryReload(); alert('Unterkategorie gelöscht.'); }
-            else alert('Fehler');
-        })
-        .catch(function() { alert('Fehler'); });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    var h = window.location.hash || '';
-    if (h === '#beilagen') {
-        loadBeilagenZusatzinfos();
-    } else if (h === '#speisen') {
-        loadSpeisen();
-    } else if (h === '#getraenke') {
-        loadGetraenke();
-    } else if (h === '#apidevice') {
-        loadApiDeviceConfig();
-    } else if (h === '#sub') {
-        loadSubcategories();
-    } else if (h === '#bestandteile') {
-        loadBestandteile();
-    } else if (h === '#rez') {
-        loadRezepturen();
-    } else if (h === '#lock') {
-        loadSperren();
-    } else if (h === '#tische') {
-        loadTische();
-    } else {
-        loadPositionsErweitert();
-    }
-});
-        </script>
-    </body>
+        <div class="tischplan-container">
+          <div 
+            class="tischplan-grid"
+            :class="{ 'is-dragging-active': !!draggedTable }"
+            :style="{ gridTemplateColumns: `repeat(${tischplanDimensions.width}, minmax(96px, 1fr))` }"
+          >
+            <div
+              v-for="cell in tischplanCells"
+              :key="cell.key"
+              class="tischplan-cell"
+              :class="{
+                empty: !cell.table,
+                'table-busy': !!cell.table,
+                'drag-over': dragOverCell?.x === cell.x && dragOverCell?.y === cell.y,
+                'is-dragging': draggedTable?.tischnummer === cell.table?.tischnummer
+              }"
+              :style="cell.table ? {
+                borderColor: cell.table.color || 'var(--border)',
+                background: cell.table.is_ehrengast ? '#ede9fe' : (cell.table.is_sammelrechnung ? '#dbeafe' : '#f0fdf4')
+              } : {}"
+              :draggable="!!cell.table"
+              @dragstart="onTableDragStart($event, cell.table)"
+              @dragend="onTableDragEnd"
+              @dragover.prevent="onCellDragOver($event, cell.x, cell.y)"
+              @dragleave="onCellDragLeave($event, cell.x, cell.y)"
+              @drop.prevent="onCellDrop($event, cell.x, cell.y)"
+              @click="onTischplanCellClick(cell.x, cell.y)"
+              :title="cell.table ? `Tisch #${cell.table.tischnummer}: ${cell.table.tischname} (Klick zum Bearbeiten, Ziehen zum Verschieben)` : `Feld (${cell.x}, ${cell.y}) – Klick zum Anlegen`"
+            >
+              <template v-if="cell.table">
+                <div class="t-num">#{{ cell.table.tischnummer }}</div>
+                <div class="t-name">{{ cell.table.tischname }}</div>
+                <div class="t-flags-row">
+                  <button 
+                    type="button" 
+                    class="t-flag-btn" 
+                    :class="{ 't-flag-sr-on': cell.table.is_sammelrechnung }"
+                    @click.stop="toggleTableFlag(cell.table.tischnummer, 'sr', cell.table.is_sammelrechnung ? 1 : 0)"
+                    title="Sammelrechnung (SR) per Klick umschalten"
+                  >SR</button>
+                  <button 
+                    type="button" 
+                    class="t-flag-btn" 
+                    :class="{ 't-flag-eg-on': cell.table.is_ehrengast }"
+                    @click.stop="toggleTableFlag(cell.table.tischnummer, 'eg', cell.table.is_ehrengast ? 1 : 0)"
+                    title="Ehrengast (EG) per Klick umschalten"
+                  >EG</button>
+                </div>
+              </template>
+              <template v-else>
+                <span style="font-size: 0.85rem; color: var(--text-muted); opacity: 0.5;">+</span>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANSICHT 2: Tabellen-Liste -->
+      <div v-else class="manage-card">
+        <div class="table-responsive">
+          <table class="table-clean">
+            <thead>
+              <tr>
+                <th style="width:90px;">Tischnummer</th>
+                <th>Tischname</th>
+                <th style="width:100px;">Farbe</th>
+                <th style="width:110px;">Position (X / Y)</th>
+                <th style="width:100px;">Sortierung</th>
+                <th style="text-align:center;">Sammelrechnung</th>
+                <th style="text-align:center;">Ehrengast</th>
+                <th style="text-align:right;">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in tables" :key="t.tischnummer">
+                <td style="font-weight:700;">#{{ t.tischnummer }}</td>
+                <td style="font-weight:600; color:var(--text-main);">{{ t.tischname }}</td>
+                <td>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span :style="'width:18px; height:18px; border-radius:50%; border:1px solid #cbd5e1; background:' + (t.color || '#000000')"></span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">{{ t.color }}</span>
+                  </div>
+                </td>
+                <td style="font-size:0.85rem; color:var(--text-muted);">
+                  X: {{ t.x }} / Y: {{ t.y }}
+                </td>
+                <td>{{ t.sort_order }}</td>
+                <td style="text-align:center;">
+                  <span v-if="t.is_sammelrechnung" class="badge-clean" style="background:#e0e7ff; color:#3730a3;">Sammel</span>
+                  <span v-else style="color:var(--text-muted); font-size:0.85rem;">–</span>
+                </td>
+                <td style="text-align:center;">
+                  <span v-if="t.is_ehrengast" class="badge-clean" style="background:#fef3c7; color:#92400e;">Ehrengast</span>
+                  <span v-else style="color:var(--text-muted); font-size:0.85rem;">–</span>
+                </td>
+                <td style="text-align:right;">
+                  <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditTableModal(t)">✏️</button>
+                  <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deleteTable(t)">🗑️</button>
+                </td>
+              </tr>
+
+              <tr v-if="tables.length === 0">
+                <td colspan="8" style="text-align:center; padding:40px; color:var(--text-muted);">
+                  Noch keine Tische vorhanden.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODALS                                                                -->
+  <!-- ===================================================================== -->
+
+  <!-- Modal: Position anlegen / bearbeiten -->
+  <div v-if="posModal.open" class="modal-backdrop-clean" @click.self="posModal.open = false">
+    <div class="modal-dialog-clean">
+      <div class="modal-header-clean">
+        <h3>{{ posModal.isNew ? 'Neue Position anlegen' : 'Position bearbeiten' }}</h3>
+        <button type="button" class="btn-icon" @click="posModal.open = false">✕</button>
+      </div>
+      <div class="modal-body-clean">
+        <div class="form-group-clean">
+          <label>Positionsname *</label>
+          <input type="text" v-model="posModal.form.Positionsname" placeholder="z. B. Grillhuhn mit Pommes">
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Kurzbezeichnung</label>
+            <input type="text" v-model="posModal.form.Kurzbezeichnung" placeholder="z. B. Grillhuhn">
+          </div>
+          <div class="form-group-clean">
+            <label>Typ *</label>
+            <select v-model="posModal.form.type">
+              <option :value="1">🍔 Speise (Type 1)</option>
+              <option :value="2">🍺 Getränk (Type 2)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Verkaufspreis (€) *</label>
+            <input type="text" v-model="posModal.form.Betrag" placeholder="0.00">
+          </div>
+          <div class="form-group-clean">
+            <label>Selbstkosten / EK (€)</label>
+            <input type="text" v-model="posModal.form.selbstkosten" placeholder="0.00">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Unterkategorie</label>
+            <select v-model="posModal.form.subcategory_id">
+              <option :value="0">Keine Unterkategorie</option>
+              <option v-for="s in subcategories" :key="s.id" :value="s.id">
+                {{ s.type === 2 ? '🍺' : '🍔' }} {{ s.name }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group-clean">
+            <label>Druckziel *</label>
+            <select v-model="posModal.form.print_target">
+              <option v-for="pt in printTargets" :key="pt.id" :value="pt.id">
+                {{ pt.name }} ({{ pt.id }})
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Kachelfarbe (Hex)</label>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="color" v-model="posModal.form.tile_bg" style="width:44px; height:38px; padding:2px;">
+              <input type="text" v-model="posModal.form.tile_bg" placeholder="#ffffff">
+            </div>
+          </div>
+          <div class="form-group-clean">
+            <label>Schriftfarbe</label>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="color" v-model="posModal.form.color" style="width:44px; height:38px; padding:2px;">
+              <input type="text" v-model="posModal.form.color" placeholder="#000000">
+            </div>
+          </div>
+        </div>
+
+        <div v-if="feste.length > 1" class="form-group-clean">
+          <label>Fest-Zuordnung</label>
+          <select v-model="posModal.form.fest_id">
+            <option value="">Global (in allen Festen sichtbar)</option>
+            <option v-for="f in feste" :key="f.id" :value="String(f.id)">
+              Fest: {{ f.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="form-group-clean" style="margin-top:12px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none;">
+            <input type="checkbox" v-model="posModal.form.kassa_only">
+            <span><strong>Nur Kassa:</strong> Artikel nur im Direktverkauf anzeigen (nicht für Kellner).</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer-clean">
+        <button type="button" class="btn-clean btn-outline-clean" @click="posModal.open = false">Abbrechen</button>
+        <button type="button" class="btn-clean btn-primary-clean" :disabled="saving" @click="savePositionModal">
+          <span v-if="saving">Speichert...</span>
+          <span v-else>Speichern</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Tisch anlegen / bearbeiten -->
+  <div v-if="tableModal.open" class="modal-backdrop-clean" @click.self="tableModal.open = false">
+    <div class="modal-dialog-clean">
+      <div class="modal-header-clean">
+        <h3>{{ tableModal.isNew ? 'Neuen Tisch anlegen' : 'Tisch bearbeiten' }}</h3>
+        <button type="button" class="btn-icon" @click="tableModal.open = false">✕</button>
+      </div>
+      <div class="modal-body-clean">
+        <div style="display:grid; grid-template-columns: 120px 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Nummer *</label>
+            <input type="number" v-model.number="tableModal.form.tischnummer" :disabled="!tableModal.isNew">
+          </div>
+          <div class="form-group-clean">
+            <label>Tischname *</label>
+            <input type="text" v-model="tableModal.form.tischname" placeholder="z. B. Tisch 12 oder Zelt A">
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Farbe</label>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="color" v-model="tableModal.form.color" style="width:40px; height:38px; padding:2px;">
+              <input type="text" v-model="tableModal.form.color" placeholder="#000000">
+            </div>
+          </div>
+          <div class="form-group-clean">
+            <label>Koordinate X</label>
+            <input type="number" v-model.number="tableModal.form.x">
+          </div>
+          <div class="form-group-clean">
+            <label>Koordinate Y</label>
+            <input type="number" v-model.number="tableModal.form.y">
+          </div>
+        </div>
+
+        <div class="form-group-clean" style="margin-top:10px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none;">
+            <input type="checkbox" v-model="tableModal.form.is_sammelrechnung">
+            <span><strong>Sammelrechnung:</strong> Alle Bestellungen an diesem Tisch automatisch auf Sammelrechnung buchen.</span>
+          </label>
+        </div>
+
+        <div class="form-group-clean">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none;">
+            <input type="checkbox" v-model="tableModal.form.is_ehrengast">
+            <span><strong>Ehrengast:</strong> Freiverzehr für diesen Tisch.</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer-clean">
+        <button type="button" class="btn-clean btn-outline-clean" @click="tableModal.open = false">Abbrechen</button>
+        <button type="button" class="btn-clean btn-primary-clean" :disabled="saving" @click="saveTableModal">
+          <span v-if="saving">Speichert...</span>
+          <span v-else>Speichern</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Unterkategorie anlegen / bearbeiten -->
+  <div v-if="subcatModal.open" class="modal-backdrop-clean" @click.self="subcatModal.open = false">
+    <div class="modal-dialog-clean">
+      <div class="modal-header-clean">
+        <h3>{{ subcatModal.isNew ? 'Neue Unterkategorie' : 'Unterkategorie bearbeiten' }}</h3>
+        <button type="button" class="btn-icon" @click="subcatModal.open = false">✕</button>
+      </div>
+      <div class="modal-body-clean">
+        <div class="form-group-clean">
+          <label>Name der Unterkategorie *</label>
+          <input type="text" v-model="subcatModal.form.name" placeholder="z. B. Burger, Pfanne, Schnaps">
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Haupttyp *</label>
+            <select v-model="subcatModal.form.type">
+              <option :value="1">🍔 Speisen</option>
+              <option :value="2">🍺 Getränke</option>
+            </select>
+          </div>
+          <div class="form-group-clean">
+            <label>Sortierung</label>
+            <input type="number" v-model.number="subcatModal.form.sort_order">
+          </div>
+        </div>
+
+        <div class="form-group-clean">
+          <label>Kachel-Hintergrundfarbe (tile_bg)</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="color" v-model="subcatModal.form.tile_bg" style="width:44px; height:38px; padding:2px;">
+            <input type="text" v-model="subcatModal.form.tile_bg" placeholder="#ffffff">
+          </div>
+        </div>
+
+        <div class="form-group-clean" style="margin-top:10px;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none;">
+            <input type="checkbox" v-model="subcatModal.form.kassa_only">
+            <span><strong>Nur Kassa:</strong> Gesamte Unterkategorie nur im Direktverkauf anzeigen.</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer-clean">
+        <button type="button" class="btn-clean btn-outline-clean" @click="subcatModal.open = false">Abbrechen</button>
+        <button type="button" class="btn-clean btn-primary-clean" :disabled="saving" @click="saveSubcatModal">
+          <span v-if="saving">Speichert...</span>
+          <span v-else>Speichern</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Zusatzinfos / Beilagen -->
+  <div v-if="beilagenModal.open" class="modal-backdrop-clean" @click.self="beilagenModal.open = false">
+    <div class="modal-dialog-clean" style="max-width:700px;">
+      <div class="modal-header-clean">
+        <div>
+          <h3 style="margin:0;">Zusatzinfos &amp; Beilagen</h3>
+          <p style="margin:2px 0 0 0; font-size:0.85rem; color:var(--text-muted);">
+            für: <strong>{{ beilagenModal.position ? beilagenModal.position.Positionsname : '' }}</strong>
+          </p>
+        </div>
+        <button type="button" class="btn-icon" @click="beilagenModal.open = false">✕</button>
+      </div>
+
+      <div class="modal-body-clean">
+        <!-- Neue Zusatzinfo anlegen -->
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:12px; margin-bottom:16px;">
+          <div style="font-weight:600; font-size:0.85rem; margin-bottom:8px;">Neue Zusatzinfo hinzufügen:</div>
+          <div style="display:grid; grid-template-columns: 1fr 120px auto; gap:8px;">
+            <input type="text" v-model="beilagenModal.newName" placeholder="z. B. Pommes oder ohne Zwiebel">
+            <input type="text" v-model="beilagenModal.newBetrag" placeholder="Aufpreis € (0.00)">
+            <button type="button" class="btn-clean btn-primary-clean" @click="addBeilage()">+ Hinzufügen</button>
+          </div>
+        </div>
+
+        <!-- Häufige Freitexte mit 1-Klick Vorschlag -->
+        <div v-if="beilagenModal.freetexts && beilagenModal.freetexts.length > 0" style="margin-bottom:16px;">
+          <div style="font-size:0.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px;">
+            Häufige Freitexte aus bisherigen Bestellungen:
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px;">
+            <button v-for="ft in beilagenModal.freetexts" :key="ft.name" 
+                    type="button" 
+                    class="btn-clean btn-outline-clean" 
+                    style="padding:3px 8px; font-size:0.78rem;"
+                    @click="addBeilage(ft.name)">
+              + {{ ft.name }} ({{ ft.cnt }}x)
+            </button>
+          </div>
+        </div>
+
+        <!-- Vorhandene Zusatzinfos Liste -->
+        <div class="table-responsive">
+          <table class="table-clean">
+            <thead>
+              <tr>
+                <th>Bezeichnung</th>
+                <th style="width:120px;">Aufpreis (€)</th>
+                <th style="text-align:right; width:60px;">Aktion</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="b in beilagenModal.rows" :key="b.rowid">
+                <td style="font-weight:500;">{{ b.name }}</td>
+                <td>{{ parseFloat(b.betrag || 0).toFixed(2) }} €</td>
+                <td style="text-align:right;">
+                  <button type="button" class="btn-icon btn-icon-danger" @click="deleteBeilage(b)">🗑️</button>
+                </td>
+              </tr>
+              <tr v-if="beilagenModal.rows.length === 0">
+                <td colspan="3" style="text-align:center; padding:20px; color:var(--text-muted);">
+                  Keine Zusatzinfos hinterlegt.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer-clean">
+        <button type="button" class="btn-clean btn-primary-clean" @click="beilagenModal.open = false">Fertig</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Rezepturen & Rohstoffe -->
+  <div v-if="rezepturModal.open" class="modal-backdrop-clean" @click.self="rezepturModal.open = false">
+    <div class="modal-dialog-clean" style="max-width:800px;">
+      <div class="modal-header-clean">
+        <div>
+          <h3 style="margin:0;">Rezeptur / Rohstoffe</h3>
+          <p style="margin:2px 0 0 0; font-size:0.85rem; color:var(--text-muted);">
+            für: <strong>{{ rezepturModal.position ? rezepturModal.position.Positionsname : '' }}</strong>
+          </p>
+        </div>
+        <button type="button" class="btn-icon" @click="rezepturModal.open = false">✕</button>
+      </div>
+
+      <div class="modal-body-clean">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <span style="font-size:0.85rem; color:var(--text-muted);">Zutaten &amp; Mengen für Küchenprognose:</span>
+          <button type="button" class="btn-clean btn-outline-clean" style="padding:4px 10px; font-size:0.8rem;" @click="addRezepturRow">
+            + Zutat hinzufügen
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table-clean">
+            <thead>
+              <tr>
+                <th>Bestandteil / Zutat</th>
+                <th style="width:120px;">Menge</th>
+                <th style="width:120px;">Gruppe</th>
+                <th style="text-align:right; width:60px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, idx) in rezepturModal.rows" :key="idx">
+                <td>
+                  <select v-model="row.bestandteil_id" class="filter-select" style="width:100%;">
+                    <option v-for="b in rezepturModal.bestandteile" :key="b.id" :value="b.id">
+                      {{ b.name }} ({{ b.einheit }})
+                    </option>
+                  </select>
+                </td>
+                <td>
+                  <input type="number" step="0.01" v-model.number="row.menge" class="inline-edit-input" style="width:100%; border:1px solid var(--border);">
+                </td>
+                <td>
+                  <input type="text" v-model="row.gruppe" placeholder="Standard" class="inline-edit-input" style="width:100%; border:1px solid var(--border);">
+                </td>
+                <td style="text-align:right;">
+                  <button type="button" class="btn-icon btn-icon-danger" @click="removeRezepturRow(idx)">✕</button>
+                </td>
+              </tr>
+              <tr v-if="rezepturModal.rows.length === 0">
+                <td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted);">
+                  Noch keine Rezeptur hinterlegt.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer-clean">
+        <button type="button" class="btn-clean btn-outline-clean" @click="rezepturModal.open = false">Abbrechen</button>
+        <button type="button" class="btn-clean btn-primary-clean" @click="saveRezeptur">Rezeptur speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Tisch anlegen / bearbeiten -->
+  <div v-if="tableModal.open" class="modal-backdrop-clean" @click.self="tableModal.open = false">
+    <div class="modal-dialog-clean" style="max-width:500px;">
+      <div class="modal-header-clean">
+        <h3>{{ tableModal.isNew ? 'Neuen Tisch anlegen' : 'Tisch #' + tableModal.form.tischnummer + ' bearbeiten' }}</h3>
+        <button type="button" class="btn-icon" @click="tableModal.open = false">✕</button>
+      </div>
+      <div class="modal-body-clean">
+        <div class="form-group-clean">
+          <label>Tischnummer *</label>
+          <input type="number" v-model.number="tableModal.form.tischnummer" :disabled="!tableModal.isNew">
+        </div>
+        <div class="form-group-clean">
+          <label>Tischname *</label>
+          <input type="text" v-model="tableModal.form.tischname" placeholder="z. B. Tisch 12">
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div class="form-group-clean">
+            <label>Position X (Spalte)</label>
+            <input type="number" v-model.number="tableModal.form.x" min="1" placeholder="1">
+          </div>
+          <div class="form-group-clean">
+            <label>Position Y (Zeile)</label>
+            <input type="number" v-model.number="tableModal.form.y" min="1" placeholder="1">
+          </div>
+        </div>
+        <div class="form-group-clean">
+          <label>Raster-Farbe</label>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="color" v-model="tableModal.form.color" style="width:48px; height:38px; padding:2px; cursor:pointer;">
+            <input type="text" v-model="tableModal.form.color" placeholder="#ffffff" style="flex:1; font-family:monospace;">
+          </div>
+        </div>
+        <div class="form-group-clean" style="background:#f8fafc; padding:12px; border-radius:8px; border:1px solid var(--border); margin-top:8px;">
+          <div style="font-weight:600; font-size:0.85rem; margin-bottom:8px;">Abrechnungsmodus:</div>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:8px; text-transform:none; font-size:0.9rem;">
+            <input type="checkbox" v-model="tableModal.form.is_sammelrechnung" @change="if (tableModal.form.is_sammelrechnung) tableModal.form.is_ehrengast = false;">
+            <span><strong>Sammelrechnung (SR):</strong> Tisch zahlt gesammelt am Ende</span>
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-size:0.9rem;">
+            <input type="checkbox" v-model="tableModal.form.is_ehrengast" @change="if (tableModal.form.is_ehrengast) tableModal.form.is_sammelrechnung = false;">
+            <span><strong>Ehrengast (EG):</strong> Freiverzehr (zahlt nie)</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer-clean" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <button v-if="!tableModal.isNew" type="button" class="btn-clean btn-icon-danger" style="border:1px solid #ef4444; padding:6px 12px; border-radius:6px; font-size:0.85rem;" @click="deleteTable(tableModal.form); tableModal.open = false;">
+            🗑️ Tisch löschen
+          </button>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn-clean btn-outline-clean" @click="tableModal.open = false">Abbrechen</button>
+          <button type="button" class="btn-clean btn-primary-clean" :disabled="saving" @click="saveTableModal">
+            <span v-if="saving">Speichert...</span>
+            <span v-else>Speichern</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Benachrichtigung -->
+  <div v-if="toast" class="manage-toast" :class="'toast-' + toast.type">
+    <span>{{ toast.type === 'error' ? '⚠️' : '✓' }}</span>
+    <span>{{ toast.text }}</span>
+  </div>
+
+</div>
+
+<!-- Vue 3 Application Script -->
+<script type="module" src="manage.js?v=<?php echo (int)filemtime(__DIR__ . '/manage.js'); ?>"></script>
+</body>
 </html>

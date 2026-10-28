@@ -5,9 +5,12 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/ff_bestellung_storno.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache');
+
+ff_csrf_require();
 
 if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     http_response_code(403);

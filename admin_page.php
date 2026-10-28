@@ -241,6 +241,8 @@ $ffInstanceUrl = $ffInstanceHost !== ''
 
 // Immer vollständige HTML-Seite ausgeben
 echo '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+echo '<meta name="csrf-token" content="' . htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8') . '">';
+echo '<script>window.FF_CSRF_TOKEN = ' . json_encode(ff_csrf_token()) . ';</script>';
 echo '<title>Admin – ' . htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8') . '</title>';
 echo ff_favicon_link_tags($conn);
 $ffStyleCssMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'style.css');
@@ -257,6 +259,8 @@ echo '<script>window.ffIsSuperAdmin=' . json_encode((bool)$isSuperAdmin, JSON_UN
     . ';window.ffIsFinanceAdmin=' . json_encode($adminLevel >= 1, JSON_UNESCAPED_UNICODE)
     . ';window.__FF_ADMIN_DASHBOARD_INIT=' . $ffDashInlineJson . ';</script>';
 echo '<script defer src="admin_main_js.php' . htmlspecialchars($ffAdminMainJsQs, ENT_QUOTES, 'UTF-8') . '"></script>';
+echo '<script>window.FF_PWA_NO_RELOAD=true;</script>';
+echo '<script defer src="js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1) . '"></script>';
 $ffAdminFinJsMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'admin_finance.js');
 $ffAdminFinJsQs = $ffAdminFinJsMtime ? ('?v=' . (int)$ffAdminFinJsMtime) : '';
 echo '<script defer src="js/admin_finance.js' . htmlspecialchars($ffAdminFinJsQs, ENT_QUOTES, 'UTF-8') . '"></script>';
@@ -285,20 +289,29 @@ function ffResolveAdminApiUrl(url) {
     }
 }
 function fetchGet(url) {
+    var csrf = window.FF_CSRF_TOKEN || (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '') || '';
     return fetch(ffResolveAdminApiUrl(url), {
         cache: 'no-store',
         credentials: 'same-origin',
         headers: {
             'Accept': 'application/json, text/javascript, */*;q=0.01',
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf
         }
     });
 }
 function fetchPost(url, data) {
+    var csrf = window.FF_CSRF_TOKEN || (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '') || '';
     var body;
     if (typeof data === 'string') {
         body = data;
+        if (csrf && body.indexOf('csrf_token=') === -1 && body.indexOf('csrf=') === -1) {
+            body += (body ? '&' : '') + 'csrf_token=' + encodeURIComponent(csrf);
+        }
     } else {
+        if (csrf && data && typeof data === 'object' && !data.csrf_token && !data.csrf) {
+            data.csrf_token = csrf;
+        }
         body = new URLSearchParams(data).toString();
     }
     return fetch(ffResolveAdminApiUrl(url), {
@@ -306,7 +319,8 @@ function fetchPost(url, data) {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json, text/javascript, */*;q=0.01',
-            'X-Requested-With': 'XMLHttpRequest'
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf
         },
         body: body,
         cache: 'no-store',
@@ -364,32 +378,36 @@ function BenutzerNeu() {
 </script>
 <nav class="navbar navbar-expand-lg admin-navbar">
     <div class="container-fluid">
-        <a href="index.php" class="btn btn-link text-decoration-none px-2">&larr; Zur&uuml;ck</a>
-        <span class="navbar-brand mb-0 flex-grow-1 text-center d-lg-none">Admin – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></span>
+        <a href="index.php" class="btn btn-link text-decoration-none px-2 ff-admin-home" aria-label="Zur&uuml;ck zum Hauptmen&uuml;" title="Hauptmen&uuml;"><svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L2 8.207V13.5A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5V8.207l.646.647a.5.5 0 0 0 .708-.708L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293zM13 7.207V13.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V7.207l5-5z"/></svg></a>
+        <span class="navbar-brand mb-0 flex-grow-1 text-end pe-2 d-lg-none">Admin</span>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#ffAdminPageMenu" aria-controls="ffAdminPageMenu" aria-expanded="false" aria-label="Menü umschalten">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse flex-grow-0" id="ffAdminPageMenu">
             <span class="navbar-brand mb-0 d-none d-lg-inline">Admin – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></span>
             <ul class="navbar-nav ff-admin-page-nav">
-                <li class="nav-item"><button type="button" class="nav-link btn btn-link ff-admin-page-link active" data-ff-page="uebersicht">Übersicht</button></li>
+                <li class="nav-item"><button type="button" class="nav-link btn btn-link ff-admin-page-link active" data-ff-page="uebersicht"><span class="ff-nav-ico d-lg-none" aria-hidden="true">📊</span>Übersicht</button></li>
                 <li class="nav-item dropdown ff-admin-nav-group">
-                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Stammdaten</button>
+                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><span class="ff-nav-ico d-lg-none" aria-hidden="true">🗂️</span>Stammdaten</button>
                     <ul class="dropdown-menu">
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-tische">Tische</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-tischplan">Tischplan</button></li>
-                        <li><button type="button" class="dropdown-item" id="ffGenerateTableTokensBtn">Table-Tokens generieren</button></li>
-                        <li><a class="dropdown-item" href="qr_codes.php" target="_blank" rel="noopener">QR-Codes anzeigen</a></li>
-                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-einstellungen">System-Einstellungen</button></li>
+                        <li><button type="button" class="dropdown-item ff-sub-item" id="ffGenerateTableTokensBtn">Table-Tokens generieren</button></li>
+                        <li><a class="dropdown-item ff-sub-item" href="qr_codes.php" target="_blank" rel="noopener">QR-Codes anzeigen</a></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-einstellungen">Allgemeine Einstellungen</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-feste">Feste / Veranstaltungen</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-druckziele">Druckziele</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-rechnungsdaten">Rechnungsdaten</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-mcp">MCP</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-tests">Automatisierte Tests</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Abrechnung &amp; Sicherheit</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-nummern">Nummern</button></li>
-                        <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#beilagen">Beilagen &amp; Zusatzinfos</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#apidevice">API Device</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#lock">Speisekarte sperren</button></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown ff-admin-nav-group">
-                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Karte &amp; Rezepturen</button>
+                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><span class="ff-nav-ico d-lg-none" aria-hidden="true">🍽️</span>Karte<span class="d-none d-lg-inline">&nbsp;&amp; Rezepturen</span></button>
                     <ul class="dropdown-menu">
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#pos">Alle Positionen</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#speisen">Speisen</button></li>
@@ -397,10 +415,11 @@ function BenutzerNeu() {
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#sub">Unterkategorien</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#bestandteile">Bestandteile</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#rez">Rezepturen</button></li>
+                        <li><button type="button" class="dropdown-item ff-admin-manage-link" data-manage-hash="#beilagen">Zusatzinfos</button></li>
                     </ul>
                 </li>
                 <li class="nav-item dropdown ff-admin-nav-group">
-                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Personal</button>
+                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><span class="ff-nav-ico d-lg-none" aria-hidden="true">👥</span>Personal</button>
                     <ul class="dropdown-menu">
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="personal-benutzer">Benutzer</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="personal-rechnungen">Rechnungen</button></li>
@@ -408,12 +427,15 @@ function BenutzerNeu() {
                     </ul>
                 </li>
                 <li class="nav-item dropdown ff-admin-nav-group">
-                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Auswertungen</button>
+                    <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><span class="ff-nav-ico d-lg-none" aria-hidden="true">📈</span>Auswertungen</button>
                     <ul class="dropdown-menu">
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="auswertungen-kellner">Kellner-Umsätze</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="auswertungen-finanzen">Finanzen &amp; Gewinn</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="auswertungen-statistik">Statistik</button></li>
                     </ul>
+                </li>
+                <li class="nav-item ms-lg-2">
+                    <a href="pilot/admin.html" class="btn btn-sm btn-outline-warning text-nowrap my-1" title="Zur neuen Admin-App (Vue 3) wechseln">✨ Neues Admin (Vue)</a>
                 </li>
             </ul>
         </div>
@@ -440,7 +462,7 @@ function BenutzerNeu() {
         </template>
 
         <section class="ff-admin-page" data-admin-page="uebersicht">
-        <p class="small text-uppercase text-muted fw-bold mb-2 px-1">Übersicht</p>
+        <p class="small text-uppercase text-muted fw-bold mb-2 px-1 ff-admin-page-heading">Übersicht</p>
         <div class="card border-primary shadow-sm">
             <div class="card-header bg-primary text-white py-2 d-flex align-items-center justify-content-between gap-2 ff-admin-dash-header">
                 <span class="ff-admin-collapse-toggle flex-grow-1" role="button" tabindex="0"
@@ -639,33 +661,26 @@ function BenutzerNeu() {
             <div id="neuerTisch" class="collapse">
                 <div class="card-body">
                     <p class="text-muted small mb-3">Tische anlegen, verschieben, umbenennen und farblich verwalten. Leere Rasterfelder können direkt angeklickt werden.</p>
-                    <h5 class="mt-4 mb-2">Tischkennzeichnungen</h5>
-                    <p class="text-muted small mb-2">Sammelrechnung: Tisch darf am Schluss gesammelt zahlen. Ehrengast: Tisch zahlt nie. <strong>Die beiden Kennzeichnungen schließen sich gegenseitig aus.</strong> Nach vollständigem Ehrengast-Abschluss (keine offenen Posten mehr) wird der Tisch automatisch wieder normal.</p>
-                    <a href="sammelrechnung.php" class="btn btn-outline-primary btn-sm mb-3">Sammelrechnung erstellen</a>
                     <?php
                     ff_ensure_column($conn, 'tische', 'is_sammelrechnung', 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
                     ff_ensure_column($conn, 'tische', 'is_ehrengast', 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
 
                     $tres = mysqli_query($conn, "SELECT tischnummer, tischname, x, y, color, is_sammelrechnung, is_ehrengast FROM tische ORDER BY tischnummer ASC LIMIT 500");
-                    echo '<div class="table-responsive ff-tischflags-scroll"><table class="table table-hover" id="tischFlags"><thead><tr><th>Tisch</th><th>Sammelrechnung</th><th>Ehrengast</th></tr></thead><tbody>';
                     if (!$tres) {
                         echo '<div class="alert alert-danger small mb-2">Tischliste konnte nicht geladen werden: ' . out(mysqli_error($conn)) . '</div>';
                     }
-                    while ($tres && ($t = mysqli_fetch_assoc($tres))) {
-                        $tid = (int)$t['tischnummer'];
-                        echo '<tr>';
-                        echo '<td>#' . $tid . ' ' . out($t['tischname']) . '</td>';
-                        echo '<td><input type="checkbox" class="form-check-input" data-tid="' . $tid . '" data-flag="sr" id="sr_' . $tid . '" ' . (((int)$t['is_sammelrechnung'] === 1) ? 'checked' : '') . '></td>';
-                        echo '<td><input type="checkbox" class="form-check-input" data-tid="' . $tid . '" data-flag="eg" id="eg_' . $tid . '" ' . (((int)$t['is_ehrengast'] === 1) ? 'checked' : '') . '></td>';
-                        echo '</tr>';
-                    }
-                    echo '</tbody></table></div>';
-                    echo '<h6 class="mt-4 mb-2 fw-semibold">Farbe, Sammelrechnung, Ehrengast &amp; Aktionen</h6>';
-                    echo '<p class="small text-muted mb-2">Sammelrechnung und Ehrengast schließen sich aus und werden beim Anklicken sofort gespeichert.</p>';
-                    echo '<div class="table-responsive border rounded"><table class="table table-sm table-hover align-middle mb-0" id="tischTable"><thead><tr><th>Name</th><th>x</th><th>y</th><th>Sammelrechnung</th><th>Ehrengast</th><th>Farbe</th><th></th></tr></thead><tbody>';
-                    if ($tres) {
-                        mysqli_data_seek($tres, 0);
-                    }
+                    echo '<p class="small text-muted mb-2">Sammelrechnung und Ehrengast schließen sich gegenseitig aus. Die Kennzeichnungen werden sofort gespeichert. Ehrengast-Tische werden nach vollständigem Abschluss automatisch zurückgesetzt.</p>';
+                    echo '<a href="sammelrechnung.php" class="btn btn-outline-primary btn-sm mb-3">Sammelrechnung erstellen</a>';
+                    echo '<p class="small text-muted mb-2 d-md-none">Tabelle seitlich wischen. Die Spaltenüberschrift bleibt beim Scrollen sichtbar.</p>';
+                    echo '<div class="table-responsive border rounded admin-tisch-table-wrap" id="tischTableWrap"><table class="table table-sm table-hover align-middle mb-0" id="tischTable"><thead><tr>'
+                        . '<th scope="col" class="admin-tisch-name-column">Tisch</th>'
+                        . '<th scope="col" class="text-center">Spalte x</th>'
+                        . '<th scope="col" class="text-center">Zeile y</th>'
+                        . '<th scope="col" class="text-center">Sammelrechnung</th>'
+                        . '<th scope="col" class="text-center">Ehrengast</th>'
+                        . '<th scope="col">Farbe / Farbcode</th>'
+                        . '<th scope="col"><span class="visually-hidden">Aktionen</span></th>'
+                        . '</tr></thead><tbody>';
                     while ($tres && ($t = mysqli_fetch_assoc($tres))) {
                         $tid = (int)$t['tischnummer'];
                         $cv = trim((string)($t['color'] ?? ''));
@@ -676,19 +691,21 @@ function BenutzerNeu() {
                             $cv = '#' . $cv;
                         }
                         echo '<tr>';
-                        echo '<td><button type="button" class="btn btn-link btn-sm p-0 text-start" onclick="window.ffAdminUpdateTischName(' . htmlspecialchars(json_encode($t['tischname'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ',' . $tid . ')">' . out($t['tischname']) . '</button></td>';
-                        echo '<td>' . (int)($t['x'] ?? 0) . '</td>';
-                        echo '<td>' . (int)($t['y'] ?? 0) . '</td>';
+                        echo '<td class="admin-tisch-name-column"><button type="button" class="btn btn-link btn-sm p-0 text-start fw-semibold" onclick="window.ffAdminUpdateTischName(' . htmlspecialchars(json_encode($t['tischname'], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8') . ',' . $tid . ')" title="Tischnamen bearbeiten">' . out($t['tischname']) . '</button></td>';
+                        echo '<td class="text-center">' . (int)($t['x'] ?? 0) . '</td>';
+                        echo '<td class="text-center">' . (int)($t['y'] ?? 0) . '</td>';
                         $sm = (int)($t['is_sammelrechnung'] ?? 0);
                         $eh = (int)($t['is_ehrengast'] ?? 0);
-                        echo '<td><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="sr" id="sr_detail_' . $tid . '" ' . ($sm === 1 ? 'checked' : '') . ' aria-label="Sammelrechnung"></td>';
-                        echo '<td><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="eg" id="eg_detail_' . $tid . '" ' . ($eh === 1 ? 'checked' : '') . ' aria-label="Ehrengast"></td>';
-                        echo '<td><input type="color" class="form-control form-control-color form-control-sm" onchange="window.ffAdminSaveTischColor(' . $tid . ')" id="html5colorpicker' . $tid . '" value="' . htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') . '"></td>';
+                        echo '<td class="text-center"><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="sr" id="sr_detail_' . $tid . '" ' . ($sm === 1 ? 'checked' : '') . ' aria-label="Sammelrechnung für ' . out($t['tischname']) . '" title="Sammelrechnung"></td>';
+                        echo '<td class="text-center"><input type="checkbox" class="form-check-input ff-tisch-flag" data-tid="' . $tid . '" data-flag="eg" id="eg_detail_' . $tid . '" ' . ($eh === 1 ? 'checked' : '') . ' aria-label="Ehrengast für ' . out($t['tischname']) . '" title="Ehrengast"></td>';
+                        echo '<td><div class="input-group input-group-sm flex-nowrap" style="min-width: 150px;">'
+                            . '<input type="color" class="form-control form-control-color" oninput="window.ffAdminSyncTischColorText(' . $tid . ')" onchange="window.ffAdminSaveTischColor(' . $tid . ')" id="html5colorpicker' . $tid . '" value="' . htmlspecialchars($cv, ENT_QUOTES, 'UTF-8') . '" aria-label="Farbe für Tisch ' . $tid . ' auswählen">'
+                            . '<input type="text" class="form-control font-monospace" oninput="window.ffAdminSyncTischColorPicker(' . $tid . ')" onchange="window.ffAdminSaveTischColor(' . $tid . ')" onclick="this.select()" id="tischfarbcode' . $tid . '" value="' . htmlspecialchars(strtoupper($cv), ENT_QUOTES, 'UTF-8') . '" maxlength="7" pattern="#[0-9A-Fa-f]{6}" autocomplete="off" spellcheck="false" aria-label="Hex-Farbcode für Tisch ' . $tid . '" title="Hex-Farbcode kopieren oder einfügen, z. B. #336699">'
+                            . '</div></td>';
                         echo '<td class="text-nowrap"><button type="button" class="btn btn-outline-danger btn-sm ff-icon-action" onclick="window.ffAdminDeleteTable(' . $tid . ')" title="Tisch löschen" aria-label="Tisch löschen">&#128465;</button></td>';
                         echo '</tr>';
                     }
                     echo '</tbody></table></div>';
-                    echo '<p class="small text-muted mt-2 mb-0">Sammelrechnung / Ehrengast werden beim Anklicken sofort gespeichert.</p>';
                     ?>
                 </div>
             </div>
@@ -711,12 +728,19 @@ function BenutzerNeu() {
         <p class="small text-uppercase text-muted fw-bold admin-section-heading px-1">Stammdaten</p>
         <div class="card">
             <div class="card-header collapsed" data-bs-toggle="collapse" data-bs-target="#SystemEinstellungen" aria-expanded="false">
-                System-Einstellungen
+                Allgemeine Einstellungen
             </div>
             <div id="SystemEinstellungen" class="collapse">
                 <div class="card-body">
+                    <div class="admin-settings-intro">
+                        <strong>Systemverhalten anpassen</strong>
+                        <span>Die Optionen sind thematisch gruppiert. Änderungen werden automatisch gespeichert.</span>
+                    </div>
                     <form class="mb-4">
                         <input type="hidden" id="set_mcp_token_csrf" value="<?php echo out($csrfMcpToken); ?>">
+                        <div data-admin-subpage="stammdaten-mcp">
+                        <h4>MCP</h4>
+                        <p class="small text-muted">Zugriff auf den MCP-Endpunkt konfigurieren.</p>
                         <div class="mb-3 border rounded p-3">
                             <label class="form-label" for="set_mcp_token">MCP-HTTP-Token</label>
                             <div class="input-group input-group-sm">
@@ -732,6 +756,10 @@ function BenutzerNeu() {
                             </div>
                             <div class="form-text">Der MCP-Endpunkt verwendet zuerst dieses Token. Ist hier keines gespeichert, wird ersatzweise die Server-Umgebungsvariable <code>FF_MCP_TOKEN</code> verwendet.</div>
                         </div>
+                        </div>
+                        <div data-admin-subpage="stammdaten-einstellungen" class="admin-settings-grid">
+                        <section class="admin-settings-group">
+                        <h5 class="admin-settings-group-title">Allgemein</h5>
                         <div class="mb-3">
                             <label class="form-label" for="set_app_title">Anzeigename der Anwendung</label>
                             <input type="text" class="form-control form-control-sm" id="set_app_title" maxlength="80" value="<?php echo htmlspecialchars((string) $setting_app_title, ENT_QUOTES, 'UTF-8'); ?>" placeholder="<?php echo htmlspecialchars($ffAppTitleFallback, ENT_QUOTES, 'UTF-8'); ?>">
@@ -745,6 +773,10 @@ function BenutzerNeu() {
                             <input class="form-check-input" type="checkbox" id="set_fast_refresh" <?php echo ($setting_fast_refresh==='1'?'checked':''); ?>>
                             <label class="form-check-label" for="set_fast_refresh">Schnellere Aktualisierung: kürzere Pausen zwischen den Auto-Reloads von Küche, Schank und Druckzielen (und anderen Timern, die „_delay“ nutzen)</label>
                         </div>
+                        </section>
+
+                        <section class="admin-settings-group">
+                        <h5 class="admin-settings-group-title">Bezahlen &amp; SumUp</h5>
                         <div class="form-check mb-2">
                             <input class="form-check-input" type="checkbox" id="set_sumup_open_app_button" <?php echo ($setting_sumup_open_app_button === '1' ? 'checked' : ''); ?>>
                             <label class="form-check-label" for="set_sumup_open_app_button">Zahlen-Ansicht: „SumUp App öffnen“-Button neben „Bezahlen Gesamt“ anzeigen</label>
@@ -765,6 +797,10 @@ function BenutzerNeu() {
                                 <div class="form-text">Beliebige eindeutige App-ID deines Systems (wird an SumUp übergeben).</div>
                             </div>
                         </div>
+                        </section>
+
+                        <section class="admin-settings-group">
+                        <h5 class="admin-settings-group-title">Stationsbetrieb</h5>
                         <div class="mb-3">
                             <div class="form-label mb-1">Stationsansicht: Gesamtbestellübersicht (Küche / Schank / Druckziel)</div>
                             <div class="form-check mb-1">
@@ -802,6 +838,10 @@ function BenutzerNeu() {
                                 <div class="form-text">Schmale Viewports (≤992&nbsp;px). 0 = Auto, max. 2 Spalten.</div>
                             </div>
                         </div>
+                        </section>
+
+                        <section class="admin-settings-group">
+                        <h5 class="admin-settings-group-title">Layout &amp; Sitzung</h5>
                         <div class="mb-3">
                             <label class="form-label" for="set_session_max_idle_sec">Automatisches Sitzungs-Ende (Leerlauf)</label>
                             <div class="form-check mb-2">
@@ -841,8 +881,11 @@ function BenutzerNeu() {
                         </div>
                         <p class="text-muted-small mb-1">Änderungen werden sofort gespeichert (Checkboxen beim Umschalten, Zahlenfelder beim Verlassen des Feldes).</p>
                         <span id="ffSystemSettingsStatus" class="small text-muted" aria-live="polite"></span>
+                        </section>
+                        </div>
                     </form>
 
+                    <div data-admin-subpage="stammdaten-einstellungen">
                     <hr class="my-4">
 
                     <h5 class="mb-2">Datenbank-Schema neu prüfen</h5>
@@ -857,7 +900,9 @@ function BenutzerNeu() {
                     </p>
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="ffAdminClearSchemaCache();">Schema-Cache jetzt leeren</button>
                     <span id="ffSchemaCacheClearStatus" class="ms-2 small text-muted"></span>
+                    </div>
 
+                    <div data-admin-subpage="stammdaten-feste">
                     <hr class="my-4">
 
                     <h4>Feste / Veranstaltungen</h4>
@@ -866,7 +911,7 @@ function BenutzerNeu() {
                     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(255) NOT NULL, code VARCHAR(16) NOT NULL, fest_datum DATE NULL, aktiv TINYINT(1) NOT NULL DEFAULT 1, payment_mode ENUM('after','instant') NOT NULL DEFAULT 'after', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(id), KEY aktiv(aktiv)) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4");
                     ff_feste_ensure_rechnung_prefix_column($conn);
                     $fres = mysqli_query($conn, "SELECT * FROM feste ORDER BY created_at DESC LIMIT 200");
-                    echo '<div class="table-responsive mb-4"><table class="table table-hover" id="feste"><thead><tr><th>Fest</th><th>Aktiv</th><th>Payment</th><th>Rechn.-Präfix</th><th>Aktuelles Fest</th></tr></thead><tbody>';
+                    echo '<div class="table-responsive mb-4"><table class="table table-hover ff-feste-table" id="feste"><thead><tr><th>Fest</th><th>Aktiv</th><th>Payment</th><th>Rechn.-Präfix</th><th>Aktuelles Fest</th><th>Push</th></tr></thead><tbody>';
                     while($f = $fres ? mysqli_fetch_assoc($fres) : null){
                         if(!$f) break;
                         $fid = (int)$f['id'];
@@ -874,7 +919,7 @@ function BenutzerNeu() {
 
                         echo '<tr>';
                         echo '<td>#'.$fid.' '.out($f['name']).' ('.out($f['code']).')'.
-                             '<div class="mt-2">'.
+                             '<div class="mt-2 d-flex flex-wrap gap-1 align-items-center">'.
                              '<a class="btn btn-sm btn-outline-secondary me-1" href="fest_export.php?id='.$fid.'&mode=full" title="Komplettes Fest: Bestellungen, Rechnungen, Buchungen, Nutzer, Settings, Speisekarte, Tische, Druck-Queue …">Vollbackup</a>'.
                              '<a class="btn btn-sm btn-outline-secondary me-1" href="fest_export.php?id='.$fid.'&mode=template" title="Ohne Verkäufe: Nutzer, Settings, Speisekarte, Tische (dieses Fest + ohne fest_id); ohne Bestellungen/Rechnungen/Buchungen">Hülle</a>'.
                              '<a class="btn btn-sm btn-outline-dark me-1" href="fest_steuerpaket_zip.php?id='.$fid.'" title="ZIP: JSON + CSV für Steuer/Archiv">Steuerpaket</a>'.
@@ -885,9 +930,9 @@ function BenutzerNeu() {
                              '<button type="submit" class="btn btn-sm btn-outline-danger ms-1 ff-icon-action" title="Fest löschen" aria-label="Fest löschen">&#128465;</button></form>'.
                              '</div></td>';
 
-                        echo '<td>'.(((int)$f['aktiv']===1)?'ja':'nein').'</td>';
+                        echo '<td data-label="Aktiv">'.(((int)$f['aktiv']===1)?'ja':'nein').'</td>';
 
-                        echo '<td>';
+                        echo '<td data-label="Payment">';
                         if ((int)($_SESSION['admin'] ?? 0) >= 2){
                             echo '<select class="form-select form-select-sm" style="width:auto" onchange="setFestPaymentMode('.$fid.', this.value)">';
                             echo '<option value="after" '.(($f['payment_mode']==='after')?'selected':'').'>Am Ende</option>';
@@ -900,7 +945,7 @@ function BenutzerNeu() {
                         echo '</td>';
 
                         $rpFest = isset($f['rechnung_prefix']) ? (string)$f['rechnung_prefix'] : '';
-                        echo '<td class="small">';
+                        echo '<td class="small" data-label="Rechn.-Präfix">';
                         if ((int)($_SESSION['admin'] ?? 0) >= 2) {
                             echo '<div class="input-group input-group-sm" style="max-width:11rem;">';
                             echo '<input type="text" class="form-control" id="fest_rp_'.$fid.'" value="'.out($rpFest).'" maxlength="16" placeholder="Standard" title="Leer = globales Präfix">';
@@ -911,7 +956,7 @@ function BenutzerNeu() {
                         }
                         echo '</td>';
 
-                        echo '<td>';
+                        echo '<td data-label="Aktuelles Fest">';
                         if($isCurrent){
                             echo '<span class="badge bg-success">Aktiv</span>';
                         } else {
@@ -919,27 +964,42 @@ function BenutzerNeu() {
                         }
                         echo '</td>';
 
+                        echo '<td data-label="Meldungen"><button type="button" class="btn btn-sm btn-outline-primary ff-push-config-toggle" data-fest-id="'.$fid.'">Benachrichtigungen</button></td>';
                         echo '</tr>';
+                        echo '<tr class="ff-feste-config-row"><td colspan="6"><div id="ffPushConfig_'.$fid.'" class="border rounded p-3 mb-2" hidden aria-live="polite"></div></td></tr>';
                     }
                     echo '</tbody></table></div>';
                     ?>
 
-                    <div class="accordion-item border-0 p-0 mb-3">
-                        <h5 class="mb-2">Neues Fest anlegen</h5>
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-2"><input type="text" id="fest_name" class="form-control form-control-sm" placeholder="Name"></div>
-                            <div class="col-md-2"><input type="text" id="fest_code" class="form-control form-control-sm" placeholder="Code"></div>
-                            <div class="col-md-2"><input type="text" id="fest_rechnung_prefix" class="form-control form-control-sm" placeholder="Rechn.-Präfix" maxlength="16" title="Optional; leer = globales Präfix"></div>
-                            <div class="col-md-2"><input type="date" id="fest_datum" class="form-control form-control-sm"></div>
-                            <div class="col-md-2"><div class="form-check mt-2"><input type="checkbox" id="fest_aktiv" class="form-check-input" checked><label class="form-check-label" for="fest_aktiv">aktiv</label></div></div>
-                            <div class="col-md-2"><select id="fest_payment_mode" class="form-select form-select-sm"><option value="after">Am Ende</option><option value="instant">Sofort</option></select></div>
-                            <div class="col-md-12 col-lg-auto mt-1"><button type="button" class="btn btn-primary btn-sm" onclick="createFest();">Anlegen</button></div>
+                    <button type="button" class="btn btn-primary btn-sm mb-3" data-bs-toggle="modal" data-bs-target="#newFestModal">+ Neues Fest anlegen</button>
+                    <div class="modal fade" id="newFestModal" tabindex="-1" aria-labelledby="newFestModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                            <form class="modal-content" onsubmit="event.preventDefault(); createFest();">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="newFestModalLabel">Neues Fest anlegen</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-2"><label class="form-label small mb-1" for="fest_name">Name</label><input type="text" id="fest_name" class="form-control" required></div>
+                                    <div class="mb-2"><label class="form-label small mb-1" for="fest_code">Code</label><input type="text" id="fest_code" class="form-control" required></div>
+                                    <div class="mb-2"><label class="form-label small mb-1" for="fest_rechnung_prefix">Rechn.-Präfix (optional; leer = globales Präfix)</label><input type="text" id="fest_rechnung_prefix" class="form-control" maxlength="16"></div>
+                                    <div class="mb-2"><label class="form-label small mb-1" for="fest_datum">Datum</label><input type="date" id="fest_datum" class="form-control"></div>
+                                    <div class="mb-2"><label class="form-label small mb-1" for="fest_payment_mode">Payment</label><select id="fest_payment_mode" class="form-select"><option value="after">Am Ende</option><option value="instant">Sofort</option></select></div>
+                                    <div class="form-check"><input type="checkbox" id="fest_aktiv" class="form-check-input" checked><label class="form-check-label" for="fest_aktiv">aktiv</label></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                                    <button type="submit" class="btn btn-primary">Anlegen</button>
+                                </div>
+                            </form>
                         </div>
                     </div>
 
                     <p class="text-muted small mb-2">Vollbackup: alle Verkaufszeilen, Rechnungen, Buchungen, Verpflegung, Druck-Queue, Nutzer, Settings und Speisekarte dieses Fests. Hülle: ohne Verkäufe, dafür Nutzer/Einstellungen für das nächste Fest. <strong>Archiv-Import</strong> (nur Super-Admin): Vollbackup in eine <em>laufende</em> Datenbank als zusätzliches Fest einspielen. Anleitungen: <code>documentation/anleitungen/</code>. Vor dem Fest: <strong>Fest-Start vorbereiten</strong> (Verkaufsdaten weg, Tische bleiben). Notfall-Reset nur <code>bestellungen</code> + <code>print</code>.</p>
                     <p><a href="fest_import.php" class="btn btn-outline-primary btn-sm">Fest importieren</a></p>
+                    </div>
 
+                    <div data-admin-subpage="stammdaten-druckziele">
                     <h4>Druckziele (Print Targets)</h4>
                     <p class="text-muted-small">Jedes Druckziel erscheint als eigener Menüpunkt (z. B. Küche, Schank).</p>
                     <div class="alert alert-info small py-2 mb-3"><strong>Hinweis:</strong> Ein Druckziel erscheint nur im Hauptmenü, wenn mindestens eine Speisekarten-Position diesem Druckziel zugewiesen ist.</div>
@@ -975,7 +1035,9 @@ function BenutzerNeu() {
                         <div class="col-auto"><label class="form-label">Reihenfolge</label><input type="number" id="pt_new_sort" class="form-control form-control-sm" value="30" style="width:5em"></div>
                         <div class="col-auto"><button type="button" class="btn btn-primary btn-sm" onclick="addPrintTarget();">Hinzufügen</button></div>
                     </div>
+                    </div>
 
+                    <div data-admin-subpage="stammdaten-rechnungsdaten">
                     <h4>Rechnungsdaten (Verkäufer)</h4>
                     <p class="text-muted-small">Verkäuferangaben, Drucker-Token und Thermo-Texte für Rechnungen und Bons. Den <strong>Nummernkreis für Rechnungen</strong> (Präfix und Zähler) legen Sie unter <strong>Nummern (Bestellung / Bon / Rechnung)</strong> fest; pro Fest optional ein eigenes Präfix unter <strong>Feste</strong>.</p>
                     <form id="frmRechnungSettings" class="mb-0">
@@ -1040,6 +1102,23 @@ function BenutzerNeu() {
                             <span id="logoMsg" class="small"></span>
                         </div>
                     </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card mt-3" data-admin-subpage="stammdaten-tests">
+            <div class="card-header collapsed" data-bs-toggle="collapse" data-bs-target="#SelbsttestsBox" aria-expanded="false">
+                Automatische Tests (Datenbankstruktur, Preisberechnung, Storno, Kapazität)
+            </div>
+            <div id="SelbsttestsBox" class="collapse">
+                <div class="card-body">
+                    <p class="small text-muted mb-2">Die Tests prüfen alle 39 Datenbank-Tabellen auf Vollständigkeit (Spalten, Primärschlüssel, InnoDB-Engine) sowie fachliche Funktionen (Preisberechnung, Storno, Kapazität) in einer Transaktion, die per ROLLBACK verworfen wird. Echte Daten bleiben unverändert.</p>
+                    <button type="button" class="btn btn-primary btn-sm" id="ffSelftestBtn" onclick="ffRunSelftests('all');">Alle Tests starten</button>
+                    <button type="button" class="btn btn-outline-primary btn-sm ms-2" id="ffDbTestBtn" onclick="ffRunSelftests('schema');">Nur DB-Struktur testen</button>
+                    <button type="button" class="btn btn-outline-warning btn-sm ms-2" id="ffDbRepairBtn" onclick="ffRunDbRepair();" title="Fehlende Tabellen, Spalten, InnoDB-Engine und Primärschlüssel automatisch reparieren">&#128295; DB-Fehler beheben</button>
+                    <span class="small ms-2" id="ffSelftestSummary" aria-live="polite"></span>
+                    <div id="ffSelftestAlert"></div>
+                    <div class="table-responsive mt-3" id="ffSelftestResult" style="max-height: 520px; overflow-y: auto;"></div>
                 </div>
             </div>
         </div>
@@ -1193,23 +1272,73 @@ function BenutzerNeu() {
                         </div>
                     </details>
 
-                    <h5 class="h6 text-uppercase text-muted mb-2">Neuer Benutzer</h5>
-                    <form class="mb-4">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                        <div>
+                            <h5 class="h6 mb-1">Benutzerverwaltung</h5>
+                            <p class="small text-muted mb-0">Benutzer anlegen, importieren oder bestehende Konten verwalten.</p>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newUserModal">
+                            <span aria-hidden="true">＋</span> Neuer Benutzer
+                        </button>
+                    </div>
+                    <div class="modal fade" id="newUserModal" tabindex="-1" aria-labelledby="newUserModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+                            <form class="modal-content" onsubmit="event.preventDefault(); BenutzerNeu();">
+                                <div class="modal-header">
+                                    <div>
+                                        <h5 class="modal-title" id="newUserModalLabel">Neuen Benutzer anlegen</h5>
+                                        <p class="small text-muted mb-0">Login, Rolle und Zugriffsoptionen festlegen.</p>
+                                    </div>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                                </div>
+                                <div class="modal-body">
                         <?php if (isset($message['error'])): ?><div class="alert alert-danger"><?php echo out($message['error']); ?></div><?php endif; ?>
                         <?php if (isset($message['success'])): ?><div class="alert alert-success"><?php echo out($message['success']); ?></div><?php endif; ?>
                         <?php if (isset($message['notice'])): ?><div class="alert alert-info"><?php echo out($message['notice']); ?></div><?php endif; ?>
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-3"><label class="form-label">Benutzername (Login)</label><input type="text" id="username" class="form-control form-control-sm" placeholder="z.B. kellner4"<?php echo isset($_POST['f']['username']) ? ' value="' . htmlspecialchars($_POST['f']['username'], ENT_QUOTES, 'UTF-8') . '"' : '' ?>></div>
-                            <div class="col-md-3"><label class="form-label">Anzeigename <span class="text-muted">(optional)</span></label><input type="text" id="display_name" class="form-control form-control-sm" placeholder="z.B. Maximilian Mustermann" maxlength="120"></div>
-                            <div class="col-md-2"><label class="form-label">Typ</label><select id="adminyesno" class="form-select form-select-sm"><option value="0">Benutzer</option><option value="1">Administrator</option></select></div>
-                            <div class="col-md-3 d-flex align-items-end pb-1">
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnNewUserPerms" title="Optional vor dem Anlegen">Berechtigungen …</button>
+                        <section class="mb-4">
+                            <h6 class="small text-uppercase text-muted fw-bold mb-3">Kontodaten</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="username">Benutzername (Login)</label>
+                                    <input type="text" id="username" class="form-control" placeholder="z. B. kellner4"<?php echo isset($_POST['f']['username']) ? ' value="' . htmlspecialchars($_POST['f']['username'], ENT_QUOTES, 'UTF-8') . '"' : '' ?> autocomplete="off" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="display_name">Anzeigename <span class="text-muted">(optional)</span></label>
+                                    <input type="text" id="display_name" class="form-control" placeholder="z. B. Maximilian Mustermann" maxlength="120">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="adminyesno">Rolle</label>
+                                    <select id="adminyesno" class="form-select">
+                                        <option value="0">Benutzer</option>
+                                        <option value="1">Administrator</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-end">
+                                    <button type="button" class="btn btn-outline-secondary" id="btnNewUserPerms" title="Optional vor dem Anlegen">Berechtigungen festlegen …</button>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="password">Kennwort</label>
+                                    <input type="password" id="password" class="form-control" autocomplete="new-password" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label" for="password_again">Kennwort wiederholen</label>
+                                    <input type="password" id="password_again" class="form-control" autocomplete="new-password" required>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-text">Der Anzeigename erscheint auf Rechnungen statt des Logins. Leer lassen, um den Login-Namen zu verwenden.</div>
+                                    <div class="form-check mt-2">
+                                        <input type="checkbox" class="form-check-input" id="new_user_force_pw">
+                                        <label class="form-check-label" for="new_user_force_pw">Einmalpasswort – muss nach dem ersten Login geändert werden</label>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-2"><label class="form-label">Kennwort</label><input type="password" id="password" class="form-control form-control-sm"></div>
-                            <div class="col-md-2"><label class="form-label">Wiederholen</label><input type="password" id="password_again" class="form-control form-control-sm"></div>
-                            <div class="col-md-4 d-flex align-items-end pb-1"><label class="form-check-label small mb-0"><input type="checkbox" class="form-check-input" id="new_user_force_pw"> Einmalpasswort <span class="text-muted">(muss nach 1. Login geändert werden)</span></label></div>
-                            <div class="col-md-12 mt-1"><span class="text-muted small">Der <strong>Anzeigename</strong> erscheint auf Rechnungen (Thermo &amp; PDF) statt des Logins. Leer lassen, um den Login-Namen anzudrucken.</span></div>
-                        </div>
+                        </section>
+                        <section class="mb-2" id="newUserStartSection">
+                            <h6 class="small text-uppercase text-muted fw-bold mb-3">Start nach dem Login</h6>
+                            <div class="row g-3" id="newUserStartRow">
+                                <div class="col-md-6">
+                                    <label class="form-label" for="new_user_start_page">Startseite</label>
+                                    <select id="new_user_start_page" class="form-select">
                         <?php
                         $admin_landing_print_targets = [];
                         $ptq = @mysqli_query($conn, "SELECT pt.print_target, pt.name FROM print_targets pt
@@ -1222,10 +1351,6 @@ function BenutzerNeu() {
                         }
                         $has_landing_pt = count($admin_landing_print_targets) > 0;
                         ?>
-                        <div class="row g-2 mb-3" id="newUserStartRow">
-                            <div class="col-md-4">
-                                <label class="form-label">Start nach Login</label>
-                                <select id="new_user_start_page" class="form-select form-select-sm">
                                     <?php
                                     $nk = ['menu', 'tische', 'kueche', 'schank', 'direktverkauf', 'print_target'];
                                     $nlab = ['menu' => 'Hauptmenü', 'tische' => 'Kellner (Tischübersicht)', 'kueche' => 'Küche', 'schank' => 'Schank', 'direktverkauf' => 'Kasse (Direktverkauf)', 'print_target' => 'Druckziel …'];
@@ -1236,7 +1361,7 @@ function BenutzerNeu() {
                                         echo '<option value="' . out($ok) . '"' . ($ok === 'menu' ? ' selected' : '') . '>' . out($nlab[$ok]) . '</option>';
                                     }
                                     ?>
-                                </select>
+                                    </select>
                                 <?php
                                 echo ff_admin_info_btn('userHelpStartNew', 'Start nach Login');
                                 ff_admin_info_panel(
@@ -1245,21 +1370,23 @@ function BenutzerNeu() {
                                 );
                                 ?>
                             </div>
-                            <div class="col-md-3" id="new_user_pt_wrap" style="display:none;">
-                                <label class="form-label">Welches Druckziel?</label>
-                                <select id="new_user_start_pt" class="form-select form-select-sm">
+                                <div class="col-md-6" id="new_user_pt_wrap" style="display:none;">
+                                    <label class="form-label" for="new_user_start_pt">Druckziel</label>
+                                    <select id="new_user_start_pt" class="form-select">
                                     <?php foreach ($admin_landing_print_targets as $ptx): ?>
                                         <option value="<?php echo (int)$ptx['print_target']; ?>"><?php echo out($ptx['name']); ?></option>
                                     <?php endforeach; ?>
-                                </select>
+                                    </select>
+                                </div>
                             </div>
+                        </section>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="submit" class="btn btn-primary">Benutzer anlegen</button>
+                                </div>
+                            </form>
                         </div>
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-12">
-                                <button type="button" class="btn btn-primary btn-sm" onclick="BenutzerNeu();">Anlegen</button>
-                            </div>
-                        </div>
-                    </form>
+                    </div>
 
                     <?php
                     try {
@@ -1690,16 +1817,32 @@ function BenutzerNeu() {
                     $positionen = ff_mv_list_positions($conn);
                     ?>
 
-                    <h5 class="mt-3">Verpflegung erfassen</h5>
-                    <div class="row g-2 mb-3">
-                        <div class="col-md-2"><label class="form-label">Datum</label><input type="date" id="mvDatum" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>"></div>
-                        <div class="col-md-2"><label class="form-label">Bereich</label><select id="mvBereich" class="form-select form-select-sm"><?php foreach ($bereiche as $b) echo '<option value="' . (int)$b['id'] . '">' . out($b['name']) . '</option>'; ?></select></div>
-                        <div class="col-md-3"><label class="form-label">Position (Essen/Getränk)</label><select id="mvPosition" class="form-select form-select-sm"><?php
+                    <button type="button" class="btn btn-success btn-sm mb-3" data-bs-toggle="modal" data-bs-target="#mvErfassenModal">+ Verpflegung erfassen</button>
+                    <div class="modal fade" id="mvErfassenModal" tabindex="-1" aria-labelledby="mvErfassenModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="mvErfassenModalLabel">Verpflegung erfassen</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                                </div>
+                                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-12 col-sm-6"><label class="form-label">Datum</label><input type="date" id="mvDatum" class="form-control" value="<?php echo date('Y-m-d'); ?>"></div>
+                        <div class="col-12 col-sm-6"><label class="form-label">Bereich</label><select id="mvBereich" class="form-select"><?php foreach ($bereiche as $b) echo '<option value="' . (int)$b['id'] . '">' . out($b['name']) . '</option>'; ?></select></div>
+                        <div class="col-12 col-sm-6"><label class="form-label">Position (Essen/Getränk)</label><select id="mvPosition" class="form-select"><?php
                         ff_mv_echo_position_select_options($positionen);
                         ?></select></div>
-                        <div class="col-md-1"><label class="form-label">Menge</label><input type="number" id="mvMenge" class="form-control form-control-sm" value="1" min="1"></div>
-                        <div class="col-md-2"><label class="form-label">Notiz (optional)</label><input type="text" id="mvNotiz" class="form-control form-control-sm"></div>
-                        <div class="col-md-2 d-flex align-items-end"><button type="button" class="btn btn-success btn-sm" onclick="mvHinzufuegen();">Hinzufügen</button></div>
+                        <div class="col-12 col-sm-6"><label class="form-label">Menge</label><input type="number" id="mvMenge" class="form-control" value="1" min="1"></div>
+                        <div class="col-12"><label class="form-label">Notiz (optional)</label><input type="text" id="mvNotiz" class="form-control"></div>
+                        <div class="col-12"></div>
+                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Abbrechen</button>
+                                    <button type="button" class="btn btn-success" onclick="mvHinzufuegen();">Hinzufügen</button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <h5 class="mt-4">Erfasste Verpflegung</h5>
@@ -1755,10 +1898,10 @@ function BenutzerNeu() {
         <section class="ff-admin-page" data-admin-page="auswertungen-statistik" hidden>
         <p class="small text-uppercase text-muted fw-bold admin-section-heading px-1">Auswertungen</p>
         <div class="card">
-            <div class="card-header collapsed" data-bs-toggle="collapse" data-bs-target="#Statistik" aria-expanded="false">
+            <div class="card-header" data-bs-toggle="collapse" data-bs-target="#Statistik" aria-expanded="true">
                 Statistik
             </div>
-            <div id="Statistik" class="collapse">
+            <div id="Statistik" class="collapse show">
                 <div class="card-body">
         <?php
         ff_admin_render_statistik_body($conn, null, true);

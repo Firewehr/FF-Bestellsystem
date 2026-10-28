@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Feuerwehr Bestellsystem – Stations-Pilot (Küche & Schank)</title>
+  
+  <meta name="theme-color" content="#dc2626">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/png" href="../pwa-icon-192.png">
+  
+  <link rel="stylesheet" href="station.css?v=2">
+</head>
+<body>
+  <div id="app" v-cloak>
+
+    <!-- 1. HEADER -->
+    <header class="station-header">
+      <div class="header-left">
+        <a href="../" class="brand-badge" title="Zurück zum Hauptmenü">
+          <span class="icon">🔥</span>
+          <span>Station Pilot</span>
+        </a>
+
+        <!-- Station Switcher Tabs (Alle / Küche / Schank / etc.) -->
+        <nav class="station-tabs-scroll" aria-label="Stationen">
+          <button 
+            v-for="target in targets" 
+            :key="target.id"
+            type="button"
+            class="station-tab-btn"
+            :class="{ 'active': selectedTarget === target.id }"
+            @click="switchStation(target.id)">
+            <span>{{ target.name }}</span>
+            <span 
+              class="tab-badge"
+              :class="{
+                'badge-busy': target.count > 30 && target.count <= 80,
+                'badge-overload': target.count > 80
+              }">
+              {{ target.count }}
+            </span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="header-right">
+        <!-- Gesamt-Warte-Pill mit Farbstufe -->
+        <div 
+          class="load-indicator" 
+          :class="'load-' + stats.load_level"
+          :title="stats.waiting_items + ' Positionen wartend'">
+          <span>⏳ {{ stats.waiting_items }} Pos.</span>
+          <span>({{ filteredOrders.length }} Best.)</span>
+        </div>
+
+        <!-- Signalton Glocke -->
+        <button 
+          type="button" 
+          class="h-btn btn-bell icon-only" 
+          :class="soundEnabled ? 'has-sound' : 'is-muted'"
+          :title="soundEnabled ? 'Signalton aktiv (Klicken zum Stummschalten)' : 'Signalton stumm (Klicken zum Einschalten)'"
+          @click="toggleSound">
+          {{ soundEnabled ? '🔔' : '🔕' }}
+        </button>
+
+        <!-- Dark / Light Theme -->
+        <button 
+          type="button" 
+          class="h-btn icon-only" 
+          :title="isDarkTheme ? 'Helles Design' : 'Dunkles Design'"
+          @click="toggleTheme">
+          {{ isDarkTheme ? '☀️' : '🌙' }}
+        </button>
+
+        <!-- Vollbild-Modus -->
+        <button 
+          type="button" 
+          class="h-btn icon-only" 
+          title="Vollbild umschalten"
+          @click="toggleFullscreen">
+          ⛶
+        </button>
+
+        <!-- Einstellungen Modal Button -->
+        <button 
+          type="button" 
+          class="h-btn icon-only" 
+          title="Einstellungen & Skalierung"
+          @click="showSettingsModal = true">
+          ⚙️
+        </button>
+
+        <!-- Link zum Kellner-Pilot -->
+        <a href="./" class="h-btn" title="Zur mobilen Kellner-App wechseln">
+          📱 Kellner
+        </a>
+      </div>
+    </header>
+
+    <!-- 2. TOOLBAR / FILTERLEISTE -->
+    <div class="station-toolbar">
+      <div class="toolbar-left">
+        <!-- View Mode Switcher -->
+        <div class="view-mode-group">
+          <button 
+            type="button" 
+            class="view-mode-btn" 
+            :class="{ active: viewMode === 'cards' }"
+            @click="switchViewMode('cards')">
+            📋 Karten
+          </button>
+          <button 
+            type="button" 
+            class="view-mode-btn" 
+            :class="{ active: viewMode === 'prep' }"
+            @click="switchViewMode('prep')">
+            🍳 Zubereitung ({{ summary.length }})
+          </button>
+          <button 
+            type="button" 
+            class="view-mode-btn" 
+            :class="{ active: viewMode === 'history' }"
+            @click="switchViewMode('history')">
+            📜 Historie
+          </button>
+        </div>
+
+        <!-- Zonen-Filter (nur in Karten-Ansicht) -->
+        <div v-if="viewMode === 'cards'" class="zone-pill-group">
+          <button 
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: zoneFilter === '' }"
+            @click="zoneFilter = ''">
+            Alle Zonen
+          </button>
+          <button 
+            v-for="z in availableZones.zones" 
+            :key="z"
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: zoneFilter === z }"
+            @click="zoneFilter = (zoneFilter === z ? '' : z)">
+            Zone {{ z }}
+          </button>
+          <button 
+            v-if="availableZones.hasDv"
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: zoneFilter === 'DV' }"
+            @click="zoneFilter = (zoneFilter === 'DV' ? '' : 'DV')">
+            Direktverkauf
+          </button>
+        </div>
+
+        <!-- Status Filter -->
+        <div v-if="viewMode === 'cards'" class="zone-pill-group">
+          <button 
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: statusFilter === 'all' }"
+            @click="statusFilter = 'all'">
+            Alle
+          </button>
+          <button 
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: statusFilter === 'open' }"
+            @click="statusFilter = 'open'">
+            Nur Offene
+          </button>
+          <button 
+            type="button" 
+            class="zone-pill" 
+            :class="{ active: statusFilter === 'done' }"
+            @click="statusFilter = 'done'">
+            Abholbereit
+          </button>
+        </div>
+
+        <!-- Aktiver Filter Hinweis, wenn aus Zubereitungsliste gefiltert -->
+        <button 
+          v-if="highlightedItem" 
+          type="button" 
+          class="zone-pill active" 
+          style="background: #2563eb; color: #fff; border-color: #1d4ed8;"
+          @click="highlightedItem = null">
+          🔍 {{ highlightedItem }} (✕ aufheben)
+        </button>
+
+        <!-- Suchfeld -->
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            v-model="searchQuery" 
+            placeholder="Tisch, Bon, Artikel..."
+            autocomplete="off">
+          <button 
+            v-if="searchQuery" 
+            type="button" 
+            class="clear-btn" 
+            @click="searchQuery = ''">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <!-- Spalten-Auswahl -->
+        <div v-if="viewMode === 'cards'" class="col-selector" title="Spaltenanzahl">
+          <button type="button" class="col-btn" :class="{ active: columns === 'auto' }" @click="setCols('auto')">Auto</button>
+          <button type="button" class="col-btn" :class="{ active: columns === '2' }" @click="setCols('2')">2</button>
+          <button type="button" class="col-btn" :class="{ active: columns === '3' }" @click="setCols('3')">3</button>
+          <button type="button" class="col-btn" :class="{ active: columns === '4' }" @click="setCols('4')">4</button>
+        </div>
+
+        <!-- Drawer Toggle Button für Artikel-Übersicht -->
+        <button 
+          v-if="viewMode === 'cards'"
+          type="button" 
+          class="h-btn" 
+          :class="{ active: showSummaryDrawer }"
+          @click="showSummaryDrawer = !showSummaryDrawer">
+          📊 Mengen ({{ summary.length }})
+        </button>
+
+        <!-- Reload Button -->
+        <button 
+          type="button" 
+          class="h-btn icon-only" 
+          :title="isPolling ? 'Aktualisiert...' : 'Jetzt neu laden'"
+          @click="fetchStationData(false)">
+          🔄
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. HAUPTBEREICH (WORKSPACE) -->
+    <div class="station-main">
+
+      <!-- Viewport für die verschiedenen Ansichten -->
+      <main class="orders-viewport">
+
+        <!-- Lade-Indikator -->
+        <div v-if="isLoading && orders.length === 0" class="empty-state">
+          <span class="empty-icon">⏳</span>
+          <h2 class="empty-title">Station wird geladen…</h2>
+          <p class="empty-desc">Verbindung zur Kasse wird hergestellt.</p>
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- ANSICHT 1: KARTEN-ANSICHT (Standard Tischkarten)                 -->
+        <!-- ================================================================= -->
+        <div 
+          v-else-if="viewMode === 'cards'" 
+          class="orders-grid"
+          :class="'cols-' + columns">
+
+          <!-- Leerer Zustand -->
+          <div v-if="filteredOrders.length === 0" class="empty-state" style="grid-column: 1 / -1;">
+            <span class="empty-icon">✨</span>
+            <h2 class="empty-title">Alles erledigt!</h2>
+            <p class="empty-desc">Derzeit keine wartenden Bestellungen an der Station {{ currentTargetName }}.</p>
+          </div>
+
+          <!-- Einzelne Bestellkarte -->
+          <article 
+            v-for="order in filteredOrders" 
+            :key="order.batch_key + '_' + order.tischnummer"
+            class="order-card"
+            :class="[
+              'wait-' + order.wait_status,
+              {
+                'is-dv': order.is_direktverkauf,
+                'is-paid': order.is_paid,
+                'card-highlighted': highlightedItem && (order.items_open.some(i => i.positionsname.toLowerCase().includes(highlightedItem.toLowerCase())) || order.items_done.some(i => i.positionsname.toLowerCase().includes(highlightedItem.toLowerCase())))
+              }
+            ]">
+
+            <!-- Karten-Kopf -->
+            <header class="card-header">
+              <div class="header-table-info">
+                <!-- Zone-Tag -->
+                <span v-if="order.zone" class="zone-tag" :data-zone="order.zone">
+                  {{ order.zone }}
+                </span>
+
+                <!-- Tischtitel / Bon-Nr. -->
+                <h2 class="table-title">
+                  <span v-if="order.is_direktverkauf" class="dv-bon-badge">
+                    {{ order.tischname }}
+                  </span>
+                  <span v-else>
+                    {{ order.tischname }}
+                  </span>
+                </h2>
+
+                <!-- Direktverkauf Bezahl-Status Badge -->
+                <template v-if="order.is_direktverkauf">
+                  <span v-if="order.is_paid" class="dv-paid-badge">✓ Bezahlt</span>
+                  <span v-else class="dv-unpaid-badge">⚠️ Unbezahlt</span>
+                </template>
+              </div>
+
+              <div class="header-meta">
+                <!-- Bon-Druck Status -->
+                <span 
+                  v-if="order.print_status === 1" 
+                  class="badge-tag" 
+                  style="background: #e0e7ff; color: #3730a3; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;"
+                  title="Thermobon wurde bereits teilweise oder ganz gedruckt">
+                  🖨️ Bon
+                </span>
+
+                <!-- Wartezeit Timer -->
+                <div 
+                  class="wait-timer" 
+                  :class="'timer-' + order.wait_status"
+                  :title="'Bestellt um ' + order.timestamp">
+                  ⏱️ {{ formatSeconds(order.age_sec) }}
+                </div>
+              </div>
+            </header>
+
+            <!-- Subbar mit Kellner & Bestellnummern -->
+            <div class="card-subbar">
+              <span class="waiter-label">👤 {{ order.kellner }}</span>
+              <span v-if="order.order_nrs.length > 0" class="order-nrs">
+                Best. #{{ order.order_nrs.join(', #') }}
+              </span>
+            </div>
+
+            <!-- 2-Spalten Body: Offen vs. Fertig -->
+            <div class="card-content">
+              
+              <!-- Linke Spalte: Offene Positionen (Klick = Fertig) -->
+              <div class="col-open">
+                <div class="col-headline">
+                  <span>Offen ({{ order.items_open.length }})</span>
+                  <span style="font-size: 0.7rem; font-weight: normal;">Antippen zum Fertigstellen</span>
+                </div>
+
+                <div v-if="order.items_open.length === 0" class="no-items-hint">
+                  Alle Positionen dieser Bestellung zubereitet.
+                </div>
+
+                <!-- Einzelne offene Position -->
+                <div 
+                  v-for="item in order.items_open" 
+                  :key="item.rowid" 
+                  class="item-row">
+                  <button 
+                    type="button" 
+                    class="item-btn-open"
+                    :title="item.positionsname + ' – Klicken zum Fertigstellen'"
+                    @click="markItemDone(item, order)">
+                    <span class="item-qty">{{ item.anzahl }}×</span>
+                    <div class="item-details">
+                      <div class="item-name">{{ item.positionsname }}</div>
+                      <div v-if="item.zusatzinfo" class="item-extra">
+                        {{ item.zusatzinfo }}
+                      </div>
+                    </div>
+                    <span 
+                      v-if="selectedTarget === 0 && item.print_target_name" 
+                      class="item-station-tag">
+                      {{ item.print_target_name }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Rechte Spalte: Fertige Positionen (mit Undo ↩) -->
+              <div class="col-done">
+                <div class="col-headline">
+                  <span>Fertig ({{ order.items_done.length }})</span>
+                  <span style="font-size: 0.7rem; font-weight: normal;">↩ Zurück</span>
+                </div>
+
+                <div v-if="order.items_done.length === 0" class="no-items-hint">
+                  Noch keine fertigen Positionen.
+                </div>
+
+                <!-- Fertige Position -->
+                <div 
+                  v-for="item in order.items_done" 
+                  :key="item.rowid" 
+                  class="item-row">
+                  <div class="item-pill-done" :title="item.positionsname + ' – Fertig'">
+                    <span class="done-qty">{{ item.anzahl }}×</span>
+                    <span class="done-name">{{ item.positionsname }}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    class="undo-btn" 
+                    title="Wieder zurück zu Offen setzen"
+                    @click="undoDone(item, order)">
+                    ↩
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Karten-Footer mit Haupt-Aktionen -->
+            <footer class="card-footer">
+              <!-- Teillieferungs-Druck (wenn eingestellt und mindestens 1 Pos. fertig ist) -->
+              <button 
+                v-if="stats.teillieferung_enabled && !order.is_direktverkauf && order.items_open.length > 0 && order.items_done.length > 0"
+                type="button" 
+                class="act-btn act-btn-partial-print"
+                title="Druckt die fertigen Positionen als Teillieferung"
+                @click="printPartial(order)">
+                🖨️ Teillieferung
+              </button>
+
+              <!-- Wenn noch Positionen offen sind: Alle fertig markieren -->
+              <button 
+                v-if="order.items_open.length > 0"
+                type="button" 
+                class="act-btn act-btn-batch-done"
+                title="Markiert alle offenen Positionen als fertig"
+                @click="markBatchDone(order)">
+                ✓ Alle fertig
+              </button>
+
+              <!-- Wenn alle fertig sind (oder Ein-Klick-Abschließen an ist): Bestellung abschließen -->
+              <template v-if="order.items_open.length === 0 || stats.one_click_abschliessen">
+                
+                <!-- Direktverkauf: Mit Druck vs. Ohne Druck (Abholbon an Kasse) -->
+                <template v-if="order.is_direktverkauf">
+                  <button 
+                    type="button" 
+                    class="act-btn act-btn-complete"
+                    title="Schließt die Bestellung ab und druckt Stations-Bon"
+                    @click="completeOrder(order, true)">
+                    🚀 Abschließen (+ Druck)
+                  </button>
+                  <button 
+                    type="button" 
+                    class="act-btn act-btn-dv-complete-noprint"
+                    title="Schließt die Bestellung ohne erneuten Druck ab (Abholbon an Kasse)"
+                    @click="completeOrder(order, false)">
+                    ✓ Abholbon fertig
+                  </button>
+                </template>
+
+                <!-- Normaler Tisch: Bestellung abschließen mit Bon-Druck -->
+                <template v-else>
+                  <button 
+                    type="button" 
+                    class="act-btn act-btn-complete"
+                    title="Bestellung abschließen und Bon drucken"
+                    @click="completeOrder(order, true)">
+                    🚀 Bestellung abschließen
+                  </button>
+                </template>
+
+              </template>
+
+              <!-- Force-Button bei unbestätigter Bestellung (bestellt = 0) -->
+              <button 
+                v-if="!order.is_direktverkauf && order.bestellt === 0"
+                type="button" 
+                class="act-btn act-btn-force"
+                title="Bestellung zwangsweise abschicken"
+                @click="forceOrder(order)">
+                ⚡ FORCE
+              </button>
+            </footer>
+
+          </article>
+
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- ANSICHT 2: ZUBEREITUNGSLISTE / KUMULIERTE MENGEN                  -->
+        <!-- ================================================================= -->
+        <div v-else-if="viewMode === 'prep'" class="prep-view">
+          <div class="prep-hero">
+            <div>
+              <h2 class="prep-title">Zubereitungs-Übersicht: {{ currentTargetName }}</h2>
+              <p class="prep-subtitle">
+                Kumulierte Mengen aller offenen Positionen. Tippen Sie auf einen Artikel, um die passenden Bestellungen hervorzuheben.
+              </p>
+            </div>
+            <div class="load-indicator" :class="'load-' + stats.load_level">
+              {{ stats.waiting_items }} Positionen gesamt
+            </div>
+          </div>
+
+          <div v-if="summary.length === 0" class="empty-state">
+            <span class="empty-icon">🍳</span>
+            <h3 class="empty-title">Keine offenen Positionen</h3>
+            <p class="empty-desc">Aktuell gibt es nichts zuzubereiten.</p>
+          </div>
+
+          <div v-else class="prep-grid">
+            <div 
+              v-for="item in summary" 
+              :key="item.pos_key"
+              class="prep-card"
+              :class="{ 'active-filter': highlightedItem === item.name }"
+              @click="highlightedItem = (highlightedItem === item.name ? null : item.name); switchViewMode('cards');">
+              <div class="prep-card-left">
+                <span class="prep-card-name">{{ item.name }}</span>
+                <div v-if="item.tables.length > 0" class="prep-card-tables">
+                  <span 
+                    v-for="t in item.tables.slice(0, 6)" 
+                    :key="t" 
+                    class="prep-table-tag">
+                    {{ t }}
+                  </span>
+                  <span v-if="item.tables.length > 6" class="prep-table-tag">
+                    +{{ item.tables.length - 6 }} mehr
+                  </span>
+                </div>
+                <div v-if="item.extras.length > 0" style="margin-top: 4px;">
+                  <span 
+                    v-for="ex in item.extras" 
+                    :key="ex" 
+                    class="item-extra" 
+                    style="margin-right: 4px;">
+                    {{ ex }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="prep-qty-badge">
+                {{ item.anzahl }}×
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- ANSICHT 3: HISTORIE (Zuletzt fertiggestellt)                       -->
+        <!-- ================================================================= -->
+        <div v-else-if="viewMode === 'history'" class="history-view">
+          <div class="prep-hero">
+            <div>
+              <h2 class="prep-title">Bestellhistorie – Zuletzt abgeschlossen</h2>
+              <p class="prep-subtitle">
+                Hier können versehentlich als fertig markierte Bestellungen wieder reaktiviert werden.
+              </p>
+            </div>
+            <button type="button" class="h-btn" @click="fetchHistory">
+              🔄 Aktualisieren
+            </button>
+          </div>
+
+          <div v-if="historyOrders.length === 0" class="empty-state">
+            <span class="empty-icon">📜</span>
+            <h3 class="empty-title">Keine Historie vorhanden</h3>
+            <p class="empty-desc">In diesem Zeitraum wurden noch keine Bestellungen an dieser Station abgeschlossen.</p>
+          </div>
+
+          <article 
+            v-for="ho in historyOrders" 
+            :key="ho.batch_key"
+            class="history-card">
+            <div class="history-info">
+              <div class="history-head">
+                <span class="history-table">
+                  {{ ho.is_direktverkauf && ho.bon_id ? 'Bon #' + ho.bon_id : ho.tischname }}
+                </span>
+                <span v-if="ho.order_nr" class="order-nrs">#{{ ho.order_nr }}</span>
+                <span class="history-time">
+                  Ausgeliefert: {{ ho.timestamp_auslieferung || ho.timestamp_bestellung }}
+                </span>
+                <span class="waiter-label">· Kellner: {{ ho.kellner }}</span>
+              </div>
+              <div class="history-items">
+                <span v-for="(it, idx) in ho.items" :key="idx" style="margin-right: 8px;">
+                  <strong>{{ it.anzahl }}×</strong> {{ it.name }}
+                  <em v-if="it.zusatzinfo" style="color: #7c3aed;">({{ it.zusatzinfo }})</em>
+                </span>
+              </div>
+            </div>
+
+            <button 
+              type="button" 
+              class="btn-reopen"
+              title="Bestellung wieder auf die aktive Station zurückholen"
+              @click="reopenOrder(ho)">
+              ↩ Wiedereröffnen
+            </button>
+          </article>
+        </div>
+
+      </main>
+
+      <!-- 4. RECHTES DRAWER-PANEL: ARTIKEL-MENGEN (Optional einblendbar) -->
+      <aside v-if="showSummaryDrawer && viewMode === 'cards'" class="summary-drawer">
+        <header class="drawer-header">
+          <span class="drawer-title">📊 Offene Positionen</span>
+          <button type="button" class="modal-close-btn" @click="showSummaryDrawer = false">✕</button>
+        </header>
+
+        <div class="drawer-body">
+          <div 
+            v-for="s in summary" 
+            :key="s.pos_key"
+            class="sum-item"
+            :class="{ active: highlightedItem === s.name }"
+            @click="highlightedItem = (highlightedItem === s.name ? null : s.name)">
+            <div>
+              <div class="sum-item-name">{{ s.name }}</div>
+              <div v-if="s.tables.length > 0" style="font-size: 0.75rem; color: var(--ff-text-muted);">
+                {{ s.tables.slice(0, 3).join(', ') }}{{ s.tables.length > 3 ? '...' : '' }}
+              </div>
+            </div>
+            <span class="sum-item-qty">{{ s.anzahl }}×</span>
+          </div>
+
+          <div v-if="summary.length === 0" class="no-items-hint" style="text-align: center; padding: 20px;">
+            Keine offenen Positionen.
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- 5. EINSTELLUNGEN MODAL -->
+    <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+      <div class="modal-card">
+        <header class="modal-header">
+          <h3 class="modal-title">⚙️ Stations-Einstellungen</h3>
+          <button type="button" class="modal-close-btn" @click="showSettingsModal = false">✕</button>
+        </header>
+
+        <div class="modal-body">
+          <!-- Bildschirm-Skalierung -->
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Darstellungsgröße</div>
+              <div class="setting-desc">Optimiert für Handhelds, Küchen-Tablets oder Fernseher/Großbildschirme</div>
+            </div>
+            <div class="view-mode-group">
+              <button type="button" class="view-mode-btn" :class="{ active: scaleMode === 'compact' }" @click="setScale('compact')">Kompakt</button>
+              <button type="button" class="view-mode-btn" :class="{ active: scaleMode === 'normal' }" @click="setScale('normal')">Normal</button>
+              <button type="button" class="view-mode-btn" :class="{ active: scaleMode === 'large' }" @click="setScale('large')">Groß (TV)</button>
+            </div>
+          </div>
+
+          <!-- Signalton & Lautstärke -->
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Signalton bei neuen Bestellungen</div>
+              <div class="setting-desc">Akustischer Gong/Doorbell bei Bestelleingang</div>
+            </div>
+            <button 
+              type="button" 
+              class="h-btn" 
+              :class="soundEnabled ? 'active' : ''"
+              @click="toggleSound">
+              {{ soundEnabled ? '🔔 An' : '🔕 Aus' }}
+            </button>
+          </div>
+
+          <div v-if="soundEnabled" class="setting-row">
+            <div>
+              <div class="setting-label">Gong testen</div>
+              <div class="setting-desc">Lautstärke und Lautsprecher überprüfen</div>
+            </div>
+            <button type="button" class="h-btn" @click="testSound">
+              🔊 Ton abspielen
+            </button>
+          </div>
+
+          <!-- Design Theme -->
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Farbschema</div>
+              <div class="setting-desc">Dunkles Design ist ideal für Bars, Schänken oder Nachtbetrieb</div>
+            </div>
+            <button type="button" class="h-btn" @click="toggleTheme">
+              {{ isDarkTheme ? '🌙 Dunkel' : '☀️ Hell' }}
+            </button>
+          </div>
+
+          <!-- Speisekarten-Sperren -->
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Ausverkaufte Artikel sperren</div>
+              <div class="setting-desc">Positionen für Kellner als ausverkauft markieren</div>
+            </div>
+            <a href="../menu_locks_ui.php" target="_blank" class="h-btn">
+              🔒 Sperren öffnen
+            </a>
+          </div>
+
+          <!-- Admin-Bereich Link -->
+          <div v-if="currentUser && currentUser.admin > 0" class="setting-row">
+            <div>
+              <div class="setting-label">Administration</div>
+              <div class="setting-desc">Tische, Druckziele, Feste und Rechnungen verwalten</div>
+            </div>
+            <a href="admin.html" class="h-btn" style="background: var(--ff-primary); color: #fff;">
+              ⚙️ Admin-Pilot öffnen
+            </a>
+          </div>
+
+          <!-- Info zur Station -->
+          <div style="font-size: 0.8rem; color: var(--ff-text-muted); border-top: 1px solid var(--ff-border); padding-top: 12px;">
+            Angemeldet als: <strong>{{ currentUser ? currentUser.username : '–' }}</strong> · 
+            Zahlungsmodus: <strong>{{ stats.payment_mode === 'instant' ? 'Sofortzahlung' : 'Nachher zahlen' }}</strong> · 
+            Version: Pilot Stations-SPA v1
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. TOAST NOTIFICATIONS -->
+    <div v-if="toast" class="toast-container">
+      <div class="toast" :class="'toast-' + toast.type">
+        <span>{{ toast.message }}</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vue 3 App Initialisierung -->
+  <script type="module" src="station.js?v=5"></script>
+</body>
+</html>

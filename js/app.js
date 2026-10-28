@@ -22,6 +22,22 @@
     /** true = Auto-Reload Küche/Schank/Druckziel anhalten (z. B. Maske „Sperren“) */
     window._pauseOperationsPoll = false;
 
+    function ffGetCsrfToken() {
+        if (window.FF_CSRF_TOKEN && typeof window.FF_CSRF_TOKEN === 'string') {
+            return window.FF_CSRF_TOKEN;
+        }
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.getAttribute('content')) {
+            return meta.getAttribute('content');
+        }
+        var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+        if (m && m[1]) {
+            try { return decodeURIComponent(m[1]); } catch(e) { return m[1]; }
+        }
+        return '';
+    }
+    window.ffGetCsrfToken = ffGetCsrfToken;
+
     function ffGetTischFromUrl() {
         try {
             return parseInt(new URLSearchParams(window.location.search).get('tischnummer') || '', 10) || 0;
@@ -822,7 +838,13 @@
      * Bewusst ein fester Wert – keine Schwellen nach Auftragsanzahl (gleiches Verhalten, leicht zu erklären).
      * Mit Admin „Schnellere Aktualisierung“: _delay() halbiert (mind. 800 ms).
      */
-    var OPERATIONS_POLL_INTERVAL_MS = 3000;
+    var OPERATIONS_POLL_INTERVAL_MS = 30000;
+    var OPERATIONS_POLL_FALLBACK_MS = 4000;
+    var stationEventsFailed = false;
+    var operationsPollTimer = null;
+    var stationEventsSource = null;
+    var stationEventsPrintTarget = 0;
+    var stationEventRefreshTimer = null;
 
     function syncBodySubviewClass() {
     }
@@ -920,6 +942,13 @@
             page.classList.add('active');
             var h = hashOverride !== undefined && hashOverride !== null && hashOverride !== '' ? hashOverride : pageId;
             window.location.hash = h;
+        }
+        if (pageId !== 'DruckzielAnsicht') {
+            ffCloseStationEvents();
+            if (operationsPollTimer) {
+                clearTimeout(operationsPollTimer);
+                operationsPollTimer = null;
+            }
         }
     }
 
@@ -1171,19 +1200,40 @@
 
     function fetchPost(url, data, options) {
         options = options || {};
+        var csrf = ffGetCsrfToken();
+        var headers = Object.assign({
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf
+        }, options.headers || {});
         var body;
-        if (typeof data === 'string') {
+        if (typeof FormData !== 'undefined' && data instanceof FormData) {
+            delete headers['Content-Type'];
+            if (csrf && !data.has('csrf_token') && !data.has('csrf')) {
+                data.append('csrf_token', csrf);
+            }
             body = data;
+        } else if (typeof data === 'string') {
+            body = data;
+            if (csrf && body.indexOf('csrf_token=') === -1 && body.indexOf('csrf=') === -1) {
+                body += (body ? '&' : '') + 'csrf_token=' + encodeURIComponent(csrf);
+            }
         } else if (typeof URLSearchParams !== 'undefined') {
+            if (csrf && data && typeof data === 'object' && !data.csrf_token && !data.csrf) {
+                data.csrf_token = csrf;
+            }
             body = new URLSearchParams(data).toString();
         } else {
+            if (csrf && data && typeof data === 'object' && !data.csrf_token && !data.csrf) {
+                data.csrf_token = csrf;
+            }
             body = Object.keys(data).map(function(k) {
                 return encodeURIComponent(k) + '=' + encodeURIComponent(data[k]);
             }).join('&');
         }
         return fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+            headers: headers,
             body: body,
             cache: 'no-store',
             credentials: 'same-origin'
@@ -1380,6 +1430,18 @@
     }
 
     /** Nach bestellung_save: Kachel-Zähler lokal aktualisieren (kein Tab-Reload). */
+    /** Karte still neu laden, wenn geteilte Bestandteile die Restmengen anderer Kacheln verändern. */
+    function ffReloadSpeisekarteIfStockShared(res, tischnummer) {
+        if (!res || !res.stock_shared) return;
+        if (parseInt(String(tischnummer), 10) === 999999) return;
+        var tabContent = document.getElementById(ffSpeisekarteTabContentId(tischnummer));
+        var pane = tabContent ? tabContent.querySelector('.tab-pane.active') : null;
+        if (pane && pane.dataset.loadUrl) {
+            var inner = pane.querySelector('.tab-content-inner');
+            loadContent(pane.dataset.loadUrl, inner || pane, null, { silentPoll: true });
+        }
+    }
+
     function ffUpdatePosTileFromSave(positionId, res, options) {
         var posId = parseInt(String(positionId), 10) || 0;
         if (posId <= 0 || !res) return false;
@@ -1412,8 +1474,17 @@
         return true;
     }
 
-    function fetchGet(url) {
-        return fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    function fetchGet(url, options) {
+        options = options || {};
+        var csrf = ffGetCsrfToken();
+        var headers = Object.assign({
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf
+        }, options.headers || {});
+        return fetch(url, Object.assign({
+            cache: 'no-store',
+            credentials: 'same-origin'
+        }, options, { headers: headers }));
     }
 
     function onError() {
@@ -1464,7 +1535,7 @@
         try {
             var modalEl = document.getElementById('ffTischSelectModal');
             if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                var m = new bootstrap.Modal(modalEl);
+                var m = bootstrap.Modal.getOrCreateInstance(modalEl);
                 m.show();
                 return;
             }
@@ -1492,10 +1563,18 @@
         try {
             var sel = document.getElementById('ffTischSelectModal');
             if (sel && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-                var inst = bootstrap.Modal.getInstance(sel) || new bootstrap.Modal(sel);
+                var inst = bootstrap.Modal.getOrCreateInstance(sel);
                 inst.hide();
             }
         } catch (e) {}
+        setTimeout(function() {
+            if (!document.querySelector('.modal.show')) {
+                document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+                document.body.classList.remove('modal-open');
+                document.body.style.removeProperty('overflow');
+                document.body.style.removeProperty('padding-right');
+            }
+        }, 400);
         loadListTische();
     };
 
@@ -1515,7 +1594,7 @@
         // Clear previous content
         scanRegion.innerHTML = '';
         // Show modal first (camera prompt will come after)
-        var m = new bootstrap.Modal(scanModalEl);
+        var m = bootstrap.Modal.getOrCreateInstance(scanModalEl);
         m.show();
 
         var startNativeScanner = function() {
@@ -2157,9 +2236,65 @@
         });
     }
 
+    function ffCloseStationEvents() {
+        if (stationEventsSource) {
+            stationEventsSource.close();
+            stationEventsSource = null;
+        }
+        stationEventsPrintTarget = 0;
+        if (stationEventRefreshTimer) {
+            clearTimeout(stationEventRefreshTimer);
+            stationEventRefreshTimer = null;
+        }
+    }
+
+    function ffConnectStationEvents(printTargetId) {
+        var pt = parseInt(printTargetId, 10) || 0;
+        if (pt <= 0 || typeof window.EventSource !== 'function') return;
+        if (stationEventsSource && stationEventsPrintTarget === pt) return;
+        ffCloseStationEvents();
+        stationEventsPrintTarget = pt;
+        stationEventsSource = new EventSource('station_events.php?print_target=' + encodeURIComponent(String(pt)));
+        stationEventsFailed = false;
+        stationEventsSource.onopen = function() { stationEventsFailed = false; };
+        stationEventsSource.onerror = function() {
+            if (stationEventsSource && stationEventsSource.readyState === 2) {
+                stationEventsFailed = true;
+                stationEventsSource = null;
+                stationEventsPrintTarget = 0;
+            }
+        };
+        stationEventsSource.addEventListener('station-unavailable', function() {
+            stationEventsFailed = true;
+            ffCloseStationEvents();
+        });
+        stationEventsSource.addEventListener('station-change', function(event) {
+            var payload;
+            try {
+                payload = JSON.parse(event.data);
+            } catch (err) {
+                console.error('Ungültiges Stationsereignis empfangen.', err);
+                return;
+            }
+            if (!payload || parseInt(payload.print_target, 10) !== pt) return;
+            if (stationEventRefreshTimer) clearTimeout(stationEventRefreshTimer);
+            stationEventRefreshTimer = setTimeout(function() {
+                stationEventRefreshTimer = null;
+                if (getActivePageId() !== 'DruckzielAnsicht' || window.currentDruckzielId !== pt) return;
+                ffClearStationPollSignature(pt);
+                window.DruckzielAnsichtRefresh();
+            }, 100);
+        });
+    }
+
     window.ffWakeUpPolls = function() {
         if (window._pauseOperationsPoll) return;
         if (getActivePageId() === 'DruckzielAnsicht' && window.currentDruckzielId) {
+            if (operationsPollTimer) {
+                clearTimeout(operationsPollTimer);
+                operationsPollTimer = null;
+            }
+            ffConnectStationEvents(window.currentDruckzielId);
             ffClearStationPollSignature(window.currentDruckzielId);
             window.DruckzielAnsichtAutoReload(window.currentDruckzielId);
         }
@@ -2188,12 +2323,17 @@
 
     function ffScheduleOperationsPoll(printTargetId) {
         if (getActivePageId() === 'DruckzielAnsicht' && window.currentDruckzielId === printTargetId) {
-            setTimeout(function() { window.DruckzielAnsichtAutoReload(printTargetId); }, _delay(OPERATIONS_POLL_INTERVAL_MS));
+            if (operationsPollTimer) clearTimeout(operationsPollTimer);
+            operationsPollTimer = setTimeout(function() {
+                operationsPollTimer = null;
+                window.DruckzielAnsichtAutoReload(printTargetId);
+            }, _delay(stationEventsFailed ? OPERATIONS_POLL_FALLBACK_MS : OPERATIONS_POLL_INTERVAL_MS));
         }
     }
 
     window.DruckzielAnsicht = function(printTargetId, name) {
         window.currentDruckzielId = printTargetId;
+        ffConnectStationEvents(printTargetId);
         try { sessionStorage.setItem('lastDruckzielId', String(printTargetId)); } catch(e) {}
         var url = 'list_druckziel.php?print_target=' + encodeURIComponent(printTargetId);
         if (name) url += '&name=' + encodeURIComponent(name);
@@ -2213,6 +2353,10 @@
     window.DruckzielAnsichtRefresh = function() {
         var pid = window.currentDruckzielId;
         if (!pid) return;
+        if (operationsPollTimer) {
+            clearTimeout(operationsPollTimer);
+            operationsPollTimer = null;
+        }
         ffClearStationPollSignature(pid);
         var url = 'list_druckziel.php?print_target=' + encodeURIComponent(pid);
         var el = document.getElementById('DruckzielContent');
@@ -2354,19 +2498,23 @@
         var loadTab = function(pane, force) {
             var url = pane.getAttribute('data-load-url');
             var inner = pane.querySelector('.tab-content-inner');
-            if (!url || !inner) return;
-            if (!force && inner.getAttribute('data-loaded') === '1') return;
+            if (!url || !inner) return Promise.resolve();
+            if (!force && inner.getAttribute('data-loaded') === '1') return Promise.resolve();
             inner.removeAttribute('data-loaded');
             var tabHadContent = inner.children.length > 0 && (inner.textContent || '').trim() !== '';
             if (!tabHadContent) {
                 inner.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm text-secondary" role="status"></div></div>';
             }
-            fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            return fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function(r) { return r.text(); })
                 .then(function(html) {
                     inner.innerHTML = html;
                     inner.setAttribute('data-loaded', '1');
                     runScriptsInElement(inner);
+                    setTimeout(function() {
+                        if (typeof window.ffSyncOrderStickyHeights === 'function') window.ffSyncOrderStickyHeights();
+                        if (typeof window.ffUpdatePosSubcatScrollspy === 'function') window.ffUpdatePosSubcatScrollspy();
+                    }, 80);
                 })
                 .catch(function() { inner.innerHTML = '<div class="alert alert-danger">Fehler beim Laden</div>'; });
         };
@@ -2379,11 +2527,21 @@
             });
         };
         var panes = tabContent.querySelectorAll('.tab-pane[data-load-url]');
-        panes.forEach(function(pane) { loadTab(pane); });
+        /* Aktiven Tab zuerst, übrige nacheinander: weniger parallele Requests beim Tischwechsel. */
+        var paneList = Array.prototype.slice.call(panes).sort(function(a, b) {
+            return (b.classList.contains('active') ? 1 : 0) - (a.classList.contains('active') ? 1 : 0);
+        });
+        paneList.reduce(function(chain, pane) {
+            return chain.then(function() { return loadTab(pane); });
+        }, Promise.resolve());
         tabContent.querySelectorAll('[data-bs-toggle="tab"]').forEach(function(btn) {
             btn.addEventListener('shown.bs.tab', function(e) {
                 var target = document.querySelector(e.target.getAttribute('data-bs-target'));
                 if (target && target.dataset.loadUrl) loadTab(target, false);
+                setTimeout(function() {
+                    if (typeof window.ffSyncOrderStickyHeights === 'function') window.ffSyncOrderStickyHeights();
+                    if (typeof window.ffUpdatePosSubcatScrollspy === 'function') window.ffUpdatePosSubcatScrollspy();
+                }, 80);
             });
         });
 
@@ -2874,10 +3032,11 @@
             msg = 'Position wirklich stornieren?';
         }
         if (!confirm(msg)) return;
+        var csrf = ffGetCsrfToken();
         var url = isPaid
-            ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid))
-            : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid));
-        fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+            ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf)
+            : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf);
+        fetchGet(url)
             .then(function(r) { return r.json().then(function(j) { return { r: r, j: j }; }); })
             .then(function(x) {
                 if (!x.r.ok || !x.j || !x.j.ok) {
@@ -2897,7 +3056,7 @@
         if (!confirm('Offene Position wirklich entfernen?')) return;
         var fd = new FormData();
         fd.append('rowid', String(rowid));
-        fetch('bestellung_dv_row_remove.php', { method: 'POST', body: fd, credentials: 'same-origin', cache: 'no-store' })
+        fetchPost('bestellung_dv_row_remove.php', fd)
             .then(function(r) { return r.json(); })
             .then(function(j) {
                 if (!j || !j.ok) {
@@ -2925,8 +3084,10 @@
 
         body.innerHTML = '<div class="text-muted">Übersicht wird geladen…</div>';
         submitBtn.disabled = true;
-        submitBtn.textContent = 'Bestellung endgültig absenden';
+        submitBtn.textContent = '✓ Absenden';
         submitBtn.onclick = null;
+        var infoEl = document.getElementById('ffTischOrderSummaryInfo');
+        if (infoEl) infoEl.textContent = '';
 
         function moneyText(value) {
             var num = Number(value) || 0;
@@ -2957,7 +3118,13 @@
                     html = '<div class="alert alert-warning mb-0" style="font-size: 1rem;">Keine offenen Positionen zum Abschicken.</div>';
                 } else {
                     html = '<div class="list-group list-group-flush" style="font-size: 1rem;">';
+                    var lastGroup = null;
                     lines.forEach(function(line) {
+                        var grp = Number(line.type) === 2 ? 'Getränke' : (Number(line.type) === 1 ? 'Speisen' : 'Sonstiges');
+                        if (grp !== lastGroup) {
+                            html += '<div class="ff-os-group">' + grp + '</div>';
+                            lastGroup = grp;
+                        }
                         var name = String(line.name || 'Unbekannt');
                         var qty = Number(line.quantity || 0);
                         var price = Number(line.price || 0);
@@ -2972,11 +3139,11 @@
                         } else if (hint) {
                             hintBlock = '<div class="text-muted small mt-1" style="line-height:1.4;">Hinweis: ' + escapeHtml(hint) + '</div>';
                         }
-                        html += '<div class="list-group-item px-0 py-2 border-0 border-bottom" style="font-size: 1rem;">'
+                        html += '<div class="list-group-item px-0 py-2 border-0 border-bottom ff-os-item" style="font-size: 1rem;">'
                             + '<div class="d-flex justify-content-between gap-3 align-items-start">'
                             + '<div style="min-width: 0; flex: 1;">'
-                            + '<div class="fw-semibold" style="font-size: 1.02rem; line-height: 1.35;">' + escapeHtml(name) + '</div>'
-                            + '<div class="text-muted" style="font-size: 0.95rem;">' + qty + ' × ' + priceText + '</div>'
+                            + '<div class="fw-semibold ff-os-name" style="font-size: 1.02rem; line-height: 1.35;"><span class="ff-os-qty' + (qty > 1 ? ' is-multi' : '') + '">' + qty + '×</span><span class="ff-os-text">' + escapeHtml(name) + '</span></div>'
+                            + (qty > 1 ? '<div class="text-muted ff-os-unit">je ' + priceText + '</div>' : '')
                             + hintBlock
                             + '</div>'
                             + '<div class="fw-semibold text-end" style="white-space: nowrap; font-size: 1rem;">' + lineTotalText + '</div>'
@@ -2990,6 +3157,9 @@
                     + '<span>' + moneyText(total) + '</span>'
                     + '</div>';
                 body.innerHTML = html;
+                var totalQty = lines.reduce(function(a, l) { return a + (Number(l.quantity) || 0); }, 0);
+                if (infoEl) infoEl.textContent = totalQty + ' Pos. · ' + moneyText(total);
+                submitBtn.textContent = '✓ Absenden · ' + moneyText(total);
 
                 if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
                     var inst = bootstrap.Modal.getOrCreateInstance(modal);
@@ -2997,6 +3167,8 @@
                 }
                 submitBtn.disabled = false;
                 submitBtn.onclick = function() {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Wird gesendet …';
                     var inst2 = bootstrap && bootstrap.Modal ? bootstrap.Modal.getInstance(modal) : null;
                     if (inst2) inst2.hide();
                     if (typeof callback === 'function') callback();
@@ -3084,14 +3256,12 @@
         return t === 999999 ? 'DirektverkaufTabContent' : 'TischAnzeigenContent';
     }
 
-    var _saveBestellungInflight = {};
+    var _saveBestellungPending = {};
+    var _saveBestellungChain = {};
     window.saveBestellung = function(position, tab, tischnummer, fertig) {
         var tnum = parseInt(String(tischnummer), 10) || 0;
         var posId = parseInt(String(position), 10) || 0;
         var inflightKey = tnum + ':' + posId;
-        if (_saveBestellungInflight[inflightKey]) {
-            return;
-        }
         try {
             var tapEl = document.getElementById('btn-pos-' + posId);
             if (tapEl) {
@@ -3101,7 +3271,7 @@
             }
             if (navigator.vibrate) navigator.vibrate(15);
         } catch (e) {}
-        _saveBestellungInflight[inflightKey] = true;
+        _saveBestellungPending[inflightKey] = (_saveBestellungPending[inflightKey] || 0) + 1;
         var tabContentIdPre = ffSpeisekarteTabContentId(tischnummer);
         var tabContentPre = document.getElementById(tabContentIdPre);
         var panePre = tabContentPre ? tabContentPre.querySelector('.tab-pane.active') : null;
@@ -3109,17 +3279,17 @@
         // Tisch + Direktverkauf: Karte still neu laden, Scrollposition behalten (silentPoll)
         var useSilentKarteReload = !!(innerPre && innerPre.children.length > 0);
         var isDv = (tnum === 999999);
-        var dvOptimistic = null;
-        if (isDv) {
-            var cntOpt = document.getElementById('cnt-' + posId);
-            var btnOpt = document.getElementById('btn-pos-' + posId);
-            if (cntOpt && btnOpt) {
-                var curCnt = parseInt(cntOpt.getAttribute('data-cnt') || '0', 10) || 0;
-                dvOptimistic = { prevCnt: curCnt };
-                ffUpdatePosTileFromSave(posId, { open_cnt: curCnt + 1 }, { animateSuccess: false });
-            }
+        // Optimistisch: Zähler sofort erhöhen, Server-Antwort synchronisiert nur noch
+        var optimistic = false;
+        var cntOpt = document.getElementById('cnt-' + posId);
+        var btnOpt = document.getElementById('btn-pos-' + posId);
+        if (cntOpt && btnOpt && !btnOpt.disabled) {
+            var curCnt = parseInt(cntOpt.getAttribute('data-cnt') || '0', 10) || 0;
+            optimistic = true;
+            ffUpdatePosTileFromSave(posId, { open_cnt: curCnt + 1 }, { animateSuccess: false });
         }
-        if (!useSilentKarteReload && !isDv) {
+        var showOverlay = !optimistic && !useSilentKarteReload && !isDv;
+        if (showOverlay) {
             showLoading(true);
         }
         var data = "Tischnummer=" + tischnummer + "&positionsid=" + position + "&Zusatzinfo=" + encodeURIComponent(Beilagen) + "&kuechefertig=" + (fertig || 0);
@@ -3132,10 +3302,22 @@
             }
         }
         
-        fetchPost('bestellung_save.php', data)
+        // Pro Position seriell senden, damit schnelle Mehrfach-Taps nicht verloren gehen
+        var prevReq = _saveBestellungChain[inflightKey] || Promise.resolve();
+        var thisReq = prevReq.catch(function() {}).then(function() {
+            return fetchPost('bestellung_save.php', data);
+        });
+        _saveBestellungChain[inflightKey] = thisReq;
+        thisReq
             .then(function(r) { return handleBestellungSaveFetchResponse(r); })
             .then(function(res) {
                 var dvOpts = { paybar: true, tab: false, cart: false };
+                var isLast = _saveBestellungPending[inflightKey] <= 1;
+                if (!isLast && res) {
+                    res = Object.assign({}, res);
+                    delete res.open_cnt;
+                    delete res.open_counts;
+                }
                 if (ffUpdatePosTileFromSave(position, res, { animateSuccess: true })) {
                     Summe = 0;
                     if (isDv) {
@@ -3157,6 +3339,7 @@
                     } else {
                         refreshAbschickenButton(tischnummer);
                     }
+                    if (isLast) ffReloadSpeisekarteIfStockShared(res, tischnummer);
                     return;
                 }
                 var tabContentId = ffSpeisekarteTabContentId(tischnummer);
@@ -3175,15 +3358,21 @@
                 }
             })
             .catch(function(err) {
-                if (isDv && dvOptimistic) {
-                    ffUpdatePosTileFromSave(posId, { open_cnt: dvOptimistic.prevCnt });
+                if (optimistic) {
+                    var cEl = document.getElementById('cnt-' + posId);
+                    var cNow = cEl ? (parseInt(cEl.getAttribute('data-cnt') || '0', 10) || 0) : 0;
+                    ffUpdatePosTileFromSave(posId, { open_cnt: Math.max(0, cNow - 1) });
                 }
                 if (err && (err.message === 'locked' || err.message === 'badreq')) return;
                 onError();
             })
             .finally(function() {
-                delete _saveBestellungInflight[inflightKey];
-                if (!useSilentKarteReload && !isDv) showLoading(false);
+                _saveBestellungPending[inflightKey]--;
+                if (_saveBestellungPending[inflightKey] <= 0) {
+                    delete _saveBestellungPending[inflightKey];
+                    if (_saveBestellungChain[inflightKey] === thisReq) delete _saveBestellungChain[inflightKey];
+                }
+                if (showOverlay) showLoading(false);
             });
     };
 
@@ -3331,14 +3520,21 @@
         var container = document.getElementById('ffHinweisZeilen');
         if (!mEl || !container) return;
         var presetItems = window._ffHinweisPresetItems || [];
+        var recipeItems = window._ffHinweisRecipeItems || [];
+        var savedRecipeSelections = window._ffHinweisRecipeSelections || [];
         var prev = [];
         var oldBlocks = container.querySelectorAll('.ff-hinweis-block');
         for (var o = 0; o < oldBlocks.length; o++) {
             var ta0 = oldBlocks[o].querySelector('.ff-hinweis-zeile');
-            var row = { text: ta0 ? (ta0.value || '') : '', checks: [] };
+            var row = { text: ta0 ? (ta0.value || '') : '', checks: [], recipeIds: [] };
             for (var pi = 0; pi < presetItems.length; pi++) {
                 var cb0 = document.getElementById('ffH_cb_' + o + '_' + pi);
                 row.checks.push(cb0 ? !!cb0.checked : false);
+            }
+            for (var ri = 0; ri < recipeItems.length; ri++) {
+                var recipeId = parseInt(recipeItems[ri].bestandteil_id, 10) || 0;
+                var recipeCb = document.getElementById('ffH_recipe_' + o + '_' + recipeId);
+                if (recipeCb && recipeCb.checked) row.recipeIds.push(recipeId);
             }
             prev.push(row);
         }
@@ -3367,9 +3563,63 @@
             title.textContent = 'Portion ' + (i + 1);
             block.appendChild(title);
             var checkEls = [];
+            if (recipeItems.length > 0) {
+                var recipeWrap = document.createElement('div');
+                recipeWrap.className = 'ff-hinweis-section ff-hinweis-recipe';
+                var recipeTitle = document.createElement('div');
+                recipeTitle.className = 'ff-hinweis-section-title';
+                recipeTitle.textContent = 'Rezeptur';
+                recipeWrap.appendChild(recipeTitle);
+                var recipeHelp = document.createElement('div');
+                recipeHelp.className = 'ff-hinweis-section-help';
+                recipeHelp.textContent = 'Fixe Bestandteile sind gesperrt; optionale können Sie ändern.';
+                recipeWrap.appendChild(recipeHelp);
+                var savedIds = prev[i] ? prev[i].recipeIds : savedRecipeSelections[i];
+                if (!Array.isArray(savedIds)) {
+                    savedIds = recipeItems.filter(function(component) {
+                        return !component.optional_enabled || component.default_selected;
+                    }).map(function(component) { return parseInt(component.bestandteil_id, 10) || 0; });
+                }
+                var recipeRow = document.createElement('div');
+                recipeRow.className = 'd-flex flex-wrap gap-2';
+                recipeItems.forEach(function(component) {
+                    var componentId = parseInt(component.bestandteil_id, 10) || 0;
+                    var optional = !!component.optional_enabled;
+                    var recipeCheckId = 'ffH_recipe_' + i + '_' + componentId;
+                    var recipeCheckWrap = document.createElement('div');
+                    recipeCheckWrap.className = 'form-check m-0 ff-hinweis-option';
+                    var recipeCheck = document.createElement('input');
+                    recipeCheck.type = 'checkbox';
+                    recipeCheck.className = 'form-check-input';
+                    recipeCheck.id = recipeCheckId;
+                    recipeCheck.checked = !optional || savedIds.indexOf(componentId) !== -1;
+                    recipeCheck.disabled = !optional;
+                    var recipeLabel = document.createElement('label');
+                    recipeLabel.className = 'form-check-label ff-hinweis-option-label';
+                    recipeLabel.setAttribute('for', recipeCheckId);
+                    recipeLabel.textContent = String(component.name || '')
+                        + (component.menge ? ' (' + String(component.menge).replace('.', ',') + ' ' + String(component.einheit || 'Stk') + ')' : '')
+                        + (optional ? ' · optional' : ' · fix');
+                    recipeCheckWrap.appendChild(recipeCheck);
+                    recipeCheckWrap.appendChild(recipeLabel);
+                    recipeRow.appendChild(recipeCheckWrap);
+                });
+                recipeWrap.appendChild(recipeRow);
+                block.appendChild(recipeWrap);
+            }
             if (presetItems.length > 0) {
+                var hintWrap = document.createElement('div');
+                hintWrap.className = 'ff-hinweis-section ff-hinweis-presets';
+                var hintTitle = document.createElement('div');
+                hintTitle.className = 'ff-hinweis-section-title';
+                hintTitle.textContent = 'Hinweise / Zusatzinfos';
+                hintWrap.appendChild(hintTitle);
+                var hintHelp = document.createElement('div');
+                hintHelp.className = 'ff-hinweis-section-help';
+                hintHelp.textContent = 'Wählen Sie passende Hinweise für diese Portion.';
+                hintWrap.appendChild(hintHelp);
                 var cbRow = document.createElement('div');
-                cbRow.className = 'd-flex flex-wrap gap-2 mb-2 ff-hinweis-options-row';
+                cbRow.className = 'd-flex flex-wrap gap-2 ff-hinweis-options-row';
                 var groupFirstInput = {};
                 var groupHasChecked = {};
                 for (var pi = 0; pi < presetItems.length; pi++) {
@@ -3415,14 +3665,20 @@
                         groupFirstInput[gname].checked = true;
                     }
                 }
-                block.appendChild(cbRow);
+                hintWrap.appendChild(cbRow);
+                block.appendChild(hintWrap);
             }
+            var noteLabel = document.createElement('label');
+            noteLabel.className = 'form-label fw-semibold mt-3 mb-1';
+            noteLabel.setAttribute('for', 'ffHinweisLine' + i);
+            noteLabel.textContent = 'Zusätzlicher Freitext für die Küche (optional)';
+            block.appendChild(noteLabel);
             var ta = document.createElement('textarea');
             ta.id = 'ffHinweisLine' + i;
             ta.className = 'form-control ff-hinweis-zeile';
             ta.rows = 2;
             ta.maxLength = 255;
-            ta.placeholder = 'Zusätzlicher Freitext (optional)';
+            ta.placeholder = 'Zum Beispiel: gut durch, Sauce extra …';
             if (prev[i]) {
                 ta.value = prev[i].text || '';
                 for (var pi2 = 0; pi2 < checkEls.length; pi2++) {
@@ -3430,23 +3686,6 @@
                 }
             }
             block.appendChild(ta);
-            var quickRow = document.createElement('div');
-            quickRow.className = 'd-flex flex-wrap gap-1 mt-2 ff-hinweis-quick';
-            ['ohne Zwiebel', 'ohne Senf', 'ohne Ketchup', 'ohne Soße', 'extra scharf', 'gut durch'].forEach(function(q) {
-                var qb = document.createElement('button');
-                qb.type = 'button';
-                qb.className = 'btn btn-sm btn-outline-secondary ff-hinweis-quick-btn';
-                qb.textContent = q;
-                qb.addEventListener('click', function() {
-                    var parts = ta.value.split(',').map(function(x) { return x.trim(); }).filter(Boolean);
-                    var idx = parts.indexOf(q);
-                    if (idx >= 0) parts.splice(idx, 1); else parts.push(q);
-                    ta.value = parts.join(', ').slice(0, 255);
-                    qb.classList.toggle('active', idx < 0);
-                });
-                quickRow.appendChild(qb);
-            });
-            block.appendChild(quickRow);
             container.appendChild(block);
         }
     };
@@ -3503,10 +3742,16 @@
         mEl.value = String(initialMenge);
         mEl.setAttribute('min', '0');
         mEl.setAttribute('max', String(maxAllowed));
+        if (!mEl._ffHinweisRecipeBound) {
+            mEl.addEventListener('change', function() { window.ffHinweisRebuildZeilen(); });
+            mEl._ffHinweisRecipeBound = true;
+        }
 
         if (rowidsEl) rowidsEl.value = '[]';
         container.innerHTML = '';
         window._ffHinweisPresetItems = [];
+        window._ffHinweisRecipeItems = [];
+        window._ffHinweisRecipeSelections = [];
 
         var bs = typeof bootstrap !== 'undefined' && bootstrap.Modal ? bootstrap.Modal.getOrCreateInstance(modal) : null;
         if (bs) bs.show();
@@ -3534,6 +3779,8 @@
                 }
             }
             window._ffHinweisPresetItems = rawItems;
+            window._ffHinweisRecipeItems = Array.isArray(lData.recipe_items) ? lData.recipe_items : [];
+            window._ffHinweisRecipeSelections = Array.isArray(lData.recipe_selections) ? lData.recipe_selections : [];
 
             var hinweise = [];
             if (lData && lData.ok) {
@@ -3642,6 +3889,7 @@
         }
 
         var hinweise = [];
+        var recipeSelections = [];
         if (menge > 0) {
             var lineEls = container.querySelectorAll('.ff-hinweis-zeile');
             if (lineEls.length !== menge) {
@@ -3650,6 +3898,14 @@
             }
             for (var h = 0; h < menge; h++) {
                 hinweise.push(typeof window.ffComposeHinweisLine === 'function' ? window.ffComposeHinweisLine(h) : ((lineEls[h] && lineEls[h].value) || '').trim());
+                var portionRecipeIds = [];
+                (window._ffHinweisRecipeItems || []).forEach(function(component) {
+                    if (!component.optional_enabled) return;
+                    var componentId = parseInt(component.bestandteil_id, 10) || 0;
+                    var recipeCheck = document.getElementById('ffH_recipe_' + h + '_' + componentId);
+                    if (recipeCheck && recipeCheck.checked) portionRecipeIds.push(componentId);
+                });
+                recipeSelections.push(portionRecipeIds);
             }
         }
 
@@ -3685,9 +3941,11 @@
         var updateCount = Math.min(rowids.length, menge);
         var updateRowids = rowids.slice(0, updateCount);
         var updateHints = hinweise.slice(0, updateCount);
+        var updateRecipeSelections = recipeSelections.slice(0, updateCount);
 
         var extraCount = Math.max(0, menge - rowids.length);
         var extraHints = hinweise.slice(updateCount);
+        var extraRecipeSelections = recipeSelections.slice(updateCount);
 
         var promises = [];
         if (removeCount > 0) {
@@ -3695,7 +3953,8 @@
         }
         if (updateCount > 0) {
             var updData = 'rowids_json=' + encodeURIComponent(JSON.stringify(updateRowids))
-                + '&hinweise_json=' + encodeURIComponent(JSON.stringify(updateHints));
+                + '&hinweise_json=' + encodeURIComponent(JSON.stringify(updateHints))
+                + '&recipe_components_json=' + encodeURIComponent(JSON.stringify(updateRecipeSelections));
             promises.push(fetchPost('saveZusatzinfos_multi.php', updData).then(function(r) {
                 if (!r.ok) throw new Error('http');
             }));
@@ -3707,6 +3966,7 @@
                 + '&positionsid=' + encodeURIComponent(pos)
                 + '&Zusatzinfo=&menge=' + encodeURIComponent(extraCount)
                 + '&hinweise_json=' + encodeURIComponent(hinweiseJson)
+                + '&recipe_components_json=' + encodeURIComponent(JSON.stringify(extraRecipeSelections))
                 + '&kuechefertig=' + encodeURIComponent(fertig);
 
             if (fertig === 1 && tischnummer === 999999 && typeof getDirektverkaufBonId === 'function') {
@@ -3818,9 +4078,15 @@
         mEl.setAttribute('min', '1');
         mEl.setAttribute('max', '1');
         mEl.readOnly = true;
+        if (!mEl._ffHinweisRecipeBound) {
+            mEl.addEventListener('change', function() { window.ffHinweisRebuildZeilen(); });
+            mEl._ffHinweisRecipeBound = true;
+        }
         if (rowidsEl) rowidsEl.value = '[]';
         container.innerHTML = '';
         window._ffHinweisPresetItems = [];
+        window._ffHinweisRecipeItems = [];
+        window._ffHinweisRecipeSelections = [];
 
         var bs = typeof bootstrap !== 'undefined' && bootstrap.Modal ? bootstrap.Modal.getOrCreateInstance(modal) : null;
         function ffHistHinweisModalReset() {
@@ -3851,6 +4117,8 @@
             }
             var rawItems = Array.isArray(lData.items) ? lData.items : [];
             window._ffHinweisPresetItems = rawItems;
+            window._ffHinweisRecipeItems = Array.isArray(lData.recipe_items) ? lData.recipe_items : [];
+            window._ffHinweisRecipeSelections = Array.isArray(lData.recipe_selections) ? lData.recipe_selections : [];
             var rowids = Array.isArray(lData.rowids) ? lData.rowids : [];
             var hinweise = Array.isArray(lData.hinweise) ? lData.hinweise : [];
             if (rowidsEl) rowidsEl.value = JSON.stringify(rowids);
@@ -3970,6 +4238,8 @@
         window._paySubmitInFlight = true;
         var fd = new FormData();
         ids.forEach(function(p) { fd.append('listePositionen[]', p); });
+        var csrf = ffGetCsrfToken();
+        if (csrf) fd.append('csrf_token', csrf);
 
         function clearPaySelection() {
             ids.forEach(function(r) { if (window._selPay) delete window._selPay[parseInt(r, 10)]; });
@@ -4061,7 +4331,7 @@
             alert(msg || 'Fehler: Der Eintrag konnte nicht gespeichert werden!');
         }
 
-        fetch('BestellungBezahlt.php', { method: 'POST', body: fd, cache: 'no-store', credentials: 'same-origin' })
+        fetch('BestellungBezahlt.php', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: fd, cache: 'no-store', credentials: 'same-origin' })
             .then(function(r) {
                 return r.text().then(function(text) {
                     var j = null;
@@ -4226,6 +4496,8 @@
         window._paySubmitInFlight = true;
         var fd = new FormData();
         ids.forEach(function(p) { fd.append('listePositionen[]', p); });
+        var csrf = ffGetCsrfToken();
+        if (csrf) fd.append('csrf_token', csrf);
         fd.append('tischnummer', String(tisch));
         fd.append('thermo_ziel', thermoZiel);
         fd.append('session_print_target', String(sessionPt));
@@ -4561,6 +4833,8 @@
     window.ffPayLayoutSyncFooter = function() {
         var root = document.getElementById('BestellungZahlen');
         if (!root) return;
+        var navEl = document.querySelector('nav.app-navbar');
+        if (navEl) root.style.setProperty('--ff-nav-h', Math.ceil(navEl.getBoundingClientRect().height) + 'px');
         var footer = root.querySelector('.ff-pay-footer');
         if (!footer) return;
         if (window.matchMedia && !window.matchMedia('(max-width: 767.98px)').matches) {
@@ -4622,31 +4896,40 @@
 
     window.ffShowCashModal = function(amount, cb) {
         var fmt = function(v) { return v.toFixed(2).replace('.', ',') + ' €'; };
-        var btnCss = 'flex:1 1 30%;padding:10px 6px;font-size:1.1rem;font-weight:700;border-radius:10px;background:#fff;';
         var ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:12px;overflow:auto';
         var sugg = window.ffCashSuggestions(amount).map(function(v) {
-            return '<button type="button" data-w="' + v.toFixed(2) + '" style="' + btnCss + 'border:2px solid #0d6efd;color:#0d6efd">' + fmt(v) + '</button>';
+            return '<button type="button" class="ff-cash-choice ff-cash-choice--suggestion" data-w="' + v.toFixed(2) + '" aria-pressed="false">' + fmt(v) + '</button>';
         }).join('');
         var bills = [5, 10, 20, 50, 100, 200].filter(function(v) { return v >= amount; }).map(function(v) {
-            return '<button type="button" data-g="' + v + '" style="' + btnCss + 'border:2px solid #6c757d;color:#333">' + v + ' €</button>';
+            return '<button type="button" class="ff-cash-choice ff-cash-choice--bill" data-g="' + v + '" aria-pressed="false">' + v + ' €</button>';
         }).join('');
-        var inp = 'width:100%;font-size:1.5rem;padding:6px;text-align:center;border:2px solid #999;border-radius:8px;margin-bottom:8px';
-        ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.4)">'
-            + '<div style="font-weight:700">Zu zahlen</div>'
-            + '<div style="font-size:2.6rem;font-weight:800;line-height:1.1;margin:4px 0 10px">' + fmt(amount) + '</div>'
-            + '<label style="display:block;font-weight:700;text-align:left">Kunde zahlt (inkl. Trinkgeld)</label>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">' + sugg + '</div>'
-            + '<input type="text" inputmode="decimal" data-r="wish" style="' + inp + ';border-color:#198754;background:#e8f5ec;color:#198754;font-weight:800">'
-            + '<div data-r="tip" style="font-weight:700;color:#198754;margin-bottom:8px;min-height:1.3em"></div>'
-            + '<label style="display:block;font-weight:700;text-align:left">Erhalten (Schein/Münzen)</label>'
-            + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">' + bills + '</div>'
-            + '<input type="text" inputmode="decimal" data-r="given" style="' + inp + '">'
-            + '<div style="font-weight:700">Rückgeld</div>'
-            + '<div data-r="change" style="font-size:2.4rem;font-weight:800;line-height:1.1;margin-bottom:12px;color:#198754">–</div>'
-            + '<div style="display:flex;gap:12px">'
-            + '<button type="button" data-a="yes" style="flex:1;padding:14px;font-size:1.2rem;font-weight:700;border:0;border-radius:10px;background:#198754;color:#fff">Bezahlt</button>'
-            + '<button type="button" data-a="no" style="flex:1;padding:14px;font-size:1.2rem;font-weight:700;border:0;border-radius:10px;background:#dc3545;color:#fff">Abbrechen</button>'
+        ov.className = 'ff-cash-modal-overlay';
+        ov.innerHTML = '<div class="ff-cash-modal" role="dialog" aria-modal="true" aria-labelledby="ffCashModalTitle">'
+            + '<header class="ff-cash-modal-header">'
+            + '<div class="ff-cash-modal-kicker">Zahlung abschließen</div>'
+            + '<div id="ffCashModalTitle" class="ff-cash-modal-due-label">Zu zahlen</div>'
+            + '<div class="ff-cash-modal-due">' + fmt(amount) + '</div>'
+            + '</header>'
+            + '<section class="ff-cash-step">'
+            + '<h3><span>1</span> Kunde zahlt <small>inkl. Trinkgeld</small></h3>'
+            + '<div class="ff-cash-choices ff-cash-choices--suggestions">' + sugg + '</div>'
+            + '<label class="ff-cash-input-label" for="ffCashWish">Zahlbetrag</label>'
+            + '<input id="ffCashWish" class="ff-cash-input ff-cash-input--wish" type="text" inputmode="decimal" data-r="wish" aria-label="Zahlbetrag inklusive Trinkgeld">'
+            + '<div class="ff-cash-tip" data-r="tip" aria-live="polite"></div>'
+            + '</section>'
+            + '<section class="ff-cash-step">'
+            + '<h3><span>2</span> Gast gibt <small>Bargeld</small></h3>'
+            + '<div class="ff-cash-choices ff-cash-choices--bills">' + bills + '</div>'
+            + '<label class="ff-cash-input-label" for="ffCashGiven">Bargeld erhalten</label>'
+            + '<input id="ffCashGiven" class="ff-cash-input" type="text" inputmode="decimal" data-r="given" aria-label="Erhaltenen Bargeldbetrag">'
+            + '</section>'
+            + '<div class="ff-cash-change" aria-live="polite">'
+            + '<span>Rückgeld</span>'
+            + '<strong data-r="change">–</strong>'
+            + '</div>'
+            + '<div class="ff-cash-modal-actions">'
+            + '<button type="button" class="ff-cash-confirm" data-a="yes">Ohne Rückgeld abschließen</button>'
+            + '<button type="button" class="ff-cash-cancel" data-a="no">Abbrechen</button>'
             + '</div></div>';
         var wishEl = ov.querySelector('[data-r="wish"]');
         var givenEl = ov.querySelector('[data-r="given"]');
@@ -4666,7 +4949,20 @@
             var ok = wishOk && isFinite(g) && g >= w;
             chEl.textContent = ok ? fmt(g - w) : '–';
             yes.disabled = !(wishOk && (givenEl.value === '' || ok));
-            yes.style.opacity = yes.disabled ? '.5' : '1';
+            yes.textContent = givenEl.value === '' ? 'Ohne Rückgeld abschließen' : 'Bezahlt';
+            yes.setAttribute('aria-label', givenEl.value === ''
+                ? 'Ohne Rückgeld abschließen'
+                : (ok ? 'Bezahlt, Rückgeld ' + fmt(g - w) : 'Bezahlt'));
+            ov.querySelectorAll('[data-w]').forEach(function(button) {
+                var selected = wishOk && Math.round(parseFloat(button.getAttribute('data-w')) * 100) === Math.round(w * 100);
+                button.classList.toggle('is-selected', selected);
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+            ov.querySelectorAll('[data-g]').forEach(function(button) {
+                var selected = isFinite(g) && Math.round(parseFloat(button.getAttribute('data-g')) * 100) === Math.round(g * 100);
+                button.classList.toggle('is-selected', selected);
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
         }
         wishEl.addEventListener('input', update);
         givenEl.addEventListener('input', update);
@@ -4764,34 +5060,33 @@
         }
         var modal = document.createElement('div');
         modal.id = 'ffSumupAmountModal';
-        modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:10060;padding:8px;align-items:flex-start;justify-content:center;';
+        modal.className = 'ff-cash-modal-overlay ff-sumup-modal-overlay';
+        modal.style.display = 'none';
         modal.innerHTML = ''
-            + '<div style="background:#fff;width:min(96vw,560px);height:min(50dvh,420px);margin-top:min(7dvh,44px);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.25);display:flex;flex-direction:column;overflow:hidden;">'
-            + '<div style="padding:10px 14px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;align-items:center;">'
-            + '<strong style="font-size:1.2rem;line-height:1.1;">SumUp Betrag</strong>'
-            + '<button type="button" id="ffSumupAmountClose" style="border:none;background:none;font-size:30px;line-height:1;cursor:pointer;padding:0 4px;">&times;</button>'
-            + '</div>'
-            + '<div style="padding:10px 14px 12px;display:grid;grid-template-columns:1fr;gap:8px;align-content:start;flex:1 1 auto;">'
-            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start;">'
-            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
-            + '<label style="font-size:0.95rem;font-weight:600;line-height:1.1;">Basisbetrag</label>'
-            + '<input type="text" class="form-control" id="ffSumupBaseAmount" readonly style="height:46px;font-size:1.28rem;font-weight:700;background:#f4f6f8;border:1px solid #d3d8de;padding:6px 10px;">'
-            + '</div>'
-            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
-            + '<label style="font-size:0.95rem;font-weight:600;line-height:1.1;">Trinkgeld (€)</label>'
-            + '<input type="number" class="form-control" id="ffSumupTipAmount" min="0" step="0.01" value="0.00" inputmode="decimal" style="height:46px;font-size:1.28rem;font-weight:700;padding:6px 10px;">'
-            + '</div>'
-            + '</div>'
-            + '<div style="display:grid;grid-template-columns:1fr;gap:4px;">'
-            + '<label style="font-size:0.98rem;font-weight:700;line-height:1.1;">Endbetrag (€)</label>'
-            + '<input type="number" class="form-control" id="ffSumupFinalAmount" min="0.01" step="0.01" inputmode="decimal" style="height:56px;font-size:1.8rem;font-weight:900;padding:6px 12px;">'
-            + '</div>'
-            + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto;">'
-            + '<button type="button" id="ffSumupAmountCancel" class="btn btn-secondary" style="font-size:1rem;font-weight:600;padding:9px 6px;">Abbrechen</button>'
-            + '<button type="button" id="ffSumupAmountConfirm" class="btn btn-primary" style="font-size:1rem;font-weight:700;padding:9px 6px;">SumUp App öffnen</button>'
-            + '</div>'
-            + '</div>'
-            + '</div>';
+            + '<div class="ff-cash-modal ff-sumup-modal" role="dialog" aria-modal="true" aria-labelledby="ffSumupModalTitle">'
+            + '<header class="ff-cash-modal-header">'
+            + '<div class="ff-cash-modal-kicker">Kartenzahlung</div>'
+            + '<div id="ffSumupModalTitle" class="ff-cash-modal-due-label">Betrag ohne Trinkgeld</div>'
+            + '<div class="ff-cash-modal-due" data-r="base-display"></div>'
+            + '<input type="hidden" id="ffSumupBaseAmount">'
+            + '<button type="button" id="ffSumupAmountClose" class="ff-sumup-close" aria-label="Schließen">&times;</button>'
+            + '</header>'
+            + '<section class="ff-cash-step">'
+            + '<h3><span>1</span> Trinkgeld <small>optional</small></h3>'
+            + '<div class="ff-sumup-suggestion-label">Vorschläge für den Endbetrag</div>'
+            + '<div class="ff-cash-choices ff-cash-choices--suggestions" data-r="suggestions"></div>'
+            + '<label class="ff-cash-input-label" for="ffSumupTipAmount">Trinkgeld</label>'
+            + '<input type="number" class="ff-cash-input ff-cash-input--wish" id="ffSumupTipAmount" min="0" step="0.01" value="0.00" inputmode="decimal" aria-label="Trinkgeld in Euro">'
+            + '</section>'
+            + '<section class="ff-cash-step">'
+            + '<h3><span>2</span> Endbetrag <small>an SumUp</small></h3>'
+            + '<label class="ff-cash-input-label" for="ffSumupFinalAmount">Zu kassieren</label>'
+            + '<input type="number" class="ff-cash-input ff-sumup-final-input" id="ffSumupFinalAmount" min="0.01" step="0.01" inputmode="decimal" aria-label="Endbetrag für SumUp">'
+            + '</section>'
+            + '<div class="ff-cash-modal-actions">'
+            + '<button type="button" class="ff-cash-cancel" id="ffSumupAmountCancel">Abbrechen</button>'
+            + '<button type="button" class="ff-cash-confirm" id="ffSumupAmountConfirm">SumUp App öffnen</button>'
+            + '</div></div>';
         document.body.appendChild(modal);
 
         function closeModal() {
@@ -4803,6 +5098,8 @@
         var tipInput = document.getElementById('ffSumupTipAmount');
         var finalInput = document.getElementById('ffSumupFinalAmount');
         var confirmBtn = document.getElementById('ffSumupAmountConfirm');
+        var baseDisplay = modal.querySelector('[data-r="base-display"]');
+        var suggestionsEl = modal.querySelector('[data-r="suggestions"]');
 
         function parseAmountLoose(v) {
             var s = String(v == null ? '' : v).trim().replace(',', '.');
@@ -4818,16 +5115,28 @@
             return n;
         }
 
+        function updateSuggestionSelection() {
+            var finalVal = parseAmountLoose(finalInput.value);
+            modal.querySelectorAll('[data-sumup-total]').forEach(function(button) {
+                var selected = isFinite(finalVal)
+                    && Math.round(parseFloat(button.getAttribute('data-sumup-total')) * 100) === Math.round(finalVal * 100);
+                button.classList.toggle('is-selected', selected);
+                button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+            });
+        }
+
         tipInput.addEventListener('input', function() {
             var base = toAmount(modal.getAttribute('data-base'));
             var tip = parseAmountLoose(tipInput.value);
             if (!isFinite(tip)) {
                 finalInput.value = '';
+                updateSuggestionSelection();
                 return;
             }
             if (tip < 0) tip = 0;
             var finalVal = Math.round((base + tip) * 100) / 100;
             finalInput.value = finalVal.toFixed(2);
+            updateSuggestionSelection();
         });
 
         tipInput.addEventListener('blur', function() {
@@ -4841,16 +5150,13 @@
             var finalVal = parseAmountLoose(finalInput.value);
             if (!isFinite(finalVal)) {
                 tipInput.value = '';
+                updateSuggestionSelection();
                 return;
             }
             if (finalVal < 0) finalVal = 0;
             var tip = Math.round((finalVal - base) * 100) / 100;
             tipInput.value = (tip > 0 ? tip : 0).toFixed(2);
-        });
-
-        finalInput.addEventListener('click', function() {
-            finalInput.value = '';
-            tipInput.value = '';
+            updateSuggestionSelection();
         });
 
         finalInput.addEventListener('blur', function() {
@@ -4860,6 +5166,18 @@
             var base = toAmount(modal.getAttribute('data-base'));
             var tip = Math.round((finalVal - base) * 100) / 100;
             tipInput.value = (tip > 0 ? tip : 0).toFixed(2);
+            updateSuggestionSelection();
+        });
+
+        suggestionsEl.addEventListener('click', function(ev) {
+            var button = ev.target.closest('[data-sumup-total]');
+            if (!button) return;
+            var finalVal = parseFloat(button.getAttribute('data-sumup-total'));
+            var base = toAmount(modal.getAttribute('data-base'));
+            if (!isFinite(finalVal)) return;
+            tipInput.value = Math.max(0, Math.round((finalVal - base) * 100) / 100).toFixed(2);
+            finalInput.value = finalVal.toFixed(2);
+            updateSuggestionSelection();
         });
 
         closeBtn.addEventListener('click', closeModal);
@@ -4879,9 +5197,18 @@
                 alert('Bitte einen gültigen Endbetrag eingeben.');
                 return;
             }
+            if (finalVal < toAmount(modal.getAttribute('data-base'))) {
+                alert('Der Endbetrag darf den Basisbetrag nicht unterschreiten.');
+                return;
+            }
             closeModal();
             window.ffOpenSumupWithAmount(finalVal);
         });
+        modal._ffSumupAmountDialog = {
+            baseDisplay: baseDisplay,
+            suggestions: suggestionsEl,
+            updateSuggestionSelection: updateSuggestionSelection
+        };
     };
 
     window.ffOpenSumupAmountDialog = function() {
@@ -4901,8 +5228,19 @@
         base = Math.round(base * 100) / 100;
         modal.setAttribute('data-base', String(base));
         baseInput.value = base.toFixed(2).replace('.', ',') + ' €';
+        finalInput.min = base.toFixed(2);
+        var dialog = modal._ffSumupAmountDialog;
+        if (dialog) {
+            dialog.baseDisplay.textContent = base.toFixed(2).replace('.', ',') + ' €';
+            dialog.suggestions.innerHTML = window.ffCashSuggestions(base).map(function(total) {
+                return '<button type="button" class="ff-cash-choice ff-cash-choice--suggestion" data-sumup-total="'
+                    + total.toFixed(2) + '" aria-pressed="false">'
+                    + total.toFixed(2).replace('.', ',') + ' €</button>';
+            }).join('');
+        }
         tipInput.value = '0.00';
         finalInput.value = base.toFixed(2);
+        if (dialog) dialog.updateSuggestionSelection();
         modal.style.display = 'flex';
     };
 
@@ -5092,7 +5430,7 @@
             .catch(onError);
     };
 
-    window.bestellungAbschliessen = function(arrayListe, tischnummer, mitDruck) {
+    window.bestellungAbschliessen = function(arrayListe, tischnummer, mitDruck, onDone) {
         if (mitDruck === undefined || mitDruck === null || mitDruck === '') {
             mitDruck = true;
         } else {
@@ -5105,13 +5443,18 @@
         fetch('bestellung_abschliessen.php', { method: 'POST', body: fd, cache: 'no-store', credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(res) {
-                if (res && res.ok) {
+                var ok = !!(res && res.ok);
+                if (typeof onDone === 'function') onDone(ok);
+                if (ok) {
                     if (getActivePageId() === 'DruckzielAnsicht') DruckzielAnsichtRefresh();
                     else if (getActivePageId() === 'Schankansicht') SchankAnsichtRefresh();
                     else KuechenansichtRefresh();
                 } else { onError(); }
             })
-            .catch(onError);
+            .catch(function() {
+                if (typeof onDone === 'function') onDone(false);
+                onError();
+            });
     };
 
     window.stationTeillieferungDruck = function(arrayListe, tischnummer, printTarget) {
@@ -5153,7 +5496,7 @@
     };
 
     window.ffRunBezStorno = function(rowid, tischnummer, reloadFn) {
-        fetch('bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid)), { cache: 'no-store', credentials: 'same-origin' })
+        fetchGet('bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid)))
             .then(function(r) { return r.json().then(function(j) { return { r: r, j: j }; }); })
             .then(function(x) {
                 if (!x.r.ok || !x.j || !x.j.ok) {
@@ -5370,7 +5713,9 @@
             alert('Bestellung konnte nicht identifiziert werden.');
             return;
         }
-        fetch('bestellung_storno_batch.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+        var csrf = ffGetCsrfToken();
+        if (csrf) fd.append('csrf_token', csrf);
+        fetch('bestellung_storno_batch.php', { method: 'POST', headers: { 'X-CSRF-Token': csrf }, body: fd, credentials: 'same-origin' })
             .then(function(r) { return r.json().then(function(j) { return { r: r, j: j }; }); })
             .then(function(x) {
                 if (!x.r.ok || !x.j || !x.j.ok) {
@@ -5403,10 +5748,11 @@
         if (!confirm(msg)) {
             return;
         }
+        var csrf = ffGetCsrfToken();
         var url = isPaid
-            ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid))
-            : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid));
-        fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+            ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf)
+            : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf);
+        fetchGet(url)
             .then(function(r) { return r.json().then(function(j) { return { r: r, j: j }; }); })
             .then(function(x) {
                 if (!x.r.ok || !x.j || !x.j.ok) {
@@ -5698,6 +6044,7 @@
                     if (typeof refreshAbschickenButton === 'function') {
                         refreshAbschickenButton(tnum);
                     }
+                    ffReloadSpeisekarteIfStockShared(res, tnum);
                     return;
                 }
                 var cntEl = document.getElementById('cnt-' + pos);
@@ -5732,38 +6079,159 @@
         window.location.href = "logout.php";
     };
 
-    /** Speise-/Getränkekarte: nur eine Unterkategorie anzeigen (Farben der Kacheln unverändert). */
-    window.ffApplyPosSubcatFilter = function(rootSel, key) {
+    /**
+     * Kategorie-Navigation & Scrollspy (wie in order.php).
+     * Kategorien werden nicht ausgeblendet, sondern per Klick sanft angesprungen;
+     * Scrollspy hält die aktive Pill synchron mit der sichtbaren Kategorie.
+     */
+    var _ffSubcatScrollLock = false;
+    var _ffSubcatScrollspyTicking = false;
+
+    function ffSetActiveSubcatButton(button, navWrap) {
+        if (!button) return;
+        var nav = navWrap || button.closest('.pos-subcat-filter, .category-nav');
+        if (!nav) return;
+
+        nav.querySelectorAll('.category-button, .ff-subcat-chip').forEach(function(btn) {
+            var on = (btn === button);
+            btn.classList.toggle('active', on);
+            btn.classList.toggle('btn-primary', on);
+            btn.classList.toggle('btn-outline-secondary', !on);
+        });
+
+        var navRect = nav.getBoundingClientRect();
+        var btnRect = button.getBoundingClientRect();
+        if (btnRect.left < navRect.left || btnRect.right > navRect.right) {
+            button.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'center'
+            });
+        }
+    }
+
+    window.ffApplyPosSubcatFilter = function(rootSel, key, optClickedBtn) {
         var root = typeof rootSel === 'string' ? document.querySelector(rootSel) : rootSel;
+        if (!root && optClickedBtn) {
+            root = optClickedBtn.closest('.pos-menu-page') || optClickedBtn.closest('.tab-pane');
+        }
         if (!root) return;
         var k = key === undefined || key === null ? '_all_' : String(key);
+
+        // Alle Unterkategorien sichtbar halten (kein Ausblenden wie in order.php)
         root.querySelectorAll('.pos-subcat-section').forEach(function(sec) {
-            var sk = sec.getAttribute('data-subkey') || '';
-            sec.style.display = (k === '_all_' || sk === k) ? '' : 'none';
+            sec.style.display = '';
         });
-        var wrap = root.querySelector('.pos-subcat-filter');
-        if (wrap) {
-            wrap.querySelectorAll('.ff-subcat-chip').forEach(function(btn) {
-                var bk = btn.getAttribute('data-subkey');
-                if (bk === null || bk === undefined) bk = '_all_';
-                var on = (String(bk) === k);
-                btn.classList.toggle('btn-primary', on);
-                btn.classList.toggle('btn-outline-secondary', !on);
-            });
+
+        var nav = root.querySelector('.pos-subcat-filter, .category-nav') ||
+                  (optClickedBtn ? optClickedBtn.closest('.pos-subcat-filter, .category-nav') : null);
+
+        var targetBtn = optClickedBtn;
+        if (!targetBtn && nav) {
+            targetBtn = nav.querySelector('[data-subkey="' + k + '"]');
+        }
+        if (targetBtn && nav) {
+            _ffSubcatScrollLock = true;
+            ffSetActiveSubcatButton(targetBtn, nav);
+            setTimeout(function() { _ffSubcatScrollLock = false; }, 600);
+        }
+
+        if (k === '_all_') {
+            // Nach oben zum Menüanfang scrollen
+            var tabsHead = document.querySelector('.ff-order-tabs-head') || document.getElementById('TischAnzeigenDirektverkauf');
+            if (tabsHead) {
+                var navH = 0;
+                document.querySelectorAll('.app-navbar').forEach(function(n) { navH = Math.max(navH, n.offsetHeight); });
+                var targetY = window.pageYOffset + tabsHead.getBoundingClientRect().top - navH - 4;
+                if (targetY < 0) targetY = 0;
+                window.scrollTo({ top: targetY, behavior: 'smooth' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        } else {
+            var sec = root.querySelector('.pos-subcat-section[data-subkey="' + k + '"]');
+            if (sec) {
+                sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }
     };
 
+    window.ffUpdatePosSubcatScrollspy = function() {
+        if (_ffSubcatScrollLock) return;
+
+        var activePane = document.querySelector(
+            '#TischAnzeigenContent .tab-pane.active, #DirektverkaufTabContent .tab-pane.active'
+        );
+        if (!activePane) return;
+
+        var nav = activePane.querySelector('.pos-subcat-filter, .category-nav');
+        if (!nav) return;
+
+        var sections = Array.prototype.slice.call(activePane.querySelectorAll('.pos-subcat-section'));
+        if (sections.length <= 1) return;
+
+        var allBtn = nav.querySelector('[data-subkey="_all_"]');
+        var navRect = nav.getBoundingClientRect();
+        var threshold = (navRect.bottom > 0 && navRect.bottom < window.innerHeight)
+            ? (navRect.bottom + 25)
+            : 160;
+
+        var firstRect = sections[0].getBoundingClientRect();
+        if (firstRect.top > threshold) {
+            if (allBtn && !allBtn.classList.contains('active')) {
+                ffSetActiveSubcatButton(allBtn, nav);
+            }
+            return;
+        }
+
+        var isAtBottom = ((window.innerHeight + (window.pageYOffset || document.documentElement.scrollTop)) >= (document.documentElement.scrollHeight - 30));
+        var currentSec = null;
+
+        if (isAtBottom) {
+            currentSec = sections[sections.length - 1];
+        } else {
+            for (var i = 0; i < sections.length; i++) {
+                var rect = sections[i].getBoundingClientRect();
+                if (rect.top <= threshold) {
+                    currentSec = sections[i];
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (currentSec) {
+            var sk = currentSec.getAttribute('data-subkey');
+            var catBtn = nav.querySelector('[data-subkey="' + sk + '"]');
+            if (catBtn && !catBtn.classList.contains('active')) {
+                ffSetActiveSubcatButton(catBtn, nav);
+            }
+        } else if (allBtn && !allBtn.classList.contains('active')) {
+            ffSetActiveSubcatButton(allBtn, nav);
+        }
+    };
+
+    function ffOnPosSubcatScroll() {
+        if (_ffSubcatScrollspyTicking) return;
+        _ffSubcatScrollspyTicking = true;
+        requestAnimationFrame(function() {
+            _ffSubcatScrollspyTicking = false;
+            window.ffUpdatePosSubcatScrollspy();
+        });
+    }
+
+    window.addEventListener('scroll', ffOnPosSubcatScroll, { passive: true });
+
     document.addEventListener('click', function(e) {
-        var chip = e.target.closest && e.target.closest('.ff-subcat-chip');
+        var chip = e.target.closest && e.target.closest('.ff-subcat-chip, .category-button');
         if (!chip) return;
-        var wrap = chip.closest('.pos-subcat-filter');
+        var wrap = chip.closest('.pos-subcat-filter, .category-nav');
         if (!wrap) return;
         var rootSel = wrap.getAttribute('data-root');
-        if (!rootSel) return;
         e.preventDefault();
         var subkey = chip.getAttribute('data-subkey');
         if (subkey === null || subkey === undefined) subkey = '_all_';
-        window.ffApplyPosSubcatFilter(rootSel, subkey);
+        window.ffApplyPosSubcatFilter(rootSel, subkey, chip);
     });
 
     // --- Event: Hash / Initialisierung ---
@@ -6019,7 +6487,12 @@
         document.addEventListener('keypress', function(e) {
             if (e.which !== 13) return;
             var active = getActivePageId();
-            if (active === 'DruckzielAnsicht' && bestellungListe) {
+            var enterAbsBtn = active === 'DruckzielAnsicht' ? document.querySelector('#DruckzielContent [data-ff-abschliessen="1"]') : null;
+            if (enterAbsBtn) {
+                if (confirm("Bestellung von Tisch \n \n" + bestellungTischnr + "\n\nabschliessen und drucken?")) {
+                    enterAbsBtn.click();
+                }
+            } else if (active === 'DruckzielAnsicht' && bestellungListe) {
                 if (confirm("Bestellung von Tisch \n \n" + bestellungTischnr + "\n\nvollstaendig?")) {
                     if (window.currentDruckzielId === 12) schankGesamtFertig(bestellungListe, bestellungTischnr);
                     else kuecheGesamtFertig(bestellungListe, bestellungTischnr);
@@ -6059,7 +6532,10 @@
                 if (!Array.isArray(rowids)) rowids = [];
                 var tisch = parseInt(absBtn.getAttribute('data-tisch'), 10) || 0;
                 var mitDruck = absBtn.getAttribute('data-ff-abschliessen') === '1';
-                window.bestellungAbschliessen(rowids, tisch, mitDruck);
+                var cardAbs = absBtn.closest('.kueche-bestellung-wrap');
+                var tischHead = cardAbs && cardAbs.closest('.kueche-tisch-gruppe') ? cardAbs.closest('.kueche-tisch-gruppe').querySelector('h2') : null;
+                var lbl = tischHead ? (tischHead.textContent.replace(/\(Best\..*$/, '').replace(/^\s*\S*\s*Tisch:/, 'Tisch').trim()) : '';
+                window.ffAbschliessenSofort(rowids, tisch, mitDruck, lbl);
                 return;
             }
             /* Zahlmaske: ein Handler für #BestellungZahlen (überlebt partial=1 / innerHTML ohne Script-Ausführung). */
@@ -6302,20 +6778,99 @@
     else start();
 })();
 
-/* Küche/Schank: Bestellungen nach Wartezeit einfärben (>= 10 min gelb, >= 15 min rot) */
+/* Küche/Schank: Wartezeit-Ampel (< 10 Min grün, < 20 Min gelb, sonst rot), Kennzahlen in der Kopfzeile, Markierung aus der Summenliste */
 (function() {
-    function mark() {
-        document.querySelectorAll('.kueche-wartend-zeit').forEach(function(el) {
-            var m = (el.textContent || '').match(/(\d+):(\d{1,2}):(\d{1,2})/);
-            var wrap = el.closest('.kueche-bestellung-wrap');
-            if (!m || !wrap) return;
-            var mins = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-            wrap.classList.toggle('ff-wait-late', mins >= 15);
-            wrap.classList.toggle('ff-wait-warn', mins >= 10 && mins < 15);
+    function fmt(sec) {
+        var min = Math.floor(Math.max(0, sec) / 60);
+        if (min < 60) return min + ' Min';
+        var m = min % 60;
+        return Math.floor(min / 60) + ' Std ' + (m < 10 ? '0' : '') + m + ' Min';
+    }
+    function ageOf(el) {
+        var raw = el.getAttribute('data-age');
+        var base = parseInt(raw, 10);
+        if (isNaN(base) || base < 0) return -1;
+        if (el._ffAgeRaw !== raw) { el._ffAgeRaw = raw; el._ffAgeT = Date.now(); }
+        return base + Math.floor((Date.now() - el._ffAgeT) / 1000);
+    }
+    function pendingKeys() { return window._ffAbsPending || {}; }
+    function tick() {
+        var wraps = document.querySelectorAll('.kueche-bestellung-wrap');
+        var stats = document.getElementById('ffStationStats');
+        var orders = 0, pos = 0, longest = -1;
+        var pend = pendingKeys();
+        wraps.forEach(function(wrap) {
+            var el = wrap.querySelector('.kueche-wartend-zeit');
+            var age = el ? ageOf(el) : -1;
+            if (el && age >= 0) {
+                el.textContent = fmt(age);
+                el.title = 'Wartezeit seit Bestellung: ' + fmt(age);
+            }
+            var min = age / 60;
+            wrap.classList.toggle('ff-wait-late', age >= 0 && min >= 20);
+            wrap.classList.toggle('ff-wait-warn', age >= 0 && min >= 10 && min < 20);
+            wrap.classList.toggle('ff-wait-ok', age >= 0 && min < 10);
+            var abs = wrap.querySelector('[data-ff-abschliessen]');
+            wrap.classList.toggle('ff-closing', !!(abs && pend[abs.getAttribute('data-rowids')]));
+            if (wrap.classList.contains('ff-closing')) return;
+            orders++;
+            pos += parseInt(wrap.getAttribute('data-open-anz'), 10) || 0;
+            if (age > longest) longest = age;
+        });
+        var sideEl = document.querySelector('.kueche-sidebar .kueche-wartend');
+        var sideCount = sideEl ? parseInt(sideEl.getAttribute('data-waiting-count'), 10) : NaN;
+        if (!isNaN(sideCount)) pos = sideCount;
+        if (stats) {
+            stats.innerHTML = wraps.length
+                ? '<span><b>' + orders + '</b> Bestellungen</span><span><b>' + pos + '</b> Pos. wartend</span>'
+                    + (longest >= 0 ? '<span class="' + (longest >= 1200 ? 'late' : longest >= 600 ? 'warn' : '') + '">max <b>' + fmt(longest) + '</b></span>' : '')
+                : '';
+        }
+        var hl = window._ffHlPos || '';
+        document.body.classList.toggle('ff-hl-on', !!hl);
+        document.querySelectorAll('.kueche-btn-offen').forEach(function(b) {
+            b.classList.toggle('ff-hl', !!hl && b.getAttribute('data-pos') === hl);
+        });
+        document.querySelectorAll('.ff-sum-item').forEach(function(b) {
+            b.classList.toggle('ff-sum-item--active', !!hl && b.getAttribute('data-pos') === hl);
         });
     }
-    setInterval(mark, 3000);
+    document.addEventListener('click', function(ev) {
+        var it = ev.target.closest('.ff-sum-item');
+        if (!it) return;
+        var k = it.getAttribute('data-pos') || '';
+        window._ffHlPos = (window._ffHlPos === k) ? '' : k;
+        tick();
+    });
+    setInterval(tick, 1000);
 })();
+
+function ffShowTopRightToast(msg) {
+    var c = document.getElementById('ffTopRightToasts');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'ffTopRightToasts';
+        document.body.appendChild(c);
+    }
+    var t = document.createElement('div');
+    t.className = 'ff-topright-toast';
+    t.textContent = '\u2713 ' + msg;
+    c.appendChild(t);
+    setTimeout(function() { t.classList.add('ff-topright-toast--out'); }, 2200);
+    setTimeout(function() { if (t.parentNode) t.parentNode.removeChild(t); }, 2600);
+}
+
+/* Bestellung sofort abschließen und den Druckauftrag direkt an den Client melden. */
+window.ffAbschliessenSofort = function(rowids, tisch, mitDruck, label) {
+    var pend = window._ffAbsPending = window._ffAbsPending || {};
+    var key = rowids.join(',');
+    if (pend[key]) return;
+    pend[key] = true;
+    window.bestellungAbschliessen(rowids, tisch, mitDruck, function(ok) {
+        delete pend[key];
+        if (ok) ffShowTopRightToast((label || 'Bestellung') + ' abgeschlossen');
+    });
+};
 
 
 /* Zahlen: Gruppen-/Sammelzeilen und Summenbeschriftung nach jeder Auswahländerung aktualisieren */
@@ -6340,7 +6895,7 @@
             h.classList.toggle('is-all-selected', ids.length > 0 && n === ids.length);
             h.classList.toggle('is-part-selected', n > 0 && n < ids.length);
             var pick = h.querySelector('.ff-pay-group-pick');
-            if (pick) pick.textContent = (ids.length > 0 && n === ids.length) ? '✓ Gewählt' : 'Gruppe wählen';
+            if (pick) pick.textContent = (ids.length > 0 && n === ids.length) ? '✓ Gruppe abwählen' : (n > 0 ? 'Rest wählen' : 'Gruppe wählen');
             var sub = h.querySelector('.ff-pay-group-subtxt');
             if (sub) {
                 if (!sub.hasAttribute('data-base')) sub.setAttribute('data-base', sub.textContent);
@@ -6358,7 +6913,7 @@
         });
         var selTotal = Object.keys(sel).filter(function (k) { return sel[k]; }).length;
         var hint = document.getElementById('payHint');
-        if (hint) hint.style.display = selTotal > 0 ? 'none' : '';
+        if (hint) hint.style.visibility = selTotal > 0 ? 'hidden' : 'visible';
         var footer = document.getElementById('summeZahlung');
         if (footer) footer.classList.toggle('ff-pay-sum-selected', selTotal > 0);
         wrap.querySelectorAll('.ff-pay-merged-row').forEach(function (row) {
@@ -6367,14 +6922,43 @@
             var n = ids.filter(isSel).length;
             var cnt = row.querySelector('.ff-pay-grp-count');
             if (cnt) cnt.textContent = n + '/' + ids.length;
-            row.classList.toggle('is-sel', n > 0);
-            row.style.backgroundColor = n > 0 ? '#dcfce7' : '';
+            var full = ids.length > 0 && n === ids.length;
+            row.classList.toggle('is-sel', full);
+            row.classList.toggle('is-part-sel', n > 0 && !full);
+            row.style.backgroundColor = full ? '#dcfce7' : (n > 0 ? '#fef9c3' : '');
+        });
+        wrap.querySelectorAll('.agg-count').forEach(function (c) {
+            var tr = c.closest('tr');
+            var plus = document.getElementById('agg_plus_' + c.getAttribute('data-group'));
+            var tot = 0;
+            try { tot = JSON.parse(plus.getAttribute('data-rows') || '[]').length; } catch (e) {}
+            var n = parseInt(c.textContent, 10) || 0;
+            var full = tot > 0 && n === tot;
+            if (!tr) return;
+            tr.classList.toggle('is-sel', full);
+            tr.classList.toggle('is-part-sel', n > 0 && !full);
+            tr.style.backgroundColor = full ? '#dcfce7' : (n > 0 ? '#fef9c3' : '');
         });
         var btnPay = document.getElementById('btnBezahlenGesamtEinzeln');
         if (btnPay) {
             var amt = 0;
             Object.keys(sel).forEach(function (k) { if (sel[k]) amt += parseFloat((window._ridAmount && window._ridAmount[k]) || 0); });
             btnPay.textContent = amt > 0 ? 'Bezahlen ' + amt.toFixed(2).replace('.', ',') + ' €' : 'Bezahlen';
+        }
+        var allBtn = document.getElementById('btnBezahlenGesamt');
+        if (allBtn) {
+            var tot = parseFloat(window._payTotal || 0);
+            allBtn.textContent = tot > 0 ? 'Alles bezahlen · ' + tot.toFixed(2).replace('.', ',') + ' €' : 'Alles bezahlen';
+        }
+        var subEl = document.getElementById('payTotalSub');
+        if (subEl) {
+            var selAmt = 0;
+            Object.keys(sel).forEach(function (k) { if (sel[k]) selAmt += parseFloat((window._ridAmount && window._ridAmount[k]) || 0); });
+            var allAmt = parseFloat(window._payTotal || 0).toFixed(2).replace('.', ',');
+            subEl.textContent = selTotal > 0
+                ? 'Ausgewählt: ' + selTotal + ' Pos. · ' + selAmt.toFixed(2).replace('.', ',') + ' € (Tisch gesamt: ' + allAmt + ' €)'
+                : 'Nichts ausgewählt – „Alles bezahlen“ zahlt den ganzen Tisch';
+            subEl.classList.toggle('is-selected', selTotal > 0);
         }
         var label = document.getElementById('payTotalLabel');
         if (label) {
@@ -6386,4 +6970,71 @@
     document.addEventListener('click', function (e) {
         if (e.target.closest && e.target.closest('#BestellungZahlen')) setTimeout(refresh, 0);
     });
+})();
+
+/* Kellner: versehentliches "–" verhindern (Schutzzeit nach Tippen auf die Kachel) + Rückgängig-Hinweis */
+(function () {
+    var lastTap = {};
+    var GUARD_MS = 800;
+    function wrapOf(el) { return el && el.closest ? el.closest('.posWrap') : null; }
+    function key(w) { var b = w && w.querySelector('[id^="btn-pos-"]'); return b ? b.id : ''; }
+    document.addEventListener('click', function (e) {
+        var t = e.target;
+        if (!t || !t.closest) return;
+        var minus = t.closest('.btnMinus');
+        if (minus) {
+            var k = key(wrapOf(minus));
+            if (k && lastTap[k] && Date.now() - lastTap[k] < GUARD_MS) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+            }
+            return;
+        }
+        var tile = t.closest('[id^="btn-pos-"]');
+        if (tile) lastTap[tile.id] = Date.now();
+    }, true);
+
+    function toast(label, undo) {
+        var old = document.getElementById('ffMinusToast');
+        if (old) old.remove();
+        var d = document.createElement('div');
+        d.id = 'ffMinusToast';
+        d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:88px;z-index:2000;background:#1f2937;color:#fff;border-radius:10px;padding:.6rem .9rem;display:flex;gap:.9rem;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,.35);font-size:.95rem;max-width:calc(100% - 24px)';
+        var s = document.createElement('span');
+        s.textContent = '1× ' + label + ' entfernt';
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Rückgängig';
+        b.style.cssText = 'background:#fbbf24;color:#111;border:0;border-radius:8px;padding:.4rem .8rem;font-weight:700';
+        b.onclick = function () { d.remove(); undo(); };
+        d.append(s, b);
+        document.body.appendChild(d);
+        setTimeout(function () { if (d.parentNode) d.remove(); }, 5000);
+    }
+
+    function install() {
+        var orig = window.minusPosition;
+        if (typeof orig !== 'function' || orig.__ffWrapped) return !!(orig && orig.__ffWrapped);
+        var w = function (e, tisch, pos, type) {
+            var cnt = document.getElementById('cnt-' + pos);
+            var before = cnt ? parseInt(cnt.getAttribute('data-cnt') || '0', 10) || 0 : 0;
+            var r = orig.apply(this, arguments);
+            setTimeout(function () {
+                var c = document.getElementById('cnt-' + pos);
+                var after = c ? parseInt(c.getAttribute('data-cnt') || '0', 10) || 0 : 0;
+                if (after < before) {
+                    var nm = document.querySelector('#btn-pos-' + pos + ' .pos-tile-name');
+                    toast(nm ? nm.textContent.replace(/\s+/g, ' ').trim() : 'Position', function () {
+                        var tb = document.getElementById('btn-pos-' + pos);
+                        if (tb) tb.click();
+                    });
+                }
+            }, 700);
+            return r;
+        };
+        w.__ffWrapped = true;
+        window.minusPosition = w;
+        return true;
+    }
+    if (!install()) { window.addEventListener('load', install); setTimeout(install, 1500); }
 })();

@@ -12,6 +12,7 @@ require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
 require_once __DIR__ . '/include/dv_abholbon_target.php';
 require_once __DIR__ . '/include/direktverkauf_abholbon_thermal_lib.php';
 require_once __DIR__ . '/include/bon_nr_helper.php';
+require_once __DIR__ . '/include/ff_station_events.php';
 
 ff_users_ensure_landing_columns($conn);
 ff_direktverkauf_require($conn);
@@ -111,6 +112,8 @@ if (!mysqli_query($conn, $ins)) {
     echo json_encode(['ok' => false, 'error' => 'queue: ' . mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+ff_print_events_publish($conn, [(int) $printTarget]);
 
 mysqli_close($conn);
 

@@ -11,6 +11,7 @@ require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
 require_once __DIR__ . '/include/ff_fest_scope.php';
 
+ff_timing_mark('start');
 ff_menu_ensure_schema($conn);
 ff_fest_scope_ensure_columns($conn);
 $menuCols = ff_menu_column_count($conn);
@@ -39,25 +40,33 @@ foreach ($rows as $rowww) {
     $sections[$subKey]['items'][] = $rowww;
 }
 
+ff_timing_mark('positionen_sql');
 $ffPositionIds = ff_menu_collect_position_ids($rows);
+ff_timing_mark('gruppieren');
+ff_position_stock_snapshot_begin($conn);
 $ffOpenCounts = ff_menu_batch_open_counts_tisch($conn, $Tischnummer);
 $ffGlobalCounts = ff_menu_batch_global_counts($conn);
 $ffLockMap = ff_menu_batch_lock_map($conn, $ffPositionIds, 2);
+ff_timing_mark('batch');
 
 echo '<div id="' . htmlspecialchars($rootId, ENT_QUOTES, 'UTF-8') . '" class="pos-menu-page">';
 if (count($sections) > 1) {
-    echo '<div class="pos-subcat-filter mb-2 d-flex flex-wrap gap-1 align-items-center" data-root="#' . htmlspecialchars($rootId, ENT_QUOTES, 'UTF-8') . '">';
-    echo '<span class="small text-muted me-1">Unterkategorie:</span>';
-    echo '<button type="button" class="btn btn-sm btn-primary ff-subcat-chip" data-subkey="_all_">Alle</button>';
+    echo '<div class="pos-subcat-filter category-nav mb-2" data-root="#' . htmlspecialchars($rootId, ENT_QUOTES, 'UTF-8') . '">';
+    echo '<button type="button" class="category-button ff-subcat-chip active" data-subkey="_all_">Alle</button>';
     foreach ($sections as $sk => $sec) {
-        echo '<button type="button" class="btn btn-sm btn-outline-secondary ff-subcat-chip" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($sec['label'], ENT_QUOTES, 'UTF-8') . '</button>';
+        $secDomId = 'subcat-' . htmlspecialchars($rootId, ENT_QUOTES, 'UTF-8') . '-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', (string)$sk);
+        echo '<button type="button" class="category-button ff-subcat-chip" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '" data-target="#' . $secDomId . '">' . htmlspecialchars($sec['label'], ENT_QUOTES, 'UTF-8') . '</button>';
     }
     echo '</div>';
 }
 
 foreach ($sections as $sk => $sec) {
-    echo '<div class="pos-subcat-section" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '"' . ($sec['color'] !== '' ? ' style="' . htmlspecialchars($sec['color'], ENT_QUOTES, 'UTF-8') . '"' : '') . '>';
-    echo '<h6 class="pos-menu-subheading text-secondary fw-semibold small text-uppercase mt-3 mb-2 px-1">' . htmlspecialchars($sec['label'], ENT_QUOTES, 'UTF-8') . '</h6>';
+    $secDomId = 'subcat-' . htmlspecialchars($rootId, ENT_QUOTES, 'UTF-8') . '-' . preg_replace('/[^a-zA-Z0-9_-]/', '_', (string)$sk);
+    echo '<div id="' . $secDomId . '" class="pos-subcat-section category" data-subkey="' . htmlspecialchars($sk, ENT_QUOTES, 'UTF-8') . '"' . ($sec['color'] !== '' ? ' style="' . htmlspecialchars($sec['color'], ENT_QUOTES, 'UTF-8') . '"' : '') . '>';
+    echo '<h6 class="pos-menu-subheading text-secondary fw-semibold small text-uppercase mt-3 mb-2 px-1">'
+        . htmlspecialchars($sec['label'], ENT_QUOTES, 'UTF-8')
+        . ' <span class="badge bg-secondary ms-1 fw-normal opacity-75" style="font-size: 0.7rem;">' . count($sec['items']) . '</span>'
+        . '</h6>';
     echo '<div class="pos-menu-grid" style="--pos-cols:' . (int)$menuCols . '; --pos-cols-mobile:' . (int)$menuColsMob . ';">';
     foreach ($sec['items'] as $rowww) {
         try {
@@ -110,7 +119,7 @@ foreach ($sections as $sk => $sec) {
             $dataBaseForWrap = $Colour;
         }
 
-        $btnClass = 'ui-btn ui-corner-all pos-menu-tile';
+        $btnClass = 'ui-btn ui-corner-all big pos-menu-tile';
         if ($showSelected) {
             $btnClass .= ' pos-tile--selected';
         } elseif ($soldOut) {
@@ -183,7 +192,13 @@ foreach ($sections as $sk => $sec) {
     echo '</div></div>';
 }
 
+if (empty($rows)) {
+    echo '<div class="col-12 p-4 text-center text-muted"><p>Keine Getränke in der Karte. Bitte im Admin Produkte anlegen (type=2).</p></div>';
+}
+
 echo '</div>';
+ff_timing_mark('render');
+ff_timing_flush();
 ?>
 
 <style>

@@ -837,6 +837,8 @@ if (!$hasOrderSearch && !$hasBonSearch && !$hasFilter) {
 <html lang="de">
 <head>
     <meta charset="utf-8">
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
     <title>Bestell-History</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <?php echo ff_favicon_link_tags($conn); ?>
@@ -1476,10 +1478,11 @@ window.ffHistStornierenEine = function(rowid, tischnummer, isPaid, stillOpenAtSt
     if (!confirm(msg)) {
         return;
     }
+    var csrf = window.FF_CSRF_TOKEN || (document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '') || '';
     var url = isPaid
-        ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid))
-        : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid));
-    fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+        ? 'bestellung_bez_storno.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf)
+        : 'bestellung_loeschen.php?rowid=' + encodeURIComponent(String(rowid)) + '&csrf_token=' + encodeURIComponent(csrf);
+    fetch(url, { cache: 'no-store', credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } })
         .then(function(r) { return r.json().then(function(j) { return { r: r, j: j }; }); })
         .then(function(x) {
             if (!x.r.ok || !x.j || !x.j.ok) {

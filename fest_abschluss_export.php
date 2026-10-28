@@ -14,7 +14,7 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     exit;
 }
 
-$fest_id = (int) ($_GET['id'] ?? 0);
+$fest_id = (int) ($_GET['fest_id'] ?? $_GET['id'] ?? 0);
 $format = strtolower((string) ($_GET['format'] ?? 'html'));
 if (!in_array($format, ['csv', 'html'], true)) {
     $format = 'html';

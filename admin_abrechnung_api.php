@@ -21,7 +21,7 @@ ff_schreibaus_ensure_column($conn);
 $paymentMode = ff_aktiver_payment_mode($conn);
 $openCond = ff_schreibaus_open_sql_condition($paymentMode);
 
-$action = isset($_REQUEST['action']) ? (string)$_REQUEST['action'] : '';
+$action = (string)($_REQUEST['action'] ?? ($_GET['action'] ?? ($_POST['action'] ?? '')));
 
 function ff_abrechnung_umsatz_heute(mysqli $conn): float {
     $sql = "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag)), 0) AS s
@@ -66,7 +66,7 @@ function ff_schreibaus_collect(mysqli $conn, string $openCond, string $scope, in
     return ['cnt' => count($ids), 'sum' => $sum, 'ids' => $ids];
 }
 
-if ($action === 'preview') {
+if ($action === 'preview' || $action === 'schreibaus_preview') {
     $scope = isset($_GET['scope']) ? (string)$_GET['scope'] : 'all_tables';
     if (!in_array($scope, ['all_tables', 'all', 'table'], true)) {
         $scope = 'all_tables';
@@ -99,6 +99,8 @@ if ($action === 'preview') {
         'scope_label' => $scopeLabel,
         'open_count' => $col['cnt'],
         'open_sum' => round($col['sum'], 2),
+        'cnt' => $col['cnt'],
+        'sum' => round($col['sum'], 2),
         'umsatz_heute' => round($umsatz, 2),
         'pct_vom_umsatz_heute' => $pct,
         'hint' => $paymentMode === 'after'
@@ -109,7 +111,7 @@ if ($action === 'preview') {
     exit;
 }
 
-if ($action === 'execute') {
+if ($action === 'execute' || $action === 'schreibaus') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
         echo json_encode(['ok' => false, 'error' => 'POST erforderlich.']);

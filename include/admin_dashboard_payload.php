@@ -13,6 +13,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     require_once __DIR__ . '/ff_schreibaus.php';
     require_once __DIR__ . '/ff_finance_bereich_helpers.php';
     require_once __DIR__ . '/ff_print_target_labels.php';
+    require_once __DIR__ . '/ff_rezepturen_schema.php';
     require_once __DIR__ . '/ff_position_stock_summary.php';
 
     static $memo = null;
@@ -71,21 +72,36 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
         JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql} AND DATE(b.timestampBezahlung) = '{$todayEsc}'";
     $sqlGes = "SELECT COALESCE(SUM({$amtExpr}),0) AS s, COUNT(*) AS c FROM bestellungen b
         JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql}";
+    $sqlBestellt = "SELECT COUNT(*) AS c FROM bestellungen b
+        WHERE b.`delete` = 0 AND b.bestellt = 1{$festFilterSql}";
+    $openCond = ff_schreibaus_open_sql_condition(ff_aktiver_payment_mode($conn));
+    $sqlOffen = "SELECT COALESCE(SUM({$amtExpr}),0) AS s, COUNT(*) AS c FROM bestellungen b
+        JOIN positionen p ON p.rowid = b.position WHERE {$openCond}{$festFilterSql}";
     $sqlKellner = "SELECT COALESCE(SUM({$amtExpr}),0) AS s, COUNT(*) AS c FROM bestellungen b
         JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql}
         AND b.kellnerZahlung IS NOT NULL AND TRIM(b.kellnerZahlung) <> ''";
 
     $heute = ['sum' => 0.0, 'count' => 0];
     $gesamt = ['sum' => 0.0, 'count' => 0];
+    $bestellt = 0;
+    $offen = ['sum' => 0.0, 'count' => 0];
     $kellnerGes = ['sum' => 0.0, 'count' => 0];
 
     $r1 = mysqli_query($conn, $sqlHeute);
     if ($r1 && ($row = mysqli_fetch_assoc($r1))) {
         $heute = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
-    $r2 = mysqli_query($conn, $sqlGes);
-    if ($r2 && ($row = mysqli_fetch_assoc($r2))) {
-        $gesamt = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
+    $r3 = mysqli_query($conn, $sqlBestellt);
+    if ($r3 && ($row = mysqli_fetch_assoc($r3))) {
+        $bestellt = (int) $row['c'];
+    }
+    $r4 = mysqli_query($conn, $sqlOffen);
+    if ($r4 && ($row = mysqli_fetch_assoc($r4))) {
+        $offen = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
+    }
+    $r5 = mysqli_query($conn, $sqlKellner);
+    if ($r5 && ($row = mysqli_fetch_assoc($r5))) {
+        $kellnerGes = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
     $r3 = mysqli_query($conn, $sqlKellner);
     if ($r3 && ($row = mysqli_fetch_assoc($r3))) {
@@ -186,6 +202,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     $printHasIssues = count($printIssues) > 0;
 
     $positionStock = ff_position_stock_limited_list($conn);
+    $bestandteilStock = ff_bestandteil_stock_limited_list($conn);
 
     $payload = [
         'ok' => true,
@@ -194,6 +211,9 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
         'datum_heute' => $today,
         'umsatz_heute' => round($heute['sum'], 2),
         'zeilen_heute' => $heute['count'],
+        'bestellte_positionen' => $bestellt,
+        'offene_positionen' => $offen['count'],
+        'umsatz_offen' => round($offen['sum'], 2),
         'umsatz_gesamt' => round($gesamt['sum'], 2),
         'verkauf_unzugeordnet' => $verkaufUnzugeordnet,
         'verkauf_kellner_direkt' => $verkaufKellnerDirekt,
@@ -218,6 +238,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
         'printer_has_issues' => $printHasIssues,
         'printer_issue_codes' => $printIssues,
         'position_stock' => $positionStock,
+        'bestandteil_stock' => $bestandteilStock,
     ];
 
     if (!is_dir($cacheDir)) {

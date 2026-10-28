@@ -3,10 +3,12 @@ require_once('auth.php');
 require_once('include/db.php');
 require_once __DIR__ . '/include/ff_finance_auth.php';
 require_once __DIR__ . '/include/ff_finance_schema.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 ff_finance_require($conn);
+ff_csrf_require();
 ff_finance_ensure_schema($conn);
 
 $typ = isset($_POST['typ']) && in_array($_POST['typ'], ['einnahme', 'ausgabe']) ? $_POST['typ'] : '';

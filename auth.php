@@ -11,6 +11,7 @@ $ffTs = microtime(true);
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
+require_once __DIR__ . '/include/ff_csrf.php';
 $GLOBALS['ff_t_session'] = (microtime(true) - $ffTs) * 1000;
 /* session_regenerate_id() nur bei Login (login.php) – nicht bei jedem Include, sonst parallele AJAX-Requests (Zahlen, Küche, …) blockieren sich gegenseitig. */
 

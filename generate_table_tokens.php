@@ -1,7 +1,14 @@
 <?php
 declare(strict_types=1);
 
-require_once('include/db.php');
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/include/db.php';
+
+if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'Nur für Administratoren.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 header('Content-Type: application/json; charset=utf-8');
 

@@ -108,6 +108,9 @@ Dieser Abschnitt ersetzt ein früheres separates Änderungsprotokoll: **alles Wi
 
 - **Admin:** Accordion-Karten haben **einheitlichere Abstände**; thematische Blöcke sind mit kleinen Überschriften gegliedert (z. B. Stammdaten, Personal/Karte/Rechnungen). **Tisch-Optionen** (Sammelrechnung/Ehrengast pro Tisch, Tabelle `tischFlags`, Link „Sammelrechnung erstellen“) liegen unter **„Tische & Optionen“**, nicht mehr unter System-Einstellungen.
 - **Küche / Schank / Druckziel (Stationsansicht):** Gesamtbestellübersicht oben und/oder rechts ein-/ausblendbar (`station_summary_top`, `station_summary_right`). **Spaltenzahl** der Tischkarten: Admin-Standard `station_spalten` (0 = Auto, 1–6 fest) und `station_spalten_mobil` (0 = Auto, 1–2); in der Ansicht **− / +** pro **Gerät/Browser** (localStorage, nicht pro User). Weniger Spalten = breitere Karten, weniger vertikales Scrollen. Optional: **Ein-Klick Abschließen** (`station_one_click_abschliessen`) und **Teillieferung drucken** (`station_teillieferung_druck`). Historie: neueste zuerst; Live-Ansicht: FIFO (Nr. 1 = älteste offene Runde).
+- **Aktualisierung der Stationsansicht:** Nach erfolgreichem „Bestellung abschicken“ wird ein Ereignis für jedes betroffene Druckziel publiziert. Küche/Schank empfangen es über Server-Sent Events (SSE) und aktualisieren die Ansicht ohne den bisherigen 3-Sekunden-Poll. Ein seltener 30-Sekunden-Sicherheits-Poll bleibt für Netzwerkausfälle und weitere, noch nicht eventisierte Änderungen aktiv. Die Ereignistabelle `ff_station_events` wird beim ersten Stationsaufruf bei Bedarf angelegt; der Datenbankbenutzer benötigt dafür `CREATE`-Berechtigung. Ältere Ereignisse werden beim nächsten Event-Versand bereinigt.
+- **Druck per Event (optional):** Im Admin (Rechnungs-/Druck-Einstellungen) schaltbar (`print_event_mode`). Wenn aktiv, schreiben „Bestellung abschließen“, manueller Bon, Abholbon und Bon-Nachdruck ein `print_ready`-Ereignis in `ff_station_events`; der Druck-Client (`Client-Print-Skripte/print_client.py`) hält per Token eine SSE-Verbindung zu `print_events.php` und holt Jobs sofort ab. Fallback-Abfrage alle `event_fallback_interval` Sekunden (Standard 30), bei deaktiviertem Modus normales Polling (`poll_interval`).
+- **Auto-Druck pro Druckziel:** Im Admin unter „Druckziele“ gibt es je Ziel das Feld „Auto-Druck bis N“ (`print_targets.auto_print_limit`, 0 = aus). Beim „Bestellung abschicken“ markiert `include/ff_auto_print.php` die Zeilen der neuen Bestellung (`bestellungen.auto_print=1`), wenn in der Station (nicht ausgelieferte Bestellungen, ohne die neue) weniger als N offen sind. `print_target.php` liefert diese Zeilen sofort an den Druck-Client (ohne Küche-Fertig, ohne Sibling-Filter, ohne Teillieferungs-Hinweis); bei „Bestellung abschließen“ werden sie nicht erneut gedruckt. Spalten werden automatisch angelegt.
 - **Beilagen / Zusatzinfos:** Pflege nur unter **`manage/`** (Menü „Beilagen / Zusatzinfos“, Anker `manage/#beilagen`). API: `beilagen_admin_api.php` (inkl. Statistik **häufiger Freitexte** aus Bestellungen).
 - **`manage/`:** Layout an **Admin-Design** angeglichen (Bootstrap aus `assets/`, `admin.css`).
 - **Rechnungen-Block im Admin:** robust gegen doppelt vorhandene Spalten (`include/ff_rechnungen_ensure_columns.php`).
@@ -159,12 +162,26 @@ Die Admin-Oberfläche ist als **Accordion** aufgebaut. Wichtig für die Ersteinr
 
 1. **Fest/Veranstaltung anlegen** (System-Einstellungen → Feste): Name, Code (z. B. für Rechnungsnummern). Als **aktuelles Fest** setzen. **Zahlungsmodus** wählen: *Sofort (instant)* oder *Am Ende (after)* – siehe [Abschnitt 7](#7-zahlungsmodi-sammelrechnung-ehrengast).
 2. **Rechnungsdaten** (System-Einstellungen): Verkäufer-Name, Adresse, UID, Rechnungs-Prefix, Festname. **Drucker-Token** setzen (z. B. zufälliger langer String) – wird für Print-Clients und Heartbeat benötigt.
-3. **Tische** anlegen (z. B. Tisch 1–20) unter **`manage/`**. Optional: unter **Admin → Tische & Optionen → Tisch-Optionen** Tische als Sammelrechnung oder Ehrengast markieren.
+3. **Tische** anlegen (z. B. Tisch 1–20) unter **`manage/`** oder im **Admin-Pilot** (Stammdaten → Tischplan). Im visuellen Raumplan können Tische frei per Drag &amp; Drop angeordnet werden.
 4. **Speisekarte** befüllen: Speisen und Getränke mit Preis; je Position das **Druckziel** zuordnen (Küche/Schank/…). Optional: Selbstkosten (EK) für Gewinnberechnung.
 5. **Benutzer** anlegen: Kellner, Küche, Schank – je nach Bedarf als normaler Benutzer oder Admin.
 6. **Druckziele** (Print Targets): Standard sind Küche (11) und Schank (12). Unter „Druckziele“ im Admin können Namen und Reihenfolge angepasst werden.
 
 Danach ist das System **einsatzbereit** für Bestellungen und Zahlungen.
+
+### 4.4 Visueller Raumplan (Tischplan & 2D-Raster)
+
+Der **Visuelle Raumplan** (verfügbar im Admin Pilot unter *Stammdaten → Tischplan (Visuell)* sowie in `manage/` unter *Tische* bzw. Admin-Hauptmenü *Tischplan*) bietet eine intuitive, grafische 2D-Übersicht aller Festzelt- und Saaltische:
+
+- **Drag & Drop Verschieben:** Tische können mit der Maus oder per Touch direkt angefasst und auf ein beliebiges freies Rasterfeld gezogen werden. Wird ein Tisch auf einen anderen Tisch gezogen, tauschen beide Tische automatisch ihre Plätze (Swap).
+- **Direktes Umschalten von Sammelrechnung (SR) und Ehrengast (EG):** Jede Tischkachel besitzt klickbare Schaltflächen für **SR** und **EG**. Ein Klick aktiviert bzw. deaktiviert den Modus sofort ohne Untermenü. Da sich Sammelrechnung und Ehrengast gegenseitig ausschließen, wird beim Aktivieren des einen Modus der andere automatisch zurückgesetzt.
+- **Klick auf Tisch öffnet Einstellungs-Modal:** Durch Klick auf einen Tisch (außerhalb der SR/EG-Buttons) öffnet sich ein modaler Dialog, in dem Tischname, Tischnummer, X/Y-Rasterkoordinaten, Raster-Farbe (mit Farbwähler und Hex-Code) sowie der Abrechnungsstatus bearbeitet oder der Tisch gelöscht werden kann.
+- **Schnellanlage neuer Tische:** Ein Klick auf ein leeres Rasterfeld (`+`) öffnet den Dialog zur Neuanlage eines Tisches mit bereits vorausgefüllten X- und Y-Koordinaten.
+- **Status-Farben:**
+  - *Grün:* Frei (keine offenen Bestellungen)
+  - *Gelb:* Offene Runde (nicht abgeschlossene Bestellungen vorhanden)
+  - *Blau:* Sammelrechnung (SR)
+  - *Lila:* Ehrengast (EG)
 
 ---
 
@@ -303,6 +320,32 @@ Details: **`documentation/PAYMENT_MODE_LOGIC.md`**.
 
 ## 10. Vertiefende Dokumentation
 
+### MCP-HTTP-Endpunkt (lesender Zugriff)
+
+`mcp.php` stellt einen MCP-kompatiblen HTTP-Endpunkt mit JSON-RPC/Streamable HTTP bereit. Verfügbare Tools:
+- **Katalog & Bestellungen:** `get_menu_catalog` (Positionen inkl. `print_target`, `subcategory_id`, `Kurzbezeichnung`, `tile_bg`, Typen, Rezepturbestandteile samt Allergenen, Rezepturen, Unterkategorien, Beilagen, Druckziele), `get_print_targets` (konfigurierte Druckziele/Drucker abfragen), `get_unterkategorien` (Unterkategorien/Kachelbereiche abfragen), `create_unterkategorie` (neue Unterkategorie für Speisen oder Getränke anlegen), `update_unterkategorie` (Name, Kachelfarbe `tile_bg`, Sortierung, Kassa-Only bearbeiten), `delete_unterkategorie` (Unterkategorie löschen und Positionen aushängen), `get_orders` (Bestellzeilen im Zeitraum `von` bis `bis`), `update_position` (Name, Preis, Druckziel `print_target`, Unterkategorie `subcategory_id`, Kurzbezeichnung `kurzbezeichnung` und/oder Kachelfarbe `tile_bg` einer Position ändern).
+- **Bestandteile (Zutaten/Lager) lesen & schreiben:** `get_bestandteile` (Liste aller/gefilterter Bestandteile inkl. Einheit, Kapazität, aktuellem Verbrauch, Restbestand, Sortierung und Allergenen), `create_bestandteil` (neuen Bestandteil mit Einheit, Kapazität, Sortierung und Allergenen anlegen), `update_bestandteil` (Eigenschaften und Allergene eines Bestandteils bearbeiten), `delete_bestandteil` (Bestandteil löschen oder per `deaktivieren: true` deaktivieren).
+- **Rezepturen lesen & schreiben:** `get_recipe` (Rezeptur einer oder aller Positionen mit Mengen, Einheiten, Allergenen und Optionsgruppen abfragen), `set_recipe` (gesamte Rezeptur einer Position transaktional ersetzen), `add_recipe_item` (einzelne Zutat zu einer Position hinzufügen/aktualisieren), `remove_recipe_item` (Zutat aus Position entfernen).
+- **Statistik & Feste:** `get_sales_summary` (Anzahl/Umsatz nach Position/Typ/Tag/Stunde/Kellner), `get_stock_status` (Kapazität/Verbrauch/Rest begrenzter Positionen und Bestandteile), `get_fests` (alle Feste und aktuelles Fest).
+
+Der Zugriff ist nur mit einem Bearer-Token möglich. Das Token kann in der Admin-Oberfläche unter **System-Einstellungen → MCP-HTTP-Token** erzeugt und gespeichert werden. Es wird nach dem Speichern nicht erneut angezeigt; kopiere es daher vor dem Speichern in die MCP-Client-Konfiguration. In der Datenbank wird nur ein Passwort-Hash gespeichert. Alternativ kann das Token serverseitig über die Umgebungsvariable `FF_MCP_TOKEN` gesetzt werden. Ein in den Systemeinstellungen gespeichertes Token hat Vorrang vor der Umgebungsvariable; wenn keines gespeichert ist, dient die Umgebungsvariable als Fallback. Ohne Token antwortet der Endpunkt mit HTTP 503, bei fehlendem oder falschem Token mit HTTP 401.
+
+MCP-Client: URL `https://<server>/<pfad>/mcp.php`, Transport Streamable HTTP. Den Header `Authorization` mit dem Schema `Bearer` und dem auf dem Server gesetzten Tokenwert konfigurieren. Beispiel für einen Tool-Aufruf nach der MCP-Initialisierung:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "get_menu_catalog",
+    "arguments": {}
+  }
+}
+```
+
+Der Endpunkt unterstützt `initialize`, `ping`, `tools/list` und `tools/call` per HTTP POST. Zugriffe müssen über HTTPS erfolgen, damit das Bearer-Token nicht unverschlüsselt übertragen wird.
+
 | Thema | Datei |
 |-------|--------|
 | **Neuinstallation DB / welche SQL-Datei** | **`SQL_Dateien_Übersicht.md`** |
@@ -322,6 +365,10 @@ Details: **`documentation/PAYMENT_MODE_LOGIC.md`**.
 | Archiv (alte Patches, A11–A21, Migration-SQL) | **`documentation/archiv/`** (optional löschbar) |
 
 ---
+
+### Automatische Tests (Admin)
+
+Admin → System-Einstellungen → „Automatische Tests“ startet Selbsttests für Preisberechnung, Storno und Kapazität (`include/ff_selftests.php`, API `admin_selftest_api.php`). Alle Testdaten werden in einer Transaktion angelegt und per ROLLBACK verworfen (Voraussetzung: InnoDB). Nicht im Spitzenbetrieb starten.
 
 ## 11. Troubleshooting
 

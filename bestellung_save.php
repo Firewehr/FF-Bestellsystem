@@ -26,7 +26,10 @@ require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
 require_once __DIR__ . '/include/ff_schema_helpers.php';
 require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
+require_once __DIR__ . '/include/ff_order_recipe_components.php';
+require_once __DIR__ . '/include/ff_event_notifications.php';
 ff_schema_ensure_hot_paths($conn);
+ff_event_notifications_bootstrap($conn);
 
 if ($tischnummer === 999999) {
     ff_direktverkauf_require($conn);
@@ -61,6 +64,11 @@ if ($tischnummer !== 999999) {
 // Spalten-Migration: zentralisiert in ff_schema_ensure_hot_paths() oben.
 
 // Betrag, Druckziel und maxBestellbar der Position
+$notificationFestId = 0;
+$activeFestResult = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
+if ($activeFestResult && ($activeFest = mysqli_fetch_assoc($activeFestResult))) {
+    $notificationFestId = (int) $activeFest['id'];
+}
 $betrag = 0.0;
 $print_target = 11;
 $maxBestellbar = 0;
@@ -100,33 +108,76 @@ if ($res && ($row = mysqli_fetch_assoc($res))) {
         exit;
     }
 }
-// Bei begrenzter Verfügbarkeit: Gäste-Bestellungen + Mitarbeiter-Verpflegung
-$capCheck = ff_position_check_capacity($conn, (int) $positionsid, $maxBestellbar, $menge);
-if ($capCheck !== null && empty($capCheck['ok'])) {
-    http_response_code(400);
-    header('Content-Type: application/json; charset=UTF-8');
-    $payload = ['ok' => false, 'error' => (string) ($capCheck['error'] ?? 'max_cap')];
-    if (!empty($capCheck['message'])) {
-        $payload['message'] = $capCheck['message'];
-    }
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
-    exit;
-}
 // Optional: ein Hinweis pro Portion (JSON-Array, Länge muss zu menge passen)
 $hinweiseList = null;
 if (!empty($_POST['hinweise_json'])) {
     $decoded = json_decode((string)$_POST['hinweise_json'], true);
-    if (is_array($decoded) && count($decoded) === $menge) {
-        $hinweiseList = $decoded;
+    if (!is_array($decoded) || count($decoded) !== $menge) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(['ok' => false, 'error' => 'bad_hinweise_json'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $hinweiseList = $decoded;
+}
+
+$recipeItems = ff_order_recipe_components($conn, $positionsid);
+$selectedRecipeIds = null;
+if (array_key_exists('recipe_components_json', $_POST)) {
+    $decodedRecipeSelections = json_decode((string) $_POST['recipe_components_json'], true);
+    if (!is_array($decodedRecipeSelections) || count($decodedRecipeSelections) !== $menge) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(['ok' => false, 'error' => 'bad_recipe_components_json'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $allowedOptionalIds = [];
+    foreach ($recipeItems as $component) {
+        if ($component['optional_enabled']) {
+            $allowedOptionalIds[(int) $component['bestandteil_id']] = true;
+        }
+    }
+    foreach ($decodedRecipeSelections as $selection) {
+        if (!is_array($selection)) {
+            http_response_code(400);
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['ok' => false, 'error' => 'bad_recipe_components_json'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        foreach ($selection as $componentId) {
+            if (!is_scalar($componentId) || !isset($allowedOptionalIds[(int) $componentId])) {
+                http_response_code(400);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode(['ok' => false, 'error' => 'invalid_recipe_component'], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+    }
+    $selectedRecipeIds = $decodedRecipeSelections;
+}
+
+$recipeSelections = [];
+$hasLimitedRecipeComponent = false;
+$selectedTotals = [];
+for ($i = 0; $i < $menge; $i++) {
+    $portionIds = $selectedRecipeIds === null ? null : $selectedRecipeIds[$i];
+    $components = ff_order_recipe_selection($recipeItems, $portionIds);
+    $recipeSelections[] = $components;
+    foreach ($recipeItems as $component) {
+        if ((int) $component['kapazitaet'] > 0) {
+            $hasLimitedRecipeComponent = true;
+        }
+    }
+    foreach ($components as $component) {
+        $componentId = (int) $component['bestandteil_id'];
+        $selectedTotals[$componentId] = ($selectedTotals[$componentId] ?? 0.0) + (float) $component['menge'];
     }
 }
 
 // Bon-ID aus POST (für Direktverkauf)
 $bon_id = isset($_POST['bon_id']) ? trim($_POST['bon_id']) : '';
-$bon_id_sql = $bon_id !== '' ? "'" . mysqli_real_escape_string($conn, $bon_id) . "'" : 'NULL';
-
 $ptSql = (int)$print_target;
-$kellnerEsc = mysqli_real_escape_string($conn, $_SESSION['user']['username']);
+$kellner = (string) $_SESSION['user']['username'];
 $paymentMode = ff_aktiver_payment_mode($conn);
 // Direktverkauf: „Am Ende bezahlen“ → wie bisher sofort kueche=1 (erscheint nicht in offener Küchenliste).
 // „Sofort bezahlen“ → kueche=0 bis Küche/Schank fertig, dann wie gewohnt bezahlen.
@@ -137,54 +188,159 @@ $zeitKuecheExpr = ($isKassaOnly || $insertKuecheFertig) ? 'NOW()' : "'0000-00-00
 $kuecheFlag = ($isKassaOnly || $insertKuecheFertig) ? 1 : 0;
 $ausgeliefertFlag = $isKassaOnly ? 1 : 0;
 
-$rowValues = [];
-for ($i = 0; $i < $menge; $i++) {
-    if ($hinweiseList !== null) {
-        $rowZi = isset($hinweiseList[$i]) ? trim((string)$hinweiseList[$i]) : '';
-    } else {
-        $rowZi = $ziRaw;
-    }
-    if (function_exists('mb_strlen')) {
-        if (mb_strlen($rowZi, 'UTF-8') > 255) {
-            $rowZi = mb_substr($rowZi, 0, 255, 'UTF-8');
-        }
-    } elseif (strlen($rowZi) > 255) {
-        $rowZi = substr($rowZi, 0, 255);
-    }
-    $ziEsc = mysqli_real_escape_string($conn, $rowZi);
-    $lineBetrag = ff_bestellung_line_betrag($conn, (int)$positionsid, $betrag, $rowZi);
-    $betragEsc = number_format($lineBetrag, 2, '.', '');
-
-    $rowValues[] = '(' . (int)$tischnummer
-        . ',' . (int)$positionsid
-        // timestampBestellung erst beim Abschicken setzen (sonst eigene Batch-Nr. pro Klick).
-        // Direktverkauf: NOW() behalten (kein Abschicken; Gruppierung läuft über bon_id).
-        . ',' . ($tischnummer === 999999 ? 'NOW()' : "'0000-00-00 00:00:00'")
-        . ',' . $zeitKuecheExpr
-        . ',' . $kuecheFlag
-        . ",'" . $kellnerEsc . "'"
-        . ',' . $betragEsc
-        . ',' . $ausgeliefertFlag
-        . ',0'
-        . ',' . $ptSql
-        . ',' . $bon_id_sql
-        . ",'" . $ziEsc . "'"
-        . ')';
+$timestampExpr = $tischnummer === 999999 ? 'NOW()' : "'0000-00-00 00:00:00'";
+$insertSql = 'INSERT INTO `bestellungen`
+    (`tischnummer`,`position`,`timestampBestellung`,`zeitKueche`,`kueche`,`kellner`,`betrag`,`ausgeliefert`,`bestellt`,`print_target`,`bon_id`,`Zusatzinfo`,`fest_id`)
+    VALUES (?, ?, ' . $timestampExpr . ', ' . $zeitKuecheExpr . ', ?, ?, ?, ?, 0, ?, ?, ?, ?)';
+$insert = mysqli_prepare($conn, $insertSql);
+if (!$insert) {
+    header('Content-Type: application/json; charset=UTF-8');
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'save_prepare_failed'], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
-if ($rowValues !== []) {
-    $sql = 'INSERT INTO `bestellungen` (`tischnummer`,`position`,`timestampBestellung`,`zeitKueche`,`kueche`,`kellner`,`betrag`,`ausgeliefert`,`bestellt`,`print_target`,`bon_id`,`Zusatzinfo`) VALUES '
-        . implode(',', $rowValues);
-    if (!mysqli_query($conn, $sql)) {
-        header('Content-Type: application/json; charset=UTF-8');
-        http_response_code(500);
-        echo json_encode([
-            'ok' => false,
-            'error' => 'save_failed',
-            'message' => 'Speichern fehlgeschlagen.',
-        ], JSON_UNESCAPED_UNICODE);
-        exit;
+if (!mysqli_begin_transaction($conn)) {
+    mysqli_stmt_close($insert);
+    header('Content-Type: application/json; charset=UTF-8');
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'transaction_start_failed'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+try {
+    // Kapazitätsprüfung innerhalb der Transaktion mit FOR UPDATE Sperre, um Race Conditions / Überbuchungen
+    // bei gleichzeitigem Abschicken mehrerer Kellner auszuschließen.
+    if ($hasLimitedRecipeComponent) {
+        $componentsById = [];
+        foreach ($recipeItems as $component) {
+            $componentsById[(int) $component['bestandteil_id']] = $component;
+        }
+
+        $lockIds = [];
+        foreach ($selectedTotals as $cid => $qty) {
+            $comp = $componentsById[$cid] ?? null;
+            if ($comp && (int) ($comp['kapazitaet'] ?? -1) > 0) {
+                $lockIds[] = (int) $cid;
+            }
+        }
+        if (!empty($lockIds)) {
+            $lockSql = 'SELECT id, kapazitaet FROM bestandteile WHERE id IN (' . implode(',', $lockIds) . ') FOR UPDATE';
+            $lockRes = mysqli_query($conn, $lockSql);
+            if ($lockRes) {
+                while ($lRow = mysqli_fetch_assoc($lockRes)) {
+                    $lId = (int) $lRow['id'];
+                    if (isset($componentsById[$lId])) {
+                        $componentsById[$lId]['kapazitaet'] = (int) $lRow['kapazitaet'];
+                    }
+                }
+                mysqli_free_result($lockRes);
+            }
+        }
+
+        foreach ($selectedTotals as $componentId => $quantity) {
+            $component = $componentsById[$componentId] ?? null;
+            $capacity = (int) ($component['kapazitaet'] ?? -1);
+            if ($capacity <= 0) {
+                continue;
+            }
+            $consumed = ff_bestandteil_consumed_total($conn, (int) $componentId);
+            if ($consumed + $quantity > $capacity) {
+                mysqli_rollback($conn);
+                mysqli_stmt_close($insert);
+                http_response_code(400);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode([
+                    'ok' => false,
+                    'error' => 'max_cap',
+                    'message' => 'Für ' . (string) ($component['name'] ?? 'einen Bestandteil') . ' reicht die verfügbare Kapazität nicht aus.',
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+    } else {
+        if ($maxBestellbar > 0) {
+            $lockPos = mysqli_query($conn, 'SELECT rowid, maxBestellbar FROM positionen WHERE rowid = ' . (int) $positionsid . ' FOR UPDATE');
+            if ($lockPos && ($lpRow = mysqli_fetch_assoc($lockPos))) {
+                $maxBestellbar = (int) ($lpRow['maxBestellbar'] ?? $maxBestellbar);
+                mysqli_free_result($lockPos);
+            }
+        }
+
+        $capCheck = ff_position_check_capacity($conn, (int) $positionsid, $maxBestellbar, $menge);
+        if ($capCheck !== null && empty($capCheck['ok'])) {
+            mysqli_rollback($conn);
+            mysqli_stmt_close($insert);
+            http_response_code(400);
+            header('Content-Type: application/json; charset=UTF-8');
+            $payload = ['ok' => false, 'error' => (string) ($capCheck['error'] ?? 'max_cap')];
+            if (!empty($capCheck['message'])) {
+                $payload['message'] = $capCheck['message'];
+            }
+            echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+            exit;
+        }
     }
+
+    for ($i = 0; $i < $menge; $i++) {
+        $rowZi = $hinweiseList !== null ? trim((string) ($hinweiseList[$i] ?? '')) : $ziRaw;
+        if (function_exists('mb_strlen') && mb_strlen($rowZi, 'UTF-8') > 255) {
+            $rowZi = mb_substr($rowZi, 0, 255, 'UTF-8');
+        } elseif (strlen($rowZi) > 255) {
+            $rowZi = substr($rowZi, 0, 255);
+        }
+        $lineBetrag = ff_bestellung_line_betrag($conn, (int) $positionsid, $betrag, $rowZi);
+        $deliveredFlag = $ausgeliefertFlag;
+        $printTarget = $ptSql;
+        $bonValue = $bon_id !== '' ? $bon_id : null;
+        $festValue = $notificationFestId > 0 ? $notificationFestId : null;
+        mysqli_stmt_bind_param(
+            $insert,
+            'iiisdiissi',
+            $tischnummer,
+            $positionsid,
+            $kuecheFlag,
+            $kellner,
+            $lineBetrag,
+            $deliveredFlag,
+            $printTarget,
+            $bonValue,
+            $rowZi,
+            $festValue
+        );
+        if (!mysqli_stmt_execute($insert)) {
+            throw new RuntimeException('save_failed');
+        }
+        $orderRowId = (int) mysqli_insert_id($conn);
+        ff_order_recipe_save_snapshot($conn, $orderRowId, $recipeItems, $recipeSelections[$i] ?? []);
+    }
+    mysqli_stmt_close($insert);
+    mysqli_commit($conn);
+} catch (Throwable $e) {
+    mysqli_rollback($conn);
+    mysqli_stmt_close($insert);
+    header('Content-Type: application/json; charset=UTF-8');
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'error' => $e->getMessage() === 'save_failed' ? 'save_failed' : 'recipe_snapshot_save_failed',
+        'message' => 'Speichern fehlgeschlagen.',
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if ($notificationFestId > 0) {
+    try {
+        ff_event_notifications_evaluate($conn, $notificationFestId);
+    } catch (Throwable $error) {
+        error_log('bestellung_save.php: Push-Auswertung fehlgeschlagen nach Bestellspeicherung für Fest '
+            . $notificationFestId . ': ' . $error->getMessage());
+    }
+}
+
+if ($print_target > 0) {
+    require_once __DIR__ . '/include/ff_station_events.php';
+    ff_station_events_publish($conn, [(int) $print_target], 'draft_updated');
 }
 
 header('Content-Type: application/json; charset=UTF-8');
@@ -216,6 +372,8 @@ $payload = [
     'rest' => $rest,
     'max_bestellbar' => $maxBestellbar,
     'is_limited' => $isLimited,
+    // Gemeinsame Bestandteile: andere Kacheln haben ggf. veraltete Restmengen
+    'stock_shared' => count(ff_position_recipe_components($conn, (int)$positionsid)) > 0,
     'needs_tile_reload' => $needsTileReload,
 ];
 if ($tischnummer === 999999) {

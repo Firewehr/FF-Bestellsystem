@@ -13,7 +13,7 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     exit;
 }
 
-$fest_id = (int) ($_GET['id'] ?? 0);
+$fest_id = (int) ($_GET['fest_id'] ?? $_GET['id'] ?? 0);
 if ($fest_id <= 0) {
     http_response_code(400);
     echo 'missing id';

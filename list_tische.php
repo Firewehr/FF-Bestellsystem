@@ -3,11 +3,11 @@ require_once('auth.php');
 require_once __DIR__ . '/include/user_landing.php';
 ?>
 
-<nav class="navbar app-navbar sticky-top">
+<nav class="navbar app-navbar sticky-top ff-tisch-overview-navbar">
     <div class="container-fluid">
-        <a href="#indexPage" class="btn btn-outline-secondary btn-sm" onclick="<?php echo htmlspecialchars(ff_nav_home_onclick(), ENT_QUOTES, 'UTF-8'); ?>">← Menü</a>
-        <span class="navbar-brand mb-0">Tischübersicht</span>
-        <a href="#myOrdersPage" class="btn btn-outline-primary btn-sm" onclick="myOrdersAnsicht(); return false;">Meine offenen Bestellungen</a>
+        <a href="#indexPage" class="btn btn-outline-secondary btn-sm ff-tisch-overview-back" onclick="<?php echo htmlspecialchars(ff_nav_home_onclick(), ENT_QUOTES, 'UTF-8'); ?>">← Menü</a>
+        <span class="navbar-brand mb-0 ff-tisch-overview-title">Tischübersicht</span>
+        <a href="#myOrdersPage" class="btn btn-outline-primary btn-sm ff-tisch-overview-orders" onclick="myOrdersAnsicht(); return false;">Offene Bestellungen</a>
     </div>
 </nav>
 
@@ -158,6 +158,20 @@ require_once __DIR__ . '/include/user_landing.php';
             $tcMobile = 12;
         }
 
+        $tischBereiche = [];
+        $bereichLabels = [
+            'A' => 'Außenbereich',
+            'H' => 'Halle',
+            'Z' => 'Zelt',
+        ];
+        foreach ($tischRows as $t) {
+            $initial = strtoupper(substr(trim((string)($t['tischname'] ?? '')), 0, 1));
+            if ($initial !== '' && isset($bereichLabels[$initial])) {
+                $tischBereiche[$initial] = $bereichLabels[$initial];
+            }
+        }
+        $bereichReihenfolge = ['H', 'Z', 'A'];
+
         $openMap = [];
         $unsentMap = [];
         if (count($tischRows) > 0) {
@@ -188,7 +202,21 @@ require_once __DIR__ . '/include/user_landing.php';
         $defaultFont = '#000000';
         ?>
 
-        <div class="tisch-overview-grid" style="--tc: <?php echo (int)$gridW; ?>; --tc-mobile: <?php echo (int)$tcMobile; ?>;">
+        <?php if (count($tischBereiche) > 0) { ?>
+            <div class="tisch-bereich-filter mb-3 d-flex flex-wrap gap-1 align-items-center" data-tisch-filter-root>
+                <span class="small text-muted me-1">Bereich:</span>
+                <button type="button" class="btn btn-sm btn-primary ff-tisch-bereich-chip" data-tisch-bereich="_all_">Alle Tische</button>
+                <?php foreach ($bereichReihenfolge as $initial) {
+                    if (!isset($tischBereiche[$initial])) {
+                        continue;
+                    }
+                    echo '<button type="button" class="btn btn-sm btn-outline-secondary ff-tisch-bereich-chip" data-tisch-bereich="'
+                        . htmlspecialchars($initial, ENT_QUOTES, 'UTF-8') . '">' . htmlspecialchars($tischBereiche[$initial], ENT_QUOTES, 'UTF-8') . '</button>';
+                } ?>
+            </div>
+        <?php } ?>
+
+        <div class="tisch-overview-grid" data-tisch-overview-grid style="--tc: <?php echo (int)$gridW; ?>; --tc-mobile: <?php echo (int)$tcMobile; ?>;">
             <?php
             if (count($tischRows) === 0) {
                 echo '<p class="text-muted">Keine Tische mit Koordinaten.</p>';
@@ -198,11 +226,12 @@ require_once __DIR__ . '/include/user_landing.php';
                         $key = $gx . '_' . $gy;
                         $row = $byCell[$key] ?? null;
                         if ($row === null) {
-                            echo '<div class="col"><button type="button" class="btn w-100 py-3" disabled '
+                            echo '<div class="col" data-tisch-row="' . (int)$gy . '" data-tisch-empty="1"><button type="button" class="btn w-100 py-3" disabled '
                                 . 'style="color:' . $defaultFont . ';background:#FFFFFF;opacity:0.35;pointer-events:none;">&nbsp;</button></div>';
                             continue;
                         }
 
+                        $tischInitial = strtoupper(substr(trim((string)($row['tischname'] ?? '')), 0, 1));
                         $tischnummerabfrage = (int)$row['tischnummer'];
                         $isEhrengast = (int)($row['is_ehrengast'] ?? 0);
                         $isSammel = (int)($row['is_sammelrechnung'] ?? 0);
@@ -234,7 +263,8 @@ require_once __DIR__ . '/include/user_landing.php';
                             ? (' title="' . (int) $unsentCnt . ' Position(en) noch nicht abgeschickt"')
                             : '';
                         $colClass = 'col' . ($hasUnsent ? ' tisch-unsent-wrap' : '');
-                        echo '<div class="' . htmlspecialchars($colClass, ENT_QUOTES, 'UTF-8') . '">';
+                        echo '<div class="' . htmlspecialchars($colClass, ENT_QUOTES, 'UTF-8') . '" data-tisch-row="' . (int)$gy . '" data-tisch-bereich="'
+                            . htmlspecialchars($tischInitial, ENT_QUOTES, 'UTF-8') . '">';
                         echo '<button type="button" class="btn w-100 py-3 ' . htmlspecialchars($style, ENT_QUOTES, 'UTF-8') . '" onclick="Tischnummer=' . (int)$row['tischnummer'] . ';tisch();"'
                             . $unsentTitle
                             . ' style="color:' . (strpos((string)$fontColour, '#') === 0 ? $fontColour : '#' . $fontColour) . ';background:' . $Colour . ';">';
@@ -246,6 +276,42 @@ require_once __DIR__ . '/include/user_landing.php';
 
             mysqli_close($conn);
             echo '</div>';
+            if (count($tischBereiche) > 0) {
+                echo '<script>
+                    (function () {
+                        var filterRoot = document.querySelector("[data-tisch-filter-root]");
+                        var grid = document.querySelector("[data-tisch-overview-grid]");
+                        if (!filterRoot || !grid) return;
+                        filterRoot.addEventListener("click", function (event) {
+                            var chip = event.target.closest(".ff-tisch-bereich-chip");
+                            if (!chip) return;
+                            var selected = chip.getAttribute("data-tisch-bereich");
+                            var rows = {};
+                            grid.querySelectorAll(".col[data-tisch-row]").forEach(function (cell) {
+                                var rowKey = cell.getAttribute("data-tisch-row");
+                                if (!rows[rowKey]) rows[rowKey] = [];
+                                rows[rowKey].push(cell);
+                            });
+                            Object.keys(rows).forEach(function (rowKey) {
+                                var cells = rows[rowKey];
+                                var hasMatchingTable = cells.some(function (cell) {
+                                    return cell.getAttribute("data-tisch-bereich") === selected;
+                                });
+                                cells.forEach(function (cell) {
+                                    var isMatch = cell.getAttribute("data-tisch-bereich") === selected;
+                                    cell.hidden = selected !== "_all_" && !hasMatchingTable;
+                                    cell.style.visibility = selected === "_all_" || isMatch ? "visible" : "hidden";
+                                });
+                            });
+                            filterRoot.querySelectorAll(".ff-tisch-bereich-chip").forEach(function (button) {
+                                var active = button === chip;
+                                button.classList.toggle("btn-primary", active);
+                                button.classList.toggle("btn-outline-secondary", !active);
+                            });
+                        });
+                    }());
+                </script>';
+            }
         } catch (Exception $e) {
             echo $e->getMessage();
         }

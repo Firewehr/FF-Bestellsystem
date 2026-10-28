@@ -25,6 +25,8 @@ if ($tischnummer <= 0 && $sammelrechnung_id <= 0) {
     exit;
 }
 
+ff_rechnungen_ensure_extra_columns($conn);
+
 $selectedPositions = [];
 $selectedTotal = 0.0;
 if ($hasRowSelection) {

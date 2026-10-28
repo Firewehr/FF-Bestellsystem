@@ -29,6 +29,13 @@ function safe_time_hm($ts): string {
     return date('H:i', $t);
 }
 
+function safe_pay_datetime_minute($ts): string {
+    if (!$ts || $ts === '0000-00-00 00:00:00' || $ts === '1970-01-01 00:00:00') return '';
+    $t = @strtotime((string)$ts);
+    if ($t === false || $t <= 0) return '';
+    return date('Y-m-d H:i', $t);
+}
+
 // PARTIAL: wenn via fetch() geladen wird (dynamischer View-Toggle)
 $isPartial = (isset($_GET['partial']) && $_GET['partial'] == '1');
 $requirePaymentRequested = isset($_GET['require_payment']) && $_GET['require_payment'] === '1';
@@ -216,7 +223,7 @@ function updateButtonsAndSum(){
         var all = ids.length > 0 && ids.every(function(r){ return window._selPay && window._selPay[r]; });
         h.classList.toggle('is-all-selected', all);
         var pick = h.querySelector('.ff-pay-group-pick');
-        if (pick) pick.textContent = all ? 'Gruppe abwählen' : 'Gruppe wählen';
+        if (pick) pick.textContent = all ? '✓ Gruppe abwählen' : 'Gruppe wählen';
     });
 
     var btnGesamt = document.getElementById('btnBezahlenGesamt');
@@ -449,21 +456,8 @@ try {
         exit;
     }
 
-    static $ffTischEhrengastColChecked = false;
-    if (!$ffTischEhrengastColChecked) {
-        $ffTischEhrengastColChecked = true;
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
-        if ($chk && mysqli_num_rows($chk) === 0) {
-            mysqli_free_result($chk);
-            try {
-                @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
-            } catch (Throwable $eEhrengastCol) {
-                /* Spalte existiert bereits */
-            }
-        } elseif ($chk) {
-            mysqli_free_result($chk);
-        }
-    }
+    require_once __DIR__ . '/include/ff_schema_helpers.php';
+    ff_ensure_column($conn, 'tische', 'is_ehrengast', 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
 
     $paymentMode = ff_aktiver_payment_mode($conn);
     $showSumupOpenAppButton = (setting_get($conn, 'sumup_open_app_button', '0') === '1');
@@ -589,10 +583,10 @@ try {
     echo '<table class="ff-pay-table" border="0" width="100%">';
 
     if ($viewMode === 'detail') {
-        // Gruppieren nach Küche-fertig-Zeit (Minute); ohne Zeit = noch nicht fertig, am Ende
+        // Datum und Minute der Fertigstellung berücksichtigen; ohne Zeit = noch nicht fertig, am Ende.
         $payGroups = [];
         foreach ($detailRows as $row) {
-            $gk = safe_time_hm($row['zeitKueche'] ?? '');
+            $gk = safe_pay_datetime_minute($row['zeitKueche'] ?? '');
             $payGroups[$gk][] = $row;
         }
         uksort($payGroups, function ($x, $y) {
@@ -616,7 +610,9 @@ try {
             }
             arsort($ordCnt);
             $gOrd = $ordCnt ? (string)array_key_first($ordCnt) : '';
-            $gTitle = ((string)$gk !== '') ? '🍳 ' . $gk . ' Küche fertig' : '⏳ Noch nicht fertig';
+            $gTitle = ((string)$gk !== '')
+                ? '🍳 ' . date('d.m. H:i', strtotime((string) $gk)) . ' Küche fertig'
+                : '⏳ Noch nicht fertig';
             $detailRowsGrouped[] = ['head' => ['title' => $gTitle, 'rids' => $gRids, 'sum' => $gSum, 'ord' => $gOrd]];
             // Gleiche Positionen (Name + Preis + Zusatzinfo) innerhalb der Gruppe zusammenfassen
             $buckets = [];
@@ -637,9 +633,9 @@ try {
                 $h = $entry['head'];
                 if ($isEhrengast !== 1) {
                     echo '<tr class="ff-pay-group-head" data-rids="' . htmlspecialchars(json_encode($h['rids']), ENT_QUOTES, 'UTF-8') . '">';
-                    echo '<td colspan="' . (int)$payTableCols . '"><button type="button" class="ff-pay-group-toggle" aria-label="Gruppe ein-/ausklappen" aria-expanded="true">▾</button><span class="ff-pay-group-title"><span class="ff-pay-group-time">' . htmlspecialchars($h['title'], ENT_QUOTES, 'UTF-8')
-                       . '</span><span class="ff-pay-group-sub"><span class="ff-pay-group-subtxt">' . count($h['rids']) . ' Pos. · ' . htmlspecialchars(eur_format((float)$h['sum'], $formatter)) . '</span>' . ($h['ord'] !== '' ? '<span class="ff-pay-group-ord"> · 🧾 ' . htmlspecialchars($h['ord']) . '</span>' : '') . '</span></span>'
-                       . '<span class="ff-pay-group-pick">Gruppe wählen</span></td></tr>';
+                    echo '<td colspan="' . (int)$payTableCols . '"><div class="ff-pay-group-inner"><button type="button" class="ff-pay-group-toggle" aria-label="Gruppe ein-/ausklappen" aria-expanded="true">▾</button><span class="ff-pay-group-title"><span class="ff-pay-group-time">' . htmlspecialchars($h['title'], ENT_QUOTES, 'UTF-8')
+                       . '</span><span class="ff-pay-group-sub"><span class="ff-pay-group-subtxt">' . count($h['rids']) . ' Pos. · ' . htmlspecialchars(eur_format((float)$h['sum'], $formatter)) . '</span>' . ($h['ord'] !== '' ? '<span class="ff-pay-group-ord"> · 🧾 ' . htmlspecialchars($h['ord']) . ' bestellt</span>' : '') . '</span></span>'
+                       . '<span class="ff-pay-group-pick">Gruppe wählen</span></div></td></tr>';
                 }
                 continue;
             }
@@ -659,7 +655,7 @@ try {
                 if ($mZi !== '') {
                     echo '<br><small class="text-muted" style="font-weight:normal;">' . htmlspecialchars($mZi) . '</small>';
                 }
-                if ($mHm && $mHm !== ($entry['ghm'] ?? '')) {
+                if ($mHm) {
                     echo '<div class="ff-pay-meta-inline"><span class="ff-pay-meta-chip">🧾 ' . htmlspecialchars($mHm) . ' bestellt</span></div>';
                 }
                 echo '</td>';
@@ -700,7 +696,7 @@ try {
             if ($zi !== '') {
                 echo '<br><small class="text-muted" style="font-weight:normal;">' . htmlspecialchars($zi) . '</small>';
             }
-            if ($hm && $hm !== ($entry['ghm'] ?? '')) {
+            if ($hm) {
                 echo '<div class="ff-pay-meta-inline">';
                 if ($hm) {
                     echo '<span class="ff-pay-meta-chip">🧾 ' . htmlspecialchars($hm) . ' bestellt</span>';
@@ -784,6 +780,9 @@ try {
     else echo htmlspecialchars(eur_format((float)$Summe, $formatter));
     echo '</div></h2></td></tr>';
     echo '</table>';
+    if ($isEhrengast !== 1) {
+        echo '<div id="payTotalSub" class="ff-pay-total-sub">Nichts ausgewählt – „Alles bezahlen“ zahlt den ganzen Tisch</div>';
+    }
 
     if ($isEhrengast === 1 && $count === 0) {
         echo '<div class="alert alert-info my-3" style="font-size:0.95rem;">'
@@ -837,7 +836,7 @@ try {
         echo '<button type="button" id="btnBezahlenGesamtEinzeln" class="btn btn-warning pay-action-btn" style="padding:12px 14px;" title="Ausgewählte Positionen bezahlen">Bezahlen</button>';
         echo '<button type="button" id="btnBezahlenGesamt" class="btn btn-warning pay-action-btn" style="padding:12px 14px;" title="Gesamten Tisch bezahlen" data-array="' . $payDataArray . '">Alles bezahlen</button>';
         if ($showSumupOpenAppButton) {
-            echo '<button type="button" id="btnOpenSumupWithAmount" class="btn btn-outline-primary pay-action-btn" style="padding:12px 14px;" title="SumUp mit Betrag öffnen" data-affiliate-key="' . htmlspecialchars($sumupAffiliateKey, ENT_QUOTES, 'UTF-8') . '" data-app-id="' . htmlspecialchars($sumupAppId, ENT_QUOTES, 'UTF-8') . '">SumUp + Betrag</button>';
+            echo '<button type="button" id="btnOpenSumupWithAmount" class="btn btn-success pay-action-btn" style="padding:12px 14px;" title="SumUp mit Betrag öffnen" data-affiliate-key="' . htmlspecialchars($sumupAffiliateKey, ENT_QUOTES, 'UTF-8') . '" data-app-id="' . htmlspecialchars($sumupAppId, ENT_QUOTES, 'UTF-8') . '">SumUp + Betrag</button>';
         }
         echo '<button type="button" id="btnBezahlenMitRechnung" class="btn btn-outline-success pay-action-btn" style="padding:12px 14px;" title="Gesamtbetrag bezahlen und Rechnung erstellen">+ Rechnung</button>';
         $primaryOpen = true;

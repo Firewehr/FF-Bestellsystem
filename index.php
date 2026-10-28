@@ -112,6 +112,8 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="<?php echo htmlspecialchars($ffManifestHref, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="theme-color" content="#991b1b">
+    <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
+    <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
     <?php if ($ff_favicon !== ''):
         $ffFavMtime = @filemtime(__DIR__ . '/' . $ff_favicon) ?: 1;
     ?>
@@ -150,6 +152,11 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
             justify-content: center;
         }
 
+        #indexPage .ff-menu-title { font-size: 0.8rem !important; letter-spacing: 0; }
+        #indexPage .ff-menu-title + .btn { flex: 0 0 auto; }
+        #indexPage .menu-card .list-group-item { display: flex; align-items: center; gap: 0.85rem; padding-top: 0.8rem; padding-bottom: 0.8rem; }
+        #indexPage .ff-menu-ico { flex: 0 0 auto; width: 1.75rem; text-align: center; font-size: 1.35rem; line-height: 1; }
+        #indexPage .menu-card .ff-menu-logout { margin-top: 1rem; border-top: 1px solid #dee2e6; }
         .app-navbar {
             background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important;
             color: #fff !important;
@@ -522,6 +529,12 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
                     <ul class="navbar-nav ms-xl-auto flex-wrap">
                         <?php if (empty($ff_dv_only_ui) && !empty($ff_can_tische)): ?>
                             <li class="nav-item">
+                                <a class="nav-link text-warning fw-bold" href="pilot/">📱 Kellner-App (Pilot)</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-info fw-bold" href="pilot/station.html">🔥 Stations-Pilot (Küche/Schank)</a>
+                            </li>
+                            <li class="nav-item">
                                 <a class="nav-link" href="#listTische" id="TischeButton" onclick="TischAnsicht(); return false;">Tische</a>
                             </li>
                         <?php endif; ?>
@@ -587,51 +600,54 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
     <?php else: ?>
         <div data-page id="indexPage" class="active">
             <nav class="navbar app-navbar sticky-top">
-                <div class="container-fluid position-relative d-flex align-items-center justify-content-end">
-                    <span class="navbar-brand mb-0 position-absolute top-50 start-50 translate-middle text-center px-2 text-truncate d-block" style="max-width: min(72vw, 560px); pointer-events: none;"><?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></span>
+                <div class="container-fluid position-relative d-flex align-items-center justify-content-between">
+                    <span class="navbar-brand ff-menu-title mb-0 text-truncate flex-grow-1 me-2" style="min-width:0;"><?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></span>
                     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="ffToggleTerminalMode(); return false;" title="Terminal-Modus umschalten">
                         <span class="ff-terminal-toggle-label">Terminal: AUS</span>
                     </button>
                 </div>
             </nav>
-            <div class="container app-content py-4">
+            <div class="container app-content pt-3 pb-5">
+                <div class="ff-menu-user small text-muted mb-2 px-1">Angemeldet als <strong><?php echo htmlspecialchars($_SESSION['user']['username']); ?></strong></div>
                 <div class="list-group menu-card">
                     <?php if (empty($ff_dv_only_ui) && !empty($ff_can_tische)): ?>
-                        <a href="#listTische" class="list-group-item list-group-item-action" id="TischeButton" onclick="TischAnsicht(); return false;">Tische</a>
+                        <a href="pilot/" class="list-group-item list-group-item-action" style="font-weight:700; color:#dc2626;"><span class="ff-menu-ico" aria-hidden="true">📱</span>Kellner-App (Pilot)</a>
+                        <a href="pilot/station.html" class="list-group-item list-group-item-action" style="font-weight:700; color:#0284c7;"><span class="ff-menu-ico" aria-hidden="true">🔥</span>Stations-Pilot (Küche &amp; Schank)</a>
+                        <a href="#listTische" class="list-group-item list-group-item-action" id="TischeButton" onclick="TischAnsicht(); return false;"><span class="ff-menu-ico" aria-hidden="true">🍽️</span>Tische</a>
                     <?php endif; ?>
                     <?php if (!empty($ff_can_sammelrechnung)): ?>
-                        <a href="sammelrechnung.php" class="list-group-item list-group-item-action">Sammelrechnung</a>
+                        <a href="sammelrechnung.php" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true">🧾</span>Sammelrechnung</a>
                     <?php endif; ?>
                     <?php if (empty($ff_dv_only_ui)): ?>
                         <?php foreach ($print_targets as $pt): ?>
-                            <a href="#DruckzielAnsicht_<?php echo (int)$pt['print_target']; ?>" class="list-group-item list-group-item-action"><?php echo htmlspecialchars($pt['name']); ?></a>
+                            <a href="#DruckzielAnsicht_<?php echo (int)$pt['print_target']; ?>" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true"><?php echo stripos((string)$pt['name'], 'schank') !== false ? '🍺' : '🍳'; ?></span><?php echo htmlspecialchars($pt['name']); ?></a>
                         <?php endforeach; ?>
                     <?php endif; ?>
                     <?php if (!empty($ff_can_direktverkauf)): ?>
-                        <a href="#Direktverkauf" class="list-group-item list-group-item-action" onclick="Direktverkauf(); return false;">Direktverkauf</a>
+                        <a href="#Direktverkauf" class="list-group-item list-group-item-action" onclick="Direktverkauf(); return false;"><span class="ff-menu-ico" aria-hidden="true">🛒</span>Direktverkauf</a>
                     <?php endif; ?>
                     <?php if (!empty($ff_can_mv)): ?>
-                        <a href="#MitarbeiterVerpflegungPage" class="list-group-item list-group-item-action" onclick="MitarbeiterVerpflegungAnsicht(); return false;">Mitarbeiter-Verpflegung</a>
+                        <a href="#MitarbeiterVerpflegungPage" class="list-group-item list-group-item-action" onclick="MitarbeiterVerpflegungAnsicht(); return false;"><span class="ff-menu-ico" aria-hidden="true">👥</span>Mitarbeiter-Verpflegung</a>
                     <?php endif; ?>
                     <?php if (empty($ff_dv_only_ui) && !empty($ff_can_my_orders)): ?>
-                        <a href="#myOrdersPage" class="list-group-item list-group-item-action" onclick="myOrdersAnsicht(); return false;">Meine offenen Bestellungen</a>
+                        <a href="#myOrdersPage" class="list-group-item list-group-item-action" onclick="myOrdersAnsicht(); return false;"><span class="ff-menu-ico" aria-hidden="true">📋</span>Meine offenen Bestellungen</a>
                     <?php endif; ?>
                     <?php if (empty($ff_dv_only_ui) && !empty($ff_can_bestell_history)): ?>
-                        <a href="bestell_history.php" class="list-group-item list-group-item-action">Bestell-History</a>
+                        <a href="bestell_history.php" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true">🕘</span>Bestell-History</a>
                     <?php endif; ?>
                     <?php if (!empty($ff_show_finance_menu)): ?>
-                        <a href="#financePage" class="list-group-item list-group-item-action" onclick="FinanzAnsicht(); return false;">Finanzen</a>
+                        <a href="#financePage" class="list-group-item list-group-item-action" onclick="FinanzAnsicht(); return false;"><span class="ff-menu-ico" aria-hidden="true">💶</span>Finanzen</a>
                     <?php endif; ?>
                     <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
-                        <a href="admin.php" class="list-group-item list-group-item-action">Admin</a>
+                        <a href="admin_page.php" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true">⚙️</span>Admin</a>
                     <?php endif; ?>
                     <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
-                        <a href="backup_download.php" class="list-group-item list-group-item-action" title="Während des Festes offen lassen: automatischer Notfall-Cache">Offline-Sicherung</a>
+                        <a href="backup_download.php" class="list-group-item list-group-item-action" title="Während des Festes offen lassen: automatischer Notfall-Cache"><span class="ff-menu-ico" aria-hidden="true">💾</span>Offline-Sicherung</a>
                     <?php endif; ?>
                     <?php if (!empty($ff_can_pw_change)): ?>
-                        <a href="#pwGatePage" class="list-group-item list-group-item-action" onclick="showPage('pwGatePage'); return false;">Passwort ändern</a>
+                        <a href="#pwGatePage" class="list-group-item list-group-item-action" onclick="showPage('pwGatePage'); return false;"><span class="ff-menu-ico" aria-hidden="true">🔑</span>Passwort ändern</a>
                     <?php endif; ?>
-                    <a href="#" class="list-group-item list-group-item-action" style="background:#f5f5f5; color:#666;" onclick="logout(); return false;">Abmelden (<?php echo htmlspecialchars($_SESSION['user']['username']); ?>)</a>
+                    <a href="#" class="list-group-item list-group-item-action ff-menu-logout" onclick="if (confirm('Wirklich abmelden?')) { logout(); } return false;"><span class="ff-menu-ico" aria-hidden="true">🚪</span>Abmelden</a>
                 </div>
                 <div id="speisekarteTest" class="mt-3"></div>
             </div>
@@ -772,7 +788,7 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="ffTischSelectModalLabel">Tisch wählen</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen" onclick="closeTischSelectAndLoadAll();"></button>
                 </div>
                 <div class="modal-body">
                     <p class="small text-muted">Bitte wählen Sie eine Option, um fortzufahren.</p>
@@ -834,6 +850,7 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
     <script src="<?php echo htmlspecialchars($ffBsJs, ENT_QUOTES, 'UTF-8'); ?>"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <script src="js/app.js?v=<?php echo @filemtime(__DIR__ . '/js/app.js') ?: '1'; ?>"></script>
+    <script src="js/station_forecast.js?v=<?php echo @filemtime(__DIR__ . '/js/station_forecast.js') ?: '1'; ?>"></script>
     <script>
         if (typeof window.ffApplyTerminalMode === 'function') {
             window.ffApplyTerminalMode(!!window.ffTerminalModeEnabled, false);

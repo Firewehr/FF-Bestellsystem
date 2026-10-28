@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ff-bestellsystem-static-v2';
+const CACHE_NAME = 'ff-bestellsystem-static-v4';
 const STATIC_ASSETS = [
     './style.css',
     './admin.css',
@@ -25,6 +25,23 @@ self.addEventListener('activate', (event) => {
                 .filter((cacheName) => cacheName !== CACHE_NAME)
                 .map((cacheName) => caches.delete(cacheName))
         )).then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const target = new URL(event.notification.data?.url || './admin.php', self.location.href);
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            for (const client of windowClients) {
+                if (new URL(client.url).origin === target.origin) {
+                    return client.navigate(target.href).then((navigatedClient) =>
+                        (navigatedClient || client).focus()
+                    );
+                }
+            }
+            return clients.openWindow(target.href);
+        })
     );
 });
 

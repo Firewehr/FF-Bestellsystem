@@ -181,8 +181,32 @@ try {
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label" for="ffTischEditColor">Farbe</label>
-                    <input type="color" class="form-control form-control-color form-control-sm" id="ffTischEditColor" value="#000000">
+                    <label class="form-label" for="ffTischEditColorHex">Farbe</label>
+                    <div class="input-group input-group-sm">
+                        <input type="color" class="form-control form-control-color" id="ffTischEditColor" value="#000000" aria-label="Farbe auswählen">
+                        <input type="text" class="form-control font-monospace" id="ffTischEditColorHex" value="#000000" maxlength="7" pattern="#[0-9a-fA-F]{6}" autocomplete="off" spellcheck="false" aria-label="Farbcode (Hex)">
+                    </div>
+                    <div class="form-text">Hex-Farbcode kopieren oder einfügen, z. B. #336699.</div>
+                    <div class="input-group input-group-sm mt-2">
+                        <select class="form-select" id="ffTischEditCopyColor" aria-label="Farbe eines anderen Tisches auswählen">
+                            <option value="">Farbe von anderem Tisch übernehmen …</option>
+                            <?php foreach ($tables as $otherTable): ?>
+                                <?php
+                                    $otherColor = trim((string) ($otherTable['color'] ?? ''));
+                                    if ($otherColor === '') {
+                                        $otherColor = '#000000';
+                                    } elseif ($otherColor[0] !== '#') {
+                                        $otherColor = '#' . $otherColor;
+                                    }
+                                    if (!preg_match('/^#[0-9a-fA-F]{6}$/', $otherColor)) {
+                                        $otherColor = '#000000';
+                                    }
+                                ?>
+                                <option value="<?php echo htmlspecialchars($otherColor, ENT_QUOTES, 'UTF-8'); ?>" data-tischnummer="<?php echo (int) $otherTable['tischnummer']; ?>"><?php echo htmlspecialchars((string) $otherTable['tischname'], ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($otherColor, ENT_QUOTES, 'UTF-8'); ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="btn btn-outline-secondary" id="ffTischEditCopyColorBtn">Übernehmen</button>
+                    </div>
                 </div>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="ffTischEditSr">
@@ -201,4 +225,3 @@ try {
         </div>
     </div>
 </div>
-

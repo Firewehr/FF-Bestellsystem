@@ -1,0 +1,40 @@
+# Lokale Datenbank- und Server-Konfigurationen
+include/db.local.php
+deploy.config.json
+.deploy_secrets.json
+tools/fest_offline_backup.ini
+Client-Print-Skripte/**/config.ini
+
+# Debug- und Log-Dateien
+.ff-debug
+debug.txt
+*.log
+pay_view_error.log
+
+# Backups und Datenbank-Dumps
+backups/
+*.bak
+*.tar.gz
+*.zip
+*.dump
+*dump*.sql
+5514037*.sql
+
+# Caches und temporäre Logs
+include/.cache/
+__pycache__/
+*.py[cod]
+*$py.class
+stat/*.csv
+Client-Print-Skripte/Windows/service/logs/
+
+# IDE, OS und Umgebung
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+*.pem
+*.key
+*.crt

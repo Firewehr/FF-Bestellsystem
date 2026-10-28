@@ -6,6 +6,7 @@
  */
 require_once('auth.php');
 require_once('include/db.php');
+require_once __DIR__ . '/include/ff_auto_print.php';
 header('Content-Type: application/json; charset=utf-8');
 @mysqli_set_charset($conn, 'utf8mb4');
 
@@ -94,4 +95,8 @@ if ($isNew) {
 }
 
 $ok = mysqli_query($conn, $sql);
+if ($ok && isset($_POST['auto_print_limit']) && ff_auto_print_ensure_schema($conn)) {
+    $autoLimit = max(0, min(50, (int) $_POST['auto_print_limit']));
+    $ok = mysqli_query($conn, 'UPDATE print_targets SET auto_print_limit = ' . $autoLimit . ' WHERE print_target = ' . $print_target);
+}
 echo json_encode(['ok' => (bool)$ok, 'error' => $ok ? null : mysqli_error($conn)]);

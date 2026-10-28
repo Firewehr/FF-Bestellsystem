@@ -70,6 +70,14 @@ $summaryTitleEsc = htmlspecialchars($summaryTitle, ENT_QUOTES, 'UTF-8');
 
 $showSummaryTop = setting_get($conn, 'station_summary_top', '1') === '1';
 $showSummaryRight = setting_get($conn, 'station_summary_right', '1') === '1';
+$forecastTargetResult = mysqli_query(
+    $conn,
+    'SELECT 1 FROM positionen WHERE type=1 AND kassa_only=0 AND print_target=' . (int) $print_target . ' LIMIT 1'
+);
+$showForecast = $forecastTargetResult && mysqli_num_rows($forecastTargetResult) > 0;
+if ($forecastTargetResult) {
+    mysqli_free_result($forecastTargetResult);
+}
 
 ff_station_render_page_open([
     'title' => $targetName,
@@ -80,6 +88,7 @@ ff_station_render_page_open([
     'back_onclick' => 'if(typeof AnzahlBestellungenAktuell!==\'undefined\')AnzahlBestellungenAktuell=-1;',
     'orders_container_id' => $containerId,
     'sidebar_bg' => $sidebarBg,
+    'forecast_print_target' => $showForecast ? $print_target : 0,
     'show_sidebar' => $showSummaryRight,
 ]);
 echo '<!-- ff-station-modular-v2 -->';
@@ -96,7 +105,8 @@ if ($showSummaryRight) {
         (int) ($stationCtx['wartende'] ?? 0),
         $dzSummary,
         'Keine offenen Positionen in dieser Station.',
-        false
+        false,
+        ($stationCtx['error'] ?? '') === '' ? ff_station_open_breakdown($stationCtx) : []
     );
 }
 ff_station_render_page_close($showSummaryRight);

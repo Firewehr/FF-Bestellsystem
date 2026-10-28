@@ -7,20 +7,47 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/ff_rezepturen_schema.php';
 
-function ff_position_mv_table_exists(mysqli $conn): bool
-{
-    static $cache = null;
-    if ($cache !== null) {
-        return $cache;
-    }
+if (!function_exists('ff_position_mv_table_exists')) {
+    function ff_position_mv_table_exists(mysqli $conn): bool
+    {
+        static $cache = [];
+        $cid = spl_object_id($conn);
+        if (isset($cache[$cid])) {
+            return $cache[$cid];
+        }
 
-    $tbl = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
-    $cache = ($tbl && mysqli_num_rows($tbl) > 0);
-    if ($tbl) {
-        mysqli_free_result($tbl);
-    }
+        if (function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
+            ff_mitarbeiter_verpflegung_ensure_schema($conn);
+        }
 
-    return $cache;
+        $tbl = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
+        $exists = ($tbl && mysqli_num_rows($tbl) > 0);
+        if ($tbl) {
+            @mysqli_free_result($tbl);
+        }
+
+        if (!$exists) {
+            $cache[$cid] = false;
+            return false;
+        }
+
+        // Prüfen, ob benötigte Spalten tatsächlich vorhanden sind
+        $cPos = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
+        $hasPos = ($cPos && mysqli_num_rows($cPos) > 0);
+        if ($cPos) {
+            @mysqli_free_result($cPos);
+        }
+
+        $cMenge = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
+        $hasMenge = ($cMenge && mysqli_num_rows($cMenge) > 0);
+        if ($cMenge) {
+            @mysqli_free_result($cMenge);
+        }
+
+        $usable = ($hasPos && $hasMenge);
+        $cache[$cid] = $usable;
+        return $usable;
+    }
 }
 
 /**
@@ -37,44 +64,59 @@ function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): 
     ) {
         return [];
     }
+    ff_rezepturen_ensure_schema($conn);
 
     $ids = array_values(array_unique(array_filter(array_map('intval', $bestandteilIds), static fn(int $id): bool => $id > 0)));
-    $filter = $ids === [] ? '' : ' AND pr.bestandteil_id IN (' . implode(',', $ids) . ')';
+    $filter = $ids === [] ? '' : ' WHERE consumed.id IN (' . implode(',', $ids) . ')';
+    $staffFilter = $ids === [] ? '' : ' AND pr.bestandteil_id IN (' . implode(',', $ids) . ')';
     $consumed = [];
 
-    $orders = mysqli_query(
+    $orders = @mysqli_query(
         $conn,
-        'SELECT pr.bestandteil_id AS id, COALESCE(SUM(pr.menge), 0) AS qty
-         FROM bestellungen b
-         JOIN position_rezepturen pr ON pr.position_id = b.position
-         WHERE b.`delete` = 0' . $filter . '
-         GROUP BY pr.bestandteil_id'
+        'SELECT consumed.id, COALESCE(SUM(consumed.qty), 0) AS qty
+         FROM (
+             SELECT rc.bestandteil_id AS id, rc.menge AS qty
+             FROM bestellungen b
+             JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+             JOIN bestellung_rezeptur_komponenten rc ON rc.bestellung_rowid = b.rowid AND rc.selected = 1
+             WHERE b.`delete` = 0
+             UNION ALL
+             SELECT pr.bestandteil_id AS id, pr.menge AS qty
+             FROM bestellungen b
+             JOIN position_rezepturen pr ON pr.position_id = b.position
+             LEFT JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+             WHERE b.`delete` = 0 AND snap.bestellung_rowid IS NULL
+               AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
+         ) consumed' . $filter . '
+         GROUP BY consumed.id'
     );
-    if (!$orders) {
-        throw new RuntimeException('Bestellte Bestandteil-Mengen konnten nicht geladen werden.');
+    if ($orders) {
+        while ($row = mysqli_fetch_assoc($orders)) {
+            $consumed[(int) $row['id']] = (float) $row['qty'];
+        }
+        @mysqli_free_result($orders);
+    } else {
+        error_log('ff_bestandteil_consumed_map warning (orders): ' . mysqli_error($conn));
     }
-    while ($row = mysqli_fetch_assoc($orders)) {
-        $consumed[(int) $row['id']] = (float) $row['qty'];
-    }
-    mysqli_free_result($orders);
 
     if (ff_position_mv_table_exists($conn)) {
-        $staffMeals = mysqli_query(
+        $staffMeals = @mysqli_query(
             $conn,
             'SELECT pr.bestandteil_id AS id, COALESCE(SUM(v.menge * pr.menge), 0) AS qty
              FROM mitarbeiter_verpflegung v
              JOIN position_rezepturen pr ON pr.position_id = v.position_id
-             WHERE 1 = 1' . $filter . '
+             WHERE (pr.optional_enabled = 0 OR pr.default_selected = 1)' . $staffFilter . '
              GROUP BY pr.bestandteil_id'
         );
-        if (!$staffMeals) {
-            throw new RuntimeException('Bestandteil-Mengen der Mitarbeiter-Verpflegung konnten nicht geladen werden.');
+        if ($staffMeals) {
+            while ($row = mysqli_fetch_assoc($staffMeals)) {
+                $id = (int) $row['id'];
+                $consumed[$id] = ($consumed[$id] ?? 0.0) + (float) $row['qty'];
+            }
+            @mysqli_free_result($staffMeals);
+        } else {
+            error_log('ff_bestandteil_consumed_map warning (staffMeals): ' . mysqli_error($conn));
         }
-        while ($row = mysqli_fetch_assoc($staffMeals)) {
-            $id = (int) $row['id'];
-            $consumed[$id] = ($consumed[$id] ?? 0.0) + (float) $row['qty'];
-        }
-        mysqli_free_result($staffMeals);
     }
 
     return $consumed;
@@ -201,6 +243,7 @@ function ff_position_stock_snapshot(?mysqli $conn = null, bool $load = false): ?
         ) {
             return $snapshot;
         }
+        ff_rezepturen_ensure_schema($conn);
         $res = mysqli_query(
             $conn,
             'SELECT pr.position_id, pr.bestandteil_id, pr.menge, b.name, b.kapazitaet
@@ -224,32 +267,7 @@ function ff_position_stock_snapshot(?mysqli $conn = null, bool $load = false): ?
             ];
         }
         mysqli_free_result($res);
-        if ($ids === []) {
-            return $snapshot;
-        }
-        $idList = implode(',', array_keys($ids));
-        $queries = [
-            'SELECT pr.bestandteil_id AS bid, SUM(pr.menge) AS cnt FROM bestellungen b
-             JOIN position_rezepturen pr ON pr.position_id = b.position
-             WHERE b.`delete` = 0 AND pr.bestandteil_id IN (' . $idList . ') GROUP BY pr.bestandteil_id',
-        ];
-        if (ff_position_mv_table_exists($conn)) {
-            $queries[] = 'SELECT pr.bestandteil_id AS bid, SUM(v.menge * pr.menge) AS cnt FROM mitarbeiter_verpflegung v
-             JOIN position_rezepturen pr ON pr.position_id = v.position_id
-             WHERE pr.bestandteil_id IN (' . $idList . ') GROUP BY pr.bestandteil_id';
-        }
-        foreach ($queries as $q) {
-            $r = mysqli_query($conn, $q);
-            if (!$r) {
-                $snapshot = null;
-                return null;
-            }
-            while ($row = mysqli_fetch_assoc($r)) {
-                $bid = (int) $row['bid'];
-                $snapshot['consumed'][$bid] = ($snapshot['consumed'][$bid] ?? 0.0) + (float) $row['cnt'];
-            }
-            mysqli_free_result($r);
-        }
+        $snapshot['consumed'] = ff_bestandteil_consumed_map($conn, array_keys($ids));
     }
     return $snapshot;
 }
@@ -315,23 +333,48 @@ function ff_bestandteil_consumed_total(mysqli $conn, int $bestandteilId): float
 
     $consumed = 0.0;
 
-    $sql = 'SELECT COALESCE(SUM(pr.menge), 0) AS cnt
-            FROM bestellungen b
-            JOIN position_rezepturen pr ON pr.position_id = b.position
-            WHERE b.`delete` = 0 AND pr.bestandteil_id = ' . (int) $bestandteilId;
-    $res = mysqli_query($conn, $sql);
-    if ($res && ($row = mysqli_fetch_assoc($res))) {
-        $consumed += (float) ($row['cnt'] ?? 0);
+    ff_rezepturen_ensure_schema($conn);
+    $sql = 'SELECT COALESCE(SUM(consumed.qty), 0) AS cnt
+            FROM (
+                SELECT rc.menge AS qty
+                FROM bestellungen b
+                JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+                JOIN bestellung_rezeptur_komponenten rc ON rc.bestellung_rowid = b.rowid
+                    AND rc.bestandteil_id = ' . (int) $bestandteilId . ' AND rc.selected = 1
+                WHERE b.`delete` = 0
+                UNION ALL
+                SELECT pr.menge AS qty
+                FROM bestellungen b
+                JOIN position_rezepturen pr ON pr.position_id = b.position
+                    AND pr.bestandteil_id = ' . (int) $bestandteilId . '
+                LEFT JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+                WHERE b.`delete` = 0 AND snap.bestellung_rowid IS NULL
+                  AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
+            ) consumed';
+    $res = @mysqli_query($conn, $sql);
+    if ($res) {
+        if ($row = mysqli_fetch_assoc($res)) {
+            $consumed += (float) ($row['cnt'] ?? 0);
+        }
+        @mysqli_free_result($res);
+    } else {
+        error_log('ff_bestandteil_consumed_total warning (orders): ' . mysqli_error($conn));
     }
 
     if (ff_position_mv_table_exists($conn)) {
         $sql2 = 'SELECT COALESCE(SUM(v.menge * pr.menge), 0) AS cnt
                 FROM mitarbeiter_verpflegung v
                 JOIN position_rezepturen pr ON pr.position_id = v.position_id
-                WHERE pr.bestandteil_id = ' . (int) $bestandteilId;
-        $res2 = mysqli_query($conn, $sql2);
-        if ($res2 && ($row2 = mysqli_fetch_assoc($res2))) {
-            $consumed += (float) ($row2['cnt'] ?? 0);
+                WHERE pr.bestandteil_id = ' . (int) $bestandteilId . '
+                  AND (pr.optional_enabled = 0 OR pr.default_selected = 1)';
+        $res2 = @mysqli_query($conn, $sql2);
+        if ($res2) {
+            if ($row2 = mysqli_fetch_assoc($res2)) {
+                $consumed += (float) ($row2['cnt'] ?? 0);
+            }
+            @mysqli_free_result($res2);
+        } else {
+            error_log('ff_bestandteil_consumed_total warning (staffMeals): ' . mysqli_error($conn));
         }
     }
 
@@ -625,11 +668,23 @@ function ff_bestandteil_batch_order_counts(mysqli $conn): array
     }
 
     $map = [];
-    $sql = "SELECT pr.bestandteil_id, COALESCE(SUM(pr.menge), 0) AS cnt
-            FROM bestellungen b
-            JOIN position_rezepturen pr ON pr.position_id = b.position
-            WHERE b.delete = 0
-            GROUP BY pr.bestandteil_id";
+    ff_rezepturen_ensure_schema($conn);
+    $sql = "SELECT consumed.bestandteil_id, COALESCE(SUM(consumed.menge), 0) AS cnt
+            FROM (
+                SELECT rc.bestandteil_id, rc.menge
+                FROM bestellungen b
+                JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+                JOIN bestellung_rezeptur_komponenten rc ON rc.bestellung_rowid = b.rowid AND rc.selected = 1
+                WHERE b.`delete` = 0
+                UNION ALL
+                SELECT pr.bestandteil_id, pr.menge
+                FROM bestellungen b
+                JOIN position_rezepturen pr ON pr.position_id = b.position
+                LEFT JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
+                WHERE b.`delete` = 0 AND snap.bestellung_rowid IS NULL
+                  AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
+            ) consumed
+            GROUP BY consumed.bestandteil_id";
     $res = mysqli_query($conn, $sql);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
@@ -653,6 +708,7 @@ function ff_bestandteil_batch_mv_counts(mysqli $conn): array
     $sql = "SELECT pr.bestandteil_id, COALESCE(SUM(v.menge * pr.menge), 0) AS cnt
             FROM mitarbeiter_verpflegung v
             JOIN position_rezepturen pr ON pr.position_id = v.position_id
+            WHERE pr.optional_enabled = 0 OR pr.default_selected = 1
             GROUP BY pr.bestandteil_id";
     $res = mysqli_query($conn, $sql);
     if ($res) {

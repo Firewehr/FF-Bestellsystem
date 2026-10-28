@@ -24,12 +24,6 @@ if (!$tischnummer || $tischnummer <= 0) {
     die('Ungültiger Tisch.');
 }
 
-if (!$orderNr || $orderNr <= 0) {
-    http_response_code(400);
-    die('Ungültige Bestellnummer.');
-}
-
-
 /*
 |--------------------------------------------------------------------------
 | Tischname laden
@@ -66,6 +60,101 @@ if ($stmt) {
 }
 
 $displayTischLabel = ff_format_table_label($tischname, $tischnummer);
+
+/*
+|--------------------------------------------------------------------------
+| Bestellnummer prüfen / Fallback auf letzte Bestellung des Tisches
+|--------------------------------------------------------------------------
+*/
+
+if (!$orderNr || $orderNr <= 0) {
+    $findLatestStmt = mysqli_prepare(
+        $conn,
+        "SELECT order_nr
+         FROM bestellungen
+         WHERE tischnummer = ?
+           AND `delete` = 0
+           AND order_nr IS NOT NULL
+           AND order_nr > 0
+         ORDER BY timestampBestellung DESC, rowid DESC
+         LIMIT 1"
+    );
+    if ($findLatestStmt) {
+        mysqli_stmt_bind_param($findLatestStmt, 'i', $tischnummer);
+        mysqli_stmt_execute($findLatestStmt);
+        $findLatestRes = mysqli_stmt_get_result($findLatestStmt);
+        if ($flRow = mysqli_fetch_assoc($findLatestRes)) {
+            $orderNr = (int)$flRow['order_nr'];
+        }
+        mysqli_stmt_close($findLatestStmt);
+    }
+}
+
+if (!$orderNr || $orderNr <= 0) {
+    ?>
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Keine aktive Bestellung – <?= htmlspecialchars($displayTischLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
+        <style>
+            * { box-sizing: border-box; }
+            body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; font-family:Arial,Helvetica,sans-serif; background:#f5f5f5; color:#222; }
+            .box { width:100%; max-width:500px; background:white; border-radius:16px; padding:35px 25px; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,.12); }
+            h1 { margin:0 0 10px; font-size:24px; color:#333; }
+            p { font-size:16px; color:#666; line-height:1.5; margin:0 0 25px; }
+            .btn { display:inline-block; padding:14px 22px; border-radius:10px; background:#c0392b; color:white; text-decoration:none; font-weight:bold; font-size:16px; }
+            .btn:hover { background:#a93226; }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <div style="font-size:52px; margin-bottom:15px;">🍽️</div>
+            <h1>Keine aktive Bestellung</h1>
+            <p>Für <strong><?= htmlspecialchars($displayTischLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></strong> liegt momentan noch keine Bestellung vor.</p>
+            <a class="btn" href="order.php?tisch=<?= (int)$tischnummer ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>">
+                Zur Speisekarte &amp; Bestellen
+            </a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+/*
+|--------------------------------------------------------------------------
+| Weitere Bestellungen für diesen Tisch (zum Umschalten)
+|--------------------------------------------------------------------------
+*/
+$otherOrdersForTable = [];
+$otherOrdersStmt = mysqli_prepare(
+    $conn,
+    "SELECT
+        order_nr,
+        MIN(timestampBestellung) AS bestellt_um,
+        MIN(ausgeliefert) AS min_ausgeliefert,
+        MIN(kueche) AS min_kueche
+     FROM bestellungen
+     WHERE tischnummer = ?
+       AND `delete` = 0
+       AND order_nr IS NOT NULL
+       AND order_nr > 0
+       AND timestampBestellung >= DATE_SUB(NOW(), INTERVAL 12 HOUR)
+     GROUP BY order_nr
+     ORDER BY MAX(timestampBestellung) DESC
+     LIMIT 6"
+);
+if ($otherOrdersStmt) {
+    mysqli_stmt_bind_param($otherOrdersStmt, 'i', $tischnummer);
+    mysqli_stmt_execute($otherOrdersStmt);
+    $resOthers = mysqli_stmt_get_result($otherOrdersStmt);
+    while ($oRow = mysqli_fetch_assoc($resOthers)) {
+        $otherOrdersForTable[] = $oRow;
+    }
+    mysqli_stmt_close($otherOrdersStmt);
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -722,21 +811,35 @@ function h($value)
     </div>
 
 
-    <?php if ($token !== ''): ?>
-        <a
-            class="new-order"
-            href="order.php?tisch=<?= (int)$tischnummer ?>&token=<?= urlencode($token) ?>"
-        >
-            Weitere Bestellung aufgeben
-        </a>
-    <?php else: ?>
-        <a
-            class="new-order"
-            href="javascript:history.back()"
-        >
-            Weitere Bestellung aufgeben
-        </a>
+    <?php if (count($otherOrdersForTable) > 1): ?>
+        <div style="margin: 16px 0 12px; padding: 12px 14px; background: #f8f9fa; border: 1px solid #e2e8f0; border-radius: 12px; text-align: center;">
+            <div style="font-size: 13px; font-weight: bold; color: #475569; margin-bottom: 8px;">
+                Alle Bestellungen für <?= h($displayTischLabel) ?>:
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 7px; justify-content: center;">
+                <?php foreach ($otherOrdersForTable as $o): ?>
+                    <?php
+                        $isCur = (int)$o['order_nr'] === (int)$orderNr;
+                        $st = ((int)$o['min_ausgeliefert'] === 1) ? '✓ Serviert' : (((int)$o['min_kueche'] === 1) ? '🏃 Auf dem Weg' : '👨‍🍳 In Arbeit');
+                    ?>
+                    <a
+                        href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$o['order_nr'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                        style="padding: 6px 12px; border-radius: 14px; text-decoration: none; font-size: 12px; font-weight: bold; transition: all 0.2s ease; <?= $isCur ? 'background: #c0392b; color: #fff; box-shadow: 0 2px 6px rgba(192,57,43,0.3);' : 'background: #fff; color: #333; border: 1px solid #cbd5e1;' ?>"
+                    >
+                        #<?= (int)$o['order_nr'] ?> (<?= $st ?>)
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
     <?php endif; ?>
+
+
+    <a
+        class="new-order"
+        href="order.php?tisch=<?= (int)$tischnummer ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+    >
+        Zur Speisekarte / Weitere Bestellung aufgeben
+    </a>
 
 
 </div>

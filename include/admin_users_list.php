@@ -108,7 +108,7 @@ while ($row = mysqli_fetch_assoc($result)) {
         echo '<button type="button" class="btn btn-outline-secondary btn-sm btn-user-passkeys" data-userid="' . $uid . '" data-username="' . htmlspecialchars((string) $row['username'], ENT_QUOTES, 'UTF-8') . '">Passkeys</button>';
     }
     if ($canDeleteUser) {
-        echo '<button type="button" class="btn btn-outline-danger btn-sm btn-user-delete" data-userid="' . $uid . '" data-username="' . htmlspecialchars((string) $row['username'], ENT_QUOTES, 'UTF-8') . '">Löschen</button>';
+        echo '<button type="button" class="btn btn-outline-danger btn-sm btn-user-delete ff-icon-action" data-userid="' . $uid . '" data-username="' . htmlspecialchars((string) $row['username'], ENT_QUOTES, 'UTF-8') . '" title="Benutzer löschen" aria-label="Benutzer löschen">&#128465;</button>';
     }
     echo '</div></div>';
 

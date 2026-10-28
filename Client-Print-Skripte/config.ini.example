@@ -32,6 +32,12 @@ verify_ssl = true
 # Wie oft der Server abgefragt wird (in Sekunden)
 poll_interval = 3
 
+# Event-Modus (SSE): Ist im Admin "Druck per Event" aktiv, meldet der Server neue Druckjobs sofort
+# (print_events.php). poll_interval gilt dann nur noch, solange der Event-Kanal nicht verfügbar ist.
+use_events = true
+# Sicherheits-Abfrage im Event-Modus (Sekunden), falls ein Event verloren geht.
+event_fallback_interval = 30
+
 # Wie viele Einträge aus der Thermo-Warteschlange (printer_jobs) pro Runde nacheinander abgeholt werden.
 # Der Server liefert pro Anfrage nur einen Job; ohne diesen Wert würde nur einer pro poll_interval gedruckt.
 # Standard 25; auf 1 setzen für altes Verhalten (max. ein Queue-Job pro Wartezyklus).
@@ -60,9 +66,26 @@ name = Receipt Printer
 temp_file = C:\POS-Daten\printPOS.txt
 
 # === LINUX ===
+# Automatische Suche nach angeschlossenen USB-Thermodruckern (Standard: an).
+# Durchsucht /dev/usb/lp* (das sind IMMER USB-Geräte der Klasse "Printer" - reine
+# USB-Seriell-Adapter wie FTDI/CH340 tauchen dort nicht auf, da sie /dev/ttyUSB*
+# erzeugen). So wird automatisch das richtige Device gefunden, auch wenn sich der
+# Drucker nach Ab-/Anstecken unter einem anderen Pfad (lp0, lp1, ...) anmeldet.
+# Bei false wird ausschließlich "device"/"devices" unten verwendet.
+auto_detect = true
+
+# Vendor-IDs (Komma-getrennt, hex ohne 0x) als Tie-Breaker, falls mehrere USB-Drucker
+# gleichzeitig angeschlossen sind. 04b8 = Epson, 067b = Prolific (z.B. USB<->Parallel-
+# Adapter, wie er an manchen TM-T88 mit Parallel-Port statt USB hängt).
+# Reicht NICHT alleine, um "sicher ein Epson" zu erkennen (Adapter melden ihre eigene
+# Vendor-ID, nicht die von Epson) - dient nur zur Auswahl bei mehreren Kandidaten.
+usb_vendor_ids = 04b8, 067b
+
+# Manuelles Fallback-Device, falls auto_detect=false ist oder kein passendes
+# Device automatisch gefunden wurde.
 device = /dev/usb/lp0
 
-# Mehrere USB-Devices (Komma-getrennt), z. B. wenn zwei Modelle angeschlossen sind:
+# Mehrere manuelle Fallback-Devices (Komma-getrennt), z. B. wenn zwei Modelle angeschlossen sind:
 # devices = /dev/usb/lp0, /dev/usb/lp1
 devices =
 

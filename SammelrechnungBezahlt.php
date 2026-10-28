@@ -22,43 +22,29 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     ff_sr_json_error(403, 'forbidden', 'Keine Berechtigung.');
 }
 
+require_once __DIR__ . '/include/ff_csrf.php';
+ff_csrf_require();
+
 mysqli_set_charset($conn, 'utf8mb4');
 // Keine ungefangenen mysqli_sql_exception → immer JSON-Antwort
 mysqli_report(MYSQLI_REPORT_OFF);
 
-function ff_sr_has_column($conn, $name)
-{
-    $nameEsc = mysqli_real_escape_string($conn, $name);
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM sammelrechnungen LIKE '$nameEsc'");
-    return $chk && mysqli_num_rows($chk) > 0;
-}
-
-function ff_sr_ensure_column($conn, $name, $alterSql)
-{
-    if (ff_sr_has_column($conn, $name)) {
-        return true;
-    }
-    return (bool) @mysqli_query($conn, $alterSql);
-}
+require_once __DIR__ . '/include/ff_schema_helpers.php';
 
 function ff_sr_ensure_schema($conn)
 {
-    @mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS sammelrechnungen (id INT AUTO_INCREMENT PRIMARY KEY)');
-    ff_sr_ensure_column($conn, 'created_at', 'ALTER TABLE sammelrechnungen ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
-    ff_sr_ensure_column($conn, 'created_by', 'ALTER TABLE sammelrechnungen ADD COLUMN created_by VARCHAR(255) NULL DEFAULT NULL');
-    ff_sr_ensure_column($conn, 'tables_text', 'ALTER TABLE sammelrechnungen ADD COLUMN tables_text TEXT NULL');
-    ff_sr_ensure_column($conn, 'total_amount', 'ALTER TABLE sammelrechnungen ADD COLUMN total_amount DECIMAL(10,2) NULL DEFAULT 0.00');
-    ff_sr_ensure_column($conn, 'umsatz_zustaendig', 'ALTER TABLE sammelrechnungen ADD COLUMN umsatz_zustaendig VARCHAR(255) NULL DEFAULT NULL');
-    ff_sr_ensure_column($conn, 'bezahlt', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt TINYINT(1) NOT NULL DEFAULT 0');
-    ff_sr_ensure_column($conn, 'bezahlt_at', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt_at TIMESTAMP NULL DEFAULT NULL');
+    ff_ensure_table($conn, 'sammelrechnungen', 'CREATE TABLE IF NOT EXISTS sammelrechnungen (id INT AUTO_INCREMENT PRIMARY KEY)');
+    ff_ensure_column($conn, 'sammelrechnungen', 'created_at', 'ALTER TABLE sammelrechnungen ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
+    ff_ensure_column($conn, 'sammelrechnungen', 'created_by', 'ALTER TABLE sammelrechnungen ADD COLUMN created_by VARCHAR(255) NULL DEFAULT NULL');
+    ff_ensure_column($conn, 'sammelrechnungen', 'tables_text', 'ALTER TABLE sammelrechnungen ADD COLUMN tables_text TEXT NULL');
+    ff_ensure_column($conn, 'sammelrechnungen', 'total_amount', 'ALTER TABLE sammelrechnungen ADD COLUMN total_amount DECIMAL(10,2) NULL DEFAULT 0.00');
+    ff_ensure_column($conn, 'sammelrechnungen', 'umsatz_zustaendig', 'ALTER TABLE sammelrechnungen ADD COLUMN umsatz_zustaendig VARCHAR(255) NULL DEFAULT NULL');
+    ff_ensure_column($conn, 'sammelrechnungen', 'bezahlt', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt TINYINT(1) NOT NULL DEFAULT 0');
+    ff_ensure_column($conn, 'sammelrechnungen', 'bezahlt_at', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt_at TIMESTAMP NULL DEFAULT NULL');
 }
 
 ff_sr_ensure_schema($conn);
-
-$chkSr = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'sammelrechnung_id'");
-if ($chkSr && mysqli_num_rows($chkSr) === 0) {
-    @mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN sammelrechnung_id INT NULL');
-}
+ff_ensure_column($conn, 'bestellungen', 'sammelrechnung_id', 'ALTER TABLE bestellungen ADD COLUMN sammelrechnung_id INT NULL');
 
 $rows = isset($_POST['listePositionen']) ? $_POST['listePositionen'] : (isset($_REQUEST['listePositionen']) ? $_REQUEST['listePositionen'] : []);
 $tables = isset($_POST['tables']) ? $_POST['tables'] : (isset($_REQUEST['tables']) ? $_REQUEST['tables'] : []);

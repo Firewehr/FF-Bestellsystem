@@ -1,6 +1,6 @@
 <?php
 /**
- * Beilagen / Zusatzinfos – Pflege (Hinweis-Dialog beim Bestellen). Wird in manage/index.php eingebunden.
+ * Zusatzinfos – Pflege (Hinweis-Dialog beim Bestellen). Wird in manage/index.php eingebunden.
  */
 declare(strict_types=1);
 
@@ -10,7 +10,7 @@ require_once __DIR__ . '/../include/db.php';
 mysqli_set_charset($conn, 'utf8mb4');
 ?>
 <div class="manage-fragment-header mb-4 pb-3 border-bottom">
-    <h4 class="text-primary fw-semibold mb-1">Beilagen / Zusatzinfos</h4>
+    <h4 class="text-primary fw-semibold mb-1">Zusatzinfos</h4>
     <p class="small text-muted mb-0">Vordefinierte Checkboxen im <strong>Hinweis-Dialog</strong> beim Bestellen – keine eigenen Kartenpositionen. Betrag optional (Aufpreis).</p>
 </div>
 
@@ -67,7 +67,7 @@ mysqli_set_charset($conn, 'utf8mb4');
 </div>
 
 <div class="card border shadow-sm">
-    <div class="card-header bg-white py-2 fw-semibold small text-uppercase text-muted">Vordefinierte Beilagen</div>
+    <div class="card-header bg-white py-2 fw-semibold small text-uppercase text-muted">Zusatzinfos</div>
     <div class="card-body p-0">
         <div id="beilagenListWrap" class="table-responsive">
             <table class="table table-sm table-hover align-middle mb-0">

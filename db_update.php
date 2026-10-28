@@ -4,27 +4,15 @@
  * Datenbank-Update- & Migrationsskript für Feuerwehr-Bestellsystem
  * ============================================================================
  * 
- * Unterstützt alte Altdatenbanken (MyISAM, latin1, altes Tabellenschema) und
- * migriert auf das moderne, transaktionssichere Schema (InnoDB, utf8mb4_unicode_ci,
- * 24 Tabellen inkl. QR-Table-Tokens, Allergenen, Rezepturen, etc.).
+ * Unterstützt Alt-Installationen (MyISAM, latin1, altes Tabellenschema) und
+ * migriert auf das vollständige, moderne, transaktionssichere Schema
+ * (InnoDB, utf8mb4_unicode_ci, alle 34 Tabellen inkl. Buchungen, Kassenführung,
+ * Kellner-Settlements, QR-Tokens, Rezepturen, Allergenen, WebAuthn etc.).
  * 
- * NEUES FEATURE:
- * Quelle und Ziel können auf UNTERSCHIEDLICHEN SERVERn mit unterschiedlichen
- * Benutzernamen und Passwörtern liegen (z. B. mysqlsvr83 -> mysqlsvr88 bei World4You).
- * Der Datentransfer erfolgt bei separaten Servern automatisch über einen
- * speichereffizienten Streaming-Batch-Import (MYSQLI_USE_RESULT + Multi-Row INSERTs).
- * 
- * Unterstützte Modi:
- * 1. Clone & Upgrade (Quelle -> Ziel):
- *    Erstellt die Ziel-Datenbank auf dem Ziel-Server mit modernem Schema und
- *    überträgt alle Daten (Benutzer, Tische, Positionen, Beilagen, Bestellungen...)
- *    mit automatischer Spalten- und Zeichensatz-Transformation.
- * 
- * 2. In-Place Update:
- *    Aktualisiert eine bestehende Datenbank direkt vor Ort auf dem Quell-Server.
- * 
- * Kann sowohl über den BROWSER (visuelle Web-UI mit Live-Log) als auch über die
- * BEFEHLSZEILE (CLI) aufgerufen werden.
+ * Unterstützt:
+ * - Gleiche oder UNTERSCHIEDLICHE Server für Alt- und Neu-Datenbank
+ * - Intelligente Schema-Reparatur fehlerhafter / veralteter Tabellen (z. B. buchungen)
+ * - 100% Kompatibilität mit login.php und allen ff_*_ensure_schema-Funktionen
  * ============================================================================
  */
 
@@ -33,6 +21,9 @@ declare(strict_types=1);
 // Maximale Ausführungszeit & Speicher für große Migrationen
 @ini_set('max_execution_time', '600');
 @ini_set('memory_limit', '512M');
+if (function_exists('mysqli_report')) {
+    @mysqli_report(MYSQLI_REPORT_OFF);
+}
 
 // Standard-Konfiguration ermitteln
 $defaultSourceHost = 'mysqlsvr83.world4you.com';
@@ -93,6 +84,9 @@ if ($isCli) {
 // Hilfsfunktion für sichere Datenbankverbindungen
 // ----------------------------------------------------------------------------
 function ff_db_connect(string $host, int $port, string $user, string $pass, ?string $db = null, int $timeout = 8): array {
+    if (function_exists('mysqli_report')) {
+        @mysqli_report(MYSQLI_REPORT_OFF);
+    }
     $conn = @mysqli_init();
     if (!$conn) {
         return ['conn' => null, 'error' => 'mysqli_init fehlgeschlagen.'];
@@ -115,7 +109,7 @@ function ff_db_connect(string $host, int $port, string $user, string $pass, ?str
 }
 
 // ----------------------------------------------------------------------------
-// Schema-Definitionen für das moderne Bestellsystem
+// Vollständige Schema-Definitionen (Abgeglichen mit include/sql.sql & ff_*_schema)
 // ----------------------------------------------------------------------------
 function ff_migration_get_target_tables(): array {
     return [
@@ -133,12 +127,45 @@ function ff_migration_get_target_tables(): array {
             `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `admin` tinyint(1) NOT NULL DEFAULT 0,
             `can_finance` tinyint(1) NOT NULL DEFAULT 0,
+            `can_direktverkauf` tinyint(1) NOT NULL DEFAULT 0,
+            `menu_permissions` text DEFAULT NULL,
             `start_page` varchar(32) NOT NULL DEFAULT 'menu',
             `start_print_target` int(11) DEFAULT NULL,
             `dv_abholbon_print_target` int(11) DEFAULT NULL,
+            `is_active` tinyint(1) NOT NULL DEFAULT 1,
+            `active_from` datetime DEFAULT NULL,
+            `active_until` datetime DEFAULT NULL,
+            `force_password_change` tinyint(1) NOT NULL DEFAULT 0,
             `auth_rev` int(11) NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
             UNIQUE KEY `uniq_username` (`username`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        'user_passkeys' => "CREATE TABLE IF NOT EXISTS `user_passkeys` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `user_id` int(11) NOT NULL,
+            `credential_id` varchar(1024) NOT NULL,
+            `public_key_pem` text NOT NULL,
+            `sign_count` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `label` varchar(120) NOT NULL DEFAULT '',
+            `transports` varchar(255) DEFAULT NULL,
+            `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `last_used_at` datetime DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `idx_user_id` (`user_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        'webauthn_remote_requests' => "CREATE TABLE IF NOT EXISTS `webauthn_remote_requests` (
+            `token` varchar(64) NOT NULL,
+            `user_id` int(11) NOT NULL,
+            `challenge` varchar(64) NOT NULL,
+            `status` varchar(20) NOT NULL DEFAULT 'pending',
+            `label` varchar(120) NOT NULL DEFAULT '',
+            `error` varchar(64) DEFAULT NULL,
+            `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `expires_at` datetime NOT NULL,
+            PRIMARY KEY (`token`),
+            KEY `idx_user_id` (`user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'feste' => "CREATE TABLE IF NOT EXISTS `feste` (
@@ -189,7 +216,18 @@ function ff_migration_get_target_tables(): array {
             `active` tinyint(1) NOT NULL DEFAULT 1,
             `sort_order` int(11) NOT NULL DEFAULT 0,
             `finance_bereich_id` int(11) DEFAULT NULL,
+            `auto_print_limit` int(11) NOT NULL DEFAULT 0,
             PRIMARY KEY (`print_target`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        'ff_station_events' => "CREATE TABLE IF NOT EXISTS `ff_station_events` (
+            `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `print_target` int(11) NOT NULL,
+            `event_type` varchar(32) NOT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`),
+            KEY `idx_station_events_target_id` (`print_target`, `id`),
+            KEY `idx_station_events_created` (`created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'position_subcategories' => "CREATE TABLE IF NOT EXISTS `position_subcategories` (
@@ -202,6 +240,7 @@ function ff_migration_get_target_tables(): array {
             `fest_id` int(11) DEFAULT NULL,
             PRIMARY KEY (`id`),
             KEY `idx_type_sort` (`type`,`sort_order`),
+            KEY `idx_kassa_only` (`kassa_only`),
             KEY `idx_fest_id` (`fest_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
@@ -210,7 +249,7 @@ function ff_migration_get_target_tables(): array {
             `Positionsname` text NOT NULL,
             `Betrag` decimal(10,2) NOT NULL,
             `type` int(2) NOT NULL COMMENT '1=Speise, 2=Getränk',
-            `Kurzbezeichnung` varchar(30) DEFAULT NULL,
+            `Kurzbezeichnung` varchar(30) NOT NULL DEFAULT '',
             `maxBestellbar` int(11) NOT NULL DEFAULT -1,
             `reihenfolge` int(11) NOT NULL DEFAULT 0,
             `color` varchar(8) NOT NULL DEFAULT '#ffffff',
@@ -260,7 +299,7 @@ function ff_migration_get_target_tables(): array {
             `timestampBestellung` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
             `timestampAuslieferung` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
             `timestampBezahlung` timestamp NOT NULL DEFAULT '0000-00-00 00:00:00',
-            `kellnerZahlung` text,
+            `kellnerZahlung` text NOT NULL,
             `Zusatzinfo` varchar(255) DEFAULT NULL,
             `betrag` double NOT NULL DEFAULT 0,
             `bestellt` tinyint(1) NOT NULL DEFAULT 0,
@@ -270,6 +309,7 @@ function ff_migration_get_target_tables(): array {
             `settlement_id` int(11) DEFAULT NULL,
             `settled_at` datetime DEFAULT NULL,
             `settled_by` varchar(64) DEFAULT NULL,
+            `auto_print` tinyint(1) NOT NULL DEFAULT 0,
             PRIMARY KEY (`rowid`),
             KEY `idx_tischnummer` (`tischnummer`),
             KEY `idx_position` (`position`),
@@ -295,226 +335,245 @@ function ff_migration_get_target_tables(): array {
 
         'sammelrechnungen' => "CREATE TABLE IF NOT EXISTS `sammelrechnungen` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
+            `name` varchar(100) DEFAULT NULL,
             `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
             `created_by` varchar(255) DEFAULT NULL,
             `umsatz_zustaendig` varchar(255) DEFAULT NULL,
-            `tables_text` text,
+            `tables_text` text DEFAULT NULL,
             `total_amount` decimal(10,2) DEFAULT 0.00,
             `bezahlt` tinyint(1) NOT NULL DEFAULT 0,
             `bezahlt_at` timestamp NULL DEFAULT NULL,
             `fest_id` int(11) DEFAULT NULL,
             `tischnummer` int(11) DEFAULT NULL,
             `betrag` decimal(10,2) DEFAULT 0.00,
-            `name` varchar(100) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_fest_id` (`fest_id`)
+            KEY `idx_fest_id` (`fest_id`),
+            KEY `idx_tischnummer` (`tischnummer`),
+            KEY `idx_bezahlt` (`bezahlt`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'menu_locks' => "CREATE TABLE IF NOT EXISTS `menu_locks` (
-            `item_type` enum('position','beilage') NOT NULL,
-            `item_id` int(11) NOT NULL,
-            `locked_by_user` varchar(255) NOT NULL,
-            `locked_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `active` tinyint(1) NOT NULL DEFAULT 1,
-            PRIMARY KEY (`item_type`,`item_id`),
-            KEY `idx_active` (`active`)
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `scope` enum('position','type_all') NOT NULL DEFAULT 'position',
+            `position_id` int(11) DEFAULT NULL,
+            `menu_type` tinyint(2) DEFAULT NULL,
+            `locked_until` datetime DEFAULT NULL,
+            `reason` varchar(255) NOT NULL DEFAULT '',
+            `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) NOT NULL DEFAULT '',
+            PRIMARY KEY (`id`),
+            KEY `idx_scope_type` (`scope`,`menu_type`),
+            KEY `idx_position` (`position_id`),
+            KEY `idx_until` (`locked_until`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'menu_lock_exceptions' => "CREATE TABLE IF NOT EXISTS `menu_lock_exceptions` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `item_type` enum('position','beilage') NOT NULL,
-            `item_id` int(11) NOT NULL,
-            `table_number` int(11) NOT NULL,
-            `allowed_by_user` varchar(255) NOT NULL,
-            `allowed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `active` tinyint(1) NOT NULL DEFAULT 1,
+            `lock_id` int(11) NOT NULL,
+            `position_id` int(11) NOT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_item_table` (`item_type`,`item_id`,`table_number`)
+            UNIQUE KEY `ux_lock_pos` (`lock_id`,`position_id`),
+            KEY `idx_lock` (`lock_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'rechnungen' => "CREATE TABLE IF NOT EXISTS `rechnungen` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `rechnungsnummer` varchar(64) NOT NULL,
-            `rechnung_seq` int(11) NOT NULL DEFAULT 0,
-            `tischnummer` int(11) NOT NULL,
-            `kellner` varchar(255) NOT NULL,
-            `kellner_user_id` int(11) DEFAULT NULL,
-            `betrag` decimal(10,2) NOT NULL,
-            `zahlungsart` varchar(32) NOT NULL DEFAULT 'bar',
-            `status` varchar(32) NOT NULL DEFAULT 'bezahlt',
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `storno_grund` varchar(255) DEFAULT NULL,
-            `storno_zeit` timestamp NULL DEFAULT NULL,
-            `storno_user` varchar(255) DEFAULT NULL,
-            `bemerkung` text,
+            `rechnungsnummer` varchar(50) NOT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) NOT NULL,
             `fest_id` int(11) DEFAULT NULL,
-            `sumup_transaction_id` varchar(128) DEFAULT NULL,
-            `sumup_transaction_code` varchar(64) DEFAULT NULL,
-            `is_sammelrechnung` tinyint(1) NOT NULL DEFAULT 0,
+            `tischnummer` int(11) DEFAULT NULL,
             `sammelrechnung_id` int(11) DEFAULT NULL,
-            `settlement_id` int(11) DEFAULT NULL,
-            `settled_at` datetime DEFAULT NULL,
-            `settled_by` varchar(64) DEFAULT NULL,
-            `signature_qr` text,
+            `is_firma` tinyint(1) NOT NULL DEFAULT 0,
+            `empfaenger_name` varchar(255) DEFAULT NULL,
+            `empfaenger_strasse` varchar(255) DEFAULT NULL,
+            `empfaenger_plz` varchar(30) DEFAULT NULL,
+            `empfaenger_ort` varchar(80) DEFAULT NULL,
+            `empfaenger_uid` varchar(40) DEFAULT NULL,
+            `total` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `gedruckt` tinyint(1) NOT NULL DEFAULT 0,
+            `druck_status` varchar(10) NOT NULL DEFAULT 'pending',
+            `druck_attempts` int(11) NOT NULL DEFAULT 0,
+            `druck_last_error` varchar(255) DEFAULT NULL,
+            `reserved_at` timestamp NULL DEFAULT NULL,
+            `reserved_by` varchar(64) DEFAULT NULL,
+            `order_nr` int(11) DEFAULT NULL,
+            `is_proforma` tinyint(1) NOT NULL DEFAULT 0,
+            `lines_json` mediumtext DEFAULT NULL,
             PRIMARY KEY (`id`),
-            UNIQUE KEY `uniq_rechnungsnummer` (`rechnungsnummer`),
-            KEY `idx_tischnummer` (`tischnummer`),
-            KEY `idx_zeitstempel` (`zeitstempel`),
+            UNIQUE KEY `uq_rechnungsnummer` (`rechnungsnummer`),
             KEY `idx_fest_id` (`fest_id`),
-            KEY `idx_settlement_id` (`settlement_id`)
+            KEY `idx_sammelrechnung_id` (`sammelrechnung_id`),
+            KEY `idx_created_at` (`created_at`),
+            KEY `idx_order_nr` (`order_nr`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'buchungen' => "CREATE TABLE IF NOT EXISTS `buchungen` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `rechnung_id` int(11) NOT NULL,
-            `tischnummer` int(11) NOT NULL,
-            `kellner` varchar(255) NOT NULL,
+            `typ` enum('einnahme','ausgabe') NOT NULL,
+            `bezeichnung` varchar(255) NOT NULL,
             `betrag` decimal(10,2) NOT NULL,
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `datum` date DEFAULT NULL,
+            `kategorie` varchar(100) DEFAULT NULL,
+            `notiz` text DEFAULT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) DEFAULT NULL,
+            `bereich_id` int(11) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_rechnung_id` (`rechnung_id`)
+            KEY `idx_typ` (`typ`),
+            KEY `idx_datum` (`datum`),
+            KEY `idx_bereich_id` (`bereich_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'kassen_bereiche' => "CREATE TABLE IF NOT EXISTS `kassen_bereiche` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `name` varchar(64) NOT NULL,
-            `code` varchar(32) NOT NULL,
-            `sort_order` int(11) NOT NULL DEFAULT 0,
-            `aktiv` tinyint(1) NOT NULL DEFAULT 1,
+            `name` varchar(128) NOT NULL,
+            `is_active` tinyint(1) NOT NULL DEFAULT 1,
+            `kontrolle_only` tinyint(1) NOT NULL DEFAULT 0,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`),
-            UNIQUE KEY `uniq_code` (`code`)
+            KEY `idx_active` (`is_active`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'kassen_sessions' => "CREATE TABLE IF NOT EXISTS `kassen_sessions` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `bereich_id` int(11) NOT NULL,
-            `user_id` int(11) NOT NULL,
-            `gestartet_um` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `beendet_um` timestamp NULL DEFAULT NULL,
-            `anfangsbestand` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `endbestand` decimal(10,2) DEFAULT NULL,
-            `differenz` decimal(10,2) DEFAULT NULL,
-            `status` enum('offen','abgeschlossen') NOT NULL DEFAULT 'offen',
-            `abschluss_notiz` text,
+            `status` enum('open','closed') NOT NULL DEFAULT 'open',
+            `opening_amount` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `opened_at` datetime NOT NULL,
+            `opened_by` varchar(64) NOT NULL,
+            `closing_amount` decimal(10,2) DEFAULT NULL,
+            `revenue_amount` decimal(10,2) DEFAULT NULL,
+            `closed_at` datetime DEFAULT NULL,
+            `closed_by` varchar(64) DEFAULT NULL,
+            `reopened_at` datetime DEFAULT NULL,
+            `reopened_by` varchar(64) DEFAULT NULL,
+            `reopen_reason` varchar(255) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_bereich_id` (`bereich_id`),
-            KEY `idx_user_id` (`user_id`),
-            KEY `idx_status` (`status`)
+            KEY `idx_bereich_status` (`bereich_id`,`status`),
+            KEY `idx_opened_at` (`opened_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'kassen_bewegungen' => "CREATE TABLE IF NOT EXISTS `kassen_bewegungen` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `session_id` int(11) NOT NULL,
-            `bereich_id` int(11) NOT NULL,
-            `user_id` int(11) NOT NULL,
-            `typ` enum('einlage','entnahme','abschlag','ausgabe') NOT NULL,
+            `typ` enum('entnahme','zuzahlung') NOT NULL,
             `betrag` decimal(10,2) NOT NULL,
-            `grund` varchar(255) NOT NULL,
-            `beleg_nr` varchar(64) DEFAULT NULL,
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `notiz` varchar(255) DEFAULT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_session_id` (`session_id`),
-            KEY `idx_bereich_id` (`bereich_id`)
+            KEY `idx_session` (`session_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'kellner_settlements' => "CREATE TABLE IF NOT EXISTS `kellner_settlements` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `fest_id` int(11) DEFAULT NULL,
-            `kellner` varchar(255) NOT NULL,
-            `kellner_user_id` int(11) DEFAULT NULL,
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `abgerechnet_von` varchar(255) NOT NULL,
-            `summe_bar` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `summe_karte` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `anzahl_rechnungen` int(11) NOT NULL DEFAULT 0,
-            `abgaben_abgezogen` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `ist_betrag` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `soll_betrag` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `differenz` decimal(10,2) NOT NULL DEFAULT 0.00,
-            `notiz` text,
+            `kellner_login` varchar(255) NOT NULL,
+            `settlement_scope` varchar(20) NOT NULL DEFAULT 'kellner',
+            `von_dt` datetime NOT NULL,
+            `bis_dt` datetime NOT NULL,
+            `umsatz_soll` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `betrag_abgegeben` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `wechselgeld_zurueck` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `trinkgeld` decimal(10,2) NOT NULL DEFAULT 0.00,
+            `notiz` varchar(255) DEFAULT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) DEFAULT NULL,
+            `voided_at` datetime DEFAULT NULL,
+            `voided_by` varchar(64) DEFAULT NULL,
+            `void_reason` varchar(255) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_fest_id` (`fest_id`),
-            KEY `idx_kellner` (`kellner`)
+            KEY `idx_kellner` (`kellner_login`),
+            KEY `idx_von_bis` (`von_dt`,`bis_dt`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'kellner_bewegungen' => "CREATE TABLE IF NOT EXISTS `kellner_bewegungen` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `fest_id` int(11) DEFAULT NULL,
-            `kellner` varchar(255) NOT NULL,
-            `kellner_user_id` int(11) DEFAULT NULL,
-            `typ` enum('abschlag','wechselgeld') NOT NULL,
+            `kellner_login` varchar(255) NOT NULL,
+            `settlement_id` int(11) DEFAULT NULL,
+            `typ` enum('entnahme','zuzahlung') NOT NULL,
             `betrag` decimal(10,2) NOT NULL,
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `erfasst_von` varchar(255) NOT NULL,
-            `notiz` text,
+            `notiz` varchar(255) DEFAULT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_fest_id` (`fest_id`),
-            KEY `idx_kellner` (`kellner`)
+            KEY `idx_kellner` (`kellner_login`),
+            KEY `idx_settlement` (`settlement_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'mitarbeiter_bereiche' => "CREATE TABLE IF NOT EXISTS `mitarbeiter_bereiche` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `name` varchar(64) NOT NULL,
             `sort_order` int(11) NOT NULL DEFAULT 0,
-            PRIMARY KEY (`id`)
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `name` (`name`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'mitarbeiter_verpflegung' => "CREATE TABLE IF NOT EXISTS `mitarbeiter_verpflegung` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
+            `datum` date NOT NULL,
             `bereich_id` int(11) NOT NULL,
-            `mitarbeiter_name` varchar(120) NOT NULL,
             `position_id` int(11) NOT NULL,
-            `positionsname` varchar(255) NOT NULL,
-            `anzahl` int(11) NOT NULL DEFAULT 1,
-            `zeitstempel` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `erfasst_von` varchar(255) NOT NULL,
+            `menge` int(11) NOT NULL DEFAULT 1,
+            `notiz` varchar(255) DEFAULT NULL,
+            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `created_by` varchar(64) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            KEY `idx_bereich_id` (`bereich_id`)
+            KEY `idx_datum` (`datum`),
+            KEY `idx_bereich` (`bereich_id`),
+            KEY `idx_position` (`position_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'settings' => "CREATE TABLE IF NOT EXISTS `settings` (
             `k` varchar(64) NOT NULL,
-            `v` text,
+            `v` text NOT NULL,
+            `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (`k`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'printer_jobs' => "CREATE TABLE IF NOT EXISTS `printer_jobs` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
-            `printer_ip` varchar(64) NOT NULL,
-            `printer_name` varchar(100) NOT NULL,
-            `content` mediumtext NOT NULL,
-            `status` enum('pending','processing','done','error') NOT NULL DEFAULT 'pending',
-            `attempts` int(11) NOT NULL DEFAULT 0,
-            `error_msg` text,
-            `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-            `locked_at` timestamp NULL DEFAULT NULL,
-            `locked_by` varchar(64) DEFAULT NULL,
-            PRIMARY KEY (`id`),
-            KEY `idx_status_printer` (`status`,`printer_ip`),
-            KEY `idx_created` (`created_at`)
+            `printer` varchar(32) NOT NULL,
+            `type` varchar(32) DEFAULT 'invoice',
+            `payload` mediumtext NOT NULL,
+            `meta` json DEFAULT NULL,
+            `status` enum('pending','reserved','done','error') DEFAULT 'pending',
+            `attempts` int(11) DEFAULT 0,
+            `reserved_at` datetime DEFAULT NULL,
+            `reserved_by` varchar(64) DEFAULT NULL,
+            `error` text DEFAULT NULL,
+            `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'bestandteile' => "CREATE TABLE IF NOT EXISTS `bestandteile` (
             `id` int(11) NOT NULL AUTO_INCREMENT,
             `name` varchar(255) NOT NULL,
             `einheit` varchar(30) NOT NULL DEFAULT 'Stk',
+            `kapazitaet` int(11) NOT NULL DEFAULT -1,
+            `aktiv` tinyint(1) NOT NULL DEFAULT 1,
             `sort_order` int(11) NOT NULL DEFAULT 0,
+            `fest_id` int(11) DEFAULT NULL,
             PRIMARY KEY (`id`),
-            UNIQUE KEY `uq_name` (`name`),
-            KEY `idx_sort` (`sort_order`, `name`)
+            KEY `idx_aktiv_sort` (`aktiv`,`sort_order`),
+            KEY `idx_fest_id` (`fest_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'position_rezepturen' => "CREATE TABLE IF NOT EXISTS `position_rezepturen` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
             `position_id` int(11) NOT NULL,
             `bestandteil_id` int(11) NOT NULL,
             `menge` decimal(10,3) NOT NULL DEFAULT 1.000,
             `optional_enabled` tinyint(1) NOT NULL DEFAULT 0,
             `default_selected` tinyint(1) NOT NULL DEFAULT 1,
-            `sort_order` int(11) NOT NULL DEFAULT 0,
-            PRIMARY KEY (`position_id`, `bestandteil_id`),
+            `option_group` varchar(64) NOT NULL DEFAULT '',
+            `reihenfolge` int(11) NOT NULL DEFAULT 0,
+            `fest_id` int(11) DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            KEY `idx_position` (`position_id`),
             KEY `idx_bestandteil` (`bestandteil_id`),
-            KEY `idx_sort` (`sort_order`)
+            KEY `idx_option_group` (`option_group`),
+            KEY `idx_fest_id` (`fest_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'allergene' => "CREATE TABLE IF NOT EXISTS `allergene` (
@@ -523,13 +582,13 @@ function ff_migration_get_target_tables(): array {
             `sort_order` int(11) NOT NULL DEFAULT 0,
             PRIMARY KEY (`id`),
             UNIQUE KEY `uq_name` (`name`),
-            KEY `idx_sort` (`sort_order`, `name`)
+            KEY `idx_sort` (`sort_order`,`name`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'bestandteil_allergene' => "CREATE TABLE IF NOT EXISTS `bestandteil_allergene` (
             `bestandteil_id` int(11) NOT NULL,
             `allergen_id` int(11) NOT NULL,
-            PRIMARY KEY (`bestandteil_id`, `allergen_id`),
+            PRIMARY KEY (`bestandteil_id`,`allergen_id`),
             KEY `idx_allergen` (`allergen_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
@@ -559,13 +618,19 @@ function ff_migration_get_target_tables(): array {
 // ----------------------------------------------------------------------------
 function ff_migration_get_column_patches(): array {
     return [
-        'positionen' => [
-            'print_target' => "ADD COLUMN `print_target` int(11) NOT NULL DEFAULT 11",
-            'selbstkosten' => "ADD COLUMN `selbstkosten` decimal(10,2) NOT NULL DEFAULT 0.00",
-            'subcategory_id' => "ADD COLUMN `subcategory_id` int(11) DEFAULT NULL",
-            'tile_bg' => "ADD COLUMN `tile_bg` varchar(32) DEFAULT NULL",
-            'kassa_only' => "ADD COLUMN `kassa_only` tinyint(1) NOT NULL DEFAULT 0",
-            'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
+        'users' => [
+            'display_name' => "ADD COLUMN `display_name` varchar(120) DEFAULT NULL",
+            'can_finance' => "ADD COLUMN `can_finance` tinyint(1) NOT NULL DEFAULT 0",
+            'can_direktverkauf' => "ADD COLUMN `can_direktverkauf` tinyint(1) NOT NULL DEFAULT 0",
+            'menu_permissions' => "ADD COLUMN `menu_permissions` text DEFAULT NULL",
+            'start_page' => "ADD COLUMN `start_page` varchar(32) NOT NULL DEFAULT 'menu'",
+            'start_print_target' => "ADD COLUMN `start_print_target` int(11) DEFAULT NULL",
+            'dv_abholbon_print_target' => "ADD COLUMN `dv_abholbon_print_target` int(11) DEFAULT NULL",
+            'is_active' => "ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1",
+            'active_from' => "ADD COLUMN `active_from` datetime DEFAULT NULL",
+            'active_until' => "ADD COLUMN `active_until` datetime DEFAULT NULL",
+            'force_password_change' => "ADD COLUMN `force_password_change` tinyint(1) NOT NULL DEFAULT 0",
+            'auth_rev' => "ADD COLUMN `auth_rev` int(11) NOT NULL DEFAULT 0",
         ],
         'tische' => [
             'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
@@ -573,13 +638,13 @@ function ff_migration_get_column_patches(): array {
             'is_sammelrechnung' => "ADD COLUMN `is_sammelrechnung` tinyint(1) NOT NULL DEFAULT 0",
             'is_ehrengast' => "ADD COLUMN `is_ehrengast` tinyint(1) NOT NULL DEFAULT 0",
         ],
-        'users' => [
-            'display_name' => "ADD COLUMN `display_name` varchar(120) DEFAULT NULL",
-            'can_finance' => "ADD COLUMN `can_finance` tinyint(1) NOT NULL DEFAULT 0",
-            'start_page' => "ADD COLUMN `start_page` varchar(32) NOT NULL DEFAULT 'menu'",
-            'start_print_target' => "ADD COLUMN `start_print_target` int(11) DEFAULT NULL",
-            'dv_abholbon_print_target' => "ADD COLUMN `dv_abholbon_print_target` int(11) DEFAULT NULL",
-            'auth_rev' => "ADD COLUMN `auth_rev` int(11) NOT NULL DEFAULT 0",
+        'positionen' => [
+            'print_target' => "ADD COLUMN `print_target` int(11) NOT NULL DEFAULT 11",
+            'selbstkosten' => "ADD COLUMN `selbstkosten` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'subcategory_id' => "ADD COLUMN `subcategory_id` int(11) DEFAULT NULL",
+            'tile_bg' => "ADD COLUMN `tile_bg` varchar(32) DEFAULT NULL",
+            'kassa_only' => "ADD COLUMN `kassa_only` tinyint(1) NOT NULL DEFAULT 0",
+            'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
         ],
         'beilagen' => [
             'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
@@ -596,21 +661,421 @@ function ff_migration_get_column_patches(): array {
             'settlement_id' => "ADD COLUMN `settlement_id` int(11) DEFAULT NULL",
             'settled_at' => "ADD COLUMN `settled_at` datetime DEFAULT NULL",
             'settled_by' => "ADD COLUMN `settled_by` varchar(64) DEFAULT NULL",
+            'auto_print' => "ADD COLUMN `auto_print` tinyint(1) NOT NULL DEFAULT 0",
+        ],
+        'print_targets' => [
+            'finance_bereich_id' => "ADD COLUMN `finance_bereich_id` int(11) DEFAULT NULL",
+            'auto_print_limit' => "ADD COLUMN `auto_print_limit` int(11) NOT NULL DEFAULT 0",
+        ],
+        'buchungen' => [
+            'typ' => "ADD COLUMN `typ` enum('einnahme','ausgabe') NOT NULL DEFAULT 'ausgabe' AFTER `id`",
+            'bezeichnung' => "ADD COLUMN `bezeichnung` varchar(255) NOT NULL DEFAULT '' AFTER `typ`",
+            'betrag' => "ADD COLUMN `betrag` decimal(10,2) NOT NULL DEFAULT 0.00 AFTER `bezeichnung`",
+            'datum' => "ADD COLUMN `datum` date DEFAULT NULL AFTER `betrag`",
+            'kategorie' => "ADD COLUMN `kategorie` varchar(100) DEFAULT NULL AFTER `datum`",
+            'notiz' => "ADD COLUMN `notiz` text DEFAULT NULL AFTER `kategorie`",
+            'created_by' => "ADD COLUMN `created_by` varchar(64) DEFAULT NULL AFTER `created_at`",
+            'bereich_id' => "ADD COLUMN `bereich_id` int(11) DEFAULT NULL AFTER `notiz`",
+        ],
+        'kassen_bereiche' => [
+            'is_active' => "ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `name`",
+            'kontrolle_only' => "ADD COLUMN `kontrolle_only` tinyint(1) NOT NULL DEFAULT 0 AFTER `is_active`",
+        ],
+        'kellner_settlements' => [
+            'kellner_login' => "ADD COLUMN `kellner_login` varchar(255) NOT NULL DEFAULT '' AFTER `id`",
+            'settlement_scope' => "ADD COLUMN `settlement_scope` varchar(20) NOT NULL DEFAULT 'kellner'",
+            'von_dt' => "ADD COLUMN `von_dt` datetime DEFAULT NULL",
+            'bis_dt' => "ADD COLUMN `bis_dt` datetime DEFAULT NULL",
+            'umsatz_soll' => "ADD COLUMN `umsatz_soll` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'betrag_abgegeben' => "ADD COLUMN `betrag_abgegeben` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'wechselgeld_zurueck' => "ADD COLUMN `wechselgeld_zurueck` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'trinkgeld' => "ADD COLUMN `trinkgeld` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'voided_at' => "ADD COLUMN `voided_at` datetime DEFAULT NULL",
+            'voided_by' => "ADD COLUMN `voided_by` varchar(64) DEFAULT NULL",
+            'void_reason' => "ADD COLUMN `void_reason` varchar(255) DEFAULT NULL",
+        ],
+        'kellner_bewegungen' => [
+            'kellner_login' => "ADD COLUMN `kellner_login` varchar(255) NOT NULL DEFAULT '' AFTER `id`",
+            'settlement_id' => "ADD COLUMN `settlement_id` int(11) DEFAULT NULL",
+            'typ' => "ADD COLUMN `typ` enum('entnahme','zuzahlung') NOT NULL DEFAULT 'entnahme'",
+            'betrag' => "ADD COLUMN `betrag` decimal(10,2) NOT NULL DEFAULT 0.00",
+            'notiz' => "ADD COLUMN `notiz` varchar(255) DEFAULT NULL",
+        ],
+        'kassen_sessions' => [
+            'reopened_at' => "ADD COLUMN `reopened_at` datetime DEFAULT NULL",
+            'reopened_by' => "ADD COLUMN `reopened_by` varchar(64) DEFAULT NULL",
+            'reopen_reason' => "ADD COLUMN `reopen_reason` varchar(255) DEFAULT NULL",
         ],
         'sammelrechnungen' => [
+            'name' => "ADD COLUMN `name` varchar(100) DEFAULT NULL",
             'created_at' => "ADD COLUMN `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP",
             'created_by' => "ADD COLUMN `created_by` varchar(255) DEFAULT NULL",
             'umsatz_zustaendig' => "ADD COLUMN `umsatz_zustaendig` varchar(255) DEFAULT NULL",
-            'tables_text' => "ADD COLUMN `tables_text` text",
+            'tables_text' => "ADD COLUMN `tables_text` text DEFAULT NULL",
             'total_amount' => "ADD COLUMN `total_amount` decimal(10,2) DEFAULT 0.00",
             'bezahlt' => "ADD COLUMN `bezahlt` tinyint(1) NOT NULL DEFAULT 0",
             'bezahlt_at' => "ADD COLUMN `bezahlt_at` timestamp NULL DEFAULT NULL",
             'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
             'tischnummer' => "ADD COLUMN `tischnummer` int(11) DEFAULT NULL",
             'betrag' => "ADD COLUMN `betrag` decimal(10,2) DEFAULT 0.00",
-            'name' => "ADD COLUMN `name` varchar(100) DEFAULT NULL",
+        ],
+        'rechnungen' => [
+            'order_nr' => "ADD COLUMN `order_nr` int(11) DEFAULT NULL",
+            'sammelrechnung_id' => "ADD COLUMN `sammelrechnung_id` int(11) DEFAULT NULL",
+            'is_proforma' => "ADD COLUMN `is_proforma` tinyint(1) NOT NULL DEFAULT 0",
+            'lines_json' => "ADD COLUMN `lines_json` mediumtext DEFAULT NULL",
+            'druck_status' => "ADD COLUMN `druck_status` varchar(10) NOT NULL DEFAULT 'pending'",
+            'druck_attempts' => "ADD COLUMN `druck_attempts` int(11) NOT NULL DEFAULT 0",
+            'druck_last_error' => "ADD COLUMN `druck_last_error` varchar(255) DEFAULT NULL",
+            'reserved_at' => "ADD COLUMN `reserved_at` timestamp NULL DEFAULT NULL",
+            'reserved_by' => "ADD COLUMN `reserved_by` varchar(64) DEFAULT NULL",
+        ],
+        'bestandteile' => [
+            'kapazitaet' => "ADD COLUMN `kapazitaet` int(11) NOT NULL DEFAULT -1 AFTER `einheit`",
+            'aktiv' => "ADD COLUMN `aktiv` tinyint(1) NOT NULL DEFAULT 1 AFTER `kapazitaet`",
+            'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
+        ],
+        'position_rezepturen' => [
+            'id' => "ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST",
+            'bestandteil_id' => "ADD COLUMN `bestandteil_id` int(11) NOT NULL DEFAULT 0 AFTER `position_id`",
+            'menge' => "ADD COLUMN `menge` decimal(10,3) NOT NULL DEFAULT 1.000",
+            'optional_enabled' => "ADD COLUMN `optional_enabled` tinyint(1) NOT NULL DEFAULT 0",
+            'default_selected' => "ADD COLUMN `default_selected` tinyint(1) NOT NULL DEFAULT 1",
+            'option_group' => "ADD COLUMN `option_group` varchar(64) NOT NULL DEFAULT ''",
+            'reihenfolge' => "ADD COLUMN `reihenfolge` int(11) NOT NULL DEFAULT 0",
+            'fest_id' => "ADD COLUMN `fest_id` int(11) DEFAULT NULL",
+        ],
+        'bestellung_rezeptur_komponenten' => [
+            'optional_enabled' => "ADD COLUMN `optional_enabled` tinyint(1) NOT NULL DEFAULT 0",
+            'default_selected' => "ADD COLUMN `default_selected` tinyint(1) NOT NULL DEFAULT 1",
+            'selected' => "ADD COLUMN `selected` tinyint(1) NOT NULL DEFAULT 1",
+        ],
+        'mitarbeiter_verpflegung' => [
+            'datum' => "ADD COLUMN `datum` date NOT NULL DEFAULT '1970-01-01' AFTER `id`",
+            'bereich_id' => "ADD COLUMN `bereich_id` int(11) NOT NULL DEFAULT 0 AFTER `datum`",
+            'position_id' => "ADD COLUMN `position_id` int(11) NOT NULL DEFAULT 0 AFTER `bereich_id`",
+            'menge' => "ADD COLUMN `menge` int(11) NOT NULL DEFAULT 1 AFTER `position_id`",
+            'notiz' => "ADD COLUMN `notiz` varchar(255) DEFAULT NULL AFTER `menge`",
+            'created_at' => "ADD COLUMN `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP",
+            'created_by' => "ADD COLUMN `created_by` varchar(64) DEFAULT NULL",
+        ],
+        'mitarbeiter_bereiche' => [
+            'name' => "ADD COLUMN `name` varchar(64) NOT NULL DEFAULT '' AFTER `id`",
+            'sort_order' => "ADD COLUMN `sort_order` int(11) NOT NULL DEFAULT 0 AFTER `name`",
         ]
     ];
+}
+
+// ----------------------------------------------------------------------------
+// Spalten-Erweiterungen auf eine Verbindung anwenden
+// ----------------------------------------------------------------------------
+function ff_apply_schema_patches(mysqli $conn, array &$log): void {
+    $columnPatches = ff_migration_get_column_patches();
+
+    $tblRes = @mysqli_query($conn, "SHOW TABLES");
+    if (!$tblRes) return;
+    $existingTables = [];
+    while ($r = mysqli_fetch_row($tblRes)) {
+        $existingTables[strtolower($r[0])] = $r[0];
+    }
+    @mysqli_free_result($tblRes);
+
+    foreach ($columnPatches as $tblName => $patches) {
+        $realTblName = $existingTables[strtolower($tblName)] ?? null;
+        if (!$realTblName) {
+            continue;
+        }
+
+        $colsRes = @mysqli_query($conn, "SHOW COLUMNS FROM `{$realTblName}`");
+        if (!$colsRes) {
+            continue;
+        }
+        $existingCols = [];
+        while ($c = mysqli_fetch_assoc($colsRes)) {
+            $existingCols[strtolower($c['Field'])] = true;
+        }
+        @mysqli_free_result($colsRes);
+
+        foreach ($patches as $colName => $alterSql) {
+            if (!isset($existingCols[strtolower($colName)])) {
+                $fullAlter = "ALTER TABLE `{$realTblName}` " . $alterSql;
+                try {
+                    if (@mysqli_query($conn, $fullAlter)) {
+                        $log[] = ['type' => 'success', 'msg' => "Tabelle '{$realTblName}': Spalte '{$colName}' erfolgreich ergänzt."];
+                        $existingCols[strtolower($colName)] = true;
+                    } else {
+                        $log[] = ['type' => 'warning', 'msg' => "Tabelle '{$realTblName}': Spalte '{$colName}' konnte nicht ergänzt werden: " . mysqli_error($conn)];
+                    }
+                } catch (\Throwable $e) {
+                    $log[] = ['type' => 'warning', 'msg' => "Tabelle '{$realTblName}': Hinweis bei Spalte '{$colName}': " . $e->getMessage()];
+                }
+            }
+        }
+    }
+
+    // Spezifische Spalten-Typ-Anpassungen
+    if (isset($existingTables['tische'])) {
+        try {
+            @mysqli_query($conn, "ALTER TABLE `{$existingTables['tische']}` MODIFY `tischname` VARCHAR(50) NOT NULL");
+        } catch (\Throwable $e) {
+            // Ignorieren falls nicht möglich
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Intelligente Tabellen-Bereinigung & -Reparatur (z. B. fehlerhaftes buchungen, veraltetes users)
+// ----------------------------------------------------------------------------
+function ff_sanitize_and_repair_tables(mysqli $conn, array &$log): void {
+    $targetDefs = ff_migration_get_target_tables();
+
+    // 1. Spezieller Check für 'buchungen'
+    $tblChk = @mysqli_query($conn, "SHOW TABLES LIKE 'buchungen'");
+    if ($tblChk && mysqli_num_rows($tblChk) > 0) {
+        $cNotiz = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'notiz'");
+        $cTyp   = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'typ'");
+        $hasNotiz = ($cNotiz && mysqli_num_rows($cNotiz) > 0);
+        $hasTyp   = ($cTyp && mysqli_num_rows($cTyp) > 0);
+        if ($cNotiz) @mysqli_free_result($cNotiz);
+        if ($cTyp) @mysqli_free_result($cTyp);
+
+        if (!$hasNotiz || !$hasTyp) {
+            $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `buchungen`");
+            $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
+            if ($cntRes) @mysqli_free_result($cntRes);
+
+            if ($rCount === 0) {
+                @mysqli_query($conn, "DROP TABLE `buchungen`");
+                if (@mysqli_query($conn, $targetDefs['buchungen'])) {
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Leere Tabelle 'buchungen' durch korrekte Struktur (mit 'notiz', 'typ', 'bereich_id') ersetzt."];
+                }
+            } else {
+                // Bei vorhandenen Datensätzen fehlende Spalten nachrüsten
+                if (!$hasTyp) {
+                    @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `typ` enum('einnahme','ausgabe') NOT NULL DEFAULT 'ausgabe' AFTER `id`");
+                }
+                if (!$hasNotiz) {
+                    @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `notiz` text DEFAULT NULL");
+                }
+                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `bezeichnung` varchar(255) NOT NULL DEFAULT '' AFTER `typ`");
+                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `betrag` decimal(10,2) NOT NULL DEFAULT 0.00 AFTER `bezeichnung`");
+                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `datum` date DEFAULT NULL AFTER `betrag`");
+                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `kategorie` varchar(100) DEFAULT NULL AFTER `datum`");
+                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `bereich_id` int(11) DEFAULT NULL AFTER `notiz`");
+                $log[] = ['type' => 'success', 'msg' => "Reparatur: Fehlende Spalten in Tabelle 'buchungen' erfolgreich ergänzt."];
+            }
+        }
+    }
+    if ($tblChk) @mysqli_free_result($tblChk);
+
+    // 2. Prüfen von 'menu_locks' und 'menu_lock_exceptions'
+    $mlChk = @mysqli_query($conn, "SHOW TABLES LIKE 'menu_locks'");
+    if ($mlChk && mysqli_num_rows($mlChk) > 0) {
+        $cScope = @mysqli_query($conn, "SHOW COLUMNS FROM `menu_locks` LIKE 'scope'");
+        if ($cScope && mysqli_num_rows($cScope) === 0) {
+            @mysqli_query($conn, "DROP TABLE `menu_locks`");
+            @mysqli_query($conn, $targetDefs['menu_locks']);
+            $log[] = ['type' => 'success', 'msg' => "Reparatur: Veraltete Tabelle 'menu_locks' auf moderne Struktur aktualisiert."];
+        }
+        if ($cScope) @mysqli_free_result($cScope);
+    }
+    if ($mlChk) @mysqli_free_result($mlChk);
+
+    // 3. Prüfen von 'kassen_bereiche'
+    $kbChk = @mysqli_query($conn, "SHOW TABLES LIKE 'kassen_bereiche'");
+    if ($kbChk && mysqli_num_rows($kbChk) > 0) {
+        $cActive = @mysqli_query($conn, "SHOW COLUMNS FROM `kassen_bereiche` LIKE 'is_active'");
+        if ($cActive && mysqli_num_rows($cActive) === 0) {
+            @mysqli_query($conn, "ALTER TABLE `kassen_bereiche` ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1 AFTER `name`");
+            @mysqli_query($conn, "ALTER TABLE `kassen_bereiche` ADD COLUMN `kontrolle_only` tinyint(1) NOT NULL DEFAULT 0 AFTER `is_active`");
+            $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalten 'is_active' und 'kontrolle_only' an 'kassen_bereiche' ergänzt."];
+        }
+        if ($cActive) @mysqli_free_result($cActive);
+    }
+    if ($kbChk) @mysqli_free_result($kbChk);
+
+    // 4. Prüfen von 'users' (Fehlende Berechtigungs- und Konfigurationsspalten)
+    $uChk = @mysqli_query($conn, "SHOW TABLES LIKE 'users'");
+    if ($uChk && mysqli_num_rows($uChk) > 0) {
+        $uCols = [];
+        $ucRes = @mysqli_query($conn, "SHOW COLUMNS FROM `users`");
+        if ($ucRes) {
+            while ($c = mysqli_fetch_assoc($ucRes)) {
+                $uCols[strtolower($c['Field'])] = true;
+            }
+            @mysqli_free_result($ucRes);
+        }
+        $userPatches = [
+            'display_name' => "ADD COLUMN `display_name` varchar(120) DEFAULT NULL",
+            'can_finance' => "ADD COLUMN `can_finance` tinyint(1) NOT NULL DEFAULT 0",
+            'can_direktverkauf' => "ADD COLUMN `can_direktverkauf` tinyint(1) NOT NULL DEFAULT 0",
+            'menu_permissions' => "ADD COLUMN `menu_permissions` text DEFAULT NULL",
+            'start_page' => "ADD COLUMN `start_page` varchar(32) NOT NULL DEFAULT 'menu'",
+            'start_print_target' => "ADD COLUMN `start_print_target` int(11) DEFAULT NULL",
+            'dv_abholbon_print_target' => "ADD COLUMN `dv_abholbon_print_target` int(11) DEFAULT NULL",
+            'is_active' => "ADD COLUMN `is_active` tinyint(1) NOT NULL DEFAULT 1",
+            'active_from' => "ADD COLUMN `active_from` datetime DEFAULT NULL",
+            'active_until' => "ADD COLUMN `active_until` datetime DEFAULT NULL",
+            'force_password_change' => "ADD COLUMN `force_password_change` tinyint(1) NOT NULL DEFAULT 0",
+            'auth_rev' => "ADD COLUMN `auth_rev` int(11) NOT NULL DEFAULT 0",
+        ];
+        foreach ($userPatches as $uCol => $uSql) {
+            if (!isset($uCols[$uCol])) {
+                try {
+                    if (@mysqli_query($conn, "ALTER TABLE `users` " . $uSql)) {
+                        $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte '{$uCol}' an 'users' ergänzt."];
+                    }
+                } catch (\Throwable $e) {
+                    $log[] = ['type' => 'warning', 'msg' => "Tabelle 'users': Spalte '{$uCol}': " . $e->getMessage()];
+                }
+            }
+        }
+    }
+    if ($uChk) @mysqli_free_result($uChk);
+
+    // 5. Prüfen von 'kellner_settlements'
+    $ksChk = @mysqli_query($conn, "SHOW TABLES LIKE 'kellner_settlements'");
+    if ($ksChk && mysqli_num_rows($ksChk) > 0) {
+        $cLogin = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner_login'");
+        $hasLogin = ($cLogin && mysqli_num_rows($cLogin) > 0);
+        if ($cLogin) @mysqli_free_result($cLogin);
+
+        if (!$hasLogin) {
+            $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `kellner_settlements`");
+            $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
+            if ($cntRes) @mysqli_free_result($cntRes);
+
+            if ($rCount === 0) {
+                @mysqli_query($conn, "DROP TABLE `kellner_settlements`");
+                if (@mysqli_query($conn, $targetDefs['kellner_settlements'])) {
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Leere Tabelle 'kellner_settlements' durch vollständige Struktur (inkl. 'kellner_login', 'settlement_scope') ersetzt."];
+                }
+            } else {
+                $cK = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner'");
+                if ($cK && mysqli_num_rows($cK) > 0) {
+                    @mysqli_query($conn, "ALTER TABLE `kellner_settlements` CHANGE COLUMN `kellner` `kellner_login` varchar(255) NOT NULL");
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'kellner' in 'kellner_settlements' zu 'kellner_login' umbenannt."];
+                } else {
+                    @mysqli_query($conn, "ALTER TABLE `kellner_settlements` ADD COLUMN `kellner_login` varchar(255) NOT NULL DEFAULT '' AFTER `id`");
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'kellner_login' an 'kellner_settlements' ergänzt."];
+                }
+                if ($cK) @mysqli_free_result($cK);
+            }
+        }
+    }
+    if ($ksChk) @mysqli_free_result($ksChk);
+
+    // 6. Prüfen von 'kellner_bewegungen'
+    $kbwChk = @mysqli_query($conn, "SHOW TABLES LIKE 'kellner_bewegungen'");
+    if ($kbwChk && mysqli_num_rows($kbwChk) > 0) {
+        $cLogin = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_bewegungen` LIKE 'kellner_login'");
+        $hasLogin = ($cLogin && mysqli_num_rows($cLogin) > 0);
+        if ($cLogin) @mysqli_free_result($cLogin);
+
+        if (!$hasLogin) {
+            $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `kellner_bewegungen`");
+            $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
+            if ($cntRes) @mysqli_free_result($cntRes);
+
+            if ($rCount === 0) {
+                @mysqli_query($conn, "DROP TABLE `kellner_bewegungen`");
+                if (@mysqli_query($conn, $targetDefs['kellner_bewegungen'])) {
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Leere Tabelle 'kellner_bewegungen' durch vollständige Struktur ersetzt."];
+                }
+            } else {
+                $cK = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_bewegungen` LIKE 'kellner'");
+                if ($cK && mysqli_num_rows($cK) > 0) {
+                    @mysqli_query($conn, "ALTER TABLE `kellner_bewegungen` CHANGE COLUMN `kellner` `kellner_login` varchar(255) NOT NULL");
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'kellner' in 'kellner_bewegungen' zu 'kellner_login' umbenannt."];
+                } else {
+                    @mysqli_query($conn, "ALTER TABLE `kellner_bewegungen` ADD COLUMN `kellner_login` varchar(255) NOT NULL DEFAULT '' AFTER `id`");
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'kellner_login' an 'kellner_bewegungen' ergänzt."];
+                }
+                if ($cK) @mysqli_free_result($cK);
+            }
+        }
+    }
+    if ($kbwChk) @mysqli_free_result($kbwChk);
+
+    // 7. Prüfen von 'position_rezepturen'
+    $przChk = @mysqli_query($conn, "SHOW TABLES LIKE 'position_rezepturen'");
+    if ($przChk && mysqli_num_rows($przChk) > 0) {
+        $cId = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
+        $hasId = ($cId && mysqli_num_rows($cId) > 0);
+        if ($cId) @mysqli_free_result($cId);
+
+        if (!$hasId) {
+            $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `position_rezepturen`");
+            $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
+            if ($cntRes) @mysqli_free_result($cntRes);
+
+            if ($rCount === 0) {
+                @mysqli_query($conn, "DROP TABLE `position_rezepturen`");
+                if (@mysqli_query($conn, $targetDefs['position_rezepturen'])) {
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Leere Tabelle 'position_rezepturen' durch vollständige Struktur (inkl. 'id' als Primärschlüssel) ersetzt."];
+                }
+            } else {
+                $cRowid = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'rowid'");
+                if ($cRowid && mysqli_num_rows($cRowid) > 0) {
+                    @mysqli_query($conn, "ALTER TABLE `position_rezepturen` CHANGE COLUMN `rowid` `id` int(11) NOT NULL AUTO_INCREMENT");
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'rowid' in 'position_rezepturen' zu 'id' umbenannt."];
+                } else {
+                    $pkRes = @mysqli_query($conn, "SHOW INDEX FROM `position_rezepturen` WHERE Key_name = 'PRIMARY'");
+                    $hasPk = ($pkRes && mysqli_num_rows($pkRes) > 0);
+                    if ($pkRes) @mysqli_free_result($pkRes);
+
+                    if ($hasPk) {
+                        @mysqli_query($conn, "ALTER TABLE `position_rezepturen` DROP PRIMARY KEY, ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
+                    } else {
+                        @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
+                    }
+                    $log[] = ['type' => 'success', 'msg' => "Reparatur: Fehlende Spalte 'id' (Auto-Increment Primärschlüssel) an 'position_rezepturen' ergänzt."];
+                }
+                if ($cRowid) @mysqli_free_result($cRowid);
+            }
+        }
+    }
+    if ($przChk) @mysqli_free_result($przChk);
+
+    // 8. Prüfen von 'mitarbeiter_verpflegung'
+    $mvChk = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
+    if ($mvChk && mysqli_num_rows($mvChk) > 0) {
+        $cPosId = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
+        $hasPosId = ($cPosId && mysqli_num_rows($cPosId) > 0);
+        if ($cPosId) @mysqli_free_result($cPosId);
+
+        if (!$hasPosId) {
+            $cPos = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position'");
+            if ($cPos && mysqli_num_rows($cPos) > 0) {
+                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `position` `position_id` int(11) NOT NULL");
+                $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'position' in 'mitarbeiter_verpflegung' zu 'position_id' umbenannt."];
+            } else {
+                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `position_id` int(11) NOT NULL DEFAULT 0 AFTER `bereich_id`");
+                $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'position_id' an 'mitarbeiter_verpflegung' ergänzt."];
+            }
+            if ($cPos) @mysqli_free_result($cPos);
+        }
+
+        $cMenge = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
+        $hasMenge = ($cMenge && mysqli_num_rows($cMenge) > 0);
+        if ($cMenge) @mysqli_free_result($cMenge);
+
+        if (!$hasMenge) {
+            $cAnzahl = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'anzahl'");
+            if ($cAnzahl && mysqli_num_rows($cAnzahl) > 0) {
+                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `anzahl` `menge` int(11) NOT NULL DEFAULT 1");
+                $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'anzahl' in 'mitarbeiter_verpflegung' zu 'menge' umbenannt."];
+            } else {
+                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `menge` int(11) NOT NULL DEFAULT 1 AFTER `position_id`");
+                $log[] = ['type' => 'success', 'msg' => "Reparatur: Spalte 'menge' an 'mitarbeiter_verpflegung' ergänzt."];
+            }
+            if ($cAnzahl) @mysqli_free_result($cAnzahl);
+        }
+    }
+    if ($mvChk) @mysqli_free_result($mvChk);
+
+    // 9. Übergreifende Spaltenpatches für alle Tabellen anwenden
+    ff_apply_schema_patches($conn, $log);
 }
 
 // ----------------------------------------------------------------------------
@@ -622,10 +1087,10 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
     $log[] = ['type' => 'success', 'msg' => 'Stammdaten: Typen (Speise / Getränk) sichergestellt.'];
 
     // 2. Druckziele (11=Küche, 12=Schank, 13=Feuerflecken)
-    @mysqli_query($conn, "INSERT IGNORE INTO `print_targets` (`print_target`, `name`, `active`, `sort_order`) VALUES
-        (11, 'Küche', 1, 10),
-        (12, 'Schank', 1, 20),
-        (13, 'Feuerflecken', 1, 30)");
+    @mysqli_query($conn, "INSERT IGNORE INTO `print_targets` (`print_target`, `name`, `active`, `sort_order`, `auto_print_limit`) VALUES
+        (11, 'Küche', 1, 10, 0),
+        (12, 'Schank', 1, 20, 0),
+        (13, 'Feuerflecken', 1, 30, 0)");
     $log[] = ['type' => 'success', 'msg' => 'Stammdaten: Druckziele (Küche, Schank, Feuerflecken) sichergestellt.'];
 
     // 3. Feste (mindestens 1 aktives Fest)
@@ -722,16 +1187,49 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
     // 7. Standard Admin-User falls gar kein User existiert
     $userCountRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `users`");
     $userCount = $userCountRes ? (int)(mysqli_fetch_assoc($userCountRes)['c'] ?? 0) : 0;
+    if ($userCountRes) @mysqli_free_result($userCountRes);
+
     if ($userCount === 0) {
         $pwHash = password_hash('admin123', PASSWORD_DEFAULT);
-        @mysqli_query($conn, "INSERT INTO `users` (`username`, `password`, `admin`, `can_finance`, `start_page`)
-            VALUES ('admin', '{$pwHash}', 2, 1, 'menu')");
-        $log[] = ['type' => 'warning', 'msg' => 'Sicherheit: Kein Benutzer vorhanden -> Standard-Admin angelegt (Benutzer: admin / Kennwort: admin123). Bitte sofort ändern!'];
+        $uCols = [];
+        $ucRes = @mysqli_query($conn, "SHOW COLUMNS FROM `users`");
+        if ($ucRes) {
+            while ($c = mysqli_fetch_assoc($ucRes)) {
+                $uCols[strtolower($c['Field'])] = true;
+            }
+            @mysqli_free_result($ucRes);
+        }
+        $fields = ['`username`', '`password`', '`admin`'];
+        $values = ["'admin'", "'{$pwHash}'", "2"];
+        if (isset($uCols['can_finance'])) { $fields[] = '`can_finance`'; $values[] = '1'; }
+        if (isset($uCols['can_direktverkauf'])) { $fields[] = '`can_direktverkauf`'; $values[] = '1'; }
+        if (isset($uCols['start_page'])) { $fields[] = '`start_page`'; $values[] = "'menu'"; }
+
+        try {
+            @mysqli_query($conn, "INSERT INTO `users` (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")");
+            $log[] = ['type' => 'warning', 'msg' => 'Sicherheit: Kein Benutzer vorhanden -> Standard-Admin angelegt (Benutzer: admin / Kennwort: admin123). Bitte sofort ändern!'];
+        } catch (\Throwable $e) {
+            $log[] = ['type' => 'warning', 'msg' => 'Hinweis bei Standard-Admin: ' . $e->getMessage()];
+        }
     }
 
     // 8. Positionen print_target Defaults aktualisieren falls 0 oder ungesetzt
-    @mysqli_query($conn, "UPDATE `positionen` SET `print_target` = 12 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 2");
-    @mysqli_query($conn, "UPDATE `positionen` SET `print_target` = 11 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 1");
+    try {
+        $pCols = [];
+        $pcRes = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen`");
+        if ($pcRes) {
+            while ($c = mysqli_fetch_assoc($pcRes)) {
+                $pCols[strtolower($c['Field'])] = true;
+            }
+            @mysqli_free_result($pcRes);
+        }
+        if (isset($pCols['print_target']) && isset($pCols['type'])) {
+            @mysqli_query($conn, "UPDATE `positionen` SET `print_target` = 12 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 2");
+            @mysqli_query($conn, "UPDATE `positionen` SET `print_target` = 11 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 1");
+        }
+    } catch (\Throwable $e) {
+        // Ignorieren falls nicht möglich
+    }
 
     // 9. Table Tokens generieren für Tische die noch keinen haben
     $tischeRes = @mysqli_query($conn, "SELECT tischnummer FROM `tische`");
@@ -755,6 +1253,32 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
         mysqli_free_result($tischeRes);
         if ($tokensCreated > 0) {
             $log[] = ['type' => 'success', 'msg' => "QR-Bestellsystem: {$tokensCreated} Tisch-Sicherheitstoken für bestehende Tische generiert."];
+        }
+    }
+
+    // 10. Interne Schema-Funktionen aufrufen (idempotent & schützt vor künftigen Login-Fehlern)
+    $helperFiles = [
+        __DIR__ . '/include/ff_finance_schema.php' => 'ff_finance_ensure_schema',
+        __DIR__ . '/include/ff_user_status.php' => 'ff_users_ensure_status_columns',
+        __DIR__ . '/include/ff_user_permissions.php' => 'ff_users_ensure_menu_permissions_column',
+        __DIR__ . '/include/ff_direktverkauf_auth.php' => 'ff_users_ensure_direktverkauf_column',
+        __DIR__ . '/include/ff_rezepturen_schema.php' => 'ff_rezepturen_ensure_schema',
+        __DIR__ . '/include/ff_webauthn.php' => 'ff_webauthn_ensure_schema',
+        __DIR__ . '/include/ff_station_events.php' => 'ff_station_events_ensure_schema',
+        __DIR__ . '/include/ff_auto_print.php' => 'ff_auto_print_ensure_schema',
+        __DIR__ . '/include/menu_tile_helpers.php' => 'ff_menu_ensure_schema',
+    ];
+    foreach ($helperFiles as $file => $fn) {
+        if (file_exists($file)) {
+            try {
+                require_once $file;
+                if (function_exists($fn)) {
+                    $fn($conn);
+                }
+            } catch (\Throwable $e) {
+                // Bei Fehlern protokollieren
+                $log[] = ['type' => 'warning', 'msg' => "Schema-Helper {$fn}(): " . $e->getMessage()];
+            }
         }
     }
 }
@@ -849,7 +1373,6 @@ function ff_execute_migration(array $params): array {
         // Ziel-Datenbank erstellen/auswählen
         $createDbSql = "CREATE DATABASE IF NOT EXISTS `{$tgtDb}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci";
         if (!@mysqli_query($tgtConn, $createDbSql)) {
-            // Falls keine globalen CREATE-Rechte vorhanden sind, testen ob DB bereits existiert
             if (!@mysqli_select_db($tgtConn, $tgtDb)) {
                 return ['ok' => false, 'error' => "Ziel-Datenbank '{$tgtDb}' auf {$tgtHost} konnte weder erstellt noch ausgewählt werden: " . mysqli_error($tgtConn), 'log' => $log];
             }
@@ -862,18 +1385,27 @@ function ff_execute_migration(array $params): array {
             return ['ok' => false, 'error' => "Konnte nicht zur Ziel-Datenbank '{$tgtDb}' wechseln: " . mysqli_error($tgtConn), 'log' => $log];
         }
 
-        // Alle 24 modernen Tabellen im Ziel anlegen
+        // Vorab: Reparatur eventuell bereits unvollständig angelegter Tabellen im Ziel
+        ff_sanitize_and_repair_tables($tgtConn, $log);
+
+        // Alle modernen Tabellen im Ziel bereitstellen
         foreach ($targetTablesDef as $tblName => $createSql) {
-            if (!mysqli_query($tgtConn, $createSql)) {
-                $log[] = ['type' => 'error', 'msg' => "Fehler beim Anlegen von '{$tblName}' im Ziel: " . mysqli_error($tgtConn)];
-            } else {
-                $log[] = ['type' => 'info', 'msg' => "Tabelle '{$tblName}' in Ziel-DB bereitgestellt."];
+            try {
+                if (!@mysqli_query($tgtConn, $createSql)) {
+                    $log[] = ['type' => 'error', 'msg' => "Fehler beim Anlegen von '{$tblName}' im Ziel: " . mysqli_error($tgtConn)];
+                } else {
+                    $log[] = ['type' => 'info', 'msg' => "Tabelle '{$tblName}' in Ziel-DB bereitgestellt."];
+                }
+            } catch (\Throwable $e) {
+                $log[] = ['type' => 'warning', 'msg' => "Tabelle '{$tblName}' im Ziel: " . $e->getMessage()];
             }
         }
 
+        // Ziel-Tabellen um alle neuen Spalten erweitern (falls Tabelle im Ziel bereits mit älterer Struktur existierte)
+        ff_apply_schema_patches($tgtConn, $log);
+
         // Daten aus Quell-DB kopieren für jede übereinstimmende Tabelle
         foreach ($srcTables as $tblName) {
-            // Falls Tabelle in Target-Definitionen fehlt (z.B. legacy 'tabelle'), Struktur im Ziel anlegen
             if (!isset($targetTablesDef[$tblName])) {
                 $cRes = mysqli_query($srcConn, "SHOW CREATE TABLE `{$srcDb}`.`{$tblName}`");
                 if ($cRes && ($ctRow = mysqli_fetch_row($cRes))) {
@@ -883,7 +1415,6 @@ function ff_execute_migration(array $params): array {
                 }
             }
 
-            // Spalten von Quelle und Ziel analysieren
             $srcColsRes = mysqli_query($srcConn, "SHOW COLUMNS FROM `{$srcDb}`.`{$tblName}`");
             if (!$srcColsRes) continue;
             $srcCols = [];
@@ -898,7 +1429,6 @@ function ff_execute_migration(array $params): array {
                 $tgtCols[strtolower($c['Field'])] = $c['Field'];
             }
 
-            // Gemeinsame Spalten ermitteln mit exaktem Namen in Quelle und Ziel
             $tgtColsList = [];
             $srcColsList = [];
             $srcColNames = [];
@@ -915,7 +1445,6 @@ function ff_execute_migration(array $params): array {
                 continue;
             }
 
-            // Zählen wie viele Zeilen vorhanden sind
             $countRes = mysqli_query($srcConn, "SELECT COUNT(*) AS c FROM `{$srcDb}`.`{$tblName}`");
             $rowCount = $countRes ? (int)(mysqli_fetch_assoc($countRes)['c'] ?? 0) : 0;
 
@@ -924,13 +1453,11 @@ function ff_execute_migration(array $params): array {
                 continue;
             }
 
-            // Ziel-Tabelle vor dem Import leeren (idempotent)
             mysqli_query($tgtConn, "TRUNCATE TABLE `{$tgtDb}`.`{$tblName}`");
 
             $tgtStr = implode(', ', $tgtColsList);
             $srcStr = implode(', ', $srcColsList);
 
-            // Versuche High-Speed Direktabfrage wenn Quelle und Ziel auf demselben Server liegen
             $copiedDirectly = false;
             if ($isSameServer && strcasecmp($srcDb, $tgtDb) !== 0) {
                 $copySql = "INSERT INTO `{$tgtDb}`.`{$tblName}` ({$tgtStr}) SELECT {$srcStr} FROM `{$srcDb}`.`{$tblName}`";
@@ -940,7 +1467,6 @@ function ff_execute_migration(array $params): array {
                 }
             }
 
-            // Fallback & Serverübergreifender Batch-Streaming-Transfer (unterschiedliche Server / User)
             if (!$copiedDirectly) {
                 $selectSql = "SELECT {$srcStr} FROM `{$srcDb}`.`{$tblName}`";
                 $srcQueryRes = mysqli_query($srcConn, $selectSql, MYSQLI_USE_RESULT);
@@ -996,14 +1522,58 @@ function ff_execute_migration(array $params): array {
             }
         }
 
-        // Spezifische Spalten-Defaults nach dem Kopieren im Ziel setzen
-        @mysqli_query($tgtConn, "UPDATE `{$tgtDb}`.`positionen` SET `print_target` = 12 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 2");
-        @mysqli_query($tgtConn, "UPDATE `{$tgtDb}`.`positionen` SET `print_target` = 11 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 1");
-        @mysqli_query($tgtConn, "UPDATE `{$tgtDb}`.`bestellungen` b JOIN `{$tgtDb}`.`positionen` p ON p.rowid = b.position SET b.print_target = p.print_target WHERE b.print_target IS NULL");
-        @mysqli_query($tgtConn, "UPDATE `{$tgtDb}`.`users` SET `start_page` = 'menu' WHERE `start_page` IS NULL OR `start_page` = ''");
-        @mysqli_query($tgtConn, "UPDATE `{$tgtDb}`.`users` SET `can_finance` = 1 WHERE `admin` > 0 AND (`can_finance` IS NULL OR `can_finance` = 0)");
+        // Schema-Sanitisierung & Spalten-Patches auf Ziel anwenden
+        ff_sanitize_and_repair_tables($tgtConn, $log);
 
-        // Seeds & Standardwerte in der Ziel-DB ausführen
+        // Nach dem Kopieren: Spalten-Defaults & Berechtigungen sicher setzen
+        try {
+            $pCols = [];
+            $pcRes = @mysqli_query($tgtConn, "SHOW COLUMNS FROM `positionen`");
+            if ($pcRes) {
+                while ($c = mysqli_fetch_assoc($pcRes)) {
+                    $pCols[strtolower($c['Field'])] = true;
+                }
+                @mysqli_free_result($pcRes);
+            }
+            if (isset($pCols['print_target']) && isset($pCols['type'])) {
+                @mysqli_query($tgtConn, "UPDATE `positionen` SET `print_target` = 12 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 2");
+                @mysqli_query($tgtConn, "UPDATE `positionen` SET `print_target` = 11 WHERE (`print_target` IS NULL OR `print_target` = 0) AND `type` = 1");
+            }
+
+            $bCols = [];
+            $bcRes = @mysqli_query($tgtConn, "SHOW COLUMNS FROM `bestellungen`");
+            if ($bcRes) {
+                while ($c = mysqli_fetch_assoc($bcRes)) {
+                    $bCols[strtolower($c['Field'])] = true;
+                }
+                @mysqli_free_result($bcRes);
+            }
+            if (isset($bCols['print_target']) && isset($pCols['print_target'])) {
+                @mysqli_query($tgtConn, "UPDATE `bestellungen` b JOIN `positionen` p ON p.rowid = b.position SET b.print_target = p.print_target WHERE b.print_target IS NULL");
+            }
+
+            $uCols = [];
+            $ucRes = @mysqli_query($tgtConn, "SHOW COLUMNS FROM `users`");
+            if ($ucRes) {
+                while ($c = mysqli_fetch_assoc($ucRes)) {
+                    $uCols[strtolower($c['Field'])] = true;
+                }
+                @mysqli_free_result($ucRes);
+            }
+            if (isset($uCols['start_page'])) {
+                @mysqli_query($tgtConn, "UPDATE `users` SET `start_page` = 'menu' WHERE `start_page` IS NULL OR `start_page` = ''");
+            }
+            $userSets = [];
+            if (isset($uCols['can_finance'])) $userSets[] = "`can_finance` = 1";
+            if (isset($uCols['can_direktverkauf'])) $userSets[] = "`can_direktverkauf` = 1";
+            if (!empty($userSets) && isset($uCols['admin'])) {
+                @mysqli_query($tgtConn, "UPDATE `users` SET " . implode(', ', $userSets) . " WHERE `admin` > 0");
+            }
+        } catch (\Throwable $e) {
+            $log[] = ['type' => 'warning', 'msg' => 'Hinweis bei Standardwert-Zuweisung im Ziel: ' . $e->getMessage()];
+        }
+
+        // Seeds ausführen
         ff_migration_run_seeds($tgtConn, $log);
 
         @mysqli_query($tgtConn, "SET FOREIGN_KEY_CHECKS = 1;");
@@ -1012,13 +1582,20 @@ function ff_execute_migration(array $params): array {
     // MODUS B: IN-PLACE UPGRADE (Bestehende DB direkt auf Quell-Server)
     // =========================================================================
     else {
+        // Tabellen-Sanitisierung (z. B. leere fehlerhafte buchungen Tabelle reparieren)
+        ff_sanitize_and_repair_tables($srcConn, $log);
+
         // 1. Alle neuen Tabellen erstellen falls noch nicht vorhanden
         foreach ($targetTablesDef as $tblName => $createSql) {
             if (!in_array($tblName, $srcTables, true)) {
-                if (mysqli_query($srcConn, $createSql)) {
-                    $log[] = ['type' => 'success', 'msg' => "Neue Tabelle '{$tblName}' erfolgreich angelegt."];
-                } else {
-                    $log[] = ['type' => 'error', 'msg' => "Fehler beim Anlegen von '{$tblName}': " . mysqli_error($srcConn)];
+                try {
+                    if (@mysqli_query($srcConn, $createSql)) {
+                        $log[] = ['type' => 'success', 'msg' => "Neue Tabelle '{$tblName}' erfolgreich angelegt."];
+                    } else {
+                        $log[] = ['type' => 'error', 'msg' => "Fehler beim Anlegen von '{$tblName}': " . mysqli_error($srcConn)];
+                    }
+                } catch (\Throwable $e) {
+                    $log[] = ['type' => 'warning', 'msg' => "Tabelle '{$tblName}': " . $e->getMessage()];
                 }
             }
         }
@@ -1028,7 +1605,7 @@ function ff_execute_migration(array $params): array {
             foreach ($srcTables as $tblName) {
                 $alterTableSql = "ALTER TABLE `{$tblName}` ENGINE=InnoDB CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci";
                 if (@mysqli_query($srcConn, $alterTableSql)) {
-                    $log[] = ['type' => 'success', 'msg' => "Tabelle '{$tblName}': Auf InnoDB & utf8mb4 konvertiert."];
+                    $log[] = ['type' => 'success', 'msg' => "Tabelle '{$tblName}' auf InnoDB & utf8mb4 konvertiert."];
                 } else {
                     $log[] = ['type' => 'warning', 'msg' => "Tabelle '{$tblName}': Konvertierung InnoDB/utf8mb4 mit Hinweis: " . mysqli_error($srcConn)];
                 }
@@ -1036,33 +1613,29 @@ function ff_execute_migration(array $params): array {
         }
 
         // 3. Spezifische Spalten-Patches für bestehende Tabellen anwenden
-        foreach ($columnPatches as $tblName => $patches) {
-            if (!in_array($tblName, $srcTables, true)) {
-                continue;
-            }
+        ff_apply_schema_patches($srcConn, $log);
 
-            $existingColsRes = mysqli_query($srcConn, "SHOW COLUMNS FROM `{$tblName}`");
-            $existingCols = [];
-            while ($c = mysqli_fetch_assoc($existingColsRes)) {
-                $existingCols[strtolower($c['Field'])] = true;
-            }
-
-            foreach ($patches as $colName => $alterSql) {
-                if (!isset($existingCols[strtolower($colName)])) {
-                    $fullAlter = "ALTER TABLE `{$tblName}` " . $alterSql;
-                    if (mysqli_query($srcConn, $fullAlter)) {
-                        $log[] = ['type' => 'success', 'msg' => "Tabelle '{$tblName}': Fehlende Spalte '{$colName}' hinzugefügt."];
-                    } else {
-                        $log[] = ['type' => 'error', 'msg' => "Tabelle '{$tblName}': Fehler beim Hinzufügen von '{$colName}': " . mysqli_error($srcConn)];
-                    }
+        // 4. Defaults für User & Positionen setzen
+        try {
+            $uCols = [];
+            $ucRes = @mysqli_query($srcConn, "SHOW COLUMNS FROM `users`");
+            if ($ucRes) {
+                while ($c = mysqli_fetch_assoc($ucRes)) {
+                    $uCols[strtolower($c['Field'])] = true;
                 }
+                @mysqli_free_result($ucRes);
             }
-        }
-
-        // 4. Feldlänge tische.tischname auf VARCHAR(50) erweitern
-        if (in_array('tische', $srcTables, true)) {
-            @mysqli_query($srcConn, "ALTER TABLE `tische` MODIFY `tischname` VARCHAR(50) NOT NULL");
-            $log[] = ['type' => 'info', 'msg' => "Tabelle 'tische': Feldlänge für 'tischname' auf VARCHAR(50) erweitert."];
+            if (isset($uCols['start_page'])) {
+                @mysqli_query($srcConn, "UPDATE `users` SET `start_page` = 'menu' WHERE `start_page` IS NULL OR `start_page` = ''");
+            }
+            $userSets = [];
+            if (isset($uCols['can_finance'])) $userSets[] = "`can_finance` = 1";
+            if (isset($uCols['can_direktverkauf'])) $userSets[] = "`can_direktverkauf` = 1";
+            if (!empty($userSets) && isset($uCols['admin'])) {
+                @mysqli_query($srcConn, "UPDATE `users` SET " . implode(', ', $userSets) . " WHERE `admin` > 0");
+            }
+        } catch (\Throwable $e) {
+            $log[] = ['type' => 'warning', 'msg' => 'Hinweis bei Standardwert-Zuweisung: ' . $e->getMessage()];
         }
 
         // 5. Seeds & Standardwerte ausführen
@@ -1319,9 +1892,23 @@ $analysisResult = null;
 $migrationResult = null;
 
 if ($action === 'analyze') {
-    $analysisResult = ff_analyze_databases($webParams);
+    try {
+        $analysisResult = ff_analyze_databases($webParams);
+    } catch (\Throwable $e) {
+        $analysisResult = ['ok' => false, 'error' => 'Analyse-Fehler: ' . $e->getMessage()];
+    }
 } elseif ($action === 'migrate') {
-    $migrationResult = ff_execute_migration($webParams);
+    try {
+        $migrationResult = ff_execute_migration($webParams);
+    } catch (\Throwable $e) {
+        $migrationResult = [
+            'ok' => false,
+            'error' => 'Migrations-Ausnahme: ' . $e->getMessage(),
+            'log' => [
+                ['type' => 'error', 'msg' => $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')']
+            ]
+        ];
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -1593,7 +2180,7 @@ if ($action === 'analyze') {
                     <input type="radio" name="mode" value="inplace" <?= $webParams['mode'] === 'inplace' ? 'checked' : '' ?> onchange="toggleMode()">
                     <div class="radio-label">
                         <strong>2. In-Place Update (Direkt auf Quell-Server)</strong>
-                        <span>Konvertiert Tabellen vor Ort auf InnoDB/utf8mb4, ergänzt fehlende Spalten und legt neue Tabellen an, ohne eine zweite Datenbank zu benötigen.</span>
+                        <span>Konvertiert Tabellen vor Ort auf InnoDB/utf8mb4, repariert und ergänzt fehlende Spalten (z. B. in buchungen) und legt neue Tabellen an, ohne eine zweite Datenbank zu benötigen.</span>
                     </div>
                 </label>
             </div>

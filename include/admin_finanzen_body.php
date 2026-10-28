@@ -120,6 +120,14 @@ function ff_admin_render_finanzen_body(mysqli $conn): void {
 
     echo '</div>';
 
+    echo '<div class="border rounded-3 p-3 bg-light mb-4 d-none" id="ffFinBestandteilStockWrap">';
+
+    echo '<div class="text-muted small mb-2">Bestandteile mit Restkapazität</div>';
+
+    echo '<div id="ffFinBestandteilStock" class="small">—</div>';
+
+    echo '</div>';
+
 
 
     echo '<h5 class="mt-4">Fixe Einnahme / Ausgabe erfassen</h5>';

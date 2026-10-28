@@ -1903,6 +1903,13 @@ if (myUsersTbl) {
 }
 
 var admNew = ffById('adminyesno');
+var newUserModalEl = ffById('newUserModal');
+if (newUserModalEl) {
+    newUserModalEl.addEventListener('shown.bs.modal', function() {
+        var usernameInput = ffById('username');
+        if (usernameInput) usernameInput.focus();
+    });
+}
 if (admNew) {
     admNew.addEventListener('change', function() {
         var row = ffById('newUserStartRow');
@@ -2745,8 +2752,19 @@ function saveTischFlags(tischnummer, opts) {
 
 function ffAdminSaveTischColor(tischnummer) {
     var colorInput = document.getElementById('html5colorpicker' + tischnummer);
-    if (!colorInput) return;
-    fetchPost('update_color.php', { color: colorInput.value, tischnummer: tischnummer })
+    var codeInput = document.getElementById('tischfarbcode' + tischnummer);
+    if (!colorInput || !codeInput) return;
+    var color = String(codeInput.value || '').trim();
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+        codeInput.setCustomValidity('Bitte einen Farbcode im Format #RRGGBB eingeben.');
+        codeInput.reportValidity();
+        return;
+    }
+    color = color.toUpperCase();
+    codeInput.value = color;
+    colorInput.value = color;
+    codeInput.setCustomValidity('');
+    fetchPost('manage/update_color.php', { color: color, tischnummer: tischnummer })
         .then(function(r) {
             if (!r.ok) {
                 throw new Error('Speichern fehlgeschlagen (HTTP ' + r.status + ').');
@@ -2756,9 +2774,30 @@ function ffAdminSaveTischColor(tischnummer) {
         .catch(function(err) { alert(err && err.message ? err.message : 'Fehler'); });
 }
 
+function ffAdminSyncTischColorText(tischnummer) {
+    var colorInput = document.getElementById('html5colorpicker' + tischnummer);
+    var codeInput = document.getElementById('tischfarbcode' + tischnummer);
+    if (!colorInput || !codeInput) return;
+    codeInput.value = colorInput.value.toUpperCase();
+    codeInput.setCustomValidity('');
+}
+
+function ffAdminSyncTischColorPicker(tischnummer) {
+    var colorInput = document.getElementById('html5colorpicker' + tischnummer);
+    var codeInput = document.getElementById('tischfarbcode' + tischnummer);
+    if (!colorInput || !codeInput) return;
+    var color = String(codeInput.value || '').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(color)) {
+        colorInput.value = color;
+        codeInput.setCustomValidity('');
+    } else {
+        codeInput.setCustomValidity('Bitte einen Farbcode im Format #RRGGBB eingeben.');
+    }
+}
+
 function ffAdminDeleteTable(tischnummer) {
     if (!confirm('Wirklich löschen?')) return;
-    fetchGet('delete_table.php?tischnummer=' + encodeURIComponent(tischnummer))
+    fetchPost('delete_table.php', { tischnummer: String(tischnummer) })
         .then(function(r) {
             if (!r.ok) {
                 throw new Error('Löschen fehlgeschlagen (HTTP ' + r.status + ').');
@@ -2819,7 +2858,9 @@ function savePrintTarget(printTargetId, opts) {
     var name = ne.value;
     var sortOrder = parseInt(se.value, 10) || 0;
     var active = ae.checked ? 1 : 0;
-    return fetchPost('save_print_target_admin.php', { print_target: printTargetId, name: name, sort_order: sortOrder, active: active })
+    var apEl = ffById('pt_autoprint_' + printTargetId);
+    var autoPrintLimit = apEl ? Math.max(0, Math.min(50, parseInt(apEl.value, 10) || 0)) : 0;
+    return fetchPost('save_print_target_admin.php', { print_target: printTargetId, name: name, sort_order: sortOrder, active: active, auto_print_limit: autoPrintLimit })
         .then(function(r) { return r.json(); })
         .then(function(r) {
             if (r && r.ok) {
@@ -2943,6 +2984,11 @@ function createFest() {
         .then(function(r) { return r.json(); })
         .then(function(res) {
             if (res && res.ok) {
+                var festModalEl = ffById('newFestModal');
+                if (festModalEl && window.bootstrap) {
+                    var festModal = bootstrap.Modal.getInstance(festModalEl);
+                    if (festModal) festModal.hide();
+                }
                 alert('Fest angelegt');
                 AdminAnsicht();
             } else {
@@ -2981,6 +3027,203 @@ function setFestPaymentMode(id, mode) {
         .catch(function(err) { alert('Fehler: ' + err); });
 }
 
+function ffPushApi(data, method, festId) {
+    var options = { method: method || 'GET', credentials: 'same-origin', headers: { 'Accept': 'application/json' } };
+    var url = 'event_push_admin_api.php';
+    if (options.method === 'GET') {
+        url += '?fest_id=' + encodeURIComponent(festId);
+    } else {
+        var body = new URLSearchParams();
+        Object.keys(data || {}).forEach(function(key) { body.set(key, String(data[key])); });
+        options.headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+        options.body = body.toString();
+    }
+    return fetch(url, options).then(function(response) {
+        return response.json().then(function(result) {
+            if (!response.ok || !result || result.ok !== true) {
+                throw new Error(result && result.error ? result.error : 'Push-Einstellungen konnten nicht geladen werden.');
+            }
+            return result;
+        });
+    });
+}
+
+function ffPushSetStatus(panel, message, isError) {
+    var status = panel.querySelector('.ff-push-status');
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle('text-danger', !!isError);
+    status.classList.toggle('text-success', !isError);
+}
+
+function ffPushAddRuleList(panel, data) {
+    panel.replaceChildren();
+    var title = document.createElement('h5');
+    title.textContent = 'Kapazitätswarnungen';
+    panel.appendChild(title);
+
+    var enabledLabel = document.createElement('label');
+    enabledLabel.className = 'form-check mb-3';
+    var enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.className = 'form-check-input ff-push-enabled';
+    enabled.checked = !!data.enabled;
+    enabledLabel.appendChild(enabled);
+    var enabledText = document.createElement('span');
+    enabledText.className = 'form-check-label';
+    enabledText.textContent = 'Benachrichtigungen für dieses Fest aktivieren';
+    enabledLabel.appendChild(enabledText);
+    panel.appendChild(enabledLabel);
+
+    var device = document.createElement('div');
+    device.className = 'd-flex flex-wrap align-items-center gap-2 mb-3';
+    var enableDevice = document.createElement('button');
+    enableDevice.type = 'button';
+    enableDevice.className = 'btn btn-sm btn-outline-success ff-push-device-enable';
+    enableDevice.textContent = 'Benachrichtigungen auf diesem Gerät erlauben';
+    device.appendChild(enableDevice);
+    panel.appendChild(device);
+
+    var groups = [
+        { title: 'Stationen (offene Bestellungen)', items: data.resources.stations || [] },
+        { title: 'Positionen (Küche / Schank)', items: data.resources.positions || [] },
+        { title: 'Rezepturbestandteile', items: data.resources.ingredients || [] }
+    ];
+    var checked = {};
+    (data.rules || []).forEach(function(rule) {
+        checked[rule.type + ':' + rule.id] = Number(rule.threshold) || 10;
+    });
+    var controlList = document.createElement('div');
+    controlList.className = 'row g-2';
+    groups.forEach(function(group) {
+        var col = document.createElement('div');
+        col.className = 'col-12 col-xl-6';
+        var heading = document.createElement('h6');
+        heading.textContent = group.title;
+        col.appendChild(heading);
+        if (!group.items.length) {
+            var empty = document.createElement('p');
+            empty.className = 'small text-muted';
+            empty.textContent = 'Keine begrenzten Ressourcen vorhanden.';
+            col.appendChild(empty);
+        }
+        group.items.forEach(function(item) {
+            var key = item.type + ':' + item.id;
+            var row = document.createElement('div');
+            row.className = 'd-flex align-items-center gap-2 border-bottom py-2';
+            row.dataset.resourceType = item.type;
+            row.dataset.resourceId = String(item.id);
+            var checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'form-check-input mt-0 ff-push-rule-enabled';
+            checkbox.checked = Object.prototype.hasOwnProperty.call(checked, key);
+            checkbox.setAttribute('aria-label', item.name + ' überwachen');
+            row.appendChild(checkbox);
+            var name = document.createElement('span');
+            name.className = 'flex-grow-1';
+            name.textContent = item.name + (item.station ? ' · ' + item.station : '');
+            row.appendChild(name);
+            var cap = document.createElement('span');
+            cap.className = 'small text-muted';
+            cap.textContent = item.type === 'station'
+                ? 'Offene Bestellungen'
+                : 'Kap. ' + item.capacity + (item.unit ? ' ' + item.unit : '');
+            row.appendChild(cap);
+            var threshold = document.createElement('input');
+            threshold.type = 'number';
+            threshold.min = '1';
+            threshold.max = item.type === 'station' ? '1000' : '100';
+            threshold.step = '1';
+            threshold.value = String(checked[key] || (item.type === 'station' ? 5 : 10));
+            threshold.className = 'form-control form-control-sm ff-push-threshold';
+            threshold.style.width = '5rem';
+            threshold.setAttribute('aria-label', item.type === 'station'
+                ? 'Warnen ab offenen Bestellungen'
+                : 'Warnen bei Restkapazität in Prozent');
+            row.appendChild(threshold);
+            var percent = document.createElement('span');
+            percent.className = 'small';
+            percent.textContent = item.type === 'station' ? 'Bestellungen' : '%';
+            row.appendChild(percent);
+            col.appendChild(row);
+        });
+        controlList.appendChild(col);
+    });
+    panel.appendChild(controlList);
+
+    var actions = document.createElement('div');
+    actions.className = 'd-flex flex-wrap align-items-center gap-2 mt-3';
+    var save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'btn btn-primary btn-sm ff-push-save';
+    save.textContent = 'Regeln speichern';
+    actions.appendChild(save);
+    var status = document.createElement('span');
+    status.className = 'small ff-push-status';
+    status.textContent = 'Meldungen werden von der App alle 30 Sekunden abgefragt.';
+    actions.appendChild(status);
+    panel.appendChild(actions);
+
+    panel.dataset.csrf = data.csrf;
+}
+
+document.addEventListener('click', function(event) {
+    var toggle = event.target.closest('.ff-push-config-toggle');
+    if (toggle) {
+        var festId = toggle.dataset.festId;
+        var panel = document.getElementById('ffPushConfig_' + festId);
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        if (panel.hidden || panel.dataset.loaded === '1') return;
+        panel.textContent = 'Einstellungen werden geladen …';
+        ffPushApi({}, 'GET', festId).then(function(data) {
+            ffPushAddRuleList(panel, data);
+            panel.dataset.loaded = '1';
+        }).catch(function(error) {
+            panel.textContent = 'Fehler: ' + error.message;
+        });
+        return;
+    }
+
+    var panel = event.target.closest('[id^="ffPushConfig_"]');
+    if (!panel) return;
+
+    if (event.target.closest('.ff-push-save')) {
+        var rules = [];
+        panel.querySelectorAll('[data-resource-type]').forEach(function(row) {
+            if (!row.querySelector('.ff-push-rule-enabled').checked) return;
+            rules.push({
+                type: row.dataset.resourceType,
+                id: Number(row.dataset.resourceId),
+                threshold: Number(row.querySelector('.ff-push-threshold').value)
+            });
+        });
+        ffPushApi({
+            action: 'save_rules',
+            csrf: panel.dataset.csrf,
+            fest_id: panel.id.replace('ffPushConfig_', ''),
+            enabled: panel.querySelector('.ff-push-enabled').checked ? 1 : 0,
+            rules: JSON.stringify(rules)
+        }, 'POST').then(function() {
+            ffPushSetStatus(panel, 'Regeln gespeichert.', false);
+        }).catch(function(error) {
+            ffPushSetStatus(panel, 'Speichern fehlgeschlagen: ' + error.message, true);
+        });
+        return;
+    }
+
+    if (event.target.closest('.ff-push-device-enable')) {
+        if (!window.ffAdminMessagesRequestPermission) return;
+        window.ffAdminMessagesRequestPermission().then(function(permission) {
+            if (permission === 'granted') {
+                ffPushSetStatus(panel, 'Dieses Gerät zeigt Admin-Meldungen als Benachrichtigung (Abfrage alle 30 Sekunden, solange die App geöffnet ist).', false);
+            } else {
+                ffPushSetStatus(panel, 'Keine Berechtigung erteilt – Meldungen erscheinen nur innerhalb der App.', true);
+            }
+        });
+    }
+});
+
 function saveRechnungSettings() {
     var msg = ffById('rechnungSettingsMsg');
     if (msg) msg.textContent = 'speichern...';
@@ -2990,6 +3233,238 @@ function saveRechnungSettings() {
     fetchPost('save_rechnung_settings.php', params)
         .then(function() { var m = ffById('rechnungSettingsMsg'); if (m) m.textContent = 'OK gespeichert'; })
         .catch(function(err) { var m = ffById('rechnungSettingsMsg'); if (m) m.textContent = 'Fehler: ' + err; });
+}
+
+function ffMcpTokenAction(action, token) {
+    var status = ffById('ffMcpTokenStatus');
+    if (status) status.textContent = 'Wird gespeichert...';
+    var csrf = ffById('set_mcp_token_csrf');
+    return fetchPost('mcp_token_admin_api.php', {
+        action: action,
+        token: token || '',
+        csrf: csrf ? csrf.value : ''
+    })
+        .then(function(response) {
+            return response.text().then(function(text) {
+                var result;
+                try {
+                    result = JSON.parse(text);
+                } catch (e) {
+                    throw new Error('Ungültige Server-Antwort.');
+                }
+                if (!response.ok || !result || !result.ok) {
+                    throw new Error((result && result.message) || (result && result.error) || 'Speichern fehlgeschlagen.');
+                }
+                return result;
+            });
+        })
+        .then(function(result) {
+            var input = ffById('set_mcp_token');
+            if (input) {
+                input.value = '';
+                input.type = 'password';
+            }
+            var statusEl = ffById('ffMcpTokenStatus');
+            if (statusEl) {
+                statusEl.textContent = result.configured
+                    ? 'MCP-Token ist konfiguriert.'
+                    : 'Kein MCP-Token konfiguriert.';
+            }
+        })
+        .catch(function(error) {
+            if (status) status.textContent = 'Fehler: ' + error.message;
+        });
+}
+
+function ffGenerateMcpToken() {
+    var input = ffById('set_mcp_token');
+    if (!input) return;
+    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') {
+        var status = ffById('ffMcpTokenStatus');
+        if (status) status.textContent = 'Token-Erzeugung benötigt eine sichere HTTPS-Verbindung.';
+        return;
+    }
+    var bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    input.value = Array.from(bytes, function(byte) {
+        return byte.toString(16).padStart(2, '0');
+    }).join('');
+    input.type = 'text';
+    input.focus();
+    input.select();
+    var status = ffById('ffMcpTokenStatus');
+    if (status) status.textContent = 'Token erzeugt. Kopiere es in deine MCP-Client-Konfiguration und speichere es anschließend.';
+}
+
+function ffToggleMcpTokenVisibility() {
+    var input = ffById('set_mcp_token');
+    if (!input) return;
+    input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function ffSaveMcpToken() {
+    var input = ffById('set_mcp_token');
+    if (!input || !input.value.trim()) {
+        var status = ffById('ffMcpTokenStatus');
+        if (status) status.textContent = 'Bitte zuerst ein Token eingeben oder erzeugen.';
+        return;
+    }
+    ffMcpTokenAction('save', input.value.trim());
+}
+
+function ffRemoveMcpToken() {
+    if (!window.confirm('Gespeichertes MCP-Token wirklich entfernen?')) return;
+    ffMcpTokenAction('remove', '');
+}
+
+function ffRenderSelftestResults(result, repairLogs) {
+    var box = ffById('ffSelftestResult');
+    var alertBox = ffById('ffSelftestAlert');
+    var summary = ffById('ffSelftestSummary');
+
+    if (alertBox) {
+        var alertHtml = '';
+        if (repairLogs && repairLogs.length > 0) {
+            alertHtml += '<div class="alert alert-success py-2 px-3 small mb-2">' +
+                '<strong>&#9989; Durchgeführte DB-Reparaturen (' + repairLogs.length + '):</strong><ul class="mb-0 mt-1 ps-3">';
+            repairLogs.forEach(function(msg) {
+                alertHtml += '<li>' + escapeHtmlText(msg) + '</li>';
+            });
+            alertHtml += '</ul></div>';
+        } else if (repairLogs && repairLogs.length === 0) {
+            alertHtml += '<div class="alert alert-info py-2 px-3 small mb-2">&#8505; Keine strukturellen Reparaturen notwendig – die Datenbank entspricht bereits der Referenz.</div>';
+        }
+
+        var hasSchemaErrors = (result.results || []).some(function(r) {
+            return !r.ok && r.group === 'Datenbankstruktur';
+        });
+        if (hasSchemaErrors) {
+            alertHtml += '<div class="alert alert-warning py-2 px-3 small d-flex justify-content-between align-items-center mb-2">' +
+                '<span><strong>&#9888; Strukturfehler erkannt:</strong> Fehlende Tabellen, Spalten oder InnoDB-Storage-Engine können automatisch repariert werden.</span>' +
+                '<button type="button" class="btn btn-warning btn-sm ms-2 text-nowrap" onclick="ffRunDbRepair();">&#128295; Alle Fehler automatisch beheben</button>' +
+                '</div>';
+        }
+        alertBox.innerHTML = alertHtml;
+    }
+
+    var html = '<table class="table table-sm table-bordered mb-0 bg-white small"><thead><tr><th>Bereich</th><th>Test</th><th>Ergebnis</th></tr></thead><tbody>';
+    (result.results || []).forEach(function(r) {
+        var actionBtn = '';
+        if (!r.ok && r.group === 'Datenbankstruktur' && r.name.indexOf('Tabelle ') === 0) {
+            var tblName = r.name.replace(/^Tabelle\s+/, '').trim();
+            actionBtn = ' <button type="button" class="btn btn-warning btn-xs py-0 px-2 ms-2" style="font-size:0.75rem; vertical-align:baseline;" onclick="ffRunDbRepair(\'' + escapeHtmlText(tblName) + '\');" title="Nur Tabelle ' + escapeHtmlText(tblName) + ' reparieren">&#128295; Reparieren</button>';
+        }
+        html += '<tr class="' + (r.ok ? '' : 'table-danger') + '"><td>' + escapeHtmlText(r.group) + '</td><td>' +
+            escapeHtmlText(r.name) + '</td><td>' +
+            (r.ok ? '&#9989; ' + (r.detail ? escapeHtmlText(r.detail) : 'OK') : '&#10060; ' + escapeHtmlText(r.detail) + actionBtn) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+    if (box) box.innerHTML = html;
+
+    if (summary) {
+        var prefix = (repairLogs && repairLogs.length ? repairLogs.length + ' repariert, ' : '');
+        summary.className = 'small ms-2 fw-bold ' + (result.failed ? 'text-danger' : 'text-success');
+        summary.textContent = prefix + result.passed + ' bestanden, ' + result.failed + ' fehlgeschlagen';
+    }
+}
+
+function ffRunSelftests(mode) {
+    mode = mode || 'all';
+    var btnAll = ffById('ffSelftestBtn');
+    var btnDb = ffById('ffDbTestBtn');
+    var btnRep = ffById('ffDbRepairBtn');
+    var summary = ffById('ffSelftestSummary');
+    var box = ffById('ffSelftestResult');
+    var alertBox = ffById('ffSelftestAlert');
+    var csrf = ffById('set_mcp_token_csrf');
+
+    if (btnAll) btnAll.disabled = true;
+    if (btnDb) btnDb.disabled = true;
+    if (btnRep) btnRep.disabled = true;
+
+    if (summary) {
+        summary.className = 'small ms-2';
+        summary.textContent = (mode === 'schema' ? 'DB-Struktur wird geprüft...' : 'Tests laufen...');
+    }
+    if (alertBox) alertBox.innerHTML = '';
+    if (box) box.innerHTML = '';
+
+    fetchPost('admin_selftest_api.php', { csrf: csrf ? csrf.value : '', mode: mode })
+        .then(function(response) {
+            return response.text().then(function(text) {
+                try { return JSON.parse(text); } catch (e) { throw new Error('Ungültige Server-Antwort.'); }
+            });
+        })
+        .then(function(result) {
+            if (!result || !result.ok) {
+                throw new Error((result && result.error) || 'Testlauf fehlgeschlagen.');
+            }
+            ffRenderSelftestResults(result, null);
+        })
+        .catch(function(err) {
+            if (summary) { summary.className = 'small ms-2 text-danger'; summary.textContent = err.message || 'Testlauf fehlgeschlagen.'; }
+        })
+        .then(function() {
+            if (btnAll) btnAll.disabled = false;
+            if (btnDb) btnDb.disabled = false;
+            if (btnRep) btnRep.disabled = false;
+        });
+}
+
+function ffRunDbRepair(targetTable) {
+    var msg = targetTable
+        ? "Tabelle '" + targetTable + "' jetzt reparieren (fehlende Spalten / Key anlegen)?"
+        : "Alle festgestellten Datenbank-Fehler (fehlende Tabellen, Spalten, InnoDB-Engine) jetzt automatisch beheben?";
+    if (!window.confirm(msg)) return;
+
+    var btnAll = ffById('ffSelftestBtn');
+    var btnDb = ffById('ffDbTestBtn');
+    var btnRep = ffById('ffDbRepairBtn');
+    var summary = ffById('ffSelftestSummary');
+    var csrf = ffById('set_mcp_token_csrf');
+
+    if (btnAll) btnAll.disabled = true;
+    if (btnDb) btnDb.disabled = true;
+    if (btnRep) btnRep.disabled = true;
+
+    if (summary) {
+        summary.className = 'small ms-2';
+        summary.textContent = 'Reparatur läuft...';
+    }
+
+    fetchPost('admin_selftest_api.php', {
+        csrf: csrf ? csrf.value : '',
+        action: 'repair',
+        table: targetTable || ''
+    })
+    .then(function(response) {
+        return response.text().then(function(text) {
+            try { return JSON.parse(text); } catch (e) { throw new Error('Ungültige Server-Antwort.'); }
+        });
+    })
+    .then(function(result) {
+        if (!result || !result.ok) {
+            throw new Error((result && result.error) || 'Reparatur fehlgeschlagen.');
+        }
+        ffRenderSelftestResults(result, result.repairs || []);
+    })
+    .catch(function(err) {
+        if (summary) {
+            summary.className = 'small ms-2 text-danger';
+            summary.textContent = err.message || 'Reparatur fehlgeschlagen.';
+        }
+    })
+    .then(function() {
+        if (btnAll) btnAll.disabled = false;
+        if (btnDb) btnDb.disabled = false;
+        if (btnRep) btnRep.disabled = false;
+    });
+}
+
+function escapeHtmlText(value) {
+    var d = document.createElement('div');
+    d.textContent = String(value == null ? '' : value);
+    return d.innerHTML;
 }
 
 function saveNummernSettings() {
@@ -3428,6 +3903,8 @@ function mvHinzufuegen() {
             if (res && res.ok) {
                 ffById('mvMenge').value = '1';
                 ffById('mvNotiz').value = '';
+                var mvM = document.getElementById('mvErfassenModal');
+                if (mvM && window.bootstrap && bootstrap.Modal) { var mvI = bootstrap.Modal.getInstance(mvM); if (mvI) mvI.hide(); }
                 if (ffById('mvFilterDatum').value === datum) location.reload();
                 else { ffById('mvFilterDatum').value = datum; mvFilterAnzeigen(); }
             } else {
@@ -3523,10 +4000,21 @@ function ffAdminEscapeCssId(id) {
 /** Admin-Seitenmenü: "Stammdaten" / "Personal…" / "Auswertungen…" werden als eigene <section> ein-/ausgeblendet. */
 function ffAdminSwitchPage(pageKey) {
     if (!pageKey) return;
+    var settingsSubpages = [
+        'stammdaten-feste',
+        'stammdaten-druckziele',
+        'stammdaten-rechnungsdaten',
+        'stammdaten-mcp',
+        'stammdaten-tests'
+    ];
+    var sectionKey = settingsSubpages.indexOf(pageKey) !== -1 ? 'stammdaten-einstellungen' : pageKey;
+    if (pageKey !== 'personal-speisekarte') {
+        document.body.classList.remove('ff-admin-manage-active', 'ff-admin-manage-page-scroll');
+    }
     var found = false;
     var activeSec = null;
     document.querySelectorAll('.ff-admin-page').forEach(function(sec) {
-        var match = sec.getAttribute('data-admin-page') === pageKey;
+        var match = sec.getAttribute('data-admin-page') === sectionKey;
         sec.hidden = !match;
         if (match) {
             found = true;
@@ -3534,6 +4022,9 @@ function ffAdminSwitchPage(pageKey) {
         }
     });
     if (!found) return;
+    document.querySelectorAll('[data-admin-subpage]').forEach(function(subpage) {
+        subpage.hidden = subpage.getAttribute('data-admin-subpage') !== pageKey;
+    });
     if (pageKey === 'stammdaten-tischplan') {
         ffAdminLoadManageFrame(document.getElementById('ffAdminTablesFrame'));
     } else if (pageKey === 'personal-speisekarte') {
@@ -3605,6 +4096,40 @@ function ffAdminLoadManageFrame(frame) {
                     var doc = frame.contentDocument;
                     var body = doc && doc.body;
                     var root = doc && doc.documentElement;
+                    var manageSection = frame.closest('[data-admin-page="personal-speisekarte"]');
+                    if (manageSection && manageSection.hidden) {
+                        document.body.classList.remove('ff-admin-manage-active', 'ff-admin-manage-page-scroll');
+                        return;
+                    }
+                    if (body && body.classList.contains('manage-embedded-card-rezepte')) {
+                        document.body.classList.add('ff-admin-manage-active');
+                        var content = doc.getElementById('mainContent');
+                        var navbar = document.querySelector('.admin-navbar');
+                        var stickyTop = Math.ceil((navbar ? navbar.getBoundingClientRect().height : 0) + 8);
+                        var frameRect = frame.getBoundingClientRect();
+                        var frameTop = Math.max(stickyTop, Math.ceil(frameRect.top));
+                        var parentBottomGap = frame.parentElement
+                            ? Math.max(0, frame.parentElement.getBoundingClientRect().bottom - frameRect.bottom)
+                            : 0;
+                        var availableHeight = Math.max(180, window.innerHeight - frameTop - parentBottomGap);
+                        body.classList.remove('manage-embedded-card-rezepte--scroll');
+                        var contentHeight = content ? content.scrollHeight : 0;
+                        if (contentHeight > availableHeight) {
+                            document.body.classList.add('ff-admin-manage-page-scroll');
+                            body.classList.add('manage-embedded-card-rezepte--scroll');
+                            if (Math.abs(frame.offsetHeight - availableHeight) > 1) {
+                                frame.style.height = availableHeight + 'px';
+                            }
+                        } else {
+                            document.body.classList.remove('ff-admin-manage-page-scroll');
+                            var naturalHeight = Math.max(180, contentHeight + 8);
+                            if (Math.abs(frame.offsetHeight - naturalHeight) > 1) {
+                                frame.style.height = naturalHeight + 'px';
+                            }
+                        }
+                        return;
+                    }
+                    document.body.classList.remove('ff-admin-manage-active', 'ff-admin-manage-page-scroll');
                     var contentHeight = Math.max(body ? body.scrollHeight : 0, root ? root.scrollHeight : 0, 560);
                     var nextHeight = contentHeight + 8;
                     if (Math.abs(frame.offsetHeight - nextHeight) > 1) {
@@ -3621,6 +4146,11 @@ function ffAdminLoadManageFrame(frame) {
                     });
                 }
             } catch (eObserver) {}
+            if (frame._ffManageWindowResize) {
+                window.removeEventListener('resize', frame._ffManageWindowResize);
+            }
+            frame._ffManageWindowResize = resize;
+            window.addEventListener('resize', resize);
             resize();
             window.setTimeout(resize, 300);
             window.setTimeout(resize, 1000);
@@ -4123,4 +4653,71 @@ function ffSystemBroadcastApi(action, fields) {
     } else if (w && w.parentNode) {
         w.parentNode.removeChild(w);
     }
+})();
+
+/** Mobile: Tabellen mit Kopfzeile als Karten darstellen (data-label aus Spaltenüberschrift). */
+(function ffAdminMobileTables() {
+    function labelTable(table) {
+        if (table.id === 'feste' || table.classList.contains('ff-no-stack')) return;
+        var headRow = table.querySelector('thead tr');
+        if (!headRow) return;
+        var labels = [];
+        Array.prototype.forEach.call(headRow.children, function(th) {
+            var span = parseInt(th.getAttribute('colspan') || '1', 10) || 1;
+            for (var i = 0; i < span; i++) labels.push((th.textContent || '').replace(/\s+/g, ' ').trim());
+        });
+        if (labels.length < 2) return;
+        table.classList.add('ff-m-stack');
+        table.querySelectorAll('tbody tr').forEach(function(tr) {
+            var idx = 0;
+            Array.prototype.forEach.call(tr.children, function(td) {
+                var span = parseInt(td.getAttribute('colspan') || '1', 10) || 1;
+                if (!td.hasAttribute('data-label') && span === 1 && labels[idx]) td.setAttribute('data-label', labels[idx]);
+                idx += span;
+            });
+        });
+    }
+    function scan(root) {
+        (root || document).querySelectorAll('.admin-content table').forEach(labelTable);
+    }
+    var pending = false;
+    function schedule() {
+        if (pending) return;
+        pending = true;
+        setTimeout(function() { pending = false; scan(); }, 150);
+    }
+    scan();
+    var host = document.querySelector('.admin-content');
+    if (host && window.MutationObserver) {
+        new MutationObserver(schedule).observe(host, { childList: true, subtree: true });
+    }
+})();
+
+(function () {
+    window.__ffStatTab = window.__ffStatTab || 'uebersicht';
+    window.ffStatShowTab = function (key) {
+        if (key) window.__ffStatTab = key;
+        var cur = window.__ffStatTab;
+        var tabs = document.querySelectorAll('#ffStatTabs .ff-stat-tab');
+        if (!tabs.length) return;
+        var found = false;
+        tabs.forEach(function (t) { if (t.getAttribute('data-stat-tab') === cur) found = true; });
+        if (!found) cur = window.__ffStatTab = 'uebersicht';
+        tabs.forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-stat-tab') === cur); });
+        document.querySelectorAll('.ff-stat-sec').forEach(function (s) {
+            s.hidden = s.getAttribute('data-stat-sec') !== cur;
+        });
+        if (cur === 'position' && window.posStatChart && typeof window.posStatChart.resize === 'function') {
+            try { window.posStatChart.resize(); } catch (e) {}
+        }
+    };
+    function bind() {
+        var box = document.getElementById('ffStatistikDynamicBody');
+        if (!box) return;
+        window.ffStatShowTab();
+        if (box.__ffStatObs) return;
+        box.__ffStatObs = new MutationObserver(function () { window.ffStatShowTab(); });
+        box.__ffStatObs.observe(box, { childList: true });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind); else bind();
 })();

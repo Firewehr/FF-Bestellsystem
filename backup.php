@@ -1,5 +1,5 @@
 <?php
-
+require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/octet-stream');
 header('Content-Disposition: attachment; filename=' . basename(date("Y-m-d_H-i-s",time()). '_Backup_Speisen_Bestellsystem.html'));
@@ -21,14 +21,15 @@ try {
     while ($row = mysqli_fetch_assoc($result)) {
         $counter = 0;
         $Bestellungen = "";
+        $timestamp = null;
 
         $batch_key = (string)($row['batch_key'] ?? '');
         $batch_key_esc = mysqli_real_escape_string($conn, $batch_key);
 
         if ($tischnummerselect != $row['tischnummer']) {
-            echo '<h2 style="font-size:30px">Tisch: ' . $row['tischname'] . '</h2>';
+            echo '<h2 style="font-size:30px">Tisch: ' . htmlspecialchars((string)($row['tischname'] ?? ''), ENT_QUOTES, 'UTF-8') . '</h2>';
             $tischname = $row['tischname'];
-            echo '<p>KellnerIn: ' . $row['kellner'] . '</p>';
+            echo '<p>KellnerIn: ' . htmlspecialchars((string)($row['kellner'] ?? ''), ENT_QUOTES, 'UTF-8') . '</p>';
         }
 
 
@@ -41,14 +42,14 @@ try {
         while ($row2 = mysqli_fetch_assoc($result2)) { //Ausgabe der offenen Bestellungen eines Tisches
             echo $row2['anzahl'] . 'x) ' . htmlspecialchars((string)($row2['Positionsname'] ?? ''), ENT_QUOTES, 'UTF-8');
             if (!empty($row2['Zusatzinfo'])) {
-                echo ' (' . $row2['Zusatzinfo'] . ') ';
+                echo ' (' . htmlspecialchars((string)$row2['Zusatzinfo'], ENT_QUOTES, 'UTF-8') . ') ';
             }
             echo '<br>';
             $timestamp = strtotime($row2['zeitstempel']);
         }
 
-        if ($counter == 0) {
-            echo gmdate("H:m", $timestamp) . '<br>';
+        if ($counter == 0 && isset($timestamp) && $timestamp) {
+            echo date("H:i", $timestamp) . '<br>';
         }
         $counter++;
     }

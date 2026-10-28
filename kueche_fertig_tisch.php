@@ -16,14 +16,21 @@ if (!is_array($PositionsListe) || empty($PositionsListe)) {
     exit;
 }
 
+$ids = [];
 foreach ($PositionsListe as $row) {
     $rowid = intval($row);
-    if ($rowid <= 0) continue;
+    if ($rowid > 0) {
+        $ids[] = $rowid;
+    }
+}
+
+if (!empty($ids)) {
+    $in = implode(',', $ids);
     $sql = "UPDATE `bestellungen` SET "
             . "`zeitKueche`=current_timestamp,"
             . "`kueche`='1',"
             . "`print`=0 "
-            . "WHERE rowid=" . $rowid;
+            . "WHERE `rowid` IN (" . $in . ")";
     mysqli_query($conn, $sql);
 }
 

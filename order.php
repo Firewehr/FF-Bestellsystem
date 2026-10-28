@@ -158,6 +158,8 @@ $offeneSql = "
     LEFT JOIN positionen p
         ON p.rowid = b.position
     WHERE b.tischnummer = " . (int)$tischnummer . "
+      AND b.delete = 0
+      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
       AND b.ausgeliefert = 0
       AND b.timestampBestellung IS NOT NULL
       AND b.timestampBestellung <> '0000-00-00 00:00:00'
@@ -259,6 +261,71 @@ foreach ($offeneBestellungen as $bestellung) {
 
         $offeneAnzahlArtikel +=
             (int)$offene['menge'];
+    }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| Letzte Bestellungen für Status-Rücksprung (Zusammenfassung & Status)
+|--------------------------------------------------------------------------
+|
+| Auch bereits bezahlte oder in Zubereitung befindliche Bestellungen der
+| letzten 12 Stunden laden, damit Gäste nachträglich jederzeit den
+| aktuellen Zubereitungs- und Servierstatus einsehen können ("Wo bleibt meine Bestellung?").
+|
+*/
+
+$recentOrdersForStatus = [];
+
+$recentOrdersSql = "
+    SELECT
+        b.order_nr,
+        MIN(b.timestampBestellung) AS bestellt_um,
+        MIN(UNIX_TIMESTAMP(b.timestampBestellung)) AS bestellt_unix,
+        COUNT(*) AS anzahl_artikel,
+        SUM(b.betrag) AS gesamtsumme,
+        MIN(b.kueche) AS min_kueche,
+        MAX(b.kueche) AS max_kueche,
+        MIN(b.ausgeliefert) AS min_ausgeliefert,
+        MAX(b.ausgeliefert) AS max_ausgeliefert,
+        MIN(CASE WHEN b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00' THEN 0 ELSE 1 END) AS ist_bezahlt
+    FROM bestellungen b
+    WHERE b.tischnummer = " . (int)$tischnummer . "
+      AND b.delete = 0
+      AND b.order_nr IS NOT NULL
+      AND b.order_nr > 0
+      AND b.timestampBestellung >= DATE_SUB(NOW(), INTERVAL 12 HOUR)
+    GROUP BY b.order_nr
+    ORDER BY MAX(b.timestampBestellung) DESC, b.order_nr DESC
+    LIMIT 5
+";
+
+$recentOrdersRes = mysqli_query($conn, $recentOrdersSql);
+
+if ($recentOrdersRes) {
+    while ($rRow = mysqli_fetch_assoc($recentOrdersRes)) {
+        $recentOrdersForStatus[] = $rRow;
+    }
+}
+
+$latestOrderForStatus = $recentOrdersForStatus[0] ?? null;
+$latestOrderStatusStep = 1;
+$latestOrderStatusText = 'In Zubereitung';
+$latestOrderStatusIcon = '👨‍🍳';
+$latestOrderStatusClass = 'status-step-prep';
+
+if ($latestOrderForStatus) {
+    if ((int)$latestOrderForStatus['min_ausgeliefert'] === 1) {
+        $latestOrderStatusStep = 3;
+        $latestOrderStatusText = 'Am Tisch serviert';
+        $latestOrderStatusIcon = '✓';
+        $latestOrderStatusClass = 'status-step-done';
+    } elseif ((int)$latestOrderForStatus['min_kueche'] === 1) {
+        $latestOrderStatusStep = 2;
+        $latestOrderStatusText = 'Zubereitet / Auf dem Weg';
+        $latestOrderStatusIcon = '🏃';
+        $latestOrderStatusClass = 'status-step-ready';
     }
 }
 
@@ -884,6 +951,152 @@ body {
 
 /*
 |--------------------------------------------------------------------------
+| Header Status Pill & Bestellstatus-Karte ("Wo bleibt meine Bestellung?")
+|--------------------------------------------------------------------------
+*/
+
+.header-status-badge {
+    background: #ffffff;
+    color: #c0392b;
+    border-radius: 16px;
+    padding: 4px 11px;
+    font-size: 13px;
+    font-weight: bold;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.header-status-badge:hover,
+.header-status-badge:active {
+    background: #fff0ef;
+    transform: scale(1.03);
+}
+
+.order-status-card {
+    background: #ffffff;
+    border: 1.5px solid #ffb74d;
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 15px;
+    box-shadow: 0 3px 12px rgba(245, 124, 0, 0.10);
+}
+
+.order-status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.order-status-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.order-status-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: bold;
+    color: #d84315;
+}
+
+.order-status-sub {
+    font-size: 13px;
+    color: #666;
+    margin-top: 2px;
+}
+
+.order-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: bold;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.order-status-badge.status-step-prep {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffe0b2;
+}
+
+.order-status-badge.status-step-ready {
+    background: #e3f2fd;
+    color: #1565c0;
+    border: 1px solid #bbdefb;
+}
+
+.order-status-badge.status-step-done {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #c8e6c9;
+}
+
+.order-status-btn-main {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: #c0392b;
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    transition: background 0.15s ease;
+}
+
+.order-status-btn-main:hover,
+.order-status-btn-main:active {
+    background: #a93226;
+}
+
+.order-status-multi {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #e0e0e0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.order-status-multi-label {
+    font-size: 12px;
+    color: #777;
+    margin-right: 2px;
+}
+
+.order-status-chip {
+    font-size: 11px;
+    font-weight: bold;
+    background: #f1f1f1;
+    color: #333;
+    padding: 3px 8px;
+    border-radius: 12px;
+    text-decoration: none;
+    border: 1px solid #ddd;
+    transition: background 0.15s ease;
+}
+
+.order-status-chip:hover {
+    background: #e0e0e0;
+}
+
+
+/*
+|--------------------------------------------------------------------------
 | Kategorie
 |--------------------------------------------------------------------------
 */
@@ -1337,8 +1550,20 @@ body {
             <?= h($verkaeuferName) ?>
         </h1>
 
-        <div class="table-badge">
-            <?= h($displayTischLabel) ?>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+            <?php if ($latestOrderForStatus): ?>
+                <a
+                    href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$latestOrderForStatus['order_nr'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                    class="header-status-badge"
+                    title="Bestellstatus &amp; Zusammenfassung anzeigen"
+                >
+                    ⏱️ Status
+                </a>
+            <?php endif; ?>
+
+            <div class="table-badge">
+                <?= h($displayTischLabel) ?>
+            </div>
         </div>
 
     </header>
@@ -1410,7 +1635,61 @@ body {
 
     <!--
     |--------------------------------------------------------------------------
-    | OFFENE BESTELLUNGEN
+    | BESTELLSTATUS / WO BLEIBT MEINE BESTELLUNG?
+    |--------------------------------------------------------------------------
+    -->
+    <?php if ($latestOrderForStatus): ?>
+        <div class="order-status-card" id="orderStatusCard">
+            <div class="order-status-header">
+                <div class="order-status-title-row">
+                    <span style="font-size: 24px; line-height: 1;">📦</span>
+                    <div>
+                        <div class="order-status-title">
+                            Wo bleibt meine Bestellung?
+                        </div>
+                        <div class="order-status-sub" data-order-time="<?= (int)$latestOrderForStatus['bestellt_unix'] ?>">
+                            Bestellung #<?= (int)$latestOrderForStatus['order_nr'] ?> · bestellt <span data-wait-time>gerade eben</span> (<?= (int)$latestOrderForStatus['anzahl_artikel'] ?> Artikel)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="order-status-badge <?= $latestOrderStatusClass ?>">
+                    <span><?= $latestOrderStatusIcon ?></span>
+                    <span><?= h($latestOrderStatusText) ?></span>
+                </div>
+            </div>
+
+            <a
+                href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$latestOrderForStatus['order_nr'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                class="order-status-btn-main"
+            >
+                🔍 Live-Status &amp; Zusammenfassung anzeigen ➔
+            </a>
+
+            <?php if (count($recentOrdersForStatus) > 1): ?>
+                <div class="order-status-multi">
+                    <span class="order-status-multi-label">Weitere Bestellungen für diesen Tisch:</span>
+                    <?php foreach (array_slice($recentOrdersForStatus, 1) as $prevOrder): ?>
+                        <?php
+                            $prevStep = ((int)$prevOrder['min_ausgeliefert'] === 1) ? 3 : (((int)$prevOrder['min_kueche'] === 1) ? 2 : 1);
+                            $prevText = $prevStep === 3 ? '✓ Serviert' : ($prevStep === 2 ? '🏃 Auf dem Weg' : '👨‍🍳 In Zubereitung');
+                        ?>
+                        <a
+                            href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$prevOrder['order_nr'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                            class="order-status-chip"
+                        >
+                            #<?= (int)$prevOrder['order_nr'] ?> (<?= $prevText ?>)
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+
+    <!--
+    |--------------------------------------------------------------------------
+    | OFFENE BESTELLUNGEN (NOCH UNBEZAHLT)
     |--------------------------------------------------------------------------
     -->
 
@@ -1422,7 +1701,7 @@ body {
 
                 <div class="open-orders-title" style="margin:0; font-size:15px;">
 
-                    🛎️ Bereits bestellte Artikel (<?= (int)$offeneAnzahlArtikel ?>)
+                    🛎️ Noch unbezahlte Artikel (<?= (int)$offeneAnzahlArtikel ?>)
 
                 </div>
 
@@ -1448,15 +1727,27 @@ body {
                         <li
                             class="open-order-group"
                             data-order-time="<?= (int)$bestellung['bestellt_unix'] ?>"
+                            style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;"
                         >
 
-                            Bestellung
+                            <div>
+                                Bestellung
+                                <?php if ($bestellung['bestellnummer'] > 0): ?>
+                                    #<?= (int)$bestellung['bestellnummer'] ?>
+                                <?php endif; ?>
+                                <span class="open-order-wait">
+                                    · bestellt <span data-wait-time>gerade eben</span>
+                                </span>
+                            </div>
+
                             <?php if ($bestellung['bestellnummer'] > 0): ?>
-                                #<?= (int)$bestellung['bestellnummer'] ?>
+                                <a
+                                    href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$bestellung['bestellnummer'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                                    style="font-size:12px; font-weight:bold; color:#1b5e20; text-decoration:underline;"
+                                >
+                                    Status anzeigen ➔
+                                </a>
                             <?php endif; ?>
-                            <span class="open-order-wait">
-                                · bestellt <span data-wait-time>gerade eben</span>
-                            </span>
 
                         </li>
 
@@ -1477,11 +1768,22 @@ body {
                 </ul>
 
 
-                <div class="open-orders-footer">
+                <div class="open-orders-footer" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
 
-                    Insgesamt
-                    <?= (int)$offeneAnzahlArtikel ?>
-                    Artikel sind für diesen Tisch noch offen.
+                    <div>
+                        Insgesamt
+                        <?= (int)$offeneAnzahlArtikel ?>
+                        Artikel sind für diesen Tisch noch offen (unbezahlt).
+                    </div>
+
+                    <?php if (!empty($recentOrdersForStatus)): ?>
+                        <a
+                            href="customer_order_success.php?tisch=<?= (int)$tischnummer ?>&order_nr=<?= (int)$recentOrdersForStatus[0]['order_nr'] ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
+                            style="font-size:12px; font-weight:bold; color:#1b5e20; background:#c8e6c9; border:1px solid #81c784; border-radius:8px; padding:4px 9px; text-decoration:none;"
+                        >
+                            🔍 Live-Status öffnen
+                        </a>
+                    <?php endif; ?>
 
                 </div>
 
@@ -2673,6 +2975,10 @@ async function submitCurrentOrder() {
         }
 
         // Weiterleitung zur Bestätigungsseite inklusive Token für Folgebestellungen
+        try {
+            localStorage.setItem('ff_last_order_' + TISCHNUMMER, String(data.order_nr));
+        } catch (storageError) {}
+
         window.location.href =
             'customer_order_success.php' +
             '?tisch=' + encodeURIComponent(data.tischnummer) +

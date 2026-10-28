@@ -2,10 +2,12 @@
 require_once('auth.php');
 require_once('include/db.php');
 require_once __DIR__ . '/include/ff_finance_auth.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
 ff_finance_require($conn);
+ff_csrf_require();
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 if ($id <= 0) {

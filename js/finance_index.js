@@ -3,15 +3,48 @@
     function byId(id) {
         return document.getElementById(id);
     }
+    function getCsrfToken() {
+        if (typeof window.ffGetCsrfToken === 'function') {
+            return window.ffGetCsrfToken();
+        }
+        if (window.FF_CSRF_TOKEN && typeof window.FF_CSRF_TOKEN === 'string') {
+            return window.FF_CSRF_TOKEN;
+        }
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.getAttribute('content')) {
+            return meta.getAttribute('content');
+        }
+        var m = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+        if (m && m[1]) {
+            try { return decodeURIComponent(m[1]); } catch(e) { return m[1]; }
+        }
+        return '';
+    }
     function fetchJson(url, opts) {
         opts = opts || {};
-        return fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts))
+        var csrf = getCsrfToken();
+        var headers = Object.assign({
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-Token': csrf
+        }, opts.headers || {});
+        return fetch(url, Object.assign({ credentials: 'same-origin', cache: 'no-store' }, opts, { headers: headers }))
             .then(function(r) { return r.json(); });
     }
     function fetchPost(url, data) {
+        var csrf = getCsrfToken();
         var body = new URLSearchParams();
         Object.keys(data).forEach(function(k) { body.append(k, data[k]); });
-        return fetchJson(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body });
+        if (csrf && !data.csrf_token && !data.csrf) {
+            body.append('csrf_token', csrf);
+        }
+        return fetchJson(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': csrf
+            },
+            body: body
+        });
     }
 
     function finFormatEur(n) {

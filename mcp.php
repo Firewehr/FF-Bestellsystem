@@ -42,6 +42,9 @@ function ff_mcp_table_exists(mysqli $conn, string $table): bool
         'type',
         'mitarbeiter_verpflegung',
         'feste',
+        'positionen',
+        'bestellungen',
+        'print_targets',
     ];
     if (!in_array($table, $allowed, true)) {
         throw new InvalidArgumentException('Ungültiger Tabellenname');
@@ -214,6 +217,21 @@ function ff_mcp_menu_catalog(mysqli $conn): array
     }
     unset($addition);
 
+    $printTargets = ff_mcp_table_exists($conn, 'print_targets')
+        ? ff_mcp_query_rows(
+            $conn,
+            'SELECT print_target, name, active, sort_order
+             FROM print_targets
+             ORDER BY sort_order, print_target'
+        )
+        : [];
+    foreach ($printTargets as &$pt) {
+        $pt['print_target'] = (int)$pt['print_target'];
+        $pt['active'] = (int)$pt['active'];
+        $pt['sort_order'] = (int)$pt['sort_order'];
+    }
+    unset($pt);
+
     return [
         'positionen' => $positions,
         'positionstypen' => $types,
@@ -221,6 +239,7 @@ function ff_mcp_menu_catalog(mysqli $conn): array
         'rezepturen' => $recipes,
         'unterkategorien' => $subcategories,
         'beilagen' => $additions,
+        'print_targets' => $printTargets,
     ];
 }
 
@@ -324,6 +343,332 @@ function ff_mcp_orders(mysqli $conn, array $args): array
     ];
 }
 
+function ff_mcp_print_targets(mysqli $conn): array
+{
+    $targets = ff_mcp_table_exists($conn, 'print_targets')
+        ? ff_mcp_query_rows(
+            $conn,
+            'SELECT print_target, name, active, sort_order
+             FROM print_targets
+             ORDER BY sort_order, print_target'
+        )
+        : [];
+    foreach ($targets as &$target) {
+        $target['print_target'] = (int)$target['print_target'];
+        $target['active'] = (int)$target['active'];
+        $target['sort_order'] = (int)$target['sort_order'];
+    }
+    unset($target);
+
+    return [
+        'print_targets' => $targets,
+    ];
+}
+
+function ff_mcp_create_unterkategorie(mysqli $conn, array $args): array
+{
+    $name = trim((string)($args['name'] ?? ''));
+    if ($name === '' || (function_exists('mb_strlen') && mb_strlen($name, 'UTF-8') > 128)) {
+        throw new InvalidArgumentException('"name" ist erforderlich und darf maximal 128 Zeichen lang sein.');
+    }
+
+    $rawType = $args['type'] ?? null;
+    if (is_string($rawType)) {
+        $lower = strtolower(trim($rawType));
+        if (in_array($lower, ['speise', 'speisen', 'food', 'essen', '1'], true)) {
+            $type = 1;
+        } elseif (in_array($lower, ['getraenk', 'getränk', 'getraenke', 'getränke', 'drink', 'drinks', '2'], true)) {
+            $type = 2;
+        } else {
+            $type = (int)$rawType;
+        }
+    } else {
+        $type = (int)$rawType;
+    }
+    if ($type !== 1 && $type !== 2) {
+        throw new InvalidArgumentException('"type" muss 1 (Speise) oder 2 (Getränk) sein.');
+    }
+
+    $sortOrder = isset($args['sort_order']) ? (int)$args['sort_order'] : 0;
+
+    $tileBg = null;
+    if (isset($args['tile_bg']) && trim((string)$args['tile_bg']) !== '') {
+        $tileBgRaw = trim((string)$args['tile_bg']);
+        if (function_exists('ff_sanitize_category_tile_bg')) {
+            $tileBg = ff_sanitize_category_tile_bg($tileBgRaw);
+        } else {
+            if ($tileBgRaw[0] !== '#') {
+                $tileBgRaw = '#' . $tileBgRaw;
+            }
+            $tileBg = preg_match('/^#[0-9A-Fa-f]{6}$/', $tileBgRaw) ? strtoupper($tileBgRaw) : null;
+        }
+    }
+
+    $kassaOnly = !empty($args['kassa_only']) ? 1 : 0;
+    $festId = array_key_exists('fest_id', $args) && $args['fest_id'] !== null ? (int)$args['fest_id'] : null;
+
+    $hasFestCol = false;
+    $cFest = @mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'fest_id'");
+    if ($cFest && mysqli_num_rows($cFest) > 0) {
+        $hasFestCol = true;
+    }
+    if ($cFest) {
+        @mysqli_free_result($cFest);
+    }
+
+    if ($hasFestCol && $festId !== null) {
+        $stmt = mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only, fest_id) VALUES (?, ?, ?, ?, ?, ?)');
+        if (!$stmt) {
+            throw new RuntimeException('Vorbereitung fehlgeschlagen: ' . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($stmt, 'isissi', $type, $name, $sortOrder, $tileBg, $kassaOnly, $festId);
+    } else {
+        $stmt = mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)');
+        if (!$stmt) {
+            throw new RuntimeException('Vorbereitung fehlgeschlagen: ' . mysqli_error($conn));
+        }
+        mysqli_stmt_bind_param($stmt, 'isisi', $type, $name, $sortOrder, $tileBg, $kassaOnly);
+    }
+
+    if (!mysqli_stmt_execute($stmt)) {
+        $err = mysqli_stmt_error($stmt);
+        mysqli_stmt_close($stmt);
+        throw new RuntimeException('Unterkategorie konnte nicht angelegt werden: ' . $err);
+    }
+    $newId = (int)mysqli_insert_id($conn);
+    mysqli_stmt_close($stmt);
+
+    if ($hasFestCol && $festId === null && function_exists('ff_fest_scope_attach_last')) {
+        ff_fest_scope_attach_last($conn, 'position_subcategories', $newId);
+    }
+
+    error_log(sprintf('MCP create_unterkategorie id=%d name="%s" type=%d', $newId, $name, $type));
+
+    return [
+        'id' => $newId,
+        'type' => $type,
+        'name' => $name,
+        'sort_order' => $sortOrder,
+        'tile_bg' => $tileBg,
+        'kassa_only' => $kassaOnly,
+        'fest_id' => $festId,
+    ];
+}
+
+function ff_mcp_get_unterkategorien(mysqli $conn): array
+{
+    $subcategories = ff_mcp_table_exists($conn, 'position_subcategories')
+        ? ff_mcp_query_rows(
+            $conn,
+            'SELECT id, type, name, sort_order, tile_bg, kassa_only, fest_id
+             FROM position_subcategories
+             ORDER BY type, sort_order, name'
+        )
+        : [];
+    foreach ($subcategories as &$subcategory) {
+        foreach (['id', 'type', 'sort_order', 'kassa_only', 'fest_id'] as $field) {
+            $subcategory[$field] = $subcategory[$field] === null ? null : (int)$subcategory[$field];
+        }
+    }
+    unset($subcategory);
+
+    return [
+        'unterkategorien' => $subcategories,
+    ];
+}
+
+function ff_mcp_update_unterkategorie(mysqli $conn, array $args): array
+{
+    $id = (int)($args['subcategory_id'] ?? $args['id'] ?? 0);
+    if ($id < 1) {
+        throw new InvalidArgumentException('"subcategory_id" ist erforderlich und muss > 0 sein.');
+    }
+
+    $hasName = array_key_exists('name', $args);
+    $hasTileBg = array_key_exists('tile_bg', $args) || array_key_exists('kachelfarbe', $args);
+    $hasSort = array_key_exists('sort_order', $args);
+    $hasKassa = array_key_exists('kassa_only', $args);
+
+    if (!$hasName && !$hasTileBg && !$hasSort && !$hasKassa) {
+        throw new InvalidArgumentException('Mindestens eines der Felder "name", "tile_bg", "sort_order" oder "kassa_only" muss angegeben werden.');
+    }
+
+    $stmt = mysqli_prepare($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories WHERE id = ? LIMIT 1');
+    if (!$stmt) {
+        throw new RuntimeException('Datenbankfehler');
+    }
+    mysqli_stmt_bind_param($stmt, 'i', $id);
+    mysqli_stmt_execute($stmt);
+    $before = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+    mysqli_stmt_close($stmt);
+
+    if (!$before) {
+        throw new InvalidArgumentException('Unterkategorie ' . $id . ' nicht gefunden.');
+    }
+
+    $sets = [];
+    $types = '';
+    $params = [];
+
+    $name = null;
+    if ($hasName) {
+        $name = trim((string)$args['name']);
+        if ($name === '' || (function_exists('mb_strlen') && mb_strlen($name, 'UTF-8') > 128)) {
+            throw new InvalidArgumentException('"name" muss 1-128 Zeichen lang sein.');
+        }
+        $sets[] = 'name = ?';
+        $types .= 's';
+        $params[] = $name;
+    }
+
+    $tileBg = null;
+    $updateTileBg = false;
+    if ($hasTileBg) {
+        $updateTileBg = true;
+        $rawTile = $args['tile_bg'] ?? $args['kachelfarbe'] ?? null;
+        if ($rawTile === null || trim((string)$rawTile) === '' || trim((string)$rawTile) === 'default') {
+            $tileBg = null;
+            $sets[] = 'tile_bg = NULL';
+        } else {
+            $clean = trim((string)$rawTile);
+            if (function_exists('ff_sanitize_category_tile_bg')) {
+                $san = ff_sanitize_category_tile_bg($clean);
+            } else {
+                $h = strtoupper($clean);
+                if ($h[0] !== '#') {
+                    $h = '#' . $h;
+                }
+                $san = preg_match('/^#[0-9A-F]{6}$/', $h) ? $h : null;
+            }
+            if ($san === null) {
+                throw new InvalidArgumentException('"tile_bg" muss ein gültiger Hex-Farbcode sein (z. B. "#E8F5E9"). Knalliges Warnrot/Orange ist nicht zulässig.');
+            }
+            $tileBg = $san;
+            $sets[] = 'tile_bg = ?';
+            $types .= 's';
+            $params[] = $tileBg;
+        }
+    }
+
+    $sortOrder = null;
+    if ($hasSort) {
+        $sortOrder = (int)$args['sort_order'];
+        $sets[] = 'sort_order = ?';
+        $types .= 'i';
+        $params[] = $sortOrder;
+    }
+
+    $kassaOnly = null;
+    if ($hasKassa) {
+        $kassaOnly = !empty($args['kassa_only']) ? 1 : 0;
+        $sets[] = 'kassa_only = ?';
+        $types .= 'i';
+        $params[] = $kassaOnly;
+    }
+
+    $types .= 'i';
+    $params[] = $id;
+    $uStmt = mysqli_prepare($conn, 'UPDATE position_subcategories SET ' . implode(', ', $sets) . ' WHERE id = ? LIMIT 1');
+    if (!$uStmt) {
+        throw new RuntimeException('Update der Unterkategorie fehlgeschlagen');
+    }
+    mysqli_stmt_bind_param($uStmt, $types, ...$params);
+    if (!mysqli_stmt_execute($uStmt)) {
+        $err = mysqli_stmt_error($uStmt);
+        mysqli_stmt_close($uStmt);
+        throw new RuntimeException('Update fehlgeschlagen: ' . $err);
+    }
+    mysqli_stmt_close($uStmt);
+
+    error_log(sprintf('MCP update_unterkategorie id=%d name="%s" tile_bg="%s"', $id, $name ?? $before['name'], $updateTileBg ? ($tileBg ?? 'null') : ($before['tile_bg'] ?? 'null')));
+
+    return [
+        'subcategory_id' => $id,
+        'vorher' => [
+            'name' => (string)$before['name'],
+            'sort_order' => (int)$before['sort_order'],
+            'tile_bg' => $before['tile_bg'] !== null ? (string)$before['tile_bg'] : null,
+            'kassa_only' => (int)$before['kassa_only'],
+        ],
+        'nachher' => [
+            'name' => $name ?? (string)$before['name'],
+            'sort_order' => $sortOrder ?? (int)$before['sort_order'],
+            'tile_bg' => $updateTileBg ? $tileBg : ($before['tile_bg'] !== null ? (string)$before['tile_bg'] : null),
+            'kassa_only' => $kassaOnly ?? (int)$before['kassa_only'],
+        ],
+    ];
+}
+
+function ff_mcp_delete_unterkategorie(mysqli $conn, array $args): array
+{
+    $id = (int)($args['subcategory_id'] ?? $args['id'] ?? 0);
+    if ($id < 1) {
+        throw new InvalidArgumentException('"subcategory_id" ist erforderlich und muss > 0 sein.');
+    }
+
+    $stmt = mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
+    if (!$stmt) {
+        throw new RuntimeException('Datenbankfehler');
+    }
+    mysqli_stmt_bind_param($stmt, 'i', $id);
+    mysqli_stmt_execute($stmt);
+    $sub = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+    mysqli_stmt_close($stmt);
+
+    if (!$sub) {
+        throw new InvalidArgumentException('Unterkategorie ' . $id . ' nicht gefunden.');
+    }
+
+    // Zugeordnete Positionen zählen und aushängen
+    $cStmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE subcategory_id = ?');
+    $detached = 0;
+    if ($cStmt) {
+        mysqli_stmt_bind_param($cStmt, 'i', $id);
+        mysqli_stmt_execute($cStmt);
+        $cRow = mysqli_fetch_assoc(mysqli_stmt_get_result($cStmt));
+        mysqli_stmt_close($cStmt);
+        $detached = (int)($cRow['c'] ?? 0);
+    }
+
+    if ($detached > 0) {
+        $uStmt = mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ?');
+        if ($uStmt) {
+            mysqli_stmt_bind_param($uStmt, 'i', $id);
+            mysqli_stmt_execute($uStmt);
+            mysqli_stmt_close($uStmt);
+        }
+    }
+
+    // Unterkategorie löschen
+    $dStmt = mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
+    if (!$dStmt) {
+        throw new RuntimeException('Löschen der Unterkategorie fehlgeschlagen');
+    }
+    mysqli_stmt_bind_param($dStmt, 'i', $id);
+    if (!mysqli_stmt_execute($dStmt)) {
+        $err = mysqli_stmt_error($dStmt);
+        mysqli_stmt_close($dStmt);
+        throw new RuntimeException('Löschen fehlgeschlagen: ' . $err);
+    }
+    mysqli_stmt_close($dStmt);
+
+    error_log(sprintf('MCP delete_unterkategorie id=%d name="%s" detached=%d', $id, $sub['name'], $detached));
+
+    return [
+        'deleted' => true,
+        'subcategory_id' => $id,
+        'name' => (string)$sub['name'],
+        'type' => (int)$sub['type'],
+        'positions_detached' => $detached,
+        'message' => sprintf(
+            'Unterkategorie "%s" (ID %d) erfolgreich gelöscht. %d zugewiesene Position(en) wurden ausgehängt.',
+            $sub['name'],
+            $id,
+            $detached
+        ),
+    ];
+}
+
 function ff_mcp_update_position(mysqli $conn, array $args): array
 {
     $id = (int)($args['position_id'] ?? 0);
@@ -332,14 +677,19 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
     }
     $hasName = array_key_exists('name', $args);
     $hasPrice = array_key_exists('preis', $args);
-    if (!$hasName && !$hasPrice) {
-        throw new InvalidArgumentException('Mindestens "name" oder "preis" muss angegeben werden.');
+    $hasPrintTarget = array_key_exists('print_target', $args);
+    $hasSubcategory = array_key_exists('subcategory_id', $args);
+    $hasKurz = array_key_exists('kurzbezeichnung', $args) || array_key_exists('short_name', $args);
+    $hasTileBg = array_key_exists('tile_bg', $args) || array_key_exists('kachelfarbe', $args);
+
+    if (!$hasName && !$hasPrice && !$hasPrintTarget && !$hasSubcategory && !$hasKurz && !$hasTileBg) {
+        throw new InvalidArgumentException('Mindestens eines der Felder "name", "preis", "print_target", "subcategory_id", "kurzbezeichnung" oder "tile_bg" muss angegeben werden.');
     }
 
     $name = null;
     if ($hasName) {
         $name = trim((string)$args['name']);
-        if ($name === '' || mb_strlen($name) > 200) {
+        if ($name === '' || (function_exists('mb_strlen') && mb_strlen($name, 'UTF-8') > 200)) {
             throw new InvalidArgumentException('"name" muss 1-200 Zeichen lang sein.');
         }
     }
@@ -354,14 +704,109 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
         }
         $price = round((float)$raw, 2);
     }
+    $printTarget = null;
+    if ($hasPrintTarget) {
+        $rawPt = $args['print_target'];
+        if ($rawPt === null || $rawPt === '') {
+            $printTarget = 0;
+        } elseif (is_numeric($rawPt)) {
+            $valPt = (int)$rawPt;
+            if ($valPt < 0) {
+                throw new InvalidArgumentException('"print_target" muss >= 0 sein.');
+            }
+            $printTarget = $valPt;
+        } else {
+            throw new InvalidArgumentException('"print_target" muss eine Ganzzahl sein.');
+        }
+    }
 
-    $select = mysqli_prepare($conn, 'SELECT Positionsname, Betrag FROM positionen WHERE rowid = ? LIMIT 1');
+    $kurzbezeichnung = null;
+    $updateKurz = false;
+    if ($hasKurz) {
+        $updateKurz = true;
+        $rawKurz = $args['kurzbezeichnung'] ?? $args['short_name'] ?? '';
+        if ($rawKurz === null) {
+            $kurzbezeichnung = '';
+        } else {
+            $kurzbezeichnung = trim((string)$rawKurz);
+            if (function_exists('mb_strlen') && mb_strlen($kurzbezeichnung, 'UTF-8') > 30) {
+                throw new InvalidArgumentException('"kurzbezeichnung" darf maximal 30 Zeichen lang sein.');
+            }
+        }
+    }
+
+    $tileBg = null;
+    $updateTileBg = false;
+    if ($hasTileBg) {
+        $updateTileBg = true;
+        $rawTile = $args['tile_bg'] ?? $args['kachelfarbe'] ?? null;
+        if ($rawTile === null || trim((string)$rawTile) === '' || trim((string)$rawTile) === 'default') {
+            $tileBg = null; // Auf Standard zurücksetzen
+        } else {
+            $cleanTile = trim((string)$rawTile);
+            if (function_exists('ff_sanitize_category_tile_bg')) {
+                $san = ff_sanitize_category_tile_bg($cleanTile);
+            } else {
+                $h = strtoupper($cleanTile);
+                if ($h[0] !== '#') {
+                    $h = '#' . $h;
+                }
+                $san = preg_match('/^#[0-9A-F]{6}$/', $h) ? $h : null;
+            }
+            if ($san === null) {
+                throw new InvalidArgumentException('"tile_bg" muss ein gültiger Hex-Farbcode sein (z. B. "#E8F5E9"). Knalliges Warnrot/Orange ist nicht zulässig.');
+            }
+            $tileBg = $san;
+        }
+    }
+
+    $select = mysqli_prepare($conn, 'SELECT Positionsname, Betrag, print_target, subcategory_id, type, Kurzbezeichnung, tile_bg FROM positionen WHERE rowid = ? LIMIT 1');
     mysqli_stmt_bind_param($select, 'i', $id);
     mysqli_stmt_execute($select);
     $before = mysqli_fetch_assoc(mysqli_stmt_get_result($select));
     mysqli_stmt_close($select);
     if (!$before) {
         throw new InvalidArgumentException('Position ' . $id . ' nicht gefunden.');
+    }
+
+    $updateSubcategory = false;
+    $subcategoryId = null;
+    if ($hasSubcategory) {
+        $updateSubcategory = true;
+        $rawSub = $args['subcategory_id'];
+        if ($rawSub === null || $rawSub === '' || $rawSub === 0 || $rawSub === '0') {
+            $subcategoryId = null; // Aufheben
+        } elseif (is_numeric($rawSub)) {
+            $valSub = (int)$rawSub;
+            if ($valSub < 0) {
+                throw new InvalidArgumentException('"subcategory_id" muss >= 0 oder null sein.');
+            }
+            if ($valSub > 0) {
+                $subStmt = mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
+                if ($subStmt) {
+                    mysqli_stmt_bind_param($subStmt, 'i', $valSub);
+                    mysqli_stmt_execute($subStmt);
+                    $subRow = mysqli_fetch_assoc(mysqli_stmt_get_result($subStmt));
+                    mysqli_stmt_close($subStmt);
+                    if (!$subRow) {
+                        throw new InvalidArgumentException('Unterkategorie ' . $valSub . ' nicht gefunden.');
+                    }
+                    $posType = (int)($before['type'] ?? 0);
+                    $subType = (int)($subRow['type'] ?? 0);
+                    if ($posType > 0 && $subType > 0 && $posType !== $subType) {
+                        throw new InvalidArgumentException(sprintf(
+                            'Unterkategorie "%s" (Typ %d) passt nicht zum Positionstyp %d (1=Speise, 2=Getränk).',
+                            $subRow['name'],
+                            $subType,
+                            $posType
+                        ));
+                    }
+                }
+                $subcategoryId = $valSub;
+            }
+        } else {
+            throw new InvalidArgumentException('"subcategory_id" muss eine Ganzzahl oder null sein.');
+        }
     }
 
     $sets = [];
@@ -377,6 +822,36 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
         $types .= 'd';
         $params[] = $price;
     }
+    if ($printTarget !== null) {
+        $sets[] = 'print_target = ?';
+        $types .= 'i';
+        $params[] = $printTarget;
+    }
+    if ($updateSubcategory) {
+        if ($subcategoryId === null) {
+            $sets[] = 'subcategory_id = NULL';
+        } else {
+            $sets[] = 'subcategory_id = ?';
+            $types .= 'i';
+            $params[] = $subcategoryId;
+        }
+    }
+    if ($updateKurz) {
+        $sets[] = 'Kurzbezeichnung = ?';
+        $types .= 's';
+        $params[] = $kurzbezeichnung;
+    }
+    if ($updateTileBg) {
+        if ($tileBg === null) {
+            $sets[] = 'tile_bg = NULL, color = NULL';
+        } else {
+            $sets[] = 'tile_bg = ?, color = ?';
+            $types .= 'ss';
+            $params[] = $tileBg;
+            $params[] = $tileBg;
+        }
+    }
+
     $types .= 'i';
     $params[] = $id;
     $update = mysqli_prepare($conn, 'UPDATE positionen SET ' . implode(', ', $sets) . ' WHERE rowid = ? LIMIT 1');
@@ -391,20 +866,39 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
     mysqli_stmt_close($update);
 
     error_log(sprintf(
-        'MCP update_position id=%d name:"%s"->"%s" preis:%s->%s',
+        'MCP update_position id=%d name:"%s"->"%s" preis:%s->%s pt:%s->%s sub:%s->%s kurz:"%s"->"%s" tile:%s->%s',
         $id,
         $before['Positionsname'],
         $name ?? $before['Positionsname'],
         $before['Betrag'],
-        $price ?? $before['Betrag']
+        $price ?? $before['Betrag'],
+        $before['print_target'] ?? 'null',
+        $printTarget !== null ? (string)$printTarget : ($before['print_target'] ?? 'null'),
+        $before['subcategory_id'] ?? 'null',
+        $updateSubcategory ? ($subcategoryId !== null ? (string)$subcategoryId : 'null') : ($before['subcategory_id'] ?? 'null'),
+        $before['Kurzbezeichnung'] ?? '',
+        $updateKurz ? $kurzbezeichnung : ($before['Kurzbezeichnung'] ?? ''),
+        $before['tile_bg'] ?? 'null',
+        $updateTileBg ? ($tileBg ?? 'null') : ($before['tile_bg'] ?? 'null')
     ));
 
     return [
         'position_id' => $id,
-        'vorher' => ['name' => (string)$before['Positionsname'], 'preis' => (float)$before['Betrag']],
+        'vorher' => [
+            'name' => (string)$before['Positionsname'],
+            'preis' => (float)$before['Betrag'],
+            'print_target' => $before['print_target'] === null ? null : (int)$before['print_target'],
+            'subcategory_id' => $before['subcategory_id'] === null ? null : (int)$before['subcategory_id'],
+            'kurzbezeichnung' => (string)($before['Kurzbezeichnung'] ?? ''),
+            'tile_bg' => $before['tile_bg'] !== null ? (string)$before['tile_bg'] : null,
+        ],
         'nachher' => [
             'name' => $name ?? (string)$before['Positionsname'],
             'preis' => $price ?? (float)$before['Betrag'],
+            'print_target' => $hasPrintTarget ? $printTarget : ($before['print_target'] === null ? null : (int)$before['print_target']),
+            'subcategory_id' => $updateSubcategory ? $subcategoryId : ($before['subcategory_id'] === null ? null : (int)$before['subcategory_id']),
+            'kurzbezeichnung' => $updateKurz ? $kurzbezeichnung : (string)($before['Kurzbezeichnung'] ?? ''),
+            'tile_bg' => $updateTileBg ? $tileBg : ($before['tile_bg'] !== null ? (string)$before['tile_bg'] : null),
         ],
     ];
 }
@@ -415,7 +909,8 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
     if ($positionId < 1) {
         throw new InvalidArgumentException('"position_id" ist erforderlich.');
     }
-    if (!isset($args['bestandteile']) || !is_array($args['bestandteile']) || count($args['bestandteile']) > 100) {
+    $bestandteileList = $args['bestandteile'] ?? $args['rezeptur'] ?? null;
+    if (!isset($bestandteileList) || !is_array($bestandteileList) || count($bestandteileList) > 100) {
         throw new InvalidArgumentException('"bestandteile" muss eine Liste mit höchstens 100 Einträgen sein (leer = Rezeptur löschen).');
     }
     if (!ff_mcp_table_exists($conn, 'position_rezepturen') || !ff_mcp_table_exists($conn, 'bestandteile')) {
@@ -433,7 +928,7 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
 
     $ingredientCheck = mysqli_prepare($conn, 'SELECT 1 FROM bestandteile WHERE id = ? LIMIT 1');
     $rows = [];
-    foreach (array_values($args['bestandteile']) as $index => $entry) {
+    foreach (array_values($bestandteileList) as $index => $entry) {
         if (!is_array($entry)) {
             throw new InvalidArgumentException('Eintrag ' . ($index + 1) . ' ist ungültig.');
         }
@@ -528,6 +1023,559 @@ function ff_mcp_fetch_all(mysqli $conn, string $sql, string $types = '', array $
     }
     mysqli_stmt_close($statement);
     return $rows;
+}
+
+function ff_mcp_normalize_allergens($raw): array
+{
+    if (is_array($raw)) {
+        $items = $raw;
+    } else {
+        $items = preg_split('/[,;\r\n]+/', (string)$raw) ?: [];
+    }
+    $clean = [];
+    foreach ($items as $item) {
+        $name = trim((string)$item);
+        if ($name === '') {
+            continue;
+        }
+        if (function_exists('mb_substr')) {
+            $name = mb_substr($name, 0, 100, 'UTF-8');
+            $key = mb_strtolower($name, 'UTF-8');
+        } else {
+            $name = substr($name, 0, 100);
+            $key = strtolower($name);
+        }
+        $clean[$key] = $name;
+    }
+    return array_values($clean);
+}
+
+function ff_mcp_save_bestandteil_allergens(mysqli $conn, int $bestandteilId, array $allergens): void
+{
+    if (!ff_mcp_table_exists($conn, 'bestandteil_allergene') || !ff_mcp_table_exists($conn, 'allergene')) {
+        return;
+    }
+    $delete = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+    if ($delete) {
+        mysqli_stmt_bind_param($delete, 'i', $bestandteilId);
+        mysqli_stmt_execute($delete);
+        mysqli_stmt_close($delete);
+    }
+
+    foreach ($allergens as $name) {
+        $insert = mysqli_prepare($conn, 'INSERT INTO allergene (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
+        if (!$insert) {
+            continue;
+        }
+        mysqli_stmt_bind_param($insert, 's', $name);
+        if (!mysqli_stmt_execute($insert)) {
+            mysqli_stmt_close($insert);
+            continue;
+        }
+        $allergenId = (int)mysqli_insert_id($conn);
+        mysqli_stmt_close($insert);
+
+        if ($allergenId > 0) {
+            $assign = mysqli_prepare($conn, 'INSERT IGNORE INTO bestandteil_allergene (bestandteil_id, allergen_id) VALUES (?, ?)');
+            if ($assign) {
+                mysqli_stmt_bind_param($assign, 'ii', $bestandteilId, $allergenId);
+                mysqli_stmt_execute($assign);
+                mysqli_stmt_close($assign);
+            }
+        }
+    }
+}
+
+function ff_mcp_get_bestandteile(mysqli $conn, array $args): array
+{
+    if (function_exists('ff_rezepturen_ensure_schema')) {
+        ff_rezepturen_ensure_schema($conn);
+    }
+    if (!ff_mcp_table_exists($conn, 'bestandteile')) {
+        return ['bestandteile' => [], 'anzahl' => 0];
+    }
+
+    $where = [];
+    $types = '';
+    $params = [];
+
+    $bestandteilId = isset($args['bestandteil_id']) ? (int)$args['bestandteil_id'] : (isset($args['id']) ? (int)$args['id'] : 0);
+    if ($bestandteilId > 0) {
+        $where[] = 'b.id = ?';
+        $types .= 'i';
+        $params[] = $bestandteilId;
+    }
+
+    if (!empty($args['nur_aktive'])) {
+        $where[] = 'b.aktiv = 1';
+    }
+
+    if (isset($args['fest_id']) && (int)$args['fest_id'] > 0) {
+        $where[] = '(b.fest_id = ? OR b.fest_id IS NULL)';
+        $types .= 'i';
+        $params[] = (int)$args['fest_id'];
+    }
+
+    $whereSql = $where !== [] ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    $hasAllergens = ff_mcp_table_exists($conn, 'bestandteil_allergene') && ff_mcp_table_exists($conn, 'allergene');
+    $allergenSelect = $hasAllergens
+        ? ', COALESCE(GROUP_CONCAT(a.name ORDER BY a.sort_order, a.name SEPARATOR ", "), "") AS allergene_str'
+        : ', "" AS allergene_str';
+    $allergenJoin = $hasAllergens
+        ? 'LEFT JOIN bestandteil_allergene ba ON ba.bestandteil_id = b.id LEFT JOIN allergene a ON a.id = ba.allergen_id'
+        : '';
+
+    $sql = "SELECT b.id, b.name, b.einheit, b.kapazitaet, b.aktiv, b.sort_order, b.fest_id $allergenSelect
+            FROM bestandteile b
+            $allergenJoin
+            $whereSql
+            GROUP BY b.id, b.name, b.einheit, b.kapazitaet, b.aktiv, b.sort_order, b.fest_id
+            ORDER BY b.aktiv DESC, b.sort_order, b.name";
+
+    $rows = ff_mcp_fetch_all($conn, $sql, $types, $params);
+
+    $ids = array_map(static fn($r) => (int)$r['id'], $rows);
+    $consumedMap = function_exists('ff_bestandteil_consumed_map') && $ids !== []
+        ? ff_bestandteil_consumed_map($conn, $ids)
+        : [];
+
+    $result = [];
+    foreach ($rows as $row) {
+        $id = (int)$row['id'];
+        $kap = (int)$row['kapazitaet'];
+        $used = round((float)($consumedMap[$id] ?? 0.0), 3);
+        $allergene = array_values(array_filter(array_map('trim', explode(',', (string)$row['allergene_str']))));
+
+        $result[] = [
+            'id' => $id,
+            'name' => (string)$row['name'],
+            'einheit' => (string)($row['einheit'] ?? 'Stk'),
+            'kapazitaet' => $kap,
+            'aktiv' => (int)$row['aktiv'],
+            'sort_order' => (int)$row['sort_order'],
+            'fest_id' => $row['fest_id'] !== null ? (int)$row['fest_id'] : null,
+            'verbraucht' => $used,
+            'rest' => $kap > 0 ? round($kap - $used, 3) : null,
+            'allergene' => $allergene,
+        ];
+    }
+
+    return ['bestandteile' => $result, 'anzahl' => count($result)];
+}
+
+function ff_mcp_create_bestandteil(mysqli $conn, array $args): array
+{
+    if (function_exists('ff_rezepturen_ensure_schema')) {
+        ff_rezepturen_ensure_schema($conn);
+    }
+    if (!ff_mcp_table_exists($conn, 'bestandteile')) {
+        throw new RuntimeException('Tabelle bestandteile existiert nicht.');
+    }
+
+    $name = trim((string)($args['name'] ?? ''));
+    if ($name === '') {
+        throw new InvalidArgumentException('Parameter "name" ist erforderlich.');
+    }
+    if (function_exists('mb_substr')) {
+        $name = mb_substr($name, 0, 255, 'UTF-8');
+    } else {
+        $name = substr($name, 0, 255);
+    }
+
+    $einheit = trim((string)($args['einheit'] ?? 'Stk'));
+    if ($einheit === '') {
+        $einheit = 'Stk';
+    }
+    if (function_exists('mb_substr')) {
+        $einheit = mb_substr($einheit, 0, 30, 'UTF-8');
+    } else {
+        $einheit = substr($einheit, 0, 30);
+    }
+
+    $kapazitaet = isset($args['kapazitaet']) ? (int)$args['kapazitaet'] : -1;
+    $aktiv = array_key_exists('aktiv', $args) ? (!empty($args['aktiv']) ? 1 : 0) : 1;
+    $sortOrder = isset($args['sort_order']) ? (int)$args['sort_order'] : 0;
+    $festId = isset($args['fest_id']) && (int)$args['fest_id'] > 0 ? (int)$args['fest_id'] : null;
+
+    $allergens = isset($args['allergene']) ? ff_mcp_normalize_allergens($args['allergene']) : [];
+
+    mysqli_begin_transaction($conn);
+    try {
+        $stmt = mysqli_prepare(
+            $conn,
+            'INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order, fest_id) VALUES (?, ?, ?, ?, ?, ?)'
+        );
+        if (!$stmt) {
+            throw new RuntimeException('Fehler beim Vorbereiten des Inserts');
+        }
+        mysqli_stmt_bind_param($stmt, 'ssiiii', $name, $einheit, $kapazitaet, $aktiv, $sortOrder, $festId);
+        if (!mysqli_stmt_execute($stmt)) {
+            $err = mysqli_stmt_error($stmt);
+            mysqli_stmt_close($stmt);
+            throw new RuntimeException('Fehler beim Speichern des Bestandteils: ' . $err);
+        }
+        $newId = (int)mysqli_insert_id($conn);
+        mysqli_stmt_close($stmt);
+
+        if ($allergens !== []) {
+            ff_mcp_save_bestandteil_allergens($conn, $newId, $allergens);
+        }
+
+        mysqli_commit($conn);
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        throw $e;
+    }
+
+    error_log("MCP create_bestandteil id=$newId name=\"$name\"");
+
+    return [
+        'id' => $newId,
+        'name' => $name,
+        'einheit' => $einheit,
+        'kapazitaet' => $kapazitaet,
+        'aktiv' => $aktiv,
+        'sort_order' => $sortOrder,
+        'fest_id' => $festId,
+        'allergene' => $allergens,
+    ];
+}
+
+function ff_mcp_update_bestandteil(mysqli $conn, array $args): array
+{
+    if (function_exists('ff_rezepturen_ensure_schema')) {
+        ff_rezepturen_ensure_schema($conn);
+    }
+    $id = (int)($args['bestandteil_id'] ?? $args['id'] ?? 0);
+    if ($id <= 0) {
+        throw new InvalidArgumentException('Parameter "bestandteil_id" ist erforderlich.');
+    }
+
+    $existing = ff_mcp_fetch_all($conn, 'SELECT id, name, einheit, kapazitaet, aktiv, sort_order, fest_id FROM bestandteile WHERE id = ? LIMIT 1', 'i', [$id]);
+    if ($existing === []) {
+        throw new InvalidArgumentException("Bestandteil mit ID $id nicht gefunden.");
+    }
+    $cur = $existing[0];
+
+    $name = array_key_exists('name', $args) ? trim((string)$args['name']) : (string)$cur['name'];
+    if ($name === '') {
+        throw new InvalidArgumentException('Name darf nicht leer sein.');
+    }
+    if (function_exists('mb_substr')) {
+        $name = mb_substr($name, 0, 255, 'UTF-8');
+    }
+
+    $einheit = array_key_exists('einheit', $args) ? trim((string)$args['einheit']) : (string)$cur['einheit'];
+    if ($einheit === '') {
+        $einheit = 'Stk';
+    }
+    if (function_exists('mb_substr')) {
+        $einheit = mb_substr($einheit, 0, 30, 'UTF-8');
+    }
+
+    $kapazitaet = array_key_exists('kapazitaet', $args) ? (int)$args['kapazitaet'] : (int)$cur['kapazitaet'];
+    $aktiv = array_key_exists('aktiv', $args) ? (!empty($args['aktiv']) ? 1 : 0) : (int)$cur['aktiv'];
+    $sortOrder = array_key_exists('sort_order', $args) ? (int)$args['sort_order'] : (int)$cur['sort_order'];
+    $festId = array_key_exists('fest_id', $args) ? ($args['fest_id'] !== null && (int)$args['fest_id'] > 0 ? (int)$args['fest_id'] : null) : ($cur['fest_id'] !== null ? (int)$cur['fest_id'] : null);
+
+    mysqli_begin_transaction($conn);
+    try {
+        $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, aktiv = ?, sort_order = ?, fest_id = ? WHERE id = ?');
+        if (!$stmt) {
+            throw new RuntimeException('Fehler beim Vorbereiten des Updates');
+        }
+        mysqli_stmt_bind_param($stmt, 'ssiiiii', $name, $einheit, $kapazitaet, $aktiv, $sortOrder, $festId, $id);
+        if (!mysqli_stmt_execute($stmt)) {
+            $err = mysqli_stmt_error($stmt);
+            mysqli_stmt_close($stmt);
+            throw new RuntimeException('Fehler beim Aktualisieren: ' . $err);
+        }
+        mysqli_stmt_close($stmt);
+
+        if (array_key_exists('allergene', $args)) {
+            $allergens = ff_mcp_normalize_allergens($args['allergene']);
+            ff_mcp_save_bestandteil_allergens($conn, $id, $allergens);
+        }
+
+        mysqli_commit($conn);
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        throw $e;
+    }
+
+    error_log("MCP update_bestandteil id=$id name=\"$name\"");
+
+    $updated = ff_mcp_get_bestandteile($conn, ['bestandteil_id' => $id]);
+    return $updated['bestandteile'][0] ?? ['id' => $id, 'name' => $name];
+}
+
+function ff_mcp_delete_bestandteil(mysqli $conn, array $args): array
+{
+    $id = (int)($args['bestandteil_id'] ?? $args['id'] ?? 0);
+    if ($id <= 0) {
+        throw new InvalidArgumentException('Parameter "bestandteil_id" ist erforderlich.');
+    }
+
+    $existing = ff_mcp_fetch_all($conn, 'SELECT id, name, aktiv FROM bestandteile WHERE id = ? LIMIT 1', 'i', [$id]);
+    if ($existing === []) {
+        throw new InvalidArgumentException("Bestandteil mit ID $id nicht gefunden.");
+    }
+
+    $deaktivieren = !empty($args['deaktivieren']);
+    $force = !empty($args['force']);
+
+    if ($deaktivieren) {
+        $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET aktiv = 0 WHERE id = ?');
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, 'i', $id);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
+        }
+        error_log("MCP delete_bestandteil (deaktiviert) id=$id");
+        return ['bestandteil_id' => $id, 'action' => 'deactivated', 'name' => (string)$existing[0]['name']];
+    }
+
+    $usages = ff_mcp_fetch_all($conn, 'SELECT COUNT(*) AS c FROM position_rezepturen WHERE bestandteil_id = ?', 'i', [$id]);
+    $usageCount = (int)($usages[0]['c'] ?? 0);
+
+    if ($usageCount > 0 && !$force) {
+        throw new InvalidArgumentException(
+            "Bestandteil $id wird noch in $usageCount Rezeptur(en) verwendet. Zum Löschen 'force': true angeben oder 'deaktivieren': true verwenden."
+        );
+    }
+
+    mysqli_begin_transaction($conn);
+    try {
+        if ($usageCount > 0 && $force && ff_mcp_table_exists($conn, 'position_rezepturen')) {
+            $delPr = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
+            if ($delPr) {
+                mysqli_stmt_bind_param($delPr, 'i', $id);
+                mysqli_stmt_execute($delPr);
+                mysqli_stmt_close($delPr);
+            }
+        }
+        if (ff_mcp_table_exists($conn, 'bestandteil_allergene')) {
+            $delBa = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+            if ($delBa) {
+                mysqli_stmt_bind_param($delBa, 'i', $id);
+                mysqli_stmt_execute($delBa);
+                mysqli_stmt_close($delBa);
+            }
+        }
+        $delB = mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
+        if ($delB) {
+            mysqli_stmt_bind_param($delB, 'i', $id);
+            mysqli_stmt_execute($delB);
+            mysqli_stmt_close($delB);
+        }
+        mysqli_commit($conn);
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        throw $e;
+    }
+
+    error_log("MCP delete_bestandteil id=$id name=\"{$existing[0]['name']}\"");
+    return ['bestandteil_id' => $id, 'action' => 'deleted', 'name' => (string)$existing[0]['name']];
+}
+
+function ff_mcp_get_recipe(mysqli $conn, array $args): array
+{
+    if (function_exists('ff_rezepturen_ensure_schema')) {
+        ff_rezepturen_ensure_schema($conn);
+    }
+    if (!ff_mcp_table_exists($conn, 'position_rezepturen')) {
+        return ['rezepturen' => [], 'anzahl' => 0];
+    }
+
+    $positionId = isset($args['position_id']) ? (int)$args['position_id'] : 0;
+    $festId = isset($args['fest_id']) ? (int)$args['fest_id'] : 0;
+
+    $where = [];
+    $types = '';
+    $params = [];
+
+    if ($positionId > 0) {
+        $where[] = 'pr.position_id = ?';
+        $types .= 'i';
+        $params[] = $positionId;
+    }
+    if ($festId > 0) {
+        $where[] = '(pr.fest_id = ? OR pr.fest_id IS NULL)';
+        $types .= 'i';
+        $params[] = $festId;
+    }
+
+    $whereSql = $where !== [] ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    $hasBestandteile = ff_mcp_table_exists($conn, 'bestandteile');
+    $bJoin = $hasBestandteile ? 'LEFT JOIN bestandteile b ON b.id = pr.bestandteil_id' : '';
+    $bFields = $hasBestandteile
+        ? 'b.name AS bestandteil_name, b.einheit AS bestandteil_einheit, b.kapazitaet AS bestandteil_kapazitaet, b.aktiv AS bestandteil_aktiv'
+        : 'NULL AS bestandteil_name, NULL AS bestandteil_einheit, NULL AS bestandteil_kapazitaet, NULL AS bestandteil_aktiv';
+
+    $sql = "SELECT pr.id, pr.position_id, p.Positionsname, pr.bestandteil_id, pr.menge,
+                   pr.optional_enabled, pr.default_selected, pr.option_group, pr.reihenfolge, pr.fest_id,
+                   $bFields
+            FROM position_rezepturen pr
+            LEFT JOIN positionen p ON p.rowid = pr.position_id
+            $bJoin
+            $whereSql
+            ORDER BY pr.position_id, pr.reihenfolge, pr.id";
+
+    $rows = ff_mcp_fetch_all($conn, $sql, $types, $params);
+
+    $allergensByBid = [];
+    if ($hasBestandteile && ff_mcp_table_exists($conn, 'bestandteil_allergene') && ff_mcp_table_exists($conn, 'allergene')) {
+        $bids = array_unique(array_filter(array_map(static fn($r) => (int)$r['bestandteil_id'], $rows)));
+        if ($bids !== []) {
+            $inClause = implode(',', $bids);
+            $aRows = ff_mcp_query_rows(
+                $conn,
+                "SELECT ba.bestandteil_id, a.name
+                 FROM bestandteil_allergene ba
+                 INNER JOIN allergene a ON a.id = ba.allergen_id
+                 WHERE ba.bestandteil_id IN ($inClause)
+                 ORDER BY ba.bestandteil_id, a.sort_order, a.name"
+            );
+            foreach ($aRows as $ar) {
+                $allergensByBid[(int)$ar['bestandteil_id']][] = (string)$ar['name'];
+            }
+        }
+    }
+
+    $recipes = [];
+    foreach ($rows as $row) {
+        $bid = (int)$row['bestandteil_id'];
+        $recipes[] = [
+            'id' => (int)$row['id'],
+            'position_id' => (int)$row['position_id'],
+            'Positionsname' => (string)($row['Positionsname'] ?? 'Position ' . $row['position_id']),
+            'bestandteil_id' => $bid,
+            'bestandteil_name' => (string)($row['bestandteil_name'] ?? 'Unbekannt'),
+            'bestandteil_einheit' => (string)($row['bestandteil_einheit'] ?? 'Stk'),
+            'bestandteil_kapazitaet' => $row['bestandteil_kapazitaet'] !== null ? (int)$row['bestandteil_kapazitaet'] : null,
+            'bestandteil_aktiv' => $row['bestandteil_aktiv'] !== null ? (int)$row['bestandteil_aktiv'] : null,
+            'menge' => (float)$row['menge'],
+            'optional_enabled' => (int)$row['optional_enabled'],
+            'default_selected' => (int)$row['default_selected'],
+            'option_group' => (string)($row['option_group'] ?? ''),
+            'reihenfolge' => (int)$row['reihenfolge'],
+            'fest_id' => $row['fest_id'] !== null ? (int)$row['fest_id'] : null,
+            'allergene' => $allergensByBid[$bid] ?? [],
+        ];
+    }
+
+    return [
+        'position_id' => $positionId > 0 ? $positionId : null,
+        'rezepturen' => $recipes,
+        'anzahl' => count($recipes),
+    ];
+}
+
+function ff_mcp_add_recipe_item(mysqli $conn, array $args): array
+{
+    if (function_exists('ff_rezepturen_ensure_schema')) {
+        ff_rezepturen_ensure_schema($conn);
+    }
+    $positionId = (int)($args['position_id'] ?? 0);
+    $bestandteilId = (int)($args['bestandteil_id'] ?? 0);
+    if ($positionId <= 0 || $bestandteilId <= 0) {
+        throw new InvalidArgumentException('"position_id" und "bestandteil_id" sind erforderlich.');
+    }
+
+    $posCheck = ff_mcp_fetch_all($conn, 'SELECT Positionsname FROM positionen WHERE rowid = ? LIMIT 1', 'i', [$positionId]);
+    if ($posCheck === []) {
+        throw new InvalidArgumentException("Position $positionId nicht gefunden.");
+    }
+    $bCheck = ff_mcp_fetch_all($conn, 'SELECT name, einheit FROM bestandteile WHERE id = ? LIMIT 1', 'i', [$bestandteilId]);
+    if ($bCheck === []) {
+        throw new InvalidArgumentException("Bestandteil $bestandteilId nicht gefunden.");
+    }
+
+    $amountRaw = $args['menge'] ?? 1.0;
+    if (is_string($amountRaw)) {
+        $amountRaw = str_replace(',', '.', trim($amountRaw));
+    }
+    $menge = (float)$amountRaw;
+    if ($menge <= 0) {
+        throw new InvalidArgumentException('Menge muss > 0 sein.');
+    }
+
+    $optional = !empty($args['optional']) ? 1 : 0;
+    $defaultSelected = array_key_exists('default_selected', $args) ? (!empty($args['default_selected']) ? 1 : 0) : 1;
+    $optionGroup = trim((string)($args['option_group'] ?? ''));
+    if (function_exists('mb_substr')) {
+        $optionGroup = mb_substr($optionGroup, 0, 64, 'UTF-8');
+    }
+
+    if (isset($args['reihenfolge'])) {
+        $reihenfolge = (int)$args['reihenfolge'];
+    } else {
+        $maxOrder = ff_mcp_fetch_all($conn, 'SELECT COALESCE(MAX(reihenfolge), -1) AS m FROM position_rezepturen WHERE position_id = ?', 'i', [$positionId]);
+        $reihenfolge = ((int)($maxOrder[0]['m'] ?? -1)) + 1;
+    }
+
+    $existing = ff_mcp_fetch_all(
+        $conn,
+        'SELECT id FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ? AND option_group = ? LIMIT 1',
+        'iis',
+        [$positionId, $bestandteilId, $optionGroup]
+    );
+
+    if ($existing !== []) {
+        $id = (int)$existing[0]['id'];
+        $stmt = mysqli_prepare(
+            $conn,
+            'UPDATE position_rezepturen SET menge = ?, optional_enabled = ?, default_selected = ?, reihenfolge = ? WHERE id = ?'
+        );
+        mysqli_stmt_bind_param($stmt, 'diiii', $menge, $optional, $defaultSelected, $reihenfolge, $id);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    } else {
+        $stmt = mysqli_prepare(
+            $conn,
+            'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL)'
+        );
+        mysqli_stmt_bind_param($stmt, 'iidiisi', $positionId, $bestandteilId, $menge, $optional, $defaultSelected, $optionGroup, $reihenfolge);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    }
+
+    error_log("MCP add_recipe_item position_id=$positionId bestandteil_id=$bestandteilId menge=$menge");
+
+    return ff_mcp_get_recipe($conn, ['position_id' => $positionId]);
+}
+
+function ff_mcp_remove_recipe_item(mysqli $conn, array $args): array
+{
+    $positionId = (int)($args['position_id'] ?? 0);
+    $bestandteilId = (int)($args['bestandteil_id'] ?? 0);
+    if ($positionId <= 0 || $bestandteilId <= 0) {
+        throw new InvalidArgumentException('"position_id" und "bestandteil_id" sind erforderlich.');
+    }
+
+    if (isset($args['option_group'])) {
+        $optionGroup = trim((string)$args['option_group']);
+        $stmt = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ? AND option_group = ?');
+        mysqli_stmt_bind_param($stmt, 'iis', $positionId, $bestandteilId, $optionGroup);
+    } else {
+        $stmt = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ?');
+        mysqli_stmt_bind_param($stmt, 'ii', $positionId, $bestandteilId);
+    }
+
+    if ($stmt) {
+        mysqli_stmt_execute($stmt);
+        $affected = mysqli_stmt_affected_rows($stmt);
+        mysqli_stmt_close($stmt);
+    } else {
+        $affected = 0;
+    }
+
+    error_log("MCP remove_recipe_item position_id=$positionId bestandteil_id=$bestandteilId (entfernt: $affected)");
+
+    return ff_mcp_get_recipe($conn, ['position_id' => $positionId]);
 }
 
 function ff_mcp_fests(mysqli $conn): array
@@ -732,7 +1780,7 @@ if (stripos($contentType, 'application/json') !== 0) {
     ff_mcp_http_error(415, 'unsupported_media_type');
 }
 
-$body = file_get_contents('php://input', false, null, 0, 1048577);
+$body = file_get_contents(php_sapi_name() === 'cli' ? 'php://stdin' : 'php://input', false, null, 0, 1048577);
 if ($body === false || strlen($body) > 1048576) {
     ff_mcp_http_error(413, 'request_too_large');
 }
@@ -801,20 +1849,157 @@ switch ((string)$request['method']) {
                 ],
             ], [
                 'name' => 'update_position',
-                'description' => 'ÄNDERT eine Position der Speisekarte: Name und/oder Preis. Bereits erfasste Bestellungen behalten ihren damaligen Betrag.',
+                'description' => 'ÄNDERT eine Position der Speisekarte: Name, Preis, Druckziel (print_target), Unterkategorie (subcategory_id), Kurzbezeichnung (kurzbezeichnung) und/oder Kachelfarbe (tile_bg). Bereits erfasste Bestellungen behalten ihren damaligen Betrag.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
                         'position_id' => ['type' => 'integer', 'description' => 'rowid der Position (siehe get_menu_catalog)'],
-                        'name' => ['type' => 'string', 'description' => 'Neuer Name'],
+                        'name' => ['type' => 'string', 'description' => 'Neuer Name der Position'],
                         'preis' => ['type' => 'number', 'description' => 'Neuer Preis in Euro'],
+                        'print_target' => ['type' => 'integer', 'description' => 'ID des Druckziels (z. B. 11 = Küche, 12 = Schank / Bon, siehe get_print_targets oder get_menu_catalog)'],
+                        'subcategory_id' => ['type' => 'integer', 'description' => 'ID der Unterkategorie (aus position_subcategories / get_unterkategorien; 0 oder null hebt die Zuordnung auf)'],
+                        'kurzbezeichnung' => ['type' => 'string', 'description' => 'Kurzbezeichnung der Position für Bons und Kompaktansichten (max. 30 Zeichen; leer = leeren)'],
+                        'tile_bg' => ['type' => 'string', 'description' => 'Kachel-Hintergrundfarbe (#RRGGBB Hex-Code; leer oder null = Standard wiederherstellen)'],
                     ],
                     'required' => ['position_id'],
                     'additionalProperties' => false,
                 ],
             ], [
+                'name' => 'create_unterkategorie',
+                'description' => 'LEGT EINE NEUE UNTERKATEGORIE (Kachelbereich für Speisen oder Getränke) in position_subcategories an.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'type' => ['type' => 'integer', 'description' => 'Kategorie: 1 = Speisen, 2 = Getränke', 'enum' => [1, 2]],
+                        'name' => ['type' => 'string', 'description' => 'Name der Unterkategorie (z. B. "Burger", "Alkoholfrei", "Bier")'],
+                        'sort_order' => ['type' => 'integer', 'description' => 'Sortierreihenfolge (Standard: 0)'],
+                        'tile_bg' => ['type' => 'string', 'description' => 'Optional: Kachel-Hintergrundfarbe (#RRGGBB Hex-Code)'],
+                        'kassa_only' => ['type' => 'boolean', 'description' => 'Optional: nur an der Kasse / Direktverkauf anzeigen (Standard: false)'],
+                        'fest_id' => ['type' => 'integer', 'description' => 'Optional: Fest-ID für fest-spezifisches Scoping'],
+                    ],
+                    'required' => ['type', 'name'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'update_unterkategorie',
+                'description' => 'ÄNDERT eine bestehende Unterkategorie (Kachelbereich): Name, Kachelfarbe (tile_bg), Sortierung (sort_order) und/oder Kassa-Only-Status.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'subcategory_id' => ['type' => 'integer', 'description' => 'ID der Unterkategorie (siehe get_unterkategorien)'],
+                        'name' => ['type' => 'string', 'description' => 'Neuer Name der Unterkategorie'],
+                        'tile_bg' => ['type' => 'string', 'description' => 'Kachel-Hintergrundfarbe (#RRGGBB Hex-Code; leer oder null = Standard wiederherstellen)'],
+                        'sort_order' => ['type' => 'integer', 'description' => 'Sortierreihenfolge (Ganzzahl)'],
+                        'kassa_only' => ['type' => 'boolean', 'description' => 'Nur an der Kasse / Direktverkauf anzeigen'],
+                    ],
+                    'required' => ['subcategory_id'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'delete_unterkategorie',
+                'description' => 'LÖSCHT eine Unterkategorie aus position_subcategories. Zugewiesene Positionen bleiben erhalten und werden auf "keine Unterkategorie" (subcategory_id = NULL) zurückgesetzt.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'subcategory_id' => ['type' => 'integer', 'description' => 'ID der zu löschenden Unterkategorie (siehe get_unterkategorien)'],
+                    ],
+                    'required' => ['subcategory_id'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'get_unterkategorien',
+                'description' => 'Liest alle Unterkategorien (Kachelbereiche) mit ID, Typ (1=Speise, 2=Getränk), Name, Sortierung, Farbe und Kassa-Only-Status. Es werden keine Daten verändert.',
+                'inputSchema' => ['type' => 'object', 'properties' => (object)[], 'additionalProperties' => false],
+            ], [
+                'name' => 'get_print_targets',
+                'description' => 'Liest alle konfigurierten Druckziele (z. B. 11 = Küche, 12 = Schank / Bon) mit ID, Name, Aktiv-Status und Sortierung. Es werden keine Daten verändert.',
+                'inputSchema' => ['type' => 'object', 'properties' => (object)[], 'additionalProperties' => false],
+            ], [
+                'name' => 'get_bestandteile',
+                'description' => 'Liest alle oder gefilterte Bestandteile (Zutaten/Komponenten) inklusive Einheit, Kapazität, aktuellem Verbrauch, verbleibendem Restbestand, Aktiv-Status, Sortierung und Allergenen. Es werden keine Daten verändert.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'bestandteil_id' => ['type' => 'integer', 'description' => 'Optional: nur diesen Bestandteil lesen'],
+                        'nur_aktive' => ['type' => 'boolean', 'description' => 'Optional: nur aktive Bestandteile anzeigen (Standard false)'],
+                        'fest_id' => ['type' => 'integer', 'description' => 'Optional: Filter nach Fest-ID'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'create_bestandteil',
+                'description' => 'ERSTELLT einen neuen Bestandteil (Zutat/Komponente für Rezepturen). Kann Name, Einheit (Standard "Stk"), Kapazität (-1 für unbegrenzt), Sortierung, optional fest_id und Allergene enthalten.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'Name des Bestandteils (z.B. "Semmel", "Käse", "Sauce")'],
+                        'einheit' => ['type' => 'string', 'description' => 'Mengeneinheit (Standard "Stk", z.B. "kg", "g", "l", "ml", "Portion")'],
+                        'kapazitaet' => ['type' => 'integer', 'description' => 'Max. Vorrat/Kapazität (-1 für unbegrenzt, Standard -1)'],
+                        'aktiv' => ['type' => 'boolean', 'description' => 'Aktiv für neue Bestellungen (Standard true)'],
+                        'sort_order' => ['type' => 'integer', 'description' => 'Sortierreihenfolge (Standard 0)'],
+                        'allergene' => [
+                            'description' => 'Liste von Allergenen (z.B. ["Gluten", "Milch"] oder "Gluten, Milch")',
+                            'oneOf' => [
+                                ['type' => 'array', 'items' => ['type' => 'string']],
+                                ['type' => 'string'],
+                            ],
+                        ],
+                        'fest_id' => ['type' => 'integer', 'description' => 'Optional: Zuordnung zu einem Fest'],
+                    ],
+                    'required' => ['name'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'update_bestandteil',
+                'description' => 'ÄNDERT die Eigenschaften eines bestehenden Bestandteils: Name, Einheit, Kapazität (-1 für unbegrenzt), Aktiv-Status, Sortierung und/oder Allergene.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'bestandteil_id' => ['type' => 'integer', 'description' => 'ID des zu ändernden Bestandteils (siehe get_bestandteile)'],
+                        'name' => ['type' => 'string', 'description' => 'Neuer Name'],
+                        'einheit' => ['type' => 'string', 'description' => 'Neue Mengeneinheit'],
+                        'kapazitaet' => ['type' => 'integer', 'description' => 'Neue Kapazität (-1 = unbegrenzt)'],
+                        'aktiv' => ['type' => 'boolean', 'description' => 'Aktiv-Status (true/false)'],
+                        'sort_order' => ['type' => 'integer', 'description' => 'Sortierreihenfolge'],
+                        'allergene' => [
+                            'description' => 'Neue Allergene (ersetzt bisherige Allergene dieses Bestandteils)',
+                            'oneOf' => [
+                                ['type' => 'array', 'items' => ['type' => 'string']],
+                                ['type' => 'string'],
+                            ],
+                        ],
+                        'fest_id' => ['type' => 'integer', 'description' => 'Fest-Zuordnung'],
+                    ],
+                    'required' => ['bestandteil_id'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'delete_bestandteil',
+                'description' => 'LÖSCHT oder deaktiviert einen Bestandteil. Falls der Bestandteil noch in Rezepturen verwendet wird, muss "force": true angegeben werden (entfernt ihn aus den Rezepturen) oder "deaktivieren": true (setzt aktiv = 0).',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'bestandteil_id' => ['type' => 'integer', 'description' => 'ID des Bestandteils'],
+                        'deaktivieren' => ['type' => 'boolean', 'description' => 'Wenn true, wird der Bestandteil nur deaktiviert (aktiv = 0) statt gelöscht'],
+                        'force' => ['type' => 'boolean', 'description' => 'Wenn true, wird der Bestandteil gelöscht und aus allen Rezepturen entfernt'],
+                    ],
+                    'required' => ['bestandteil_id'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'get_recipe',
+                'description' => 'Liest die Rezeptur(en) von einer oder allen Positionen: enthält alle Zutaten mit Mengen, Einheiten, Allergenen, Optional-Status, Default-Auswahl und Optionsgruppen. Es werden keine Daten verändert.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'position_id' => ['type' => 'integer', 'description' => 'Optional: nur die Rezeptur dieser Position (siehe get_menu_catalog)'],
+                        'fest_id' => ['type' => 'integer', 'description' => 'Optional: Filter nach Fest-ID'],
+                    ],
+                    'additionalProperties' => false,
+                ],
+            ], [
                 'name' => 'set_recipe',
-                'description' => 'ÄNDERT die Rezeptur einer Position: ersetzt ALLE Bestandteile der Position durch die übergebene Liste (leere Liste löscht die Rezeptur). Vorher mit get_menu_catalog die aktuelle Rezeptur und gültige bestandteil_id lesen.',
+                'description' => 'ÄNDERT die Rezeptur einer Position: ersetzt ALLE Bestandteile der Position durch die übergebene Liste (leere Liste löscht die Rezeptur). Vorher mit get_bestandteile oder get_menu_catalog gültige bestandteil_id lesen.',
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
@@ -837,6 +2022,36 @@ switch ((string)$request['method']) {
                         ],
                     ],
                     'required' => ['position_id', 'bestandteile'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'add_recipe_item',
+                'description' => 'FÜGT einen Bestandteil zur Rezeptur einer Position hinzu (oder aktualisiert Menge/Optionen, falls bereits vorhanden).',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'position_id' => ['type' => 'integer', 'description' => 'rowid der Position'],
+                        'bestandteil_id' => ['type' => 'integer', 'description' => 'ID des hinzuzufügenden Bestandteils'],
+                        'menge' => ['type' => 'number', 'description' => 'Menge je Portion (Standard 1.0)'],
+                        'optional' => ['type' => 'boolean', 'description' => 'Vom Gast abwählbar/wählbar (Standard false)'],
+                        'default_selected' => ['type' => 'boolean', 'description' => 'Bei optionalen vorausgewählt (Standard true)'],
+                        'option_group' => ['type' => 'string', 'description' => 'Optionsgruppe (z.B. "Brot", "Sauce")'],
+                        'reihenfolge' => ['type' => 'integer', 'description' => 'Reihenfolge innerhalb der Rezeptur'],
+                    ],
+                    'required' => ['position_id', 'bestandteil_id'],
+                    'additionalProperties' => false,
+                ],
+            ], [
+                'name' => 'remove_recipe_item',
+                'description' => 'ENTFERNT einen Bestandteil aus der Rezeptur einer Position.',
+                'inputSchema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'position_id' => ['type' => 'integer', 'description' => 'rowid der Position'],
+                        'bestandteil_id' => ['type' => 'integer', 'description' => 'ID des zu entfernenden Bestandteils'],
+                        'option_group' => ['type' => 'string', 'description' => 'Optional: nur aus dieser Optionsgruppe entfernen'],
+                    ],
+                    'required' => ['position_id', 'bestandteil_id'],
                     'additionalProperties' => false,
                 ],
             ], [
@@ -866,8 +2081,50 @@ switch ((string)$request['method']) {
 
     case 'tools/call':
         $toolName = (string)($request['params']['name'] ?? '');
-        if (!in_array($toolName, ['get_menu_catalog', 'get_orders', 'update_position', 'set_recipe', 'get_sales_summary', 'get_stock_status', 'get_fests'], true)) {
-            ff_mcp_rpc_error($id, -32602, 'Unknown tool');
+        $toolAliases = [
+            'get_ingredients' => 'get_bestandteile',
+            'create_ingredient' => 'create_bestandteil',
+            'add_bestandteil' => 'create_bestandteil',
+            'update_ingredient' => 'update_bestandteil',
+            'delete_ingredient' => 'delete_bestandteil',
+            'get_recipes' => 'get_recipe',
+            'get_rezeptur' => 'get_recipe',
+            'set_rezeptur' => 'set_recipe',
+            'add_recipe_component' => 'add_recipe_item',
+            'remove_recipe_component' => 'remove_recipe_item',
+            'get_druckziele' => 'get_print_targets',
+            'create_subcategory' => 'create_unterkategorie',
+            'add_unterkategorie' => 'create_unterkategorie',
+            'get_subcategories' => 'get_unterkategorien',
+            'update_subcategory' => 'update_unterkategorie',
+            'delete_subcategory' => 'delete_unterkategorie',
+            'remove_unterkategorie' => 'delete_unterkategorie',
+        ];
+        $canonicalToolName = $toolAliases[$toolName] ?? $toolName;
+
+        $allowedTools = [
+            'get_menu_catalog',
+            'get_print_targets',
+            'get_unterkategorien',
+            'create_unterkategorie',
+            'update_unterkategorie',
+            'delete_unterkategorie',
+            'get_orders',
+            'update_position',
+            'get_bestandteile',
+            'create_bestandteil',
+            'update_bestandteil',
+            'delete_bestandteil',
+            'get_recipe',
+            'set_recipe',
+            'add_recipe_item',
+            'remove_recipe_item',
+            'get_sales_summary',
+            'get_stock_status',
+            'get_fests',
+        ];
+        if (!in_array($canonicalToolName, $allowedTools, true)) {
+            ff_mcp_rpc_error($id, -32602, 'Unknown tool: ' . $toolName);
         }
         $arguments = $request['params']['arguments'] ?? [];
         if (!is_array($arguments)) {
@@ -875,10 +2132,29 @@ switch ((string)$request['method']) {
         }
         try {
             require_once __DIR__ . '/include/db.php';
-            $data = match ($toolName) {
+            require_once __DIR__ . '/include/ff_rezepturen_schema.php';
+            require_once __DIR__ . '/include/ff_position_stock_summary.php';
+            require_once __DIR__ . '/include/menu_tile_helpers.php';
+            require_once __DIR__ . '/include/ff_fest_scope.php';
+            if (function_exists('ff_rezepturen_ensure_schema')) {
+                ff_rezepturen_ensure_schema($conn);
+            }
+            $data = match ($canonicalToolName) {
+                'get_print_targets' => ff_mcp_print_targets($conn),
+                'get_unterkategorien' => ff_mcp_get_unterkategorien($conn),
+                'create_unterkategorie' => ff_mcp_create_unterkategorie($conn, $arguments),
+                'update_unterkategorie' => ff_mcp_update_unterkategorie($conn, $arguments),
+                'delete_unterkategorie' => ff_mcp_delete_unterkategorie($conn, $arguments),
                 'get_orders' => ff_mcp_orders($conn, $arguments),
                 'update_position' => ff_mcp_update_position($conn, $arguments),
+                'get_bestandteile' => ff_mcp_get_bestandteile($conn, $arguments),
+                'create_bestandteil' => ff_mcp_create_bestandteil($conn, $arguments),
+                'update_bestandteil' => ff_mcp_update_bestandteil($conn, $arguments),
+                'delete_bestandteil' => ff_mcp_delete_bestandteil($conn, $arguments),
+                'get_recipe' => ff_mcp_get_recipe($conn, $arguments),
                 'set_recipe' => ff_mcp_set_recipe($conn, $arguments),
+                'add_recipe_item' => ff_mcp_add_recipe_item($conn, $arguments),
+                'remove_recipe_item' => ff_mcp_remove_recipe_item($conn, $arguments),
                 'get_sales_summary' => ff_mcp_sales_summary($conn, $arguments),
                 'get_stock_status' => ff_mcp_stock_status($conn),
                 'get_fests' => ff_mcp_fests($conn),
@@ -900,7 +2176,7 @@ switch ((string)$request['method']) {
         } catch (Throwable $exception) {
             error_log('MCP tool ' . $toolName . ' failed: ' . $exception->getMessage());
             ff_mcp_rpc_response($id, [
-                'content' => [['type' => 'text', 'text' => 'Daten konnten nicht gelesen werden.']],
+                'content' => [['type' => 'text', 'text' => 'Fehler: ' . $exception->getMessage()]],
                 'isError' => true,
             ]);
         }

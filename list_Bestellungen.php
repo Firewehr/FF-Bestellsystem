@@ -11,7 +11,7 @@ $Tischnummer = intval($_GET['tischnummer']);
     <span class="ms-1 fw-semibold text-muted">Historie</span>
     <?php if ($Tischnummer > 0): ?>
     <?php $ffStoryAdmin = !empty($_SESSION['admin']) && (int) $_SESSION['admin'] >= 1; ?>
-    <a href="#" class="btn btn-outline-primary btn-sm ms-auto"
+    <a href="#" class="btn btn-outline-secondary btn-sm ms-auto"
        onclick="if(typeof ffOpenTischGesamteStory==='function'){ffOpenTischGesamteStory(<?php echo $ffStoryAdmin ? 'true' : 'false'; ?>);} return false;">
         Gesamte Historie anzeigen
     </a>
@@ -121,6 +121,7 @@ try {
 
             $bonIdGrp = trim((string) ($first['bon_id'] ?? ''));
             $detailActs = ff_hist_tisch_detail_actions_html($orderNr, $bonIdGrp, (int) $Tischnummer);
+            $detailActs = str_replace('>Details</a>', '>📄 Bon ansehen</a>', $detailActs);
             if ($detailActs === '') {
                 $zt = $histFmtTs($first['zeitstempel'] ?? '');
                 $groupTitle = $zt !== '' ? ('Bestellungsrunde · ' . $zt) : 'Bestellungsrunde';
@@ -140,46 +141,131 @@ try {
             $canStornoWhole = $stornoWhole['can'];
             $stornoInGroup = $stornoWhole['count'];
 
-            echo '<div class="border rounded-3 bg-white overflow-hidden">';
-            echo '<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 bg-light border-bottom">';
-            echo '<div class="d-flex flex-wrap align-items-center gap-2">';
+            $grpSum = 0.0;
+            foreach ($groupRows as $gr) {
+                if ((int) ($gr['delete'] ?? 0) === 0) {
+                    $grpSum += (float) $gr['betrag'];
+                }
+            }
+            $liveCnt = 0; $paidCnt = 0; $delivCnt = 0;
+            $labelCnt = [];
+            foreach ($groupRows as $gr) {
+                if ((int) ($gr['delete'] ?? 0) !== 0) {
+                    continue;
+                }
+                $liveCnt++;
+                $gu = ff_tisch_hist_row_status_ui($gr);
+                $paidCnt += $gu['isPaid'] ? 1 : 0;
+                $delivCnt += $gu['isDelivered'] ? 1 : 0;
+                foreach ($gu['badges'] as $gb) {
+                    $labelCnt[$gb['label']] = ($labelCnt[$gb['label']] ?? 0) + 1;
+                }
+            }
+            // Zahlungs-/Lieferstatus, der für alle Positionen gleich ist, steht nur im Kopf
+            $hideLabels = [];
+            if ($liveCnt > 0) {
+                foreach (['Zahlung offen', 'Bezahlt', 'Lieferung fertig', 'Lieferung offen'] as $hl) {
+                    if (($labelCnt[$hl] ?? 0) === $liveCnt) {
+                        $hideLabels[] = $hl;
+                    }
+                }
+            }
+            $headBadges = '';
+            if ($liveCnt > 0) {
+                if ($paidCnt === $liveCnt) {
+                    $headBadges .= '<span class="badge bg-success">Bezahlt</span>';
+                } elseif ($paidCnt === 0) {
+                    $headBadges .= '<span class="badge bg-warning text-dark">Zahlung offen</span>';
+                } else {
+                    $headBadges .= '<span class="badge bg-warning text-dark">' . ($liveCnt - $paidCnt) . ' unbezahlt</span>';
+                }
+                if ($delivCnt === $liveCnt) {
+                    $headBadges .= '<span class="badge bg-success">Geliefert</span>';
+                } elseif ($delivCnt === 0) {
+                    $headBadges .= '<span class="badge bg-info text-dark">Lieferung offen</span>';
+                } else {
+                    $headBadges .= '<span class="badge bg-info text-dark">' . ($liveCnt - $delivCnt) . ' nicht geliefert</span>';
+                }
+            }
+            if ($liveCnt === 0) {
+                $headBadges = '<span class="badge bg-danger">Storniert</span>';
+            }
+            $orderState = $liveCnt === 0 ? 'storno' : ($paidCnt < $liveCnt ? 'open' : 'paid');
+            if ($liveCnt === 0 && $groupTitle !== '') {
+                $groupTitle .= ' (storniert)';
+            }
+            $headTime = $histFmtTs($first['zeitstempel'] ?? '');
+            $grpKey = htmlspecialchars((string) $bk, ENT_QUOTES, 'UTF-8');
+            $grpOpenDefault = ($bk === $groupOrder[0]);
+
+            echo '<div class="ff-hist-order ff-hist-order-' . $orderState . ' border rounded-3 bg-white">';
+            echo '<div class="ff-hist-order-head d-flex flex-wrap align-items-center gap-2 px-3 py-2">';
+            echo '<button type="button" class="btn btn-sm btn-outline-secondary ff-hist-toggle" data-ff-hist-key="o|' . $grpKey . '"'
+                . ' data-ff-hist-default-open="' . ($grpOpenDefault ? '1' : '0') . '" aria-expanded="' . ($grpOpenDefault ? 'true' : 'false') . '"'
+                . ' onclick="ffHistToggle(this); return false;" title="Ein-/Ausklappen"><span class="ff-hist-caret">' . ($grpOpenDefault ? '▾' : '▸') . '</span></button>';
             if ($detailActs !== '') {
                 echo $detailActs;
             } else {
-                echo '<span class="fw-semibold small">' . htmlspecialchars($groupTitle, ENT_QUOTES, 'UTF-8') . '</span>';
+                echo '<span class="fw-semibold">' . htmlspecialchars($groupTitle, ENT_QUOTES, 'UTF-8') . '</span>';
             }
-            echo '<span class="badge bg-secondary">' . count($groupRows) . ' Pos.</span>';
+            if ($canStornoWhole || $canMoveWhole) {
+                echo '<div class="dropdown ms-auto">';
+                echo '<button type="button" class="btn btn-sm btn-outline-secondary ff-hist-menu-btn" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false" aria-label="Aktionen für die Bestellung">⋯</button>';
+                echo '<ul class="dropdown-menu dropdown-menu-end">';
+                if ($canMoveWhole) {
+                    $jsBatch = htmlspecialchars($batchTs, ENT_QUOTES, 'UTF-8');
+                    $jsLabel = htmlspecialchars(
+                        'Ganze Bestellung verschieben (' . count($movableInGroup) . ' Position(en)):',
+                        ENT_QUOTES,
+                        'UTF-8'
+                    );
+                    echo '<li><button type="button" class="dropdown-item"'
+                        . ' onclick="ffTischHistVerschiebenBestellung(' . (int) $Tischnummer . ', ' . $orderNr . ', \''
+                        . $jsBatch . '\', \'' . $jsLabel . '\'); return false;">'
+                        . '↷ Bestellung verschieben</button></li>';
+                }
+                if ($canStornoWhole) {
+                    $jsBatchS = htmlspecialchars($batchTs, ENT_QUOTES, 'UTF-8');
+                    $jsLabelS = htmlspecialchars(
+                        'Ganze Bestellung stornieren (' . $stornoInGroup . ' Position(en))?',
+                        ENT_QUOTES,
+                        'UTF-8'
+                    );
+                    $jsBonS = htmlspecialchars($bonIdGrp, ENT_QUOTES, 'UTF-8');
+                    if ($canMoveWhole) {
+                        echo '<li><hr class="dropdown-divider"></li>';
+                    }
+                    echo '<li><button type="button" class="dropdown-item text-danger fw-semibold"'
+                        . ' onclick="ffTischHistStornierenBestellung(' . (int) $Tischnummer . ', ' . $orderNr . ', \''
+                        . $jsBatchS . '\', \'' . $jsBonS . '\', \'' . $jsLabelS . '\'); return false;">'
+                        . '🗑 Bestellung stornieren</button></li>';
+                }
+                echo '</ul></div>';
+            }
+            echo '<div class="ff-hist-order-meta w-100 d-flex flex-wrap align-items-center gap-2">';
+            echo '<span class="badge bg-light text-dark border">' . count($groupRows) . ' Pos. · ' . number_format($grpSum, 2, ',', '.') . ' €</span>';
+            echo $headBadges;
+            if ($headTime !== '') {
+                echo '<span class="small text-muted">' . htmlspecialchars($headTime, ENT_QUOTES, 'UTF-8') . '</span>';
+            }
             echo '</div>';
-            echo '<div class="d-flex flex-wrap gap-2 ms-auto">';
-            if ($canStornoWhole) {
-                $jsBatchS = htmlspecialchars($batchTs, ENT_QUOTES, 'UTF-8');
-                $jsLabelS = htmlspecialchars(
-                    'Ganze Bestellung stornieren (' . $stornoInGroup . ' Position(en))?',
-                    ENT_QUOTES,
-                    'UTF-8'
-                );
-                $jsBonS = htmlspecialchars($bonIdGrp, ENT_QUOTES, 'UTF-8');
-                echo '<button type="button" class="btn btn-sm btn-outline-danger"'
-                    . ' onclick="ffTischHistStornierenBestellung(' . (int) $Tischnummer . ', ' . $orderNr . ', \''
-                    . $jsBatchS . '\', \'' . $jsBonS . '\', \'' . $jsLabelS . '\'); return false;">'
-                    . '🗑 Ganze Bestellung</button>';
-            }
-            if ($canMoveWhole) {
-                $jsBatch = htmlspecialchars($batchTs, ENT_QUOTES, 'UTF-8');
-                $jsLabel = htmlspecialchars(
-                    'Ganze Bestellung verschieben (' . count($movableInGroup) . ' Position(en)):',
-                    ENT_QUOTES,
-                    'UTF-8'
-                );
-                echo '<button type="button" class="btn btn-sm btn-outline-primary"'
-                    . ' onclick="ffTischHistVerschiebenBestellung(' . (int) $Tischnummer . ', ' . $orderNr . ', \''
-                    . $jsBatch . '\', \'' . $jsLabel . '\'); return false;">'
-                    . '↷ Ganze Bestellung</button>';
-            }
-            echo '</div></div>';
+            echo '</div>';
+            echo '<div class="ff-hist-collapse"' . ($grpOpenDefault ? '' : ' hidden') . '>';
             echo '<div class="d-flex flex-column gap-2 p-2">';
 
-            foreach ($groupRows as $row) {
+            if (!function_exists('ff_hist_card_state')) {
+                function ff_hist_card_state(array $row, array $ui): string
+                {
+                    if ((int) ($row['delete'] ?? 0) === 1) {
+                        return 'ff-st-storno';
+                    }
+                    if (empty($ui['isPaid'])) {
+                        return 'ff-st-unpaid';
+                    }
+                    return empty($ui['isDelivered']) ? 'ff-st-pending' : 'ff-st-ok';
+                }
+            }
+            $renderRow = function (array $row) use ($conn, $isAdmin, $currentUser, $paymentMode, $histFmtTs, $Tischnummer, $hideLabels): void {
             $statusUi = ff_tisch_hist_row_status_ui($row);
             $isPaid = $statusUi['isPaid'];
             $cardBorder = $statusUi['cardBorder'];
@@ -203,17 +289,20 @@ try {
             $showZusatzinfo = !$isPaid;
             $offenStation = (int) ($row['ausgeliefert'] ?? 0) === 0;
             ?>
-            <div class="card <?php echo $cardBorder; ?>" style="border-width:2px;">
+            <div class="card ff-hist-card <?php echo ff_hist_card_state($row, $statusUi); ?>">
                 <div class="card-body py-2 px-3">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div class="flex-grow-1 min-width-0">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <h6 class="mb-0 fw-semibold"><?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?></h6>
-                                <?php foreach ($statusUi['badges'] as $badge): ?>
+                                <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none text-secondary ff-hist-toggle" data-ff-hist-key="r|<?php echo $rid; ?>"
+                                        aria-expanded="false" onclick="ffHistToggle(this); return false;" title="Details ein-/ausklappen"><span class="ff-hist-caret">▸</span></button>
+                                <?php foreach ($statusUi['badges'] as $badge): if (in_array($badge['label'], $hideLabels, true)) { continue; } ?>
                                 <span class="badge <?php echo htmlspecialchars($badge['class'], ENT_QUOTES, 'UTF-8'); ?>"
                                       title="<?php echo htmlspecialchars($badge['title'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($badge['label'], ENT_QUOTES, 'UTF-8'); ?></span>
                                 <?php endforeach; ?>
                             </div>
+                            <div class="ff-hist-collapse" hidden>
                             <div class="small text-muted mt-1">
                                 <span title="Bestellt um">🧾 <?php echo htmlspecialchars($bestellt, ENT_QUOTES, 'UTF-8'); ?></span>
                                 <span class="mx-1">·</span>
@@ -231,6 +320,7 @@ try {
                                     <span title="Ausgeliefert um">📦 <?php echo htmlspecialchars($geliefert, ENT_QUOTES, 'UTF-8'); ?></span>
                                 <?php endif; ?>
                             </div>
+                            </div>
                             <?php if ($zusatzHtml !== ''): ?>
                                 <?php echo $zusatzHtml; ?>
                             <?php endif; ?>
@@ -241,7 +331,7 @@ try {
                     </div>
 
                     <?php if ($showZusatzinfo || $canStornoOne || $canMoveOne): ?>
-                        <div class="d-flex flex-wrap gap-2 mt-2">
+                        <div class="d-flex flex-wrap gap-2 mt-2 ff-hist-collapse" hidden>
                             <?php if ($showZusatzinfo): ?>
                             <button type="button" class="btn btn-sm btn-outline-secondary"
                                     onclick="ffOpenHistZusatzinfoEdit(<?php echo $rid; ?>, <?php echo $posRowId; ?>, <?php echo (int) $Tischnummer; ?>, <?php echo $posType; ?>); return false;">
@@ -275,9 +365,69 @@ try {
                 </div>
             </div>
             <?php
+            };
+
+            // Identische Positionen (Name, Zusatzinfo, Preis, Status) zusammenfassen
+            $rowGroups = [];
+            foreach ($groupRows as $gr) {
+                $gUi = ff_tisch_hist_row_status_ui($gr);
+                $badgeSig = implode('|', array_map(static function ($bd) { return (string) ($bd['label'] ?? ''); }, $gUi['badges']));
+                $gk = implode("\x1f", [
+                    (int) ($gr['position_rowid'] ?? $gr['position'] ?? 0),
+                    (string) ($gr['Positionsname'] ?? ''),
+                    trim((string) ($gr['Zusatzinfo'] ?? '')),
+                    number_format((float) $gr['betrag'], 2, '.', ''),
+                    $badgeSig,
+                    (int) ($gr['delete'] ?? 0),
+                ]);
+                $rowGroups[$gk][] = $gr;
             }
 
-            echo '</div></div>';
+            foreach ($rowGroups as $gk => $gRows) {
+                if (count($gRows) === 1) {
+                    $renderRow($gRows[0]);
+                    continue;
+                }
+                $g0 = $gRows[0];
+                $gUi0 = ff_tisch_hist_row_status_ui($g0);
+                $gSum = 0.0;
+                foreach ($gRows as $gr) {
+                    $gSum += (float) $gr['betrag'];
+                }
+                $gZi = trim((string) ($g0['Zusatzinfo'] ?? ''));
+                $gZiHtml = $gZi !== '' ? ff_zusatzinfo_display_html($conn, (int) ($g0['position_rowid'] ?? $g0['position'] ?? 0), $gZi) : '';
+                $gStateKey = htmlspecialchars($bk . '|' . $gk, ENT_QUOTES, 'UTF-8');
+                ?>
+                <div class="card ff-hist-card <?php echo ff_hist_card_state($g0, $gUi0); ?>">
+                    <div class="card-body py-2 px-3">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="flex-grow-1 min-width-0">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <h6 class="mb-0 fw-semibold"><?php echo count($gRows); ?>× <?php echo htmlspecialchars((string) $g0['Positionsname'], ENT_QUOTES, 'UTF-8'); ?></h6>
+                                    <?php foreach ($gUi0['badges'] as $badge): if (in_array($badge['label'], $hideLabels, true)) { continue; } ?>
+                                    <span class="badge <?php echo htmlspecialchars($badge['class'], ENT_QUOTES, 'UTF-8'); ?>"
+                                          title="<?php echo htmlspecialchars($badge['title'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($badge['label'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php echo $gZiHtml; ?>
+                            </div>
+                            <div class="fw-semibold text-end" style="white-space:nowrap;"><?php echo number_format($gSum, 2, ',', '.'); ?> €</div>
+                        </div>
+                        <button type="button" class="btn btn-link btn-sm p-0 mt-1 text-secondary text-decoration-none ff-hist-toggle" data-ff-hist-key="<?php echo $gStateKey; ?>"
+                                aria-expanded="false" onclick="ffHistToggle(this); return false;">
+                            <span class="ff-hist-caret">▸</span> Einzeln anzeigen (<?php echo count($gRows); ?>)
+                        </button>
+                        <div class="d-flex flex-column gap-2 mt-2 ff-hist-collapse" hidden>
+                            <?php foreach ($gRows as $gr) { $renderRow($gr); } ?>
+                        </div>
+                    </div>
+                </div>
+                <?php
+            }
+
+            echo '</div>'; // Positionsliste
+            echo '</div>'; // Collapse-Body
+            echo '</div>'; // Bestellkarte
         }
 
         echo '</div>';
@@ -290,6 +440,101 @@ try {
         }
     }
 
+    ?>
+<style>
+.ff-hist-collapse[hidden]{display:none !important;}
+.ff-hist-card{cursor:pointer;position:relative;border:1px solid #dee2e6 !important;border-left-width:6px !important;}
+.ff-hist-card .card-body{padding-right:2rem !important;}
+.ff-hist-card::after{content:"▾";position:absolute;right:.65rem;bottom:.3rem;color:#6c757d;font-size:.85rem;transition:transform .15s;}
+.ff-hist-card.ff-open::after{transform:rotate(180deg);}
+.ff-hist-card .ff-hist-collapse{cursor:default;}
+.ff-hist-card.ff-st-ok{border-left-color:#dee2e6 !important;}
+.ff-hist-card.ff-st-pending{border-left-color:#0dcaf0 !important;}
+.ff-hist-card.ff-st-unpaid{border-left-color:#ffc107 !important;}
+.ff-hist-card.ff-st-storno{border-left-color:#dc3545 !important;opacity:.75;}
+.ff-hist-order{border:2px solid #6c757d !important;border-left-width:8px !important;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+.ff-hist-order-head{cursor:pointer;border-radius:.4rem .4rem 0 0;background:#f1f3f5;}
+.ff-hist-order-open{border-color:#ffc107 !important;box-shadow:0 2px 8px rgba(255,193,7,.35);}
+.ff-hist-order-open .ff-hist-order-head{background:#fff6d6;}
+.ff-hist-order-paid{border-color:#a3cfbb !important;}
+.ff-hist-order-paid .ff-hist-order-head{background:#eef7f1;}
+.ff-hist-order-storno{border-color:#ced4da !important;opacity:.8;}
+.ff-hist-order-head .badge.bg-primary,.ff-hist-order-head .badge.bg-dark{background-color:#0b3d91 !important;font-size:1.1rem;font-weight:700;padding:.35em .65em;}
+.ff-hist-order-head .btn-outline-primary{color:#495057;border-color:#adb5bd;}
+.ff-hist-order-head .badge.bg-light{font-size:.95rem;font-weight:700;}
+.ff-hist-menu-btn{font-weight:700;line-height:1;padding:.3rem .7rem;font-size:1.1rem;}
+</style>
+<script data-ff-hist-collapse="1">
+(function () {
+    var st = window.ffHistState = window.ffHistState || {};
+    function target(btn) {
+        var key = btn.getAttribute('data-ff-hist-key') || '';
+        if (key.indexOf('r|') === 0) {
+            var body = btn.closest('.card-body');
+            return body ? body.querySelectorAll('.ff-hist-collapse') : null;
+        }
+        var host = key.indexOf('o|') === 0 ? btn.closest('.border.rounded-3') : btn.parentNode;
+        return host ? host.querySelector(':scope > .ff-hist-collapse') : null;
+    }
+    function apply(btn, open) {
+        var t = target(btn);
+        if (!t) return;
+        if (t.length === undefined) t = [t];
+        for (var j = 0; j < t.length; j++) t[j].hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        var c = btn.querySelector('.ff-hist-caret');
+        if (c) c.textContent = open ? '▾' : '▸';
+        if ((btn.getAttribute('data-ff-hist-key') || '').indexOf('o|') !== 0) {
+            var cardEl = btn.closest('.ff-hist-card');
+            if (cardEl) cardEl.classList.toggle('ff-open', open);
+        }
+    }
+    if (!window.ffHistBadgeBound) {
+        window.ffHistBadgeBound = true;
+        // Capture-Phase: Klick auf das Bestell-Nr.-Badge klappt auf, statt das Inline-onclick auszulösen
+        document.addEventListener('click', function (e) {
+            var a = e.target.closest ? e.target.closest('.ff-hist-order-head a.badge') : null;
+            if (!a) return;
+            e.preventDefault();
+            e.stopPropagation();
+            var hb = a.closest('.ff-hist-order-head').querySelector('.ff-hist-toggle');
+            if (hb) window.ffHistToggle(hb);
+        }, true);
+    }
+    if (!window.ffHistCardClickBound) {
+        window.ffHistCardClickBound = true;
+        document.addEventListener('click', function (e) {
+            var head = e.target.closest ? e.target.closest('.ff-hist-order-head') : null;
+            if (head && !e.target.closest('button, a, .dropdown-menu')) {
+                var hb = head.querySelector('.ff-hist-toggle');
+                if (hb) window.ffHistToggle(hb);
+                return;
+            }
+            var card = e.target.closest ? e.target.closest('.ff-hist-card') : null;
+            if (!card || e.target.closest('button, a, input, select, textarea, label')) return;
+            var b = card.querySelector('.ff-hist-toggle');
+            if (b) window.ffHistToggle(b);
+        });
+    }
+    window.ffHistToggle = function (btn) {
+        var open = btn.getAttribute('aria-expanded') !== 'true';
+        st[btn.getAttribute('data-ff-hist-key')] = open;
+        apply(btn, open);
+    };
+    var navHist = document.querySelector('nav.app-navbar button[onclick*="TischAnsichtHistory"]');
+    if (navHist) {
+        navHist.classList.add('active');
+        navHist.setAttribute('aria-current', 'page');
+        navHist.style.pointerEvents = 'none';
+    }
+    var btns = document.querySelectorAll('.ff-hist-toggle[data-ff-hist-key]');
+    for (var i = 0; i < btns.length; i++) {
+        var k = btns[i].getAttribute('data-ff-hist-key');
+        if (Object.prototype.hasOwnProperty.call(st, k)) apply(btns[i], !!st[k]);
+    }
+})();
+</script>
+<?php
     require_once __DIR__ . '/include/menu_list_helpers.php';
     require_once __DIR__ . '/include/ff_schreibaus.php';
     $openUnpaidHist = ff_tisch_count_unpaid_kasse($conn, (int) $Tischnummer, $paymentMode);

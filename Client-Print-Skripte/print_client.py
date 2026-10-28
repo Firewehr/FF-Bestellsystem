@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 FeuerwehrBestellsystem - Print Client für Epson TM-T88 Thermodrucker
-Python 3.7 kompatibel - 19.7.26
 
 Dieses Skript:
 1. Liest die Konfiguration aus config.ini
@@ -14,7 +13,6 @@ Dieses Skript:
 
 Unterstützte Drucker: Epson TM-T88 Serie (TM-T88IV, TM-T88V, TM-T88VI)
 """
-from __future__ import annotations
 
 import argparse
 import configparser
@@ -98,11 +96,18 @@ def load_config():
         # Pro Server-Runde: wie viele Einträge aus printer_jobs nacheinander holen (je Anfrage liefert der Server nur 1 Job).
         'max_printer_jobs_per_poll': config.getint('Server', 'max_printer_jobs_per_poll', fallback=25),
         'heartbeat_interval': config.getint('Server', 'heartbeat_interval', fallback=60),
+        # Event-Modus (SSE): Server meldet "print-ready"; poll_interval gilt nur als Fallback, wenn der Event-Kanal nicht aktiv ist.
+        'use_events': config.getboolean('Server', 'use_events', fallback=True),
+        'event_fallback_interval': config.getint('Server', 'event_fallback_interval', fallback=30),
         'service_name': config.get('Server', 'service_name', fallback=''),  # leer = target_<id>
 
         'printer_name': config.get('Drucker', 'name', fallback=''),
         'printer_device': config.get('Drucker', 'device', fallback=''),
+        'printer_devices': config.get('Drucker', 'devices', fallback=''),
         'temp_file': config.get('Drucker', 'temp_file', fallback=''),
+        # Linux: automatische USB-Drucker-Suche (siehe find_linux_usb_printer()).
+        'auto_detect_printer': config.getboolean('Drucker', 'auto_detect', fallback=True),
+        'usb_vendor_ids': config.get('Drucker', 'usb_vendor_ids', fallback='04b8, 067b'),
 
         'ff_name': config.get('Einstellungen', 'ff_name', fallback='Freiwillige Feuerwehr'),
         'footer_text': config.get('Einstellungen', 'footer_text', fallback='Guten Appetit!'),
@@ -317,6 +322,25 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
             data.extend(encode_text(f"Tisch: {tisch['tischname']}\n"))
         data.extend(ESC.NORMAL)
         data.extend(b'\n')
+
+    # Teillieferung (nur fertiger Teil einer noch offenen Bestellung)
+    is_teil = bool(tisch.get('teillieferung')) or bool(str(tisch.get('teillieferung_label') or '').strip())
+    if is_teil:
+        label = str(tisch.get('teillieferung_label') or '').strip()
+        if not label:
+            order_nrs_tmp = tisch.get('order_nrs') or []
+            order_txt_tmp = ', '.join(str(n) for n in order_nrs_tmp) if order_nrs_tmp else '-'
+            label = f"Teillieferung zu Bestellung {order_txt_tmp}"
+        data.extend(ESC.ALIGN_CENTER)
+        data.extend(ESC.BOLD)
+        data.extend(ESC.DOUBLE_WIDTH)
+        data.extend(encode_text("TEILLIEFERUNG\n"))
+        data.extend(ESC.NORMAL)
+        data.extend(ESC.BOLD)
+        data.extend(encode_text(f"{label}\n"))
+        data.extend(ESC.NORMAL)
+        data.extend(ESC.ALIGN_LEFT)
+        data.extend(b'\n')
     
     # Bestell-Nr., ggf. Rechnungsnummer(n), Bon-Nr. (API: order_nrs, rechnungsnummern)
     data.extend(ESC.ALIGN_LEFT)
@@ -410,7 +434,10 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
         for p in tisch['positionen']
     )
     data.extend(ESC.DOUBLE_WIDTH)
-    data.extend(encode_text(f"SUMME: {total:.2f} EUR\n"))
+    if is_teil:
+        data.extend(encode_text(f"TEILBETRAG: {total:.2f} EUR\n"))
+    else:
+        data.extend(encode_text(f"SUMME: {total:.2f} EUR\n"))
     data.extend(ESC.NORMAL)
     
     append_bon_footer(data, footer_text)
@@ -439,9 +466,105 @@ def print_windows(data: bytes, config: dict) -> bool:
         return False
 
 
+def list_usb_lp_candidates() -> list:
+    """Listet alle /dev/usb/lpX-Devices mit USB-Vendor/Product/Produktname (sofern über sysfs lesbar).
+
+    /dev/usb/lpX wird vom Kernel-Treiber 'usblp' erzeugt, der NUR an USB-Geräte der
+    Interface-Klasse "Printer" (0x07) bindet. Reine USB-Seriell-Adapter (FTDI, CH340,
+    Prolific-Seriell, ...) landen dagegen als /dev/ttyUSB*/ttyACM* - sie tauchen hier
+    also gar nicht erst auf. Ein USB<->Parallel-Adapter (z.B. Prolific PL2305, wie er
+    an manchen Epson TM-T88 mit Parallel-Port hängt) meldet sich beim Kernel jedoch
+    selbst als Printer-Klasse und erscheint deshalb hier - mit der Vendor-ID des
+    Adapters (z.B. 067b), NICHT der von Epson (04b8). Deshalb reicht eine reine
+    Vendor-ID-Prüfung nicht aus, um "das ist sicher ein Epson" zu erkennen - sie dient
+    hier nur als Tie-Breaker, wenn mehrere Kandidaten gefunden werden.
+    """
+    candidates = []
+    base = Path('/dev/usb')
+    if not base.is_dir():
+        return candidates
+    for node in sorted(base.glob('lp*')):
+        vendor = product = name = ''
+        for sys_path in (Path(f'/sys/class/usbmisc/{node.name}/device'),
+                         Path(f'/sys/class/usb/{node.name}/device')):
+            try:
+                d = sys_path.resolve()
+            except OSError:
+                continue
+            if not d.exists():
+                continue
+            # bis zu 6 Verzeichnisebenen hoch zum eigentlichen usb-device mit idVendor/idProduct
+            for _ in range(6):
+                if (d / 'idVendor').exists():
+                    try:
+                        vendor = (d / 'idVendor').read_text().strip().lower()
+                        product = (d / 'idProduct').read_text().strip().lower()
+                        if (d / 'product').exists():
+                            name = (d / 'product').read_text().strip()
+                    except OSError:
+                        pass
+                    break
+                if d.parent == d:
+                    break
+                d = d.parent
+            break
+        candidates.append({'device': str(node), 'vendor': vendor, 'product': product, 'name': name})
+    return candidates
+
+
+def find_linux_usb_printer(vendor_ids: list) -> Optional[str]:
+    """Sucht automatisch nach einem angeschlossenen USB-Thermodrucker unter Linux.
+
+    Gibt None zurück, wenn kein /dev/usb/lpX-Device gefunden wurde (dann wird auf die
+    manuell konfigurierten Devices zurückgefallen).
+    """
+    candidates = list_usb_lp_candidates()
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]['device']
+
+    # Mehrere Kandidaten: zuerst Name (Epson/TM-...), dann bekannte Vendor-ID bevorzugen.
+    def name_match(c):
+        n = c['name'].lower()
+        return 'epson' in n or 'tm-' in n
+
+    for c in candidates:
+        if name_match(c):
+            print(f"[auto] Mehrere USB-Drucker-Devices gefunden, wähle nach Produktname: {c['device']} ({c['name']})")
+            return c['device']
+    for c in candidates:
+        if c['vendor'] in vendor_ids:
+            print(f"[auto] Mehrere USB-Drucker-Devices gefunden, wähle nach Vendor-ID: {c['device']} (vendor={c['vendor']})")
+            return c['device']
+
+    print(f"[auto] Mehrere USB-Drucker-Devices gefunden ({', '.join(c['device'] for c in candidates)}), "
+          f"verwende das erste: {candidates[0]['device']}")
+    return candidates[0]['device']
+
+
+def resolve_linux_printer_device(config: dict) -> str:
+    """Ermittelt das zu verwendende Linux-Drucker-Device (auto-detect oder manuell aus config.ini)."""
+    manual_list = [d.strip() for d in (config.get('printer_devices') or '').split(',') if d.strip()]
+    manual_single = (config.get('printer_device') or '').strip()
+
+    if config.get('auto_detect_printer', True):
+        vendor_ids = [(v.strip().lower()[2:] if v.strip().lower().startswith('0x') else v.strip().lower())
+                      for v in (config.get('usb_vendor_ids') or '').split(',') if v.strip()]
+        found = find_linux_usb_printer(vendor_ids)
+        if found:
+            return found
+        print("[auto] Keine USB-Drucker automatisch gefunden, verwende manuell konfiguriertes Device.")
+
+    for d in manual_list:
+        if os.path.exists(d):
+            return d
+    return manual_single or '/dev/usb/lp0'
+
+
 def print_linux(data: bytes, config: dict) -> bool:
-    """Druckt unter Linux über USB-Device."""
-    device = (config.get('printer_device') or '').strip() or '/dev/usb/lp0'
+    """Druckt unter Linux über USB-Device (mit optionaler automatischer Drucker-Suche)."""
+    device = resolve_linux_printer_device(config)
     if not os.path.exists(device):
         print(f"Fehler: Drucker-Device nicht gefunden: {device}")
         return False
@@ -608,6 +731,72 @@ def process_one_printer_job_from_server(config: dict) -> bool:
     return True
 
 
+def print_events_loop(config: dict, wake: threading.Event, active: threading.Event, stop: threading.Event) -> None:
+    """
+    Hält eine SSE-Verbindung zu print_events.php offen. Bei "print-ready" wird wake gesetzt.
+    active ist nur gesetzt, solange der Server den Event-Kanal anbietet (Admin: "Druck per Event").
+    """
+    url = config['server_url'] + '/print_events.php'
+    params = {'print_target': config['print_target']}
+    if config['token']:
+        params['token'] = config['token']
+    last_id = ''
+    session = requests.Session()
+    while not stop.is_set():
+        wait_s = 5
+        try:
+            headers = {'Accept': 'text/event-stream'}
+            if last_id:
+                headers['Last-Event-ID'] = last_id
+            with session.get(url, params=params, headers=headers, stream=True, timeout=(10, 45),
+                             verify=config.get('verify_ssl', True)) as resp:
+                ctype = resp.headers.get('Content-Type', '')
+                if resp.status_code != 200 and resp.status_code != 401:
+                    raise RuntimeError(f"HTTP {resp.status_code}")
+                if 'text/event-stream' not in ctype:
+                    raise RuntimeError(f"unerwarteter Content-Type: {ctype}")
+                event_name = 'message'
+                for raw in resp.iter_lines(decode_unicode=True):
+                    if stop.is_set():
+                        break
+                    if raw is None:
+                        continue
+                    line = raw.strip()
+                    if line.startswith('retry:'):
+                        try:
+                            wait_s = max(1, int(line[6:].strip()) // 1000)
+                        except ValueError:
+                            pass
+                    elif line.startswith('id:'):
+                        last_id = line[3:].strip()
+                    elif line.startswith('event:'):
+                        event_name = line[6:].strip()
+                    elif line == '':
+                        if event_name == 'print-ready':
+                            if not active.is_set():
+                                print("  [Event] Event-Kanal aktiv")
+                            active.set()
+                            wake.set()
+                        elif event_name in ('print-disabled', 'print-denied'):
+                            if active.is_set():
+                                print(f"  [Event] {event_name}: Fallback auf Polling")
+                            active.clear()
+                        event_name = 'message'
+                    elif line.startswith(':'):
+                        if not active.is_set() and resp.status_code == 200:
+                            print("  [Event] Event-Kanal aktiv")
+                            active.set()
+                if resp.status_code == 200 and not active.is_set():
+                    # Verbindung stand, aber nur retry/disabled: Server-Retry abwarten.
+                    pass
+        except Exception as e:
+            if active.is_set():
+                print(f"  [Event] Verbindung unterbrochen ({e}) - Polling als Fallback")
+            active.clear()
+            wait_s = 5
+        stop.wait(wait_s)
+
+
 def fetch_orders(config: dict) -> dict:
     """Ruft neue Bestellungen vom Server ab"""
     url = config['server_url'] + '/print_target.php'
@@ -676,6 +865,10 @@ def main():
     if platform.system() == 'Windows':
         pn = (config.get('printer_name') or '').strip() or 'Receipt Printer'
         print(f"Drucker: {pn}")
+    elif platform.system() == 'Linux':
+        if config.get('auto_detect_printer', True):
+            print("Drucker-Suche: automatisch (auto_detect=true in config.ini)")
+        print(f"Drucker-Device: {resolve_linux_printer_device(config)}")
     print("-" * 50)
 
     # Heartbeat im Hintergrund (damit der Dienst auch bei langem Druck/Abruf als „lebendig“ gilt)
@@ -685,6 +878,16 @@ def main():
         heartbeat_thread.start()
     else:
         heartbeat_stop = None
+
+    wake_event = threading.Event()
+    events_active = threading.Event()
+    events_stop = threading.Event()
+    use_events = bool(config.get('use_events', True)) and not args.test and not args.preview
+    if use_events:
+        threading.Thread(
+            target=print_events_loop, args=(config, wake_event, events_active, events_stop), daemon=True
+        ).start()
+        print(f"Event-Modus: aktiv, sobald im Admin freigeschaltet (Fallback-Poll alle {config['event_fallback_interval']}s)")
 
     while True:
         try:
@@ -758,10 +961,15 @@ def main():
                 print("\n[Test-Modus] Beende.")
                 break
 
-            time.sleep(config['poll_interval'])
+            if use_events and events_active.is_set():
+                wake_event.wait(max(1, config['event_fallback_interval']))
+                wake_event.clear()
+            else:
+                time.sleep(config['poll_interval'])
 
         except KeyboardInterrupt:
             print("\n\nBeendet durch Benutzer.")
+            events_stop.set()
             if heartbeat_stop:
                 heartbeat_stop.set()
             break

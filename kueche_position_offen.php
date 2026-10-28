@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
+require_once __DIR__ . '/include/ff_event_notifications.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -51,4 +52,5 @@ if ($affected < 1) {
     echo json_encode(['ok' => false, 'error' => 'Keine Zeile geändert (ungültige IDs oder bereits zurück?)']);
     exit;
 }
+ff_event_notifications_evaluate_rows($conn, array_keys($ids), 'kueche_position_offen.php');
 echo json_encode(['ok' => true, 'affected' => $affected], JSON_UNESCAPED_UNICODE);

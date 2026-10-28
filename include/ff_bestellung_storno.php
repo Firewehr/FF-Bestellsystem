@@ -20,6 +20,20 @@ function ff_bestellung_row_is_delivered(array $row): bool
     return (int) ($row['ausgeliefert'] ?? 0) === 1;
 }
 
+function ff_bestellung_storno_recheck_capacity(mysqli $conn, array $row): void
+{
+    $festId = (int) ($row['fest_id'] ?? 0);
+    if ($festId <= 0) {
+        return;
+    }
+    require_once __DIR__ . '/ff_event_notifications.php';
+    try {
+        ff_event_notifications_evaluate($conn, $festId);
+    } catch (Throwable $error) {
+        error_log('ff_bestellung_storno: Push-Auswertung fehlgeschlagen für Fest ' . $festId . ': ' . $error->getMessage());
+    }
+}
+
 /** Druckwarteschlange und Druck-Flags für eine Zeile zurücksetzen. */
 function ff_bestellung_clear_print_queue(mysqli $conn, int $rowid): void
 {
@@ -48,9 +62,15 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'bad_id', 'message' => 'Ungültige Bestellzeile.'];
     }
 
+    $festColumn = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'fest_id'");
+    $hasFestColumn = $festColumn && mysqli_num_rows($festColumn) > 0;
+    if ($festColumn) {
+        mysqli_free_result($festColumn);
+    }
+    $festSelect = $hasFestColumn ? ', fest_id' : '';
     $st = mysqli_prepare(
         $conn,
-        'SELECT rowid, tischnummer, ausgeliefert, kueche, zeitKueche, `delete`, timestampBezahlung, settlement_id
+        'SELECT rowid, tischnummer, ausgeliefert, kueche, zeitKueche, `delete`, timestampBezahlung, settlement_id' . $festSelect . '
          FROM bestellungen WHERE rowid = ? LIMIT 1'
     );
     if (!$st) {
@@ -100,6 +120,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         if ($removedFromStation) {
             ff_bestellung_clear_print_queue($conn, $rowid);
         }
+        ff_bestellung_storno_recheck_capacity($conn, $row);
 
         return [
             'ok' => true,
@@ -139,6 +160,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
     if ($removedFromStation) {
         ff_bestellung_clear_print_queue($conn, $rowid);
     }
+    ff_bestellung_storno_recheck_capacity($conn, $row);
 
     $msg = $removedFromStation
         ? 'Zahlung storniert. Position wurde aus Küche/Schank entfernt (noch nicht ausgeliefert).'

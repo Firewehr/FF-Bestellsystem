@@ -7,6 +7,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/ff_schreibaus.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
+require_once __DIR__ . '/include/ff_order_recipe_components.php';
 
 header('Content-Type: application/json; charset=utf-8');
 mysqli_set_charset($conn, 'utf8mb4');
@@ -51,6 +52,7 @@ if ($histRowid > 0) {
         echo json_encode(['ok' => false, 'error' => 'bad_row'], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    $recipeItems = ff_order_recipe_components($conn, $positionsid);
 
     $items = [];
     $sqlB = 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC';
@@ -68,9 +70,16 @@ if ($histRowid > 0) {
         mysqli_stmt_close($stmtB);
     }
 
+    $defaultRecipeIds = array_map(
+        static fn(array $item): int => (int) $item['bestandteil_id'],
+        array_filter($recipeItems, static fn(array $item): bool => !$item['optional_enabled'] || $item['default_selected'])
+    );
+    $recipeSelections = ff_order_recipe_selection_map($conn, [(int) $hr['rowid']], [(int) $hr['rowid'] => $defaultRecipeIds]);
     echo json_encode([
         'ok' => true,
         'items' => $items,
+        'recipe_items' => $recipeItems,
+        'recipe_selections' => [$recipeSelections[(int) $hr['rowid']] ?? $defaultRecipeIds],
         'options' => array_map(static function ($it) {
             return $it['name'];
         }, $items),
@@ -114,6 +123,7 @@ $options = array_map(static function ($it) {
 
 $rowids = [];
 $hinweise = [];
+$recipeItems = ff_order_recipe_components($conn, $positionsid);
 $bonId = trim((string) ($_GET['bon_id'] ?? ''));
 $dvScopeSql = '';
 if ($tischnummer === 999999) {
@@ -164,9 +174,21 @@ while ($r = mysqli_fetch_assoc($res)) {
 }
 mysqli_stmt_close($stmt);
 
+$defaultRecipeIds = array_map(
+    static fn(array $item): int => (int) $item['bestandteil_id'],
+    array_filter($recipeItems, static fn(array $item): bool => !$item['optional_enabled'] || $item['default_selected'])
+);
+$defaultSelectionsByRow = array_fill_keys($rowids, $defaultRecipeIds);
+$recipeSelections = ff_order_recipe_selection_map($conn, $rowids, $defaultSelectionsByRow);
+
 echo json_encode([
     'ok' => true,
     'items' => $items,
+    'recipe_items' => $recipeItems,
+    'recipe_selections' => array_map(
+        static fn(int $rowid): array => $recipeSelections[$rowid] ?? $defaultRecipeIds,
+        $rowids
+    ),
     'options' => $options,
     'rowids' => $rowids,
     'hinweise' => $hinweise,

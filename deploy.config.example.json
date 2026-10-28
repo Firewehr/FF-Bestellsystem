@@ -1,0 +1,57 @@
+{
+  "github": {
+    "remote": "origin",
+    "branch": "main"
+  },
+  "environments": {
+    "server1": {
+      "name": "Produktionsserver 1 (z. B. Manhartsbrunn)",
+      "host": "ftp.deinedomain.at",
+      "port": 21,
+      "user": "ftp_benutzer1",
+      "password": "ftp_passwort1",
+      "remote_dir": "/htdocs",
+      "ssl": true,
+      "backup_before_deploy": true
+    },
+    "server2": {
+      "name": "Produktionsserver 2 (z. B. Weingut)",
+      "host": "ftp.zweitedomain.at",
+      "port": 21,
+      "user": "ftp_benutzer2",
+      "password": "ftp_passwort2",
+      "remote_dir": "/htdocs",
+      "ssl": true,
+      "backup_before_deploy": true
+    },
+    "staging": {
+      "name": "Test- / Stagingserver",
+      "host": "ftp.stagingdomain.at",
+      "port": 21,
+      "user": "ftp_benutzer3",
+      "password": "ftp_passwort3",
+      "remote_dir": "/test",
+      "ssl": true,
+      "backup_before_deploy": true
+    }
+  },
+  "exclude": [
+    ".git*",
+    ".vscode*",
+    ".idea*",
+    "*__pycache__*",
+    "*.pyc",
+    "include/db.local.php",
+    "deploy.config.json",
+    "deploy.config.example.json",
+    "backups*",
+    "*.sql",
+    "*.bak",
+    "*.tar.gz",
+    "*.zip",
+    "*.log",
+    "stat/*.csv",
+    "include/.cache*",
+    "Client-Print-Skripte/Windows/service/logs*"
+  ]
+}

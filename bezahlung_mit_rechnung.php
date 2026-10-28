@@ -246,15 +246,28 @@ if (count($items) === 0) {
 
 $year = (int)date('Y');
 $prefix = ff_rechnung_prefix_for_fest($conn, $fest_id);
-$nextSeqVal = ff_rechnung_next_read($conn);
+$nextSeqVal = ff_rechnung_next_allocate($conn);
 $rechnungsnummer = $prefix . $year . '-' . str_pad((string)$nextSeqVal, 4, '0', STR_PAD_LEFT);
 
 $created_by = $kellner !== '' ? $kellner : 'system';
 $fest_id_int = $fest_id ?? 0;
 
-$stmt = mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
-    empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
-    VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,0,\'pending\',0,0,NULL)');
+$hasKellnerCol = false;
+$chkK = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE 'kellner'");
+if ($chkK && mysqli_num_rows($chkK) > 0) {
+    $hasKellnerCol = true;
+}
+
+if ($hasKellnerCol) {
+    $stmt = mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, kellner, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
+        empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
+        VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?,0,\'pending\',0,0,NULL)');
+} else {
+    $stmt = mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
+        empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
+        VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,0,\'pending\',0,0,NULL)');
+}
+
 if (!$stmt) {
     mysqli_rollback($conn);
     br_json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
@@ -262,30 +275,48 @@ if (!$stmt) {
 
 $sammel0 = 0;
 $emp = '';
-mysqli_stmt_bind_param(
-    $stmt,
-    'ssiiiisssssd',
-    $rechnungsnummer,
-    $created_by,
-    $fest_id_int,
-    $tischnummer,
-    $sammel0,
-    $orderNr,
-    $emp,
-    $emp,
-    $emp,
-    $emp,
-    $emp,
-    $total
-);
+if ($hasKellnerCol) {
+    mysqli_stmt_bind_param(
+        $stmt,
+        'sssiiiisssssd',
+        $rechnungsnummer,
+        $created_by,
+        $created_by,
+        $fest_id_int,
+        $tischnummer,
+        $sammel0,
+        $orderNr,
+        $emp,
+        $emp,
+        $emp,
+        $emp,
+        $emp,
+        $total
+    );
+} else {
+    mysqli_stmt_bind_param(
+        $stmt,
+        'ssiiiisssssd',
+        $rechnungsnummer,
+        $created_by,
+        $fest_id_int,
+        $tischnummer,
+        $sammel0,
+        $orderNr,
+        $emp,
+        $emp,
+        $emp,
+        $emp,
+        $emp,
+        $total
+    );
+}
 if (!mysqli_stmt_execute($stmt)) {
     mysqli_rollback($conn);
     br_json_out(['ok' => false, 'error' => mysqli_stmt_error($stmt)], 500);
 }
 $rechnung_id = (int)mysqli_insert_id($conn);
 mysqli_stmt_close($stmt);
-
-settings_set($conn, FF_RECHNUNG_NEXT_KEY, (string)($nextSeqVal + 1));
 
 foreach ($items as $it) {
     mysqli_query($conn, 'UPDATE bestellungen SET rechnung_id=' . $rechnung_id . ' WHERE rowid=' . (int)$it['rowid']);

@@ -1,0 +1,25 @@
+{
+  "name": "Feuerwehr Bestellsystem (Pilot SPA)",
+  "short_name": "Bestell-Pilot",
+  "description": "Blitzschnelle, mobile Bestellaufnahme für Feuerwehrfeste ohne Bootstrap",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f1f5f9",
+  "theme_color": "#dc2626",
+  "icons": [
+    {
+      "src": "../pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

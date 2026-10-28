@@ -341,6 +341,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         rez_api_json(true, ['bestandteile' => rez_api_fetch_bestandteile($conn)]);
     }
 
+    if ($action === 'save_bestandteil') {
+        if (!function_exists('ff_rezepturen_table_exists') || !ff_rezepturen_table_exists($conn, 'bestandteile')) {
+            ff_rezepturen_ensure_schema($conn);
+        }
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        $name = isset($_POST['name']) ? trim((string)$_POST['name']) : '';
+        $einheit = isset($_POST['einheit']) ? trim((string)$_POST['einheit']) : 'Stk';
+        $kapazitaet = isset($_POST['kapazitaet']) ? (int)$_POST['kapazitaet'] : -1;
+        $sortOrder = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
+        $allergene = rez_api_normalize_allergene($_POST['allergene'] ?? '');
+
+        if ($id <= 0 || $name === '') {
+            rez_api_json(false, ['error' => 'missing_fields'], 400);
+        }
+        if (function_exists('mb_strlen') && mb_strlen($name, 'UTF-8') > 255) {
+            $name = mb_substr($name, 0, 255, 'UTF-8');
+        }
+        if (function_exists('mb_strlen') && mb_strlen($einheit, 'UTF-8') > 30) {
+            $einheit = mb_substr($einheit, 0, 30, 'UTF-8');
+        }
+        if ($einheit === '') {
+            $einheit = 'Stk';
+        }
+
+        mysqli_begin_transaction($conn);
+        try {
+            $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, sort_order = ? WHERE id = ?');
+            if (!$stmt) {
+                throw new RuntimeException('update_prepare_failed');
+            }
+            mysqli_stmt_bind_param($stmt, 'ssiii', $name, $einheit, $kapazitaet, $sortOrder, $id);
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new RuntimeException('update_failed');
+            }
+            mysqli_stmt_close($stmt);
+            rez_api_save_bestandteil_allergene($conn, $id, $allergene);
+            mysqli_commit($conn);
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            rez_api_json(false, ['error' => $e->getMessage()], 500);
+        }
+
+        rez_api_json(true, ['bestandteile' => rez_api_fetch_bestandteile($conn)]);
+    }
+
+    if ($action === 'delete_bestandteil') {
+        $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
+        if ($id <= 0) {
+            rez_api_json(false, ['error' => 'invalid_id'], 400);
+        }
+        mysqli_begin_transaction($conn);
+        try {
+            $delAllergen = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+            if ($delAllergen) {
+                mysqli_stmt_bind_param($delAllergen, 'i', $id);
+                mysqli_stmt_execute($delAllergen);
+                mysqli_stmt_close($delAllergen);
+            }
+            $delRez = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
+            if ($delRez) {
+                mysqli_stmt_bind_param($delRez, 'i', $id);
+                mysqli_stmt_execute($delRez);
+                mysqli_stmt_close($delRez);
+            }
+            $delB = mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
+            if ($delB) {
+                mysqli_stmt_bind_param($delB, 'i', $id);
+                mysqli_stmt_execute($delB);
+                mysqli_stmt_close($delB);
+            }
+            mysqli_commit($conn);
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            rez_api_json(false, ['error' => $e->getMessage()], 500);
+        }
+        rez_api_json(true, ['bestandteile' => rez_api_fetch_bestandteile($conn)]);
+    }
+
     if ($action !== 'save') {
         rez_api_json(false, ['error' => 'bad_action'], 400);
     }

@@ -5,8 +5,11 @@
  */
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
+
+ff_csrf_require();
 
 $raw = $_POST['listePositionen'] ?? $_REQUEST['listePositionen'] ?? null;
 if (!is_array($raw)) {
@@ -63,7 +66,7 @@ if ($sammelCheck) {
 }
 
 $sql = "UPDATE `bestellungen` SET `timestampBezahlung` = CURRENT_TIMESTAMP, `kellnerZahlung` = '" . $kellnerEsc . "' "
-    . "WHERE `delete` = 0 AND `rowid` IN (" . $in . ")";
+    . "WHERE `delete` = 0 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND `rowid` IN (" . $in . ")";
 
 if (!mysqli_query($conn, $sql)) {
     http_response_code(500);
@@ -73,6 +76,16 @@ if (!mysqli_query($conn, $sql)) {
 }
 
 $affected = mysqli_affected_rows($conn);
+if ($affected === 0) {
+    http_response_code(409);
+    echo json_encode([
+        'ok' => false,
+        'error' => 'already_paid',
+        'message' => 'Diese Position(en) wurden bereits abgerechnet.'
+    ], JSON_UNESCAPED_UNICODE);
+    mysqli_close($conn);
+    exit;
+}
 mysqli_close($conn);
 
 echo json_encode(['ok' => true, 'affected' => $affected], JSON_UNESCAPED_UNICODE);

@@ -148,6 +148,8 @@ $offeneSql = "
     LEFT JOIN positionen p
         ON p.rowid = b.position
     WHERE b.tischnummer = " . (int)$tischnummer . "
+      AND b.delete = 0
+      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
       AND b.ausgeliefert = 0
       AND b.timestampBestellung IS NOT NULL
       AND b.timestampBestellung <> '0000-00-00 00:00:00'

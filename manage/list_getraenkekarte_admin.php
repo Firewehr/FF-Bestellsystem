@@ -42,9 +42,14 @@ try {
     $sql = 'SELECT * FROM positionen WHERE type=2 ORDER BY reihenfolge ASC, Positionsname';
     $result = mysqli_query($conn, $sql);
     ?>
-    <div class="manage-fragment-header mb-4 pb-3 border-bottom">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1"><h4 class="text-primary fw-semibold mb-1">Getränke · Kurzliste</h4><button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button></div>
-        <p class="small text-muted mb-0">Schnellpflege wie bei Speisen, nur für Getränke (Typ 2).</p>
+    <div class="manage-shortlist-drinks">
+    <div class="manage-shortlist-drinks__sticky">
+        <div class="manage-fragment-header mb-4 pb-3 border-bottom">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1"><h4 class="text-primary fw-semibold mb-1">Getränke · Kurzliste</h4><button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button></div>
+            <p class="small text-muted mb-0">Schnellpflege wie bei Speisen, nur für Getränke (Typ 2).</p>
+        </div>
+        <h6 class="fw-semibold mb-2">Bestehende Getränke</h6>
+        <p class="manage-table-scroll-hint small text-muted mb-2">Tabelle seitlich wischen oder scrollen, um alle Felder zu erreichen.</p>
     </div>
 
     <div id="ffNewPosModal" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);overflow:auto;padding:1rem" onclick="if(event.target===this)ffCloseNewPosModal()">
@@ -101,8 +106,6 @@ try {
     </div>
     </div>
 
-    <h6 class="fw-semibold mb-2">Bestehende Getränke</h6>
-    <p class="manage-table-scroll-hint small text-muted mb-2">Tabelle seitlich wischen oder scrollen, um alle Felder zu erreichen.</p>
     <div class="table-responsive border rounded">
     <table class="table table-sm table-hover align-middle mb-0 manage-pos-short-table" id="tischTable">
         <thead class="table-light">
@@ -205,6 +208,7 @@ try {
         ?>
         </tbody>
     </table>
+    </div>
     </div>
 
 <?php

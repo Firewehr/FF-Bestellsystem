@@ -54,7 +54,12 @@ if ($capCheck !== null && empty($capCheck['ok'])) {
 
 $created_by = $_SESSION['user']['username'] ?? '';
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+require_once __DIR__ . '/include/ff_schema_helpers.php';
+ff_ensure_table(
+    $conn,
+    'mitarbeiter_verpflegung',
+    'CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+);
 
 $d = mysqli_real_escape_string($conn, $datum);
 $stmt = mysqli_prepare($conn, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');

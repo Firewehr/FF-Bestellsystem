@@ -4,7 +4,7 @@ require_once __DIR__ . '/include/fest_io.php';
 if (!isset($_SESSION['user']) || !isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
   http_response_code(403); echo "forbidden"; exit;
 }
-$fest_id = (int)($_GET['id'] ?? 0);
+$fest_id = (int)($_GET['fest_id'] ?? $_GET['id'] ?? 0);
 $mode = $_GET['mode'] ?? 'full';
 if(!in_array($mode, ['full','template'], true)) $mode='full';
 if(!$fest_id){ http_response_code(400); echo "missing id"; exit; }

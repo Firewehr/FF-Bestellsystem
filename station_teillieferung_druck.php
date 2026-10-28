@@ -7,6 +7,8 @@
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/settings.php';
+require_once __DIR__ . '/include/ff_station_events.php';
+require_once __DIR__ . '/include/ff_event_notifications.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -61,6 +63,24 @@ if ($n <= 0) {
         'message' => 'Keine fertigen, noch ungedruckten Positionen gefunden.',
     ]);
     exit;
+}
+ff_event_notifications_evaluate_rows($conn, $rowids, 'station_teillieferung_druck.php');
+
+$targetRes = mysqli_query(
+    $conn,
+    'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS print_target '
+    . 'FROM bestellungen b JOIN positionen p ON p.rowid = b.position '
+    . 'WHERE b.rowid IN (' . $in . ') AND b.tischnummer = ' . (int) $tischnummer
+);
+if ($targetRes) {
+    $printTargets = [];
+    while ($targetRow = mysqli_fetch_assoc($targetRes)) {
+        $printTargets[] = (int) $targetRow['print_target'];
+    }
+    mysqli_free_result($targetRes);
+    ff_print_events_publish($conn, $printTargets);
+} else {
+    error_log('station_teillieferung_druck.php: Druckziele konnten nicht ermittelt werden: ' . mysqli_error($conn));
 }
 
 echo json_encode([

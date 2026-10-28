@@ -17,6 +17,10 @@ function ff_stat_out(string $s): string {
 
 function ff_stat_format_eur($amount): string {
     $amount = (float)$amount;
+    if (class_exists('NumberFormatter')) {
+        $fmt = new \NumberFormatter('de_AT', \NumberFormatter::CURRENCY);
+        return preg_replace('/\bEUR\b/u', '€', (string)$fmt->formatCurrency($amount, 'EUR')) ?: (string)$fmt->formatCurrency($amount, 'EUR');
+    }
     return number_format($amount, 2, ',', '.') . ' €';
 }
 
@@ -294,6 +298,37 @@ function ff_admin_render_statistik_inner(
         $qrOrderClassicPercent = $qrOrderTotal > 0
             ? ($qrOrderCounts['Ohne QR-Code'] * 100 / $qrOrderTotal)
             : 0;
+        echo '<div class="ff-stat-tabs" id="ffStatTabs" role="tablist">';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="uebersicht" onclick="ffStatShowTab(\'uebersicht\')">Übersicht</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="kellner" onclick="ffStatShowTab(\'kellner\')">Kellner</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="tische" onclick="ffStatShowTab(\'tische\')">Umsatz je Tisch</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="wartezeit" onclick="ffStatShowTab(\'wartezeit\')">Wartezeit</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="haeufigkeit" onclick="ffStatShowTab(\'haeufigkeit\')">Häufigkeit</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="offen" onclick="ffStatShowTab(\'offen\')">Offene Bestellungen</button>';
+        echo '<button type="button" class="ff-stat-tab" data-stat-tab="position" onclick="ffStatShowTab(\'position\')">Position nach Zeitraum</button>';
+        echo '</div>';
+        echo '<div class="ff-stat-common">';
+        echo '<div class="ff-stat-filter">';
+        echo '<div class="ff-stat-field"><label class="form-label form-label-sm small mb-1">Von Datum</label><input type="date" id="ffStatVon" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['from_date']) . '"></div>';
+        echo '<div class="ff-stat-field"><label class="form-label form-label-sm small mb-1">Von Uhrzeit (optional)</label><input type="time" id="ffStatVonZeit" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['from_time']) . '"></div>';
+        echo '<div class="ff-stat-field"><label class="form-label form-label-sm small mb-1">Bis Datum</label><input type="date" id="ffStatBis" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['to_date']) . '"></div>';
+        echo '<div class="ff-stat-field"><label class="form-label form-label-sm small mb-1">Bis Uhrzeit (optional)</label><input type="time" id="ffStatBisZeit" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['to_time']) . '"></div>';
+        echo '<div class="ff-stat-applywrap"><button type="button" class="btn btn-dark btn-sm ff-stat-apply" onclick="ffReloadStatistikBody();">Filter anwenden</button></div>';
+        echo '</div>'; echo '<details class="ff-stat-exports"><summary>Exporte (CSV) ' . ff_admin_info_btn('statHintExports', 'Hinweis: Exporte & Zeitraum') . '</summary><div class="d-flex flex-wrap gap-2 mt-2">';
+        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportKellnerCsv();">Excel-Export verrechnet (CSV)</button></div>';
+        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportKellnerAufgenommenCsv();">Excel-Export Aufnahme (CSV)</button></div>';
+        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportDetailCsv();">Excel-Export Einzelzeilen (CSV)</button></div>';
+        echo '</div></details>';
+        ff_admin_info_panel(
+            'statHintExports',
+            '<p class="mb-2"><strong>Einzelzeilen-CSV:</strong> jede Gastbestellung und Mitarbeiter-Verpflegung mit Artikel, Preis, Menge – in Excel filterbar (z.&nbsp;B. Tisch 999999 = Direktverkauf).</p>'
+            . '<p class="mb-2"><strong>Zeitraum</strong> (Von/Bis) gilt für alle Tabellen und „Position nach Zeitraum“. Leer = gesamte Historie.</p>'
+            . '<p class="mb-0"><em>Abgerechnet</em> / Umsatz pro Tisch: <code>timestampBezahlung</code>. '
+            . '<em>Aufgenommen</em> (Kellner): nur Zeilen mit <code>ausgeliefert=1</code> (nach Auslieferung durch Küche/Schank). '
+            . 'Wartezeiten, Häufigkeit: <code>zeitstempel</code>.</p>'
+        );
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="uebersicht">';
         echo '<div class="card border-secondary mb-3">';
         echo '<div class="card-body">';
         echo '<h5 class="card-title">Bestellzeilen mit und ohne QR-Code</h5>';
@@ -331,7 +366,8 @@ function ff_admin_render_statistik_inner(
             $sumLabel .= ', Zeitraum gefiltert';
         }
         echo '<p class="mb-3"><strong>' . ff_stat_out($sumLabel) . ':</strong> ' . $cntAll . ' &nbsp;|&nbsp; <strong>Storniert (ohne Zeitraum):</strong> ' . $cntDel . '</p>';
-
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="kellner">';
         echo '<div class="d-flex align-items-center gap-2 mt-3 mb-2" id="ffStatKellnerAbgerechnet">';
         echo '<h5 class="mb-0">Kellner abgerechnete Positionen</h5>';
         echo ff_admin_info_btn('statHintKellner', 'Hinweis: Kellner-Tabellen');
@@ -340,25 +376,6 @@ function ff_admin_render_statistik_inner(
             'statHintKellner',
             '<p class="mb-2">Abgerechnet: Umsätze nach <code>kellnerZahlung</code> (Kasse). Bei Sammelrechnung vor Bezahlen Kellner wählen.</p>'
             . '<p class="mb-0">Aufgenommen: wer die Bestellung erfasst hat (<code>kellner</code>).</p>'
-        );
-        echo '<div class="d-flex flex-wrap gap-2 mb-2 align-items-end">';
-        echo '<div><label class="form-label form-label-sm small mb-1">Von Datum</label><input type="date" id="ffStatVon" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['from_date']) . '"></div>';
-        echo '<div><label class="form-label form-label-sm small mb-1">Von Uhrzeit (optional)</label><input type="time" id="ffStatVonZeit" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['from_time']) . '"></div>';
-        echo '<div><label class="form-label form-label-sm small mb-1">Bis Datum</label><input type="date" id="ffStatBis" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['to_date']) . '"></div>';
-        echo '<div><label class="form-label form-label-sm small mb-1">Bis Uhrzeit (optional)</label><input type="time" id="ffStatBisZeit" class="form-control form-control-sm" value="' . ff_stat_out($paidDate['to_time']) . '"></div>';
-        echo '<div><button type="button" class="btn btn-outline-secondary btn-sm" onclick="ffReloadStatistikBody();">Filter anwenden</button></div>';
-        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportKellnerCsv();">Excel-Export verrechnet (CSV)</button></div>';
-        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportKellnerAufgenommenCsv();">Excel-Export Aufnahme (CSV)</button></div>';
-        echo '<div><button type="button" class="btn btn-outline-success btn-sm" onclick="ffStatExportDetailCsv();">Excel-Export Einzelzeilen (CSV)</button></div>';
-        echo '<div class="align-self-end">' . ff_admin_info_btn('statHintExports', 'Hinweis: Exporte & Zeitraum') . '</div>';
-        echo '</div>';
-        ff_admin_info_panel(
-            'statHintExports',
-            '<p class="mb-2"><strong>Einzelzeilen-CSV:</strong> jede Gastbestellung und Mitarbeiter-Verpflegung mit Artikel, Preis, Menge – in Excel filterbar (z.&nbsp;B. Tisch 999999 = Direktverkauf).</p>'
-            . '<p class="mb-2"><strong>Zeitraum</strong> (Von/Bis) gilt für alle Tabellen und „Position nach Zeitraum“. Leer = gesamte Historie.</p>'
-            . '<p class="mb-0"><em>Abgerechnet</em> / Umsatz pro Tisch: <code>timestampBezahlung</code>. '
-            . '<em>Aufgenommen</em> (Kellner): nur Zeilen mit <code>ausgeliefert=1</code> (nach Auslieferung durch Küche/Schank). '
-            . 'Wartezeiten, Häufigkeit: <code>zeitstempel</code>.</p>'
         );
         $fAb = $hasF ? $F['fKasse'] : '';
         $sql = 'SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung, SUM(COALESCE(NULLIF(bestellungen.betrag, 0), positionen.Betrag)) as summe FROM bestellungen, positionen WHERE bestellungen.position=positionen.rowid AND bestellungen.`delete`=0 AND bestellungen.timestampBezahlung!=\'0000-00-00 00:00:00\' AND IFNULL(bestellungen.is_gratis,0)=0 AND IFNULL(bestellungen.schreibaus,0)=0 ' . $fAb . $paidDate['sql'] . ' GROUP BY bestellungen.kellnerZahlung ORDER BY bestellungen.kellnerZahlung';
@@ -382,6 +399,8 @@ function ff_admin_render_statistik_inner(
         }
         echo '</tbody></table></div>';
 
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="tische">';
         echo '<h5 class="mt-3">Bezahlter Umsatz pro Tisch</h5>';
         echo '<p class="small text-muted mb-2">Summe aus <code>bestellungen.betrag</code> bzw. Positionspreis, nur <strong>bezahlte</strong> Zeilen (ohne Gratis/Schreibaus).</p>';
         $fB = $hasF ? $F['fBeidesB'] : '';
@@ -402,6 +421,8 @@ function ff_admin_render_statistik_inner(
         }
         echo '</tbody></table></div>';
 
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="wartezeit">';
         echo '<h5 class="mt-3">Wartezeit je Position</h5>';
         $fW = $hasF ? $F['fBeidesPlain'] : '';
         $sql = 'SELECT positionen.Positionsname, AVG(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS avgsec, MAX(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS maxsec FROM bestellungen JOIN positionen ON positionen.rowid = bestellungen.position WHERE bestellungen.`delete`=0 AND bestellungen.`kueche`=1 AND bestellungen.zeitKueche!=\'0000-00-00 00:00:00\' ' . $fW . $captureDate['sql'] . ' GROUP BY bestellungen.position ORDER BY avgsec DESC';
@@ -412,6 +433,8 @@ function ff_admin_render_statistik_inner(
         }
         echo '</tbody></table></div>';
 
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="haeufigkeit">';
         echo '<h5 class="mt-3">Speisen – Bestellhäufigkeit</h5>';
         $sql = 'SELECT positionen.Positionsname, COUNT(*) as cnt FROM bestellungen, positionen WHERE positionen.rowid = bestellungen.position AND bestellungen.`delete`=0 ' . $fW . $captureDate['sql'] . ' GROUP BY bestellungen.position ORDER BY cnt DESC';
         $result = mysqli_query($conn, $sql);
@@ -427,6 +450,8 @@ function ff_admin_render_statistik_inner(
         while ($row3 = mysqli_fetch_assoc($result)) {
             $wartend = (int)$row3['cnt'];
         }
+        echo '</div>';
+        echo '<div class="ff-stat-sec" data-stat-sec="offen">';
         echo '<h5 class="mt-3">Aktuell offene Bestellungen</h5>';
         if ($hasDateFilter) {
             echo '<p class="small text-muted">Nur noch <strong>nicht küchenbestätigte</strong> Bestellungen mit <code>zeitstempel</code> im gewählten Zeitraum.</p>';
@@ -439,6 +464,7 @@ function ff_admin_render_statistik_inner(
             echo '<tr><td>' . date('H:i', ((int)$row4['t']) * 120) . '</td><td>' . ff_stat_out((string)$row4['zeit']) . '</td></tr>';
         }
         echo '</tbody></table></div>';
+        echo '</div>';
 
         $resPos = mysqli_query($conn, 'SELECT rowid, Positionsname, type FROM positionen ORDER BY type, Positionsname');
         $posList = [];
@@ -447,7 +473,7 @@ function ff_admin_render_statistik_inner(
                 $posList[] = $r;
             }
         }
-        echo '<hr class="my-4">';
+        echo '<div class="ff-stat-sec" data-stat-sec="position">';
         echo '<div class="d-flex align-items-center gap-2 mt-3 mb-2">';
         echo '<h5 class="mb-0">Position nach Zeitraum (mit Grafik)</h5>';
         echo ff_admin_info_btn('statHintPosition', 'Hinweis: Positions-Statistik');
@@ -492,6 +518,7 @@ function ff_admin_render_statistik_inner(
         echo '<div class="d-flex flex-wrap gap-2 align-items-center">';
         echo '<button type="button" class="btn btn-outline-success btn-sm" onclick="posStatExportCsv();">Excel / CSV exportieren</button>';
         echo ff_admin_info_btn('statHintPosCsv', 'Hinweis: Positions-CSV');
+        echo '</div>';
         echo '</div>';
         ff_admin_info_panel('statHintPosCsv', '<p class="mb-0">CSV: Aggregat (Stück) + Einzelzeilen inkl. Gratis/Schreibaus und Mitarbeiter-Mengen.</p>');
         echo '</div>';

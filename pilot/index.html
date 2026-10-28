@@ -1,0 +1,1312 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Feuerwehr Bestellsystem – Kellner Pilot</title>
+  
+  <meta name="theme-color" content="#dc2626">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="../pwa-icon-192.png">
+  
+  <link rel="stylesheet" href="style.css?v=9">
+</head>
+<body>
+  <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
+    
+    <!-- Offline Hinweis Banner -->
+    <div v-if="!isOnline" class="offline-banner">
+      <span>⚡ Offline-Modus – Bestellungen werden lokal zwischengespeichert.</span>
+      <span v-if="pendingOrders.length > 0">({{ pendingOrders.length }} wartend)</span>
+    </div>
+
+    <!-- 1. App Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <button 
+          class="table-badge" 
+          :class="{'has-table': !!selectedTable, 'must-pay': mustPayFirst}" 
+          @click="mustPayFirst ? switchTab('pay') : (showTableModal = true)">
+          <span v-if="mustPayFirst" style="color: #b45309; font-weight: 800;">💰 Tisch {{ selectedTable.tischname }} (Erst zahlen!)</span>
+          <span v-else-if="selectedTable">🪑 {{ selectedTable.tischname }}</span>
+          <span v-else>👉 Tisch wählen</span>
+          <span v-if="selectedTable && selectedTable.is_ehrengast" class="badge-tag">Ehrengast</span>
+          <span v-if="selectedTable && selectedTable.is_sammelrechnung" class="badge-tag">Sammel</span>
+        </button>
+
+        <!-- Live Wartezeiten -->
+        <div v-if="waitTimes.drink > 0 || waitTimes.food > 0" class="wait-pill" title="Aktuelle Wartezeiten">
+          <span v-if="waitTimes.drink > 0">🍺 {{ waitTimes.drink }}m</span>
+          <span v-if="waitTimes.drink > 0 && waitTimes.food > 0">|</span>
+          <span v-if="waitTimes.food > 0">🍔 {{ waitTimes.food }}m</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <span class="status-pill" :class="isOnline ? 'online' : 'offline'">
+          {{ isOnline ? '●' : '○' }}
+        </span>
+        <button class="icon-btn" title="Benutzer & Einstellungen" @click="showUserModal = true">
+          👤
+        </button>
+        <button class="icon-btn" title="Aktualisieren" @click="refreshData">
+          🔄
+        </button>
+      </div>
+    </header>
+
+    <!-- Sofortzahlung-Warnhinweis -->
+    <div v-if="mustPayFirst" class="alert-banner warning" style="margin: 8px 12px; padding: 10px 14px; background: #fef08a; color: #854d0e; border: 1px solid #facc15; border-radius: 8px; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center;">
+      <span>💰 <strong>Sofortzahlung:</strong> Es sind {{ selectedTable.open_items_count }} offene Position(en) vorhanden. Bitte zuerst kassieren oder stornieren!</span>
+      <button class="chip-btn active" style="margin:0; padding:6px 12px; font-weight:700;" @click="switchTab('pay')">Jetzt zahlen</button>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: BESTELLEN (Speisekarte & Warenkorb)                             -->
+    <!-- ===================================================================== -->
+    <section v-if="currentTab === 'menu'">
+      <!-- Kategorien-Navigation -->
+      <nav class="category-nav">
+        <div class="nav-tabs-main">
+          <button 
+            v-for="t in types" 
+            :key="t.id"
+            class="main-tab-btn" 
+            :class="{ active: activeType === t.id }"
+            @click="selectType(t.id)">
+            {{ t.icon }} {{ t.name }}
+          </button>
+        </div>
+
+        <div class="subnav-chips" v-if="currentSubcategories.length > 0">
+          <button 
+            class="chip-btn" 
+            :class="{ active: activeSubcategory === null }"
+            @click="activeSubcategory = null">
+            Alle ({{ filteredItems.length }})
+          </button>
+          <button 
+            v-for="sub in currentSubcategories" 
+            :key="sub.id"
+            class="chip-btn" 
+            :class="{ active: activeSubcategory === sub.id }"
+            @click="activeSubcategory = sub.id">
+            {{ sub.name }}
+          </button>
+        </div>
+      </nav>
+
+      <!-- Artikel-Grid mit Unterkategorien und Wischgeste (Swipe) -->
+      <main class="menu-container ff-tab-swipe-area" @touchstart="onMenuTouchStart" @touchend="onMenuTouchEnd" @touchcancel="onMenuTouchCancel">
+        <div v-if="isLoading" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+          <p>Lade Speisekarte...</p>
+        </div>
+
+        <div v-else-if="menuSections.length === 0" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+          <p>Keine Positionen in dieser Kategorie gefunden.</p>
+        </div>
+
+        <div v-else>
+          <div v-for="sec in menuSections" :key="sec.id" class="menu-category-section">
+            <div class="category-section-header" :style="sec.color_style">
+              <span class="category-section-title">{{ sec.name }}</span>
+              <span class="category-section-badge">{{ sec.items.length }}</span>
+            </div>
+
+            <div class="menu-grid">
+              <div 
+                v-for="item in sec.items" 
+                :key="item.id"
+                class="menu-card" 
+                :class="{ 
+                  locked: item.is_locked, 
+                  'sold-out': item.is_sold_out,
+                  'has-cart': getItemCartQty(item.id) > 0 
+                }"
+                :style="{ backgroundColor: item.resolved_bg, color: item.resolved_color }"
+                @click="onItemClick(item)">
+                
+                <!-- Menge im Warenkorb Badge -->
+                <div v-if="getItemCartQty(item.id) > 0" class="cart-qty-pill">
+                  {{ getItemCartQty(item.id) }}
+                </div>
+
+                <div class="card-top">
+                  <span class="card-title">{{ item.name }}</span>
+                  <span v-if="item.is_sold_out" class="card-stock-sold">Ausverkauft</span>
+                  <span v-else-if="item.is_low_stock" class="card-stock-low">Noch {{ item.rest }}×</span>
+                  <span v-else-if="item.is_locked" class="card-stock-sold">Gesperrt</span>
+                </div>
+
+                <div class="card-bottom">
+                  <span class="card-price">{{ formatPrice(item.price) }}</span>
+                  
+                  <div class="card-actions-row" @click.stop>
+                    <button 
+                      v-if="getItemCartQty(item.id) > 0" 
+                      class="card-mini-btn" 
+                      title="Eins entfernen"
+                      @click.stop="decrementItem(item)">
+                      −
+                    </button>
+                    <button 
+                      class="card-mini-btn opt" 
+                      title="Optionen, Rezeptur & Notiz"
+                      @click.stop="openItemOptions(item)">
+                      💬
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <!-- Sticky Cart Bar -->
+      <div v-if="cart.length > 0" class="cart-sticky-bar">
+        <div class="cart-sticky-info" @click="showCartModal = true" style="cursor:pointer;">
+          <span class="cart-sticky-count">
+            🛒 {{ cartItemCount }} Positionen (Details)
+            <span v-if="isDraftSaving" style="font-size:0.75rem; opacity:0.85; margin-left:4px;">💾 Speichern...</span>
+            <span v-else-if="draftSaveStatus === 'saved'" style="font-size:0.75rem; opacity:0.85; margin-left:4px;">✓ Gesichert</span>
+          </span>
+          <span class="cart-sticky-total">{{ formatPrice(cartTotal) }}</span>
+        </div>
+        <button class="cart-sticky-btn" @click="proceedToOrder" :disabled="isSubmitting">
+          <span>Prüfen & Abschicken ➔</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: ZAHLEN (Abrechnung & Splitten)                                 -->
+    <!-- ===================================================================== -->
+    <section v-else-if="currentTab === 'pay'" class="pay-view">
+      <div v-if="!selectedTable" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+        <p style="font-size:1.1rem; font-weight:700;">Kein Tisch ausgewählt</p>
+        <button class="btn-primary-block" style="margin-top:14px; max-width:240px;" @click="showTableModal = true">
+          🪑 Tisch auswählen
+        </button>
+      </div>
+
+      <div v-else-if="isPayLoading" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+        <p>Lade offene Positionen für Tisch {{ selectedTable.tischname }}...</p>
+      </div>
+
+      <div v-else-if="tableOrders">
+        <!-- Header-Karte -->
+        <div class="pay-card-header">
+          <div class="pay-header-left">
+            <span class="pay-table-name">Tisch {{ tableOrders.table.tischname }}</span>
+            <div class="pay-table-badges">
+              <span v-if="tableOrders.table.is_ehrengast" class="badge-tag paid">Ehrengast</span>
+              <span v-if="tableOrders.table.is_sammelrechnung" class="badge-tag unpaid">Sammelrechnung</span>
+              <span class="badge-tag" style="background:#e2e8f0; color:#334155;">{{ tableOrders.open_count }} offen</span>
+            </div>
+          </div>
+          <div class="pay-header-total">
+            <span class="pay-header-total-label">Offener Gesamtbetrag</span>
+            <span class="pay-header-total-val">{{ formatPrice(tableOrders.total_amount) }}</span>
+          </div>
+        </div>
+
+        <!-- Ehrengast Hinweis & Abschluss -->
+        <div v-if="tableOrders.table.is_ehrengast" style="background:var(--ff-success-light); border:1px solid #86efac; padding:12px; border-radius:var(--ff-radius); margin-top:8px;">
+          <p style="font-weight:700; color:var(--ff-success-dark); margin-bottom:8px;">
+            🎉 Dieser Tisch ist als Ehrengast markiert (Speisen & Getränke gratis).
+          </p>
+          <button class="btn-primary-block" style="background:var(--ff-success);" @click="finishEhrengastTable" :disabled="isSubmitting">
+            Ehrengäste-Tisch abschließen (0,00 €)
+          </button>
+        </div>
+
+        <!-- Sammelrechnung Hinweis -->
+        <div v-if="tableOrders.table.is_sammelrechnung" style="background:var(--ff-warning-light); border:1px solid #fde68a; padding:12px; border-radius:var(--ff-radius); margin-top:8px;">
+          <p style="font-weight:700; color:var(--ff-warning-dark);">
+            ℹ Sammelrechnungs-Tisch: Wird gesammelt über "Sammelrechnung" abgerechnet.
+          </p>
+        </div>
+
+        <!-- Keine offenen Positionen -->
+        <div v-if="tableOrders.grouped.length === 0" style="text-align:center; padding: 30px; color: var(--ff-text-muted);">
+          <p style="font-size:1.05rem;">Keine offenen Positionen mehr auf diesem Tisch.</p>
+        </div>
+
+        <!-- Liste der Positionen mit Split-Steuerung -->
+        <div v-else class="pay-items-list" style="margin-top:10px;">
+          <div v-for="g in tableOrders.grouped" :key="g.group_key" class="pay-row">
+            <div class="pay-row-left">
+              <span class="pay-row-title">{{ g.name }}</span>
+              <span v-if="g.zusatzinfo" class="pay-row-notes">✎ {{ g.zusatzinfo }}</span>
+              <span class="pay-row-sub">{{ g.quantity }}× {{ formatPrice(g.single_price) }} = {{ formatPrice(g.total_price) }}</span>
+            </div>
+
+            <div class="pay-row-controls">
+              <div class="pay-qty-box">
+                <button 
+                  class="pay-qty-btn" 
+                  :disabled="(splitQuantities[g.group_key] || 0) <= 0"
+                  @click="setSplitQty(g.group_key, -1, g.quantity)">
+                  −
+                </button>
+                <span class="pay-qty-val">
+                  {{ splitQuantities[g.group_key] || 0 }} / {{ g.quantity }}
+                </span>
+                <button 
+                  class="pay-qty-btn" 
+                  :disabled="(splitQuantities[g.group_key] || 0) >= g.quantity"
+                  @click="setSplitQty(g.group_key, 1, g.quantity)">
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bezahl-Aktionen -->
+        <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_sammelrechnung" style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
+          <!-- Wenn Teilmenge gewählt -->
+          <button 
+            v-if="hasPartialSelection" 
+            class="btn-primary-block" 
+            style="background: var(--ff-warning); color: #000; font-size: 1.1rem;"
+            @click="openPayDialog(false)">
+            Ausgewählte bezahlen ({{ formatPrice(selectedPayAmount) }})
+          </button>
+
+          <!-- Alles bezahlen -->
+          <button 
+            class="btn-primary-block" 
+            style="background: var(--ff-success); font-size: 1.15rem;"
+            @click="openPayDialog(true)">
+            Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
+          </button>
+
+          <!-- Weitere Optionen: Verschieben & Nachträgliche Rechnung -->
+          <div class="pay-actions-grid">
+            <button 
+              class="btn-pay-action btn-pay-outline" 
+              @click="openMoveDialog({ tischnummer: selectedTable.tischnummer, rowids: hasPartialSelection ? selectedPayRows : [] })">
+              ↷ {{ hasPartialSelection ? 'Auswahl' : 'Offene' }} verschieben
+            </button>
+
+            <button 
+              v-if="tableOrders.pending_rechnung_count > 0" 
+              class="btn-pay-action btn-pay-outline" 
+              style="color: var(--ff-info);"
+              @click="triggerNachtraeglicheRechnung">
+              📄 + Rechnung ({{ tableOrders.pending_rechnung_count }} bez.)
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: HISTORIE (Tisch-Bestellverlauf)                                 -->
+    <!-- ===================================================================== -->
+    <section v-else-if="currentTab === 'history'" class="history-view">
+      <div v-if="!selectedTable" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+        <p style="font-size:1.1rem; font-weight:700;">Kein Tisch ausgewählt</p>
+        <button class="btn-primary-block" style="margin-top:14px; max-width:240px;" @click="showTableModal = true">
+          🪑 Tisch auswählen
+        </button>
+      </div>
+
+      <div v-else-if="isHistoryLoading" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+        <p>Lade Historie für Tisch {{ selectedTable.tischname }}...</p>
+      </div>
+
+      <div v-else-if="tableHistory">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <h3 style="font-size:1.15rem; font-weight:800;">Historie: Tisch {{ tableHistory.table.tischname }}</h3>
+          <span style="font-size:0.8rem; color:var(--ff-text-muted);">{{ tableHistory.rounds_count }} Runden</span>
+        </div>
+
+        <div v-if="tableHistory.rounds.length === 0" style="text-align:center; padding: 30px; color: var(--ff-text-muted);">
+          <p>Bisher keine Bestellungen für diesen Tisch erfasst.</p>
+        </div>
+
+        <div v-else style="display:flex; flex-direction:column; gap:10px;">
+          <div 
+            v-for="r in tableHistory.rounds" 
+            :key="r.batch_key" 
+            class="round-card"
+            :class="{ cancelled: r.is_cancelled }">
+            
+            <div class="round-card-header">
+              <div class="round-meta-top">
+                <span class="round-nr">#{{ r.order_nr || 'Runde' }}</span>
+                <span class="round-time">{{ formatTime(r.timestamp) }}</span>
+                <span v-if="r.kellner" class="round-time">👤 {{ r.kellner }}</span>
+              </div>
+              <div class="round-badges">
+                <span v-if="r.is_cancelled" class="badge-tag cancelled">Storniert</span>
+                <span v-else-if="r.status_payment === 'paid'" class="badge-tag paid">Bezahlt</span>
+                <span v-else-if="r.status_payment === 'open'" class="badge-tag unpaid">Unbezahlt</span>
+                <span v-else class="badge-tag unpaid">Teilbezahlt</span>
+
+                <span v-if="r.status_delivery === 'ready'" class="badge-tag ready">Bereit!</span>
+                <span v-else-if="r.status_delivery === 'delivered'" class="badge-tag delivered">Geliefert</span>
+              </div>
+            </div>
+
+            <div class="round-card-body">
+              <div v-for="(it, iIdx) in r.items" :key="iIdx" class="round-item-line">
+                <div>
+                  <span :style="{ textDecoration: it.is_cancelled ? 'line-through' : 'none' }">
+                    {{ it.name }}
+                  </span>
+                  <div v-if="it.zusatzinfo" class="round-item-notes">✎ {{ it.zusatzinfo }}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="font-weight:700;">{{ formatPrice(it.price) }}</span>
+                  <button 
+                    v-if="it.can_cancel && !r.is_cancelled" 
+                    class="round-btn danger" 
+                    title="Diese Position stornieren"
+                    @click="cancelSingleItem(it)">
+                    🗑
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="round-card-footer">
+              <span class="round-total-val">{{ formatPrice(r.total_amount) }}</span>
+              <div class="round-actions-btns">
+                <button class="round-btn" @click="openBonPreview(r)">
+                  📄 Bon
+                </button>
+                <button v-if="r.can_move" class="round-btn" @click="openMoveDialog(r)">
+                  ↷ Verschieben
+                </button>
+                <button v-if="r.can_cancel" class="round-btn danger" @click="cancelOrderRound(r)">
+                  🗑 Stornieren
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: MEINE OFFENEN BESTELLUNGEN (Alert & Status)                    -->
+    <!-- ===================================================================== -->
+    <section v-else-if="currentTab === 'my_orders'" class="my-orders-view">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <h3 style="font-size:1.15rem; font-weight:800;">Meine offenen Bestellungen</h3>
+        <span class="badge-tag" style="background:#0f172a; color:#fff;">{{ myOrders.length }}</span>
+      </div>
+
+      <div v-if="myOrders.length === 0" style="text-align:center; padding: 40px; color: var(--ff-text-muted);">
+        <p style="font-size:1.05rem;">Keine offenen Bestellungen mehr aktiv.</p>
+        <p style="font-size:0.85rem; margin-top:4px;">Alles wurde an den Gast ausgeliefert!</p>
+      </div>
+
+      <div v-else style="display:flex; flex-direction:column; gap:8px;">
+        <div 
+          v-for="mo in myOrders" 
+          :key="mo.batch_key" 
+          class="order-alert-card"
+          :class="mo.is_ready ? 'ready' : 'in-prep'"
+          @click="jumpToMyOrder(mo)">
+          
+          <div class="order-alert-top">
+            <span class="order-alert-title">🪑 Tisch {{ mo.tischname }}</span>
+            <span class="order-alert-status" :class="mo.is_ready ? 'ready' : 'in-prep'">
+              {{ mo.is_ready ? '🔔 ABHOLBEREIT!' : '⏳ In Zubereitung' }}
+            </span>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+            <span class="order-alert-meta">
+              Bestellung #{{ mo.order_nr || '–' }} · {{ mo.item_count }} Positionen · {{ formatTime(mo.created_at) }}
+            </span>
+            <span style="font-weight:900; font-size:1.05rem;">{{ formatPrice(mo.total_amount) }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 5: TISCHÜBERSICHT (Großes Raster aller Tische)                     -->
+    <!-- ===================================================================== -->
+    <section v-else-if="currentTab === 'tables'" class="tables-view">
+      <input 
+        type="text" 
+        v-model="tableSearchQuery" 
+        placeholder="🔍 Tisch suchen (z. B. 12 oder A1)..." 
+        class="text-input" 
+        autofocus>
+
+      <div class="table-filter-chips">
+        <button 
+          class="chip-btn" 
+          :class="{ active: tableFilterMode === 'all' && selectedBereich === null }" 
+          @click="tableFilterMode = 'all'; selectedBereich = null;">
+          Alle Tische ({{ tables.length }})
+        </button>
+        <button 
+          v-for="b in bereiche" 
+          :key="b.id" 
+          class="chip-btn" 
+          :class="{ active: selectedBereich === b.id }" 
+          @click="selectedBereich = b.id; tableFilterMode = 'all';">
+          {{ b.name }}
+        </button>
+        <button 
+          class="chip-btn" 
+          :class="{ active: tableFilterMode === 'open' }" 
+          @click="tableFilterMode = 'open'; selectedBereich = null;">
+          Nur Offene
+        </button>
+        <button 
+          class="chip-btn" 
+          :class="{ active: tableFilterMode === 'my' }" 
+          @click="tableFilterMode = 'my'; selectedBereich = null;">
+          Nur Meine
+        </button>
+      </div>
+
+      <div class="tables-grid-large">
+        <button 
+          v-for="t in filteredTables" 
+          :key="t.tischnummer"
+          class="table-tile"
+          :class="{
+            'has-orders': t.open_items_count > 0,
+            'has-unsent': t.has_unsent,
+            'has-ready': t.ready_items_count > 0,
+            'active-table': selectedTable && selectedTable.tischnummer === t.tischnummer
+          }"
+          :style="{ backgroundColor: t.bg_color, color: t.text_color }"
+          @click="selectTable(t)">
+          
+          <span v-if="t.has_unsent" class="table-tile-unsent-badge" title="Noch nicht abgeschickt">⚠ {{ t.unsent_items_count }}</span>
+          <span v-if="t.open_items_count > 0" class="table-tile-badge">{{ t.open_items_count }}</span>
+          <span v-if="t.ready_items_count > 0" class="table-tile-ready-badge">🔔 {{ t.ready_items_count }}</span>
+
+          <span class="table-tile-name">{{ t.tischname }}</span>
+          
+          <div style="display:flex; gap:2px;">
+            <span v-if="t.is_ehrengast" class="badge-tag paid" style="font-size:0.6rem; padding:1px 3px;">EG</span>
+            <span v-if="t.is_sammelrechnung" class="badge-tag unpaid" style="font-size:0.6rem; padding:1px 3px;">SR</span>
+          </div>
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- UNTERE NAVIGATION (BOTTOM NAVIGATION BAR)                             -->
+    <!-- ===================================================================== -->
+    <nav class="bottom-nav">
+      <button class="nav-item-btn" :class="{ active: currentTab === 'menu' }" @click="switchTab('menu')">
+        <span class="nav-icon">📋</span>
+        <span>Bestellen</span>
+      </button>
+
+      <button class="nav-item-btn" :class="{ active: currentTab === 'pay' }" @click="switchTab('pay')">
+        <span class="nav-icon">💰</span>
+        <span>Zahlen</span>
+      </button>
+
+      <button class="nav-item-btn" :class="{ active: currentTab === 'history' }" @click="switchTab('history')">
+        <span class="nav-icon">🕒</span>
+        <span>Historie</span>
+      </button>
+
+      <button class="nav-item-btn" :class="{ active: currentTab === 'my_orders' }" @click="switchTab('my_orders')">
+        <span class="nav-icon">🔔</span>
+        <span>Meine</span>
+        <span v-if="myOrders.length > 0" class="nav-badge" :class="{ ready: myOrdersReadyCount > 0 }">
+          {{ myOrders.length }}
+        </span>
+      </button>
+
+      <button class="nav-item-btn" :class="{ active: currentTab === 'tables' }" @click="switchTab('tables')">
+        <span class="nav-icon">🪑</span>
+        <span>Tische</span>
+      </button>
+    </nav>
+
+    <!-- ===================================================================== -->
+    <!-- MODALS                                                                -->
+    <!-- ===================================================================== -->
+
+    <!-- MODAL 1: Tischauswahl Bottom Sheet -->
+    <div v-if="showTableModal" class="modal-overlay" @click.self="showTableModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Tisch auswählen</span>
+          <button class="sheet-close-btn" @click="showTableModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <input 
+            type="text" 
+            v-model="tableSearchQuery" 
+            placeholder="🔍 Tisch suchen..." 
+            class="text-input" 
+            autofocus>
+
+          <div class="table-filter-chips" style="margin-top:8px; margin-bottom:8px;">
+            <button 
+              class="chip-btn" 
+              :class="{ active: selectedBereich === null }" 
+              @click="selectedBereich = null">
+              Alle ({{ tables.length }})
+            </button>
+            <button 
+              v-for="b in bereiche" 
+              :key="b.id" 
+              class="chip-btn" 
+              :class="{ active: selectedBereich === b.id }" 
+              @click="selectedBereich = b.id">
+              {{ b.name }}
+            </button>
+          </div>
+
+          <div class="tables-grid-large" style="max-height: 55vh; overflow-y: auto;">
+            <button 
+              v-for="t in filteredTables" 
+              :key="t.tischnummer"
+              class="table-tile"
+              :class="{
+                'has-orders': t.open_items_count > 0,
+                'has-unsent': t.has_unsent,
+                'has-ready': t.ready_items_count > 0,
+                'active-table': selectedTable && selectedTable.tischnummer === t.tischnummer
+              }"
+              :style="{ backgroundColor: t.bg_color, color: t.text_color }"
+              @click="selectTable(t)">
+              <span v-if="t.has_unsent" class="table-tile-unsent-badge" title="Noch nicht abgeschickt">⚠ {{ t.unsent_items_count }}</span>
+              <span v-if="t.open_items_count > 0" class="table-tile-badge">{{ t.open_items_count }}</span>
+              <span v-if="t.ready_items_count > 0" class="table-tile-ready-badge">🔔 {{ t.ready_items_count }}</span>
+              <span class="table-tile-name">{{ t.tischname }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Beilagen, Rezeptur & Sonderwünsche pro Position -->
+    <div v-if="showOptionsModal && activeOptionItem" class="modal-overlay" @click.self="showOptionsModal = false">
+      <div class="bottom-sheet options-sheet">
+        <div class="sheet-header">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="sheet-title">{{ activeOptionItem.name }}</span>
+              <span v-if="getItemCartQty(activeOptionItem.id) > 0" class="badge-tag" style="background:#e0f2fe; color:#0369a1; font-size:0.75rem;">
+                🛒 {{ getItemCartQty(activeOptionItem.id) }}× im Warenkorb
+              </span>
+            </div>
+            <div style="font-size:0.85rem; color:var(--ff-text-muted); font-weight:700; margin-top:2px;">
+              Basispreis: {{ formatPrice(activeOptionItem.price) }}
+              <span v-if="activeOptionItem.is_limited" style="color:#b45309; margin-left:6px;">
+                (Noch {{ activeOptionItem.rest }}× verfügbar)
+              </span>
+            </div>
+          </div>
+          <button class="sheet-close-btn" @click="showOptionsModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <!-- Portionsmenge Steuerung -->
+          <div class="options-qty-section">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <span style="font-weight:800; font-size:0.95rem;">Anzahl Portionen</span>
+                <div style="font-size:0.75rem; color:var(--ff-text-muted);">
+                  Beliebige Menge eintippen oder wählen
+                </div>
+              </div>
+              <div class="pay-row-controls">
+                <button type="button" class="pay-qty-btn" @click="updateOptionQty(optionQty - 1)">−</button>
+                <input 
+                  type="number" 
+                  v-model.number="optionQtyInput" 
+                  @change="onOptionQtyInputChange"
+                  @blur="onOptionQtyInputBlur"
+                  min="1" 
+                  :max="maxOptionQty" 
+                  class="pay-qty-input"
+                  inputmode="numeric">
+                <button type="button" class="pay-qty-btn" @click="updateOptionQty(optionQty + 1)">+</button>
+              </div>
+            </div>
+
+            <!-- Schnellauswahl Mengentasten (Pills) -->
+            <div class="quick-qty-pills" style="margin-top:10px;">
+              <button 
+                v-for="q in [1, 2, 3, 4, 5, 10]" 
+                :key="q"
+                v-show="q <= maxOptionQty || q === 1"
+                type="button" 
+                class="quick-qty-pill"
+                :class="{ active: optionQty === q }"
+                @click="updateOptionQty(q)">
+                {{ q }}×
+              </button>
+            </div>
+          </div>
+
+          <!-- Bei mehreren Portionen: Portionsauswahl (Tabs) & Aktionen -->
+          <div v-if="optionQty > 1" class="portions-header-box">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-weight:800; font-size:0.85rem; text-transform:uppercase; color:var(--ff-text-muted);">
+                  Portionen ({{ optionQty }})
+                </span>
+                <span style="font-size:0.75rem; color:var(--ff-text-muted);">
+                  Individuell anpassbar
+                </span>
+              </div>
+              <div class="portions-view-toggle">
+                <button 
+                  type="button" 
+                  class="p-view-btn" 
+                  :class="{ active: optionsViewMode === 'tabs' }" 
+                  @click="optionsViewMode = 'tabs'">
+                  📑 Reiter
+                </button>
+                <button 
+                  type="button" 
+                  class="p-view-btn" 
+                  :class="{ active: optionsViewMode === 'list' }" 
+                  @click="optionsViewMode = 'list'">
+                  📄 Alle
+                </button>
+              </div>
+            </div>
+
+            <!-- Tabs: Wenn Reiter-Ansicht aktiv -->
+            <div v-if="optionsViewMode === 'tabs'" class="portions-tab-strip">
+              <button 
+                v-for="(p, pIdx) in portions" 
+                :key="pIdx"
+                type="button"
+                class="portion-tab"
+                :class="{ active: activePortionIndex === pIdx }"
+                @click="activePortionIndex = pIdx">
+                <span class="portion-tab-title">Portion {{ pIdx + 1 }}</span>
+                <span class="portion-tab-summary">{{ getPortionSummary(p) }}</span>
+              </button>
+            </div>
+
+            <!-- Aktionsleiste für Portionen -->
+            <div class="portion-actions-bar">
+              <span v-if="optionsViewMode === 'tabs'" style="font-weight:700; color:var(--ff-text); font-size:0.82rem;">
+                Portion {{ activePortionIndex + 1 }} von {{ optionQty }}:
+              </span>
+              <span v-else style="font-weight:700; color:var(--ff-text); font-size:0.82rem;">
+                Alle {{ optionQty }} Portionen untereinander:
+              </span>
+              <button 
+                type="button" 
+                class="btn-text-action" 
+                title="Aktuelle Einstellungen auf alle Portionen anwenden"
+                @click="copyPortionToAll(optionsViewMode === 'tabs' ? activePortionIndex : 0)">
+                📋 Auf alle übertragen
+              </button>
+            </div>
+          </div>
+
+          <!-- ANSICHT 1: TAB-MODUS (aktive Portion) ODER wenn nur 1 Portion -->
+          <div v-if="optionsViewMode === 'tabs' || optionQty === 1">
+            <div class="portion-form-container">
+              <div v-if="optionQty > 1" class="portion-form-header">
+                <span style="font-weight:800; font-size:0.95rem;">
+                  Einstellungen für Portion {{ activePortionIndex + 1 }}
+                </span>
+                <span style="font-size:0.85rem; font-weight:700; color:var(--ff-primary);">
+                  {{ formatPrice(getPortionPrice(portions[activePortionIndex])) }}
+                </span>
+              </div>
+
+              <!-- Optionen für aktive Portion -->
+              <div v-if="portions[activePortionIndex]">
+                <!-- Rezeptur / Zutaten (aus DB) -->
+                <div v-if="activeOptionItem.recipe_components && activeOptionItem.recipe_components.length > 0" class="options-group">
+                  <div class="options-group-header">
+                    <span class="options-group-title">Rezeptur</span>
+                    <span class="options-group-sub">Optionale Bestandteile abwählbar</span>
+                  </div>
+                  <div class="chips-wrap">
+                    <template v-for="c in activeOptionItem.recipe_components" :key="c.bestandteil_id">
+                      <!-- Fester Bestandteil (gesperrt) -->
+                      <span 
+                        v-if="!c.optional_enabled" 
+                        class="chip-btn fixed"
+                        title="Fester Bestandteil">
+                        🔒 {{ c.name }} <span v-if="c.menge" style="opacity:0.85;">({{ c.menge }} {{ c.einheit }})</span>
+                      </span>
+                      <!-- Optionaler Bestandteil (anpassbar) -->
+                      <button 
+                        v-else
+                        type="button"
+                        class="chip-btn"
+                        :class="{ active: isRecipeComponentSelected(c.bestandteil_id, activePortionIndex) }"
+                        @click="toggleRecipeComponent(c.bestandteil_id, activePortionIndex)">
+                        <span v-if="isRecipeComponentSelected(c.bestandteil_id, activePortionIndex)">✓ {{ c.name }}</span>
+                        <span v-else style="color:#ef4444; font-weight:700;">✕ Ohne {{ c.name }}</span>
+                      </button>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- Gespeicherte Beilagen & Extras (aus DB) -->
+                <div v-if="activeOptionItem.beilagen && activeOptionItem.beilagen.length > 0" class="options-group">
+                  <div class="options-group-header">
+                    <span class="options-group-title">Beilagen & Extras</span>
+                  </div>
+                  <div class="chips-wrap">
+                    <button 
+                      v-for="b in activeOptionItem.beilagen" 
+                      :key="b.id"
+                      type="button"
+                      class="chip-btn"
+                      :class="{ active: portions[activePortionIndex].selectedBeilagen.includes(b.name) }"
+                      @click="toggleBeilage(b.name, activePortionIndex)">
+                      {{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Schnellauswahl für Getränke (nur wenn keine DB-Rezeptur vorhanden) -->
+                <div v-if="activeOptionItem.type === 2 && (!activeOptionItem.recipe_components || activeOptionItem.recipe_components.length === 0)" class="options-group">
+                  <div class="options-group-header">
+                    <span class="options-group-title">Getränke-Optionen</span>
+                  </div>
+                  <div class="chips-wrap">
+                    <button 
+                      v-for="opt in drinkQuickOptions" 
+                      :key="opt"
+                      type="button"
+                      class="chip-btn"
+                      :class="{ active: portions[activePortionIndex].selectedBeilagen.includes(opt) }"
+                      @click="toggleBeilage(opt, activePortionIndex)">
+                      {{ opt }}
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Freitext für Küche / Bon & Schnellnotizen -->
+                <div class="options-group">
+                  <div class="options-group-header">
+                    <span class="options-group-title">Freitext für Küche / Bon (optional)</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    v-model="portions[activePortionIndex].customNote" 
+                    :placeholder="activeOptionItem.type === 2 ? 'z. B. mit Eis, gespritzt sauer, Zitrone...' : 'z. B. gut durch, Sauce separat...'" 
+                    class="text-input" 
+                    style="margin-top: 6px;">
+
+                  <!-- Schnellnotizen Tasten für Speisen -->
+                  <div v-if="activeOptionItem.type === 1" class="quick-note-pills">
+                    <button 
+                      v-for="qn in foodQuickOptions" 
+                      :key="qn"
+                      type="button"
+                      class="quick-note-pill"
+                      :class="{ active: isQuickNoteActive(qn, activePortionIndex) }"
+                      @click="toggleQuickNote(qn, activePortionIndex)">
+                      {{ qn }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ANSICHT 2: LISTEN-MODUS (Alle Portionen untereinander aufgeführt) -->
+          <div v-else-if="optionsViewMode === 'list'">
+            <div v-for="(p, pIdx) in portions" :key="pIdx" class="portion-card-block">
+              <div class="portion-card-title">
+                <span style="font-weight:800; font-size:0.95rem;">Portion {{ pIdx + 1 }}</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button 
+                    v-if="pIdx > 0"
+                    type="button" 
+                    class="btn-text-action sm" 
+                    @click="copyFromPortion1(pIdx)">
+                    ↶ Wie Portion 1
+                  </button>
+                  <span style="color:var(--ff-primary); font-weight:700; font-size:0.9rem;">
+                    {{ formatPrice(getPortionPrice(p)) }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Rezeptur -->
+              <div v-if="activeOptionItem.recipe_components && activeOptionItem.recipe_components.length > 0" class="options-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">Rezeptur</span>
+                  <span class="options-group-sub">Optionale Bestandteile abwählbar</span>
+                </div>
+                <div class="chips-wrap">
+                  <template v-for="c in activeOptionItem.recipe_components" :key="c.bestandteil_id">
+                    <span v-if="!c.optional_enabled" class="chip-btn fixed" title="Fester Bestandteil">
+                      🔒 {{ c.name }} <span v-if="c.menge" style="opacity:0.85;">({{ c.menge }} {{ c.einheit }})</span>
+                    </span>
+                    <button 
+                      v-else
+                      type="button"
+                      class="chip-btn"
+                      :class="{ active: isRecipeComponentSelected(c.bestandteil_id, pIdx) }"
+                      @click="toggleRecipeComponent(c.bestandteil_id, pIdx)">
+                      <span v-if="isRecipeComponentSelected(c.bestandteil_id, pIdx)">✓ {{ c.name }}</span>
+                      <span v-else style="color:#ef4444; font-weight:700;">✕ Ohne {{ c.name }}</span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+
+              <!-- Beilagen -->
+              <div v-if="activeOptionItem.beilagen && activeOptionItem.beilagen.length > 0" class="options-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">Beilagen & Extras</span>
+                </div>
+                <div class="chips-wrap">
+                  <button 
+                    v-for="b in activeOptionItem.beilagen" 
+                    :key="b.id"
+                    type="button"
+                    class="chip-btn"
+                    :class="{ active: p.selectedBeilagen.includes(b.name) }"
+                    @click="toggleBeilage(b.name, pIdx)">
+                    {{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Getränke-Optionen -->
+              <div v-if="activeOptionItem.type === 2 && (!activeOptionItem.recipe_components || activeOptionItem.recipe_components.length === 0)" class="options-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">Getränke-Optionen</span>
+                </div>
+                <div class="chips-wrap">
+                  <button 
+                    v-for="opt in drinkQuickOptions" 
+                    :key="opt"
+                    type="button"
+                    class="chip-btn"
+                    :class="{ active: p.selectedBeilagen.includes(opt) }"
+                    @click="toggleBeilage(opt, pIdx)">
+                    {{ opt }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Freitext & Schnellnotizen -->
+              <div class="options-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">Freitext für Küche / Bon (optional)</span>
+                </div>
+                <input 
+                  type="text" 
+                  v-model="p.customNote" 
+                  :placeholder="activeOptionItem.type === 2 ? 'z. B. mit Eis, gespritzt sauer, Zitrone...' : 'z. B. gut durch, Sauce separat...'" 
+                  class="text-input" 
+                  style="margin-top: 6px;">
+
+                <div v-if="activeOptionItem.type === 1" class="quick-note-pills">
+                  <button 
+                    v-for="qn in foodQuickOptions" 
+                    :key="qn"
+                    type="button"
+                    class="quick-note-pill"
+                    :class="{ active: isQuickNoteActive(qn, pIdx) }"
+                    @click="toggleQuickNote(qn, pIdx)">
+                    {{ qn }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sheet-footer">
+          <button class="btn-primary-block" @click="confirmAddItemWithOptions">
+            <span v-if="optionQty > 1">{{ optionQty }}× Hinzufügen ({{ formatPrice(optionItemTotalPrice) }})</span>
+            <span v-else>Hinzufügen ({{ formatPrice(optionItemTotalPrice) }})</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: Warenkorb Übersicht -->
+    <div v-if="showCartModal" class="modal-overlay" @click.self="showCartModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <div>
+            <span class="sheet-title">Warenkorb ({{ selectedTable ? selectedTable.tischname : 'Kein Tisch' }})</span>
+            <div style="font-size:0.8rem; color:var(--ff-text-muted); font-weight:600; margin-top:2px;">
+              <span v-if="isDraftSaving">💾 Synchronisiere mit Server...</span>
+              <span v-else-if="draftSaveStatus === 'saved'" style="color:var(--ff-success, #22c55e);">✓ Live auf Server gesichert (Entwurf)</span>
+            </div>
+          </div>
+          <button class="sheet-close-btn" @click="showCartModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <div v-if="cart.length === 0" style="text-align:center; padding: 20px; color: var(--ff-text-muted);">
+            Der Warenkorb ist leer.
+          </div>
+          <div v-for="grp in groupedCart" :key="grp.title" class="cart-group-block" style="margin-bottom:8px;">
+            <div class="summary-group-title">
+              <span class="summary-group-icon">{{ grp.icon }}</span>
+              <span class="summary-group-name">{{ grp.title }}</span>
+              <span class="summary-group-badge">{{ grp.items.reduce((sum, it) => sum + it.qty, 0) }}×</span>
+            </div>
+            <div v-for="(item, idx) in grp.items" :key="idx" class="pay-row">
+              <div class="pay-row-left" style="cursor:pointer;" @click="openCartItemOptions(item)">
+                <span class="pay-row-title">{{ item.name }}</span>
+                <span v-if="item.zusatzinfo" class="pay-row-notes">✎ {{ item.zusatzinfo }}</span>
+                <span v-if="item.recipe_diffs && item.recipe_diffs.length > 0" class="pay-row-notes" style="color:#b91c1c; font-weight:700;">⚙ {{ item.recipe_diffs.join(', ') }}</span>
+                <span style="font-weight:700; font-size:0.9rem;">{{ formatPrice(item.price * item.qty) }} <span style="font-size:0.75rem; color:var(--ff-primary); margin-left:4px;">(Bearbeiten ✎)</span></span>
+              </div>
+              <div class="pay-row-controls">
+                <button class="pay-qty-btn" @click="decrementCartItemObj(item)">−</button>
+                <span class="pay-qty-val">{{ item.qty }}</span>
+                <button class="pay-qty-btn" @click="incrementCartItemObj(item)">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sheet-footer" style="flex-direction: column;">
+          <div style="display:flex; justify-content:space-between; width:100%; font-weight:800; font-size:1.15rem; margin-bottom:8px;">
+            <span>Gesamtsumme:</span>
+            <span>{{ formatPrice(cartTotal) }}</span>
+          </div>
+          <div style="display:flex; gap:8px; width:100%;">
+            <button class="round-btn danger" style="padding:10px 14px;" @click="clearCart">
+              🗑 Leeren
+            </button>
+            <button class="btn-primary-block" style="flex:1;" @click="proceedToOrder">
+              Prüfen & Abschicken ➔
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: Bestellung Prüfen & Abschicken (Zusammenfassung gruppiert) -->
+    <div v-if="showSubmitModal" class="modal-overlay" @click.self="showSubmitModal = false">
+      <div class="bottom-sheet order-summary-sheet">
+        <div class="sheet-header">
+          <div>
+            <span class="sheet-title">Bestellung prüfen</span>
+            <div style="font-size:0.85rem; color:var(--ff-text-muted); font-weight:600; margin-top:2px;">
+              Tisch {{ selectedTable ? selectedTable.tischname : '' }} · {{ cartItemCount }} Positionen · {{ formatPrice(cartTotal) }}
+            </div>
+          </div>
+          <button class="sheet-close-btn" @click="showSubmitModal = false">✕</button>
+        </div>
+        <div class="sheet-body summary-body">
+          <p style="font-size:0.95rem; color:var(--ff-text-muted); margin-bottom:4px;">
+            Bitte Bestellung für <strong>Tisch {{ selectedTable ? selectedTable.tischname : '' }}</strong> vor dem Absenden prüfen:
+          </p>
+
+          <!-- Gruppierte Zusammenfassung -->
+          <div v-for="grp in groupedCart" :key="grp.title" class="summary-group-card">
+            <div class="summary-group-title">
+              <span class="summary-group-icon">{{ grp.icon }}</span>
+              <span class="summary-group-name">{{ grp.title }}</span>
+              <span class="summary-group-badge">{{ grp.items.reduce((sum, it) => sum + it.qty, 0) }} Pos.</span>
+            </div>
+            <div class="summary-items-list">
+              <div v-for="(item, idx) in grp.items" :key="idx" class="summary-item-row">
+                <div class="summary-item-left">
+                  <span class="summary-item-qty" :class="{ 'is-multi': item.qty > 1 }">{{ item.qty }}×</span>
+                  <div class="summary-item-details">
+                    <span class="summary-item-name">{{ item.name }}</span>
+                    <span v-if="item.zusatzinfo" class="summary-item-notes">✎ {{ item.zusatzinfo }}</span>
+                    <span v-if="item.recipe_diffs && item.recipe_diffs.length > 0" class="summary-item-notes" style="color:#b91c1c; font-weight:700;">⚙ {{ item.recipe_diffs.join(', ') }}</span>
+                    <span v-if="item.qty > 1" class="summary-item-single">je {{ formatPrice(item.price) }}</span>
+                  </div>
+                </div>
+                <span class="summary-item-total">{{ formatPrice(item.price * item.qty) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Gesamtsumme Box -->
+          <div class="summary-total-box">
+            <span class="summary-total-label">Gesamtsumme ({{ cartItemCount }} Positionen):</span>
+            <span class="summary-total-val">{{ formatPrice(cartTotal) }}</span>
+          </div>
+
+          <!-- Absende-Aktionen -->
+          <div class="summary-actions-col">
+            <button 
+              v-if="paymentMode !== 'instant' || (selectedTable && (selectedTable.is_ehrengast || selectedTable.is_sammelrechnung))"
+              class="btn-primary-block" 
+              style="background: #0f172a;"
+              :disabled="isSubmitting"
+              @click="submitOrder('later')">
+              📝 Bestellung aufgeben (Später zahlen)
+            </button>
+
+            <button 
+              v-if="!selectedTable || (!selectedTable.is_ehrengast && !selectedTable.is_sammelrechnung)"
+              class="btn-primary-block" 
+              style="background: var(--ff-success);"
+              :disabled="isSubmitting"
+              @click="submitOrder('instant')">
+              💵 Sofort Bar bezahlt ({{ formatPrice(cartTotal) }})
+            </button>
+
+            <button 
+              type="button"
+              class="round-btn"
+              style="width: 100%; border-radius: var(--ff-radius); padding: 12px; font-weight: 700; color: var(--ff-text);"
+              @click="showSubmitModal = false; showCartModal = true;">
+              ← Zurück / Bearbeiten
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: Abrechnung & Rückgeld-Rechner -->
+    <div v-if="showPayModal && tableOrders" class="modal-overlay" @click.self="showPayModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Abrechnen · Tisch {{ tableOrders.table.tischname }}</span>
+          <button class="sheet-close-btn" @click="showPayModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <!-- Zu zahlender Betrag -->
+          <div class="calc-display-box">
+            <span class="calc-label">Zu zahlender Betrag</span>
+            <span class="calc-amount-large">{{ formatPrice(amountToPay) }}</span>
+          </div>
+
+          <!-- Erhalten / Gegeben Eingabe & Schnellwahltasten -->
+          <div>
+            <span class="calc-label">Erhalten / Gegeben</span>
+            <div class="calc-quick-bills" style="margin-top:6px; margin-bottom:8px;">
+              <button class="bill-btn" @click="setCalcGivenExact">Passend</button>
+              <button class="bill-btn" @click="addCalcGiven(5)">+ 5 €</button>
+              <button class="bill-btn" @click="addCalcGiven(10)">+ 10 €</button>
+              <button class="bill-btn" @click="addCalcGiven(20)">+ 20 €</button>
+              <button class="bill-btn" @click="addCalcGiven(50)">+ 50 €</button>
+              <button class="bill-btn" @click="addCalcGiven(100)">+ 100 €</button>
+            </div>
+            <input 
+              type="number" 
+              step="0.10"
+              v-model="calcGiven" 
+              class="text-input" 
+              style="font-size:1.2rem; font-weight:800; text-align:center;">
+          </div>
+
+          <!-- Rückgeld Anzeige -->
+          <div class="calc-change-box">
+            <span class="calc-label" style="color:var(--ff-success-dark);">Rückgeld</span>
+            <span class="calc-change-val">{{ formatPrice(calcChange) }}</span>
+          </div>
+
+          <!-- Zahlungsart & Bon-Druck -->
+          <div>
+            <span class="calc-label">Zahlungsart</span>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <button 
+                class="bill-btn" 
+                :class="{ active: calcMethod === 'bar' }"
+                @click="calcMethod = 'bar'">
+                💵 Bar
+              </button>
+              <button 
+                v-if="tableOrders && tableOrders.sumup.enabled"
+                class="bill-btn" 
+                :class="{ active: calcMethod === 'sumup' }"
+                @click="calcMethod = 'sumup'">
+                💳 SumUp
+              </button>
+              <button 
+                class="bill-btn" 
+                :class="{ active: calcMethod === 'with_invoice' }"
+                @click="calcMethod = 'with_invoice'">
+                📄 + Rechnung
+              </button>
+            </div>
+
+            <!-- Drucker-Auswahl für Thermobon bei Rechnung -->
+            <div v-if="calcMethod === 'with_invoice' && tableOrders.print_targets.length > 0" style="margin-top:10px;">
+              <span class="calc-label">Thermodrucker</span>
+              <select v-model="selectedThermoTarget" class="text-input" style="margin-top:4px;">
+                <option :value="0">Kein Druck (Nur Belegnummer)</option>
+                <option v-for="pt in tableOrders.print_targets" :key="pt.id" :value="pt.id">
+                  🖨 {{ pt.name }}
+                </option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="sheet-footer">
+          <button 
+            v-if="calcMethod === 'sumup'"
+            class="btn-primary-block" 
+            style="background:#0284c7;"
+            @click="launchSumup(amountToPay)">
+            SumUp App öffnen ({{ formatPrice(amountToPay) }})
+          </button>
+          <button 
+            v-else
+            class="btn-primary-block" 
+            style="background:var(--ff-success);"
+            :disabled="isSubmitting"
+            @click="executePayment">
+            ✓ Zahlung abschließen ({{ formatPrice(amountToPay) }})
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 6: Tisch Verschieben -->
+    <div v-if="showMoveModal" class="modal-overlay" @click.self="showMoveModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Auf anderen Tisch verschieben</span>
+          <button class="sheet-close-btn" @click="showMoveModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <p style="font-size:0.95rem;">
+            Wähle den <strong>Zieltisch</strong> aus, auf den die Position(en) umgebucht werden sollen:
+          </p>
+          <input 
+            type="text" 
+            v-model="moveTargetSearch" 
+            placeholder="🔍 Zieltisch suchen..." 
+            class="text-input">
+
+          <div class="tables-grid-large" style="max-height:45vh; overflow-y:auto;">
+            <button 
+              v-for="t in filteredMoveTargetTables" 
+              :key="t.tischnummer"
+              class="table-tile"
+              @click="executeMove(t)">
+              <span class="table-tile-name">{{ t.tischname }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 7: Bon Details Vorschau -->
+    <div v-if="showBonModal && activeBonRound" class="modal-overlay" @click.self="showBonModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Bon #{{ activeBonRound.order_nr }} · Tisch {{ selectedTable.tischname }}</span>
+          <button class="sheet-close-btn" @click="showBonModal = false">✕</button>
+        </div>
+        <div class="sheet-body" style="font-family:monospace; background:#f8fafc; border-radius:var(--ff-radius); padding:16px;">
+          <div style="text-align:center; border-bottom:1px dashed #cbd5e1; padding-bottom:8px; margin-bottom:10px;">
+            <h4 style="font-size:1.1rem; margin:0;">{{ activeFest ? activeFest.name : 'Bestellbon' }}</h4>
+            <div style="font-size:0.85rem; color:#64748b;">
+              Tisch {{ selectedTable.tischname }} · Bon #{{ activeBonRound.order_nr }}
+            </div>
+            <div style="font-size:0.75rem; color:#64748b;">
+              {{ activeBonRound.timestamp }} · Kellner: {{ activeBonRound.kellner }}
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            <div v-for="(it, idx) in activeBonRound.items" :key="idx" style="display:flex; justify-content:space-between; font-size:0.9rem;">
+              <div>
+                <span :style="{ textDecoration: it.is_cancelled ? 'line-through' : 'none' }">
+                  1× {{ it.name }}
+                </span>
+                <div v-if="it.zusatzinfo" style="font-size:0.78rem; color:#b91c1c;">✎ {{ it.zusatzinfo }}</div>
+              </div>
+              <span>{{ formatPrice(it.price) }}</span>
+            </div>
+          </div>
+
+          <div style="border-top:1px dashed #cbd5e1; margin-top:12px; padding-top:8px; display:flex; justify-content:space-between; font-weight:800; font-size:1.05rem;">
+            <span>Gesamtsumme:</span>
+            <span>{{ formatPrice(activeBonRound.total_amount) }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 8: Benutzer, Terminal & Einstellungen -->
+    <div v-if="showUserModal" class="modal-overlay" @click.self="showUserModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Einstellungen</span>
+          <button class="sheet-close-btn" @click="showUserModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <div style="background:var(--ff-bg); padding:12px; border-radius:var(--ff-radius); display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.8rem;">👤</span>
+            <div>
+              <div style="font-weight:800; font-size:1.05rem;">{{ currentUser ? currentUser.username : 'Kellner' }}</div>
+              <div style="font-size:0.75rem; color:var(--ff-text-muted);">
+                {{ currentUser && currentUser.admin > 0 ? 'Administrator' : 'Kellner / Service' }}
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+            <button 
+              class="bill-btn" 
+              style="min-height:48px; text-align:left; padding:0 14px; display:flex; justify-content:space-between; align-items:center;"
+              @click="toggleTerminalMode">
+              <span>🖥 Terminal-Modus (Kompakt)</span>
+              <span>{{ terminalMode ? 'EIN' : 'AUS' }}</span>
+            </button>
+
+            <a 
+              href="station.html" 
+              class="bill-btn" 
+              style="min-height:48px; text-decoration:none; display:flex; justify-content:space-between; align-items:center; padding:0 14px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">
+              <span>🔥 Stations-Pilot (Küche & Schank)</span>
+              <span>➔</span>
+            </a>
+
+            <a 
+              v-if="currentUser && currentUser.admin > 0"
+              href="admin.html" 
+              class="bill-btn" 
+              style="min-height:48px; text-decoration:none; display:flex; justify-content:space-between; align-items:center; padding:0 14px; background:#fef2f2; color:#dc2626; border:1px solid #fecaca;">
+              <span>⚙️ Admin-Pilot (Einstellungen)</span>
+              <span>➔</span>
+            </a>
+
+            <a 
+              href="../index.php" 
+              class="bill-btn" 
+              style="min-height:48px; text-decoration:none; display:flex; justify-content:space-between; align-items:center; padding:0 14px;">
+              <span>🔙 Zurück zur klassischen Ansicht</span>
+              <span>➔</span>
+            </a>
+
+            <button 
+              class="btn-primary-block" 
+              style="background:#f1f5f9; color:#b91c1c; border:1px solid #cbd5e1; margin-top:10px;"
+              @click="logout">
+              Abmelden
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Benachrichtigung -->
+    <div v-if="toast" class="toast-msg">
+      <span>{{ toast.icon }}</span>
+      <span>{{ toast.text }}</span>
+    </div>
+
+  </div>
+
+  <script type="module" src="app.js?v=9"></script>
+</body>
+</html>

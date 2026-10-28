@@ -15,16 +15,12 @@ $orderNr = filter_input(
     FILTER_VALIDATE_INT
 );
 
+$token = trim((string)($_GET['token'] ?? ''));
+
 if (!$tischnummer || $tischnummer <= 0) {
     http_response_code(400);
     die('Ungültiger Tisch.');
 }
-
-if (!$orderNr || $orderNr <= 0) {
-    http_response_code(400);
-    die('Ungültige Bestellnummer.');
-}
-
 
 /*
 |--------------------------------------------------------------------------
@@ -62,6 +58,68 @@ if ($stmt) {
 }
 
 $displayTischLabel = ff_format_table_label($tischname, $tischnummer);
+
+/*
+|--------------------------------------------------------------------------
+| Bestellnummer prüfen / Fallback auf letzte Bestellung des Tisches
+|--------------------------------------------------------------------------
+*/
+
+if (!$orderNr || $orderNr <= 0) {
+    $findLatestStmt = mysqli_prepare(
+        $conn,
+        "SELECT order_nr
+         FROM bestellungen
+         WHERE tischnummer = ?
+           AND `delete` = 0
+           AND order_nr IS NOT NULL
+           AND order_nr > 0
+         ORDER BY timestampBestellung DESC, rowid DESC
+         LIMIT 1"
+    );
+    if ($findLatestStmt) {
+        mysqli_stmt_bind_param($findLatestStmt, 'i', $tischnummer);
+        mysqli_stmt_execute($findLatestStmt);
+        $findLatestRes = mysqli_stmt_get_result($findLatestStmt);
+        if ($flRow = mysqli_fetch_assoc($findLatestRes)) {
+            $orderNr = (int)$flRow['order_nr'];
+        }
+        mysqli_stmt_close($findLatestStmt);
+    }
+}
+
+if (!$orderNr || $orderNr <= 0) {
+    ?>
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Keine aktive Bestellung – <?= htmlspecialchars($displayTischLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
+        <style>
+            * { box-sizing: border-box; }
+            body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; font-family:Arial,Helvetica,sans-serif; background:#f5f5f5; color:#222; }
+            .box { width:100%; max-width:500px; background:white; border-radius:16px; padding:35px 25px; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,.12); }
+            h1 { margin:0 0 10px; font-size:24px; color:#333; }
+            p { font-size:16px; color:#666; line-height:1.5; margin:0 0 25px; }
+            .btn { display:inline-block; padding:14px 22px; border-radius:10px; background:#c0392b; color:white; text-decoration:none; font-weight:bold; font-size:16px; }
+            .btn:hover { background:#a93226; }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <div style="font-size:52px; margin-bottom:15px;">🍽️</div>
+            <h1>Keine aktive Bestellung</h1>
+            <p>Für <strong><?= htmlspecialchars($displayTischLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></strong> liegt momentan noch keine Bestellung vor.</p>
+            <a class="btn" href="order_sumup.php?tisch=<?= (int)$tischnummer ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>">
+                Zur Speisekarte &amp; Bestellen
+            </a>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
 
 
 function h($value)
@@ -326,10 +384,10 @@ function h($value)
 
     <a
         class="new-order"
-        href="javascript:history.back()"
+        href="order_sumup.php?tisch=<?= (int)$tischnummer ?><?= $token !== '' ? '&token=' . urlencode($token) : '' ?>"
     >
 
-        Weitere Bestellung aufgeben
+        Zur Speisekarte / Weitere Bestellung aufgeben
 
     </a>
 

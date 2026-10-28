@@ -140,7 +140,7 @@ if ($result4) {
 .ff-pos-scroll .ff-manage-pos-tbody[data-type="2"] tr:first-child td { border-top: 3px solid #adb5bd; }
 .ff-pos-scroll tr.ff-manage-pos-row:focus-within td { background: #fffbe6; }
 </style>
-<div class="d-flex flex-wrap align-items-center gap-2 mb-2" id="ffPosFilterBar">
+<div class="manage-fragment-header d-flex flex-wrap align-items-center gap-2 mb-2" id="ffPosFilterBar">
     <h5 class="text-primary fw-semibold mb-0 me-1">Alle Positionen</h5>
     <span class="badge rounded-pill text-bg-secondary" style="cursor:help" title="Typ, Preis, EK, Druckziel, Unterkategorien und Kachel-/Schriftfarben. Unterkategorie, Kachel, Schrift, VK und EK werden automatisch gespeichert. Typ und Druckziel: direkte Auswahl. Nur Kasse: Position nur im Direktverkauf, nicht für Kellner. Reihenfolge: Spalte ⠿ ziehen (innerhalb Speisen bzw. Getränke) oder die Zahl anklicken.">i</span>
     <button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button>
@@ -213,10 +213,12 @@ foreach ($allRows as $row4) {
     echo '<td class="ff-drag-handle text-muted align-middle user-select-none" draggable="true" title="Ziehen zum Sortieren (nur innerhalb Speisen bzw. Getränke)" aria-label="Reihenfolge ziehen"><span aria-hidden="true">⠿</span></td>';
     echo '<td class="text-nowrap"><button type="button" class="btn btn-link btn-sm p-0 text-body fw-semibold" style="font-size:0.72rem; line-height:1.1; text-decoration:none;" onclick="editReihenfolge(' . $rid . ',' . $reihe . ')" title="Reihenfolge ändern">' . $reihe . '</button></td>';
     echo '<td>';
+    echo '<label class="ff-pos-sublabel">Name (Langbezeichnung)</label>';
     echo '<input type="text" class="form-control form-control-sm ff-pos-field mb-1"'
         . ' data-rowid="' . $rid . '" data-field="Positionsname" data-prev="' . $name_js . '"'
-        . ' value="' . $name_js . '" aria-label="Positionsname">';
-    echo '<input type="text" class="form-control form-control-sm ff-pos-field small text-muted"'
+        . ' value="' . $name_js . '" aria-label="Positionsname (Langbezeichnung)" placeholder="Name (Langbezeichnung)">';
+    echo '<label class="ff-pos-sublabel">Kurzbezeichnung</label>';
+    echo '<input type="text" class="form-control form-control-sm ff-pos-field ff-pos-kurz small text-muted"'
         . ' data-rowid="' . $rid . '" data-field="Kurzbezeichnung" data-prev="' . $kurz_js . '"'
         . ' value="' . $kurz_js . '" aria-label="Kurzbezeichnung" placeholder="Kurzbezeichnung">';
     echo '</td>';
@@ -246,8 +248,10 @@ foreach ($allRows as $row4) {
     }
     echo '</select></td>';
     echo '<td class="small ff-pos-display-cell"><div class="d-flex flex-nowrap align-items-center gap-1">';
-    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_tile_' . $rid . '" value="' . m_out((string)$tilePicker) . '" title="Kachel-Hintergrund"' . ($hasTileOv ? '' : ' style="opacity:.45"') . '>';
-    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_color_' . $rid . '" value="' . m_out((string)$fontPicker) . '" title="Schriftfarbe">';
+    echo '<span class="ff-pos-colorbox"><span class="ff-pos-sublabel">Kachel</span>';
+    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_tile_' . $rid . '" value="' . m_out((string)$tilePicker) . '" title="Kachel-Hintergrund"' . ($hasTileOv ? '' : ' style="opacity:.45"') . '></span>';
+    echo '<span class="ff-pos-colorbox"><span class="ff-pos-sublabel">Schrift</span>';
+    echo '<input type="color" class="form-control form-control-color form-control-sm ff-pos-color" id="pm_color_' . $rid . '" value="' . m_out((string)$fontPicker) . '" title="Schriftfarbe"></span>';
     echo '<label class="mb-0 text-nowrap" title="Std. = Hintergrundfarbe der Unterkategorie verwenden. Wird abgehakt, sobald eine eigene Hintergrundfarbe gewählt wird."><input type="checkbox" id="pm_tile_def_' . $rid . '"' . ($hasTileOv ? '' : ' checked') . ' onchange="ffPmTileDefSync(' . $rid . ')"> Std.</label>';
     echo '<select class="form-select form-select-sm ff-pos-print-target" data-rowid="' . $rid . '" onchange="updatePrintTarget(' . $rid . ', this.value)" title="Druckziel">';
     echo ff_manage_print_target_select_options($conn, $curPrintTarget);

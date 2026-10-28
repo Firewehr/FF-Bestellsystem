@@ -5,11 +5,13 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
+require_once __DIR__ . '/include/ff_csrf.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache');
 
 ff_direktverkauf_require($conn);
+ff_csrf_require();
 
 $rowid = (int) ($_POST['rowid'] ?? $_GET['rowid'] ?? 0);
 if ($rowid <= 0) {
@@ -20,9 +22,14 @@ if ($rowid <= 0) {
 
 $kellnerScope = ff_direktverkauf_kellner_filter_sql($conn, '');
 $positionId = 0;
+require_once __DIR__ . '/include/ff_schema_helpers.php';
+ff_ensure_column($conn, 'bestellungen', 'fest_id', 'ALTER TABLE bestellungen ADD COLUMN fest_id INT(11) NULL DEFAULT NULL');
+$hasFestIdColumn = true;
+$festSelect = ', fest_id';
+$removedFestId = 0;
 $sel = mysqli_prepare(
     $conn,
-    "SELECT `position` FROM bestellungen WHERE rowid = ? AND tischnummer = 999999 AND `delete` = 0
+    "SELECT `position`{$festSelect} FROM bestellungen WHERE rowid = ? AND tischnummer = 999999 AND `delete` = 0
         AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')
         {$kellnerScope} LIMIT 1"
 );
@@ -32,6 +39,7 @@ if ($sel) {
     $sres = mysqli_stmt_get_result($sel);
     if ($sres && ($sr = mysqli_fetch_assoc($sres))) {
         $positionId = (int) ($sr['position'] ?? 0);
+        $removedFestId = (int) ($sr['fest_id'] ?? 0);
     }
     mysqli_stmt_close($sel);
 }
@@ -56,6 +64,16 @@ if ($aff < 1) {
     http_response_code(400);
     echo json_encode(['ok' => false, 'message' => 'Zeile nicht gefunden oder bereits bezahlt.'], JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+if ($removedFestId > 0) {
+    require_once __DIR__ . '/include/ff_event_notifications.php';
+    try {
+        ff_event_notifications_evaluate($conn, $removedFestId);
+    } catch (Throwable $error) {
+        error_log('bestellung_dv_row_remove.php: Push-Auswertung nach Entfernen fehlgeschlagen für Fest '
+            . $removedFestId . ': ' . $error->getMessage());
+    }
 }
 
 $bonForCnt = trim((string) ($_SESSION['dv_current_bon_id'] ?? ''));

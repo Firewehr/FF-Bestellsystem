@@ -9,6 +9,9 @@
  */
 require_once('auth.php');
 require_once('include/db.php');
+require_once __DIR__ . '/include/ff_station_events.php';
+require_once __DIR__ . '/include/ff_auto_print.php';
+require_once __DIR__ . '/include/ff_event_notifications.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -29,6 +32,7 @@ if ($tischnummer <= 0 || !is_array($PositionsListe) || empty($PositionsListe)) {
 
 $timestamp = date('Y-m-d H:i:s');
 $printed = 0;
+$printedRowIds = [];
 $closed = 0;
 
 foreach ($PositionsListe as $row) {
@@ -75,6 +79,7 @@ foreach ($PositionsListe as $row) {
             mysqli_query($conn, $sql);
             @mysqli_query($conn, "INSERT INTO print (bestellungID, timestamp) VALUES (" . $rowid . ",'" . mysqli_real_escape_string($conn, $timestamp) . "')");
             $printed++;
+            $printedRowIds[] = $rowid;
         }
     } else {
         $sql = "UPDATE bestellungen SET "
@@ -84,6 +89,40 @@ foreach ($PositionsListe as $row) {
         mysqli_query($conn, $sql);
     }
     $closed++;
+}
+
+if ($printedRowIds !== []) {
+    $printTargets = [];
+    $ptRes = mysqli_query(
+        $conn,
+        'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
+        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . implode(',', $printedRowIds) . ')'
+    );
+    if ($ptRes) {
+        while ($ptRow = mysqli_fetch_assoc($ptRes)) {
+            $printTargets[] = (int) $ptRow['pt'];
+        }
+    }
+    ff_print_events_publish($conn, $printTargets);
+}
+
+// Auto-Druck "bis N": nächste wartende Bestellung der betroffenen Stationen nachrücken lassen
+$validIds = array_filter(array_map('intval', $PositionsListe), static fn($v) => $v > 0);
+if ($validIds !== []) {
+    ff_event_notifications_evaluate_rows($conn, $validIds, 'bestellung_abschliessen.php');
+
+    $refillTargets = [];
+    $rtRes = mysqli_query(
+        $conn,
+        'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
+        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . implode(',', $validIds) . ')'
+    );
+    if ($rtRes) {
+        while ($rt = mysqli_fetch_assoc($rtRes)) {
+            $refillTargets[] = (int) $rt['pt'];
+        }
+    }
+    ff_auto_print_refill($conn, $refillTargets);
 }
 
 echo json_encode([

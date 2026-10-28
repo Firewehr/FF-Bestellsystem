@@ -1,0 +1,2837 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Feuerwehr Bestellsystem – Admin Pilot</title>
+  
+  <meta name="theme-color" content="#dc2626">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" type="image/png" href="../pwa-icon-192.png">
+  
+  <link rel="stylesheet" href="admin.css?v=1">
+</head>
+<body>
+  <div id="app" v-cloak>
+
+    <!-- 1. APP HEADER -->
+    <header class="admin-header">
+      <div class="header-left">
+        <a href="index.html" class="brand-badge" title="Zur Kellner-App">
+          <span class="icon">🔥</span>
+          <span>Admin Pilot</span>
+        </a>
+        <span class="badge-pill">Vue 3</span>
+
+        <!-- Haupt-Navigation Tabs -->
+        <nav class="nav-tabs" aria-label="Hauptnavigation">
+          <button 
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'uebersicht' }"
+            @click="activeTab = 'uebersicht'">
+            <span>📊 Übersicht</span>
+          </button>
+          <button 
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'stammdaten' }"
+            @click="activeTab = 'stammdaten'">
+            <span>🗂️ Stammdaten</span>
+          </button>
+          <button 
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'speisekarte' }"
+            @click="activeTab = 'speisekarte'">
+            <span>🍽️ Speisekarte</span>
+          </button>
+          <button 
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'personal' }"
+            @click="activeTab = 'personal'">
+            <span>👥 Personal &amp; Rechnungen</span>
+          </button>
+          <button 
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'auswertungen' }"
+            @click="activeTab = 'auswertungen'">
+            <span>📈 Auswertungen</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="header-right">
+        <!-- Schnell-Umschalter Theme -->
+        <button type="button" class="btn btn-outline btn-sm" @click="toggleTheme" :title="isDarkTheme ? 'Helles Design' : 'Dunkles Design'">
+          {{ isDarkTheme ? '☀️' : '🌙' }}
+        </button>
+
+        <!-- Benutzer Info -->
+        <div v-if="currentUser" style="font-size: 0.82rem; font-weight: 600; text-align: right;">
+          <div>{{ currentUser.display_name || currentUser.username }}</div>
+          <span class="badge" :class="isSuperAdmin ? 'badge-danger' : 'badge-info'">
+            {{ isSuperAdmin ? 'Super-Admin' : 'Administrator' }}
+          </span>
+        </div>
+
+        <!-- Absprung ins alte Admin -->
+        <a href="../admin.php" class="btn btn-outline btn-sm" title="Klassische admin.php Ansicht">
+          Klassisch ↗
+        </a>
+      </div>
+    </header>
+
+    <!-- 2. SUB NAVIGATION (Kontextabhängig) -->
+    <nav v-if="activeTab === 'stammdaten'" class="sub-nav">
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tische' }" @click="switchSubTab('stammdaten', 'tische')">Tische</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tischplan' }" @click="switchSubTab('stammdaten', 'tischplan')">Tischplan (Visuell)</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'einstellungen' }" @click="switchSubTab('stammdaten', 'einstellungen')">Allgemeine Einstellungen</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'feste' }" @click="switchSubTab('stammdaten', 'feste')">Feste / Events</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'druckziele' }" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'rechnungsdaten' }" @click="switchSubTab('stammdaten', 'rechnungsdaten')">Rechnungsdaten</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'mcp' }" @click="switchSubTab('stammdaten', 'mcp')">MCP</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'nummern' }" @click="switchSubTab('stammdaten', 'nummern')">Nummernkreise</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'abrechnung' }" @click="switchSubTab('stammdaten', 'abrechnung')">Abrechnung &amp; Sicherheit</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tests' }" @click="switchSubTab('stammdaten', 'tests')">Automatisierte Tests</button>
+    </nav>
+
+    <nav v-if="activeTab === 'speisekarte'" class="sub-nav">
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'bestandteile' }" @click="switchSubTab('speisekarte', 'bestandteile')">Bestandteile &amp; Rohstoffe</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'positions' }" @click="switchSubTab('speisekarte', 'positions')">Alle Positionen</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'speisen' }" @click="switchSubTab('speisekarte', 'speisen')">Speisen</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'getraenke' }" @click="switchSubTab('speisekarte', 'getraenke')">Getränke</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'subcategories' }" @click="switchSubTab('speisekarte', 'subcategories')">Unterkategorien</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.speisekarte === 'locks' }" @click="switchSubTab('speisekarte', 'locks')">
+        <span>Sperren &amp; Ausverkauft</span>
+        <span v-if="activeLocksCount > 0" class="badge badge-danger" style="margin-left: 6px; font-size: 0.7rem; padding: 2px 6px;">{{ activeLocksCount }}</span>
+      </button>
+    </nav>
+
+    <nav v-if="activeTab === 'personal'" class="sub-nav">
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.personal === 'benutzer' }" @click="switchSubTab('personal', 'benutzer')">Benutzerverwaltung</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.personal === 'rechnungen' }" @click="switchSubTab('personal', 'rechnungen')">Rechnungsjournal</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.personal === 'verpflegung' }" @click="switchSubTab('personal', 'verpflegung')">Mitarbeiter-Verpflegung</button>
+    </nav>
+
+    <nav v-if="activeTab === 'auswertungen'" class="sub-nav">
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.auswertungen === 'kellner' }" @click="switchSubTab('auswertungen', 'kellner')">Kellner-Umsätze</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.auswertungen === 'finanzen' }" @click="switchSubTab('auswertungen', 'finanzen')">Finanzen &amp; Gewinn</button>
+      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.auswertungen === 'statistik' }" @click="switchSubTab('auswertungen', 'statistik')">Statistik</button>
+    </nav>
+
+    <!-- 3. HAUPTINHALT -->
+    <main class="admin-main">
+
+      <!-- Fehlende Admin-Rechte Meldung -->
+      <div v-if="accessDenied" class="admin-card" style="border-left: 4px solid var(--ff-danger); max-width: 620px; margin: 40px auto; text-align: center; padding: 32px 24px;">
+        <div style="font-size: 3rem; margin-bottom: 12px;">🔒</div>
+        <h3 style="margin-bottom: 8px; font-weight: 700;">Administrator-Berechtigung erforderlich</h3>
+        <p style="color: var(--ff-muted); margin-bottom: 24px; line-height: 1.5;">
+          Du bist aktuell mit einem Benutzerkonto ohne Administratorrechte angemeldet. Für den Zugriff auf das Admin-Dashboard werden Administratorrechte (Admin oder Super-Admin) benötigt.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <a href="index.html" class="btn btn-outline">Zurück zur Kellner-App</a>
+          <a href="../login.php?redirect=pilot%2Fadmin.html" class="btn btn-primary">Als Administrator anmelden</a>
+        </div>
+      </div>
+
+      <!-- ===================================================================
+           TAB: ÜBERSICHT / LIVE-DASHBOARD
+           =================================================================== -->
+      <section v-if="activeTab === 'uebersicht'">
+        <!-- KPI Kacheln -->
+        <div class="kpi-grid">
+          <div class="kpi-tile kpi-primary">
+            <span class="kpi-label">Umsatz heute</span>
+            <span class="kpi-value">{{ formatEur(overview?.stats?.umsatz_heute) }}</span>
+            <span class="kpi-sub">{{ overview?.stats?.zeilen_heute || 0 }} bezahlte Bestellzeilen</span>
+          </div>
+
+          <div class="kpi-tile kpi-success">
+            <span class="kpi-label">Gesamtumsatz Fest</span>
+            <span class="kpi-value">{{ formatEur(overview?.stats?.umsatz_gesamt_kombiniert) }}</span>
+            <span class="kpi-sub">{{ overview?.stats?.zeilen_gesamt || 0 }} Zeilen bezahlt</span>
+          </div>
+
+          <div class="kpi-tile kpi-warning">
+            <span class="kpi-label">Noch offene Posten</span>
+            <span class="kpi-value">{{ overview?.stats?.offene_positionen || 0 }}</span>
+            <span class="kpi-sub">{{ formatEur(overview?.stats?.umsatz_offen) }} noch abzurechnen</span>
+          </div>
+
+          <div class="kpi-tile kpi-info">
+            <span class="kpi-label">Kellner &amp; Direktverkauf</span>
+            <span class="kpi-value">{{ formatEur(overview?.stats?.umsatz_kel_direkt) }}</span>
+            <span class="kpi-sub">Gesamt ohne Finanzbereiche</span>
+          </div>
+        </div>
+
+        <!-- 2 Spalten: Durchsage & System-Aktionen -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; margin-bottom: 24px;">
+          
+          <!-- Notfall Broadcast -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3><span>🚨</span> Notfall-System-Broadcast</h3>
+              <span class="badge" :class="broadcastInput.active ? 'badge-danger' : 'badge-success'">
+                {{ broadcastInput.active ? 'Aktiv' : 'Keine Durchsage' }}
+              </span>
+            </div>
+            <div class="card-body">
+              <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin-bottom: 12px;">
+                Sendet einen sofortigen Popup- oder Bannerhinweis an alle verbundenen Kellner-, Küchen- und Schankbildschirme.
+              </p>
+              <div class="form-group">
+                <label>Nachrichtentext</label>
+                <textarea v-model="broadcastInput.message" class="form-control" placeholder="z. B. Küche: Grillhuhn vorübergehend ausverkauft!"></textarea>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'danger' ? 'btn-danger' : 'btn-outline'" @click="broadcastInput.type = 'danger'">Gefahr (Rot)</button>
+                  <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'warning' ? 'btn-warning' : 'btn-outline'" @click="broadcastInput.type = 'warning'">Warnung (Gelb)</button>
+                  <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'info' ? 'btn-primary' : 'btn-outline'" @click="broadcastInput.type = 'info'">Info (Blau)</button>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button v-if="broadcastInput.active" type="button" class="btn btn-outline btn-sm" @click="broadcastInput.active = false; saveBroadcast()">Aufheben</button>
+                  <button type="button" class="btn btn-primary btn-sm" @click="broadcastInput.active = true; saveBroadcast()">Senden</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Schnell-Aktionen & Status -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3><span>⚡</span> System-Status &amp; Wartung</h3>
+            </div>
+            <div class="card-body">
+              <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
+                  <span style="font-size: 0.88rem;">Aktives Fest</span>
+                  <select v-if="overview?.feste" :value="overview?.settings?.current_fest_id" @change="setCurrentFest($event.target.value)" class="form-select" style="max-width: 220px; padding: 4px 8px; font-size: 0.85rem;">
+                    <option v-for="f in overview.feste" :key="f.id" :value="f.id">{{ f.name }} ({{ f.code }})</option>
+                  </select>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
+                  <span style="font-size: 0.88rem;">Schema- &amp; Abfrage-Cache</span>
+                  <button type="button" class="btn btn-outline btn-sm" @click="clearCache">Cache jetzt leeren</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.88rem;">Automatisierte Selbsttests</span>
+                  <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">68 Tests ausführen</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Druck-Clients & Queues -->
+        <div class="admin-card">
+          <div class="card-header">
+            <h3><span>🖨️</span> Thermodruck-Clients &amp; Heartbeats</h3>
+            <span style="font-size: 0.85rem; color: var(--ff-text-muted);">
+              Warteschlange: {{ overview?.stats?.printer_jobs_summary || '0 Jobs' }}
+            </span>
+          </div>
+          <div class="card-body" style="padding: 0;">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Dienst / Druckziel</th>
+                    <th>Status</th>
+                    <th>Zuletzt gesehen</th>
+                    <th>PC / Host</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(h, idx) in (overview?.stats?.printer_heartbeats || [])" :key="idx">
+                    <td><strong>{{ h.service }}</strong></td>
+                    <td>
+                      <span class="badge" :class="h.level === 'ok' ? 'badge-success' : (h.level === 'warn' ? 'badge-warning' : 'badge-danger')">
+                        {{ h.label }}
+                      </span>
+                    </td>
+                    <td>{{ h.last_seen }}</td>
+                    <td>{{ h.host || '–' }}</td>
+                  </tr>
+                  <tr v-if="!overview?.stats?.printer_heartbeats?.length">
+                    <td colspan="4" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Keine Druck-Clients aktiv oder konfiguriert.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           TAB: STAMMDATEN
+           =================================================================== -->
+      <section v-if="activeTab === 'stammdaten'">
+        
+        <!-- SUB: Tische -->
+        <div v-if="activeSubTab.stammdaten === 'tische'">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" v-model="tableSearch" class="form-control" placeholder="Tisch suchen (Nummer oder Name)...">
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline" @click="switchSubTab('stammdaten', 'tischplan')">Visueller Tischplan 🗺️</button>
+              <button type="button" class="btn btn-outline" @click="generateTableTokens">Tokens erzeugen</button>
+              <a href="../qr_codes.php" target="_blank" rel="noopener" class="btn btn-outline">QR-Codes drucken ↗</a>
+              <button type="button" class="btn btn-primary" @click="openNewTableModal">＋ Neuer Tisch</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Tischname</th>
+                    <th style="width: 80px;">Nr.</th>
+                    <th style="text-align: center;">Sammelrechnung</th>
+                    <th style="text-align: center;">Ehrengast</th>
+                    <th>Offen</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in filteredTables" :key="t.tischnummer">
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span :style="{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '50%', background: t.color || '#ccc', flexShrink: 0 }"></span>
+                        <strong style="font-size: 1.05rem; color: var(--ff-text);">{{ t.tischname }}</strong>
+                      </div>
+                    </td>
+                    <td><span style="color: var(--ff-text-muted); font-size: 0.82rem;">#{{ t.tischnummer }}</span></td>
+                    <td style="text-align: center;">
+                      <input type="checkbox" :checked="t.is_sammelrechnung === 1" @change="toggleTableFlag(t.tischnummer, 'sr', t.is_sammelrechnung)">
+                    </td>
+                    <td style="text-align: center;">
+                      <input type="checkbox" :checked="t.is_ehrengast === 1" @change="toggleTableFlag(t.tischnummer, 'eg', t.is_ehrengast)">
+                    </td>
+                    <td>
+                      <span v-if="t.open_orders > 0" class="badge badge-warning">
+                        {{ t.open_orders }} Posten ({{ formatEur(t.open_sum) }})
+                      </span>
+                      <span v-else style="color: var(--ff-text-muted); font-size: 0.8rem;">–</span>
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 6px;">
+                        <button type="button" class="btn btn-outline btn-sm" @click="openTableQr(t)" title="QR-Code für Tisch-Selbstbestellung anzeigen">QR 📱</button>
+                        <button v-if="t.token" type="button" class="btn btn-outline btn-sm" @click="copyTableToken(t.token)" title="Table-Token kopieren">Token</button>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openEditTableModal(t)">Bearbeiten</button>
+                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteTable(t.tischnummer)">Löschen</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Tischplan (Visuell) -->
+        <div v-if="activeSubTab.stammdaten === 'tischplan'">
+          <div class="toolbar">
+            <p style="color: var(--ff-text-muted); font-size: 0.9rem; margin: 0;">
+              <strong>Interaktiver Raumplan:</strong> Tische per Drag &amp; Drop verschieben. Klick auf einen Tisch öffnet Namen und Einstellungen. Klick auf <strong>SR</strong> oder <strong>EG</strong> schaltet Sammelrechnung bzw. Ehrengast um. Klick auf ein leeres Feld legt dort einen Tisch an.
+            </p>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline" @click="switchSubTab('stammdaten', 'tische')">Zurück zur Liste</button>
+              <button type="button" class="btn btn-outline" @click="loadTables">Aktualisieren</button>
+              <button type="button" class="btn btn-primary" @click="openNewTableModal(1, 1)">＋ Tisch anlegen</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <h3>Visueller Raumplan ({{ tables.length }} Tische)</h3>
+              <div style="display: flex; gap: 12px; font-size: 0.8rem; align-items: center; flex-wrap: wrap;">
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                  <span style="width: 12px; height: 12px; border-radius: 3px; background: #bbf7d0; display: inline-block;"></span> Frei
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                  <span style="width: 12px; height: 12px; border-radius: 3px; background: #fef08a; display: inline-block;"></span> Offene Runde
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                  <span style="width: 12px; height: 12px; border-radius: 3px; background: #dbeafe; display: inline-block;"></span> Sammelrechnung (SR)
+                </span>
+                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                  <span style="width: 12px; height: 12px; border-radius: 3px; background: #ede9fe; display: inline-block;"></span> Ehrengast (EG)
+                </span>
+              </div>
+            </div>
+            <div class="tischplan-container">
+              <div 
+                class="tischplan-grid"
+                :style="{ gridTemplateColumns: `repeat(${tischplanDimensions.width}, minmax(96px, 1fr))` }"
+              >
+                <div
+                  v-for="cell in tischplanCells"
+                  :key="cell.key"
+                  class="tischplan-cell"
+                  :class="{
+                    empty: !cell.table,
+                    'table-busy': !!cell.table,
+                    'drag-over': dragOverCell?.x === cell.x && dragOverCell?.y === cell.y,
+                    'is-dragging': draggedTable?.tischnummer === cell.table?.tischnummer
+                  }"
+                  :style="cell.table ? {
+                    borderColor: cell.table.color || 'var(--ff-border)',
+                    background: cell.table.is_ehrengast ? '#ede9fe' : (cell.table.is_sammelrechnung ? '#dbeafe' : (cell.table.open_orders > 0 ? '#fef08a' : '#bbf7d0'))
+                  } : {}"
+                  :draggable="!!cell.table"
+                  @dragstart="onTableDragStart($event, cell.table)"
+                  @dragend="onTableDragEnd"
+                  @dragover.prevent="onCellDragOver($event, cell.x, cell.y)"
+                  @dragleave="onCellDragLeave($event, cell.x, cell.y)"
+                  @drop.prevent="onCellDrop($event, cell.x, cell.y)"
+                  @click="onTischplanCellClick(cell.x, cell.y)"
+                  :title="cell.table ? `${cell.table.tischname} (#${cell.table.tischnummer}) – Ziehen zum Verschieben, Klick zum Bearbeiten` : `Feld (${cell.x}, ${cell.y}) – Klick zum Anlegen`"
+                >
+                  <template v-if="cell.table">
+                    <div class="t-name">{{ cell.table.tischname }}</div>
+                    <div class="t-num">#{{ cell.table.tischnummer }}</div>
+                    <div class="t-flags-row">
+                      <button 
+                        type="button" 
+                        class="t-flag-btn" 
+                        :class="{ 't-flag-sr-on': cell.table.is_sammelrechnung === 1 }"
+                        @click.stop="toggleTableFlag(cell.table.tischnummer, 'sr', cell.table.is_sammelrechnung)"
+                        title="Sammelrechnung (SR) per Klick umschalten"
+                      >SR</button>
+                      <button 
+                        type="button" 
+                        class="t-flag-btn" 
+                        :class="{ 't-flag-eg-on': cell.table.is_ehrengast === 1 }"
+                        @click.stop="toggleTableFlag(cell.table.tischnummer, 'eg', cell.table.is_ehrengast)"
+                        title="Ehrengast (EG) per Klick umschalten"
+                      >EG</button>
+                      <span v-if="cell.table.open_orders > 0" class="badge badge-warning" style="font-size: 0.65rem; padding: 1px 4px; border-radius: 4px;" title="Offene Posten">
+                        {{ cell.table.open_orders }}
+                      </span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <span style="font-size: 0.75rem; color: var(--ff-text-muted);">+</span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Allgemeine Einstellungen -->
+        <div v-if="activeSubTab.stammdaten === 'einstellungen'">
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>System-Einstellungen</h3>
+              <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Titel der Anwendung</label>
+                  <input type="text" v-model="settingsEdit.app_title" class="form-control" placeholder="z. B. Feuerwehrfest 2026">
+                </div>
+                <div class="form-group">
+                  <label>Kellner sieht nur eigene Bestellungen</label>
+                  <select v-model="settingsEdit.kellner_nur_eigene" class="form-select">
+                    <option value="1">Ja (Nur eigene Bestellungen bearbeiten)</option>
+                    <option value="0">Nein (Alle Bestellungen am Tisch sichtbar)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Print Event Modus (Push)</label>
+                  <select v-model="settingsEdit.print_event_mode" class="form-select">
+                    <option value="1">SSE Push aktiv (Sub-Sekunden)</option>
+                    <option value="0">Polling Fallback</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Session Timeout (Leerlauf in Sekunden)</label>
+                  <input type="number" v-model="settingsEdit.session_max_idle_sec" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Stationsansicht Spalten (Desktop)</label>
+                  <input type="number" v-model="settingsEdit.station_spalten" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Stationsansicht Spalten (Mobil)</label>
+                  <input type="number" v-model="settingsEdit.station_spalten_mobil" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Teillieferungs-Druck in Stationen</label>
+                  <select v-model="settingsEdit.station_teillieferung_druck" class="form-select">
+                    <option value="1">Aktiv</option>
+                    <option value="0">Inaktiv</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>One-Click Abschließen in Stationen</label>
+                  <select v-model="settingsEdit.station_one_click_abschliessen" class="form-select">
+                    <option value="1">Aktiv</option>
+                    <option value="0">Inaktiv</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Feste -->
+        <div v-if="activeSubTab.stammdaten === 'feste'">
+          <div class="toolbar">
+            <h3 style="font-size: 1.1rem; font-weight: 700;">Veranstaltungen / Feste</h3>
+            <button type="button" class="btn btn-primary" @click="openNewFestModal">＋ Neues Fest anlegen</button>
+          </div>
+          <div class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Code</th>
+                    <th>Datum</th>
+                    <th>Zahlungsmodus</th>
+                    <th>Rechnungspräfix</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="f in overview?.feste" :key="f.id">
+                    <td>#{{ f.id }}</td>
+                    <td><strong>{{ f.name }}</strong></td>
+                    <td><code>{{ f.code }}</code></td>
+                    <td>{{ f.datum }}</td>
+                    <td>{{ f.payment_mode === 'instant' ? 'Sofortzahlung' : 'Später am Tisch' }}</td>
+                    <td>{{ f.rechnung_prefix || 'Standard' }}</td>
+                    <td>
+                      <span class="badge" :class="f.is_current ? 'badge-success' : 'badge-info'">
+                        {{ f.is_current ? 'Aktuell Aktiv' : (f.aktiv ? 'Aktiv' : 'Archiv') }}
+                      </span>
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button v-if="!f.is_current" type="button" class="btn btn-outline btn-sm" @click="setCurrentFest(f.id)">Aktivieren</button>
+                        <a :href="'../fest_export.php?id=' + f.id" class="btn btn-outline btn-sm" title="Fest-Daten als JSON exportieren">Export ↗</a>
+                        <a :href="'../fest_steuerpaket_zip.php?id=' + f.id" class="btn btn-outline btn-sm" title="Steuerberater-Paket als ZIP herunterladen">Steuerpaket ZIP ↗</a>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openEditFestModal(f)">Bearbeiten</button>
+                        <button v-if="isSuperAdmin && !f.is_current" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteFest(f.id, f.name)">Löschen</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Druckziele -->
+        <div v-if="activeSubTab.stammdaten === 'druckziele'">
+          <div class="toolbar">
+            <h3 style="font-size: 1.1rem; font-weight: 700;">Druckziele (Stationen &amp; Kassen)</h3>
+            <button type="button" class="btn btn-primary" @click="openNewTargetModal">＋ Neues Druckziel</button>
+          </div>
+          <div class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Bezeichnung</th>
+                    <th>Sortierung</th>
+                    <th>Auto-Druck Limit</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="pt in overview?.print_targets" :key="pt.print_target">
+                    <td><strong>#{{ pt.print_target }}</strong></td>
+                    <td>{{ pt.name }}</td>
+                    <td>{{ pt.sort_order }}</td>
+                    <td>{{ pt.auto_print_limit > 0 ? pt.auto_print_limit + ' Posten' : 'Aus' }}</td>
+                    <td>
+                      <span class="badge" :class="pt.active ? 'badge-success' : 'badge-danger'">
+                        {{ pt.active ? 'Aktiv' : 'Inaktiv' }}
+                      </span>
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 6px;">
+                        <button type="button" class="btn btn-outline btn-sm" @click="openEditTargetModal(pt)">Bearbeiten</button>
+                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deletePrintTarget(pt.print_target)">Entfernen</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Rechnungsdaten -->
+        <div v-if="activeSubTab.stammdaten === 'rechnungsdaten'">
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Rechnungs- &amp; Vereinsstammdaten</h3>
+              <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Vereins- / Verkäufername</label>
+                  <input type="text" v-model="settingsEdit.seller_name" class="form-control" placeholder="z. B. Freiwillige Feuerwehr Obritzberg">
+                </div>
+                <div class="form-group">
+                  <label>Adresse / Sitz</label>
+                  <input type="text" v-model="settingsEdit.seller_address" class="form-control" placeholder="z. B. Hauptstraße 1, 3123 Obritzberg">
+                </div>
+                <div class="form-group">
+                  <label>UID-Nummer</label>
+                  <input type="text" v-model="settingsEdit.seller_uid" class="form-control" placeholder="ATU...">
+                </div>
+                <div class="form-group">
+                  <label>Globales Rechnungs-Präfix</label>
+                  <input type="text" v-model="settingsEdit.rechnung_prefix" class="form-control" placeholder="z. B. R">
+                </div>
+                <div class="form-group">
+                  <label>Nächste Rechnungsnummer</label>
+                  <input type="number" v-model="settingsEdit.rechnung_next_seq" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Bon-Kopfzeile (ESC/POS)</label>
+                  <input type="text" v-model="settingsEdit.thermo_bon_header" class="form-control">
+                </div>
+              </div>
+              <div class="form-group" style="margin-top: 12px;">
+                <label>Rechnungs-Fußzeile (PDF / Thermo)</label>
+                <textarea v-model="settingsEdit.rechnung_thermo_footer" class="form-control" placeholder="Danke für Ihren Besuch!"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Logo-Upload Card -->
+          <div class="admin-card" style="margin-top: 20px;">
+            <div class="card-header">
+              <h3>Rechnungs-Logo (PDF A4)</h3>
+            </div>
+            <div class="card-body">
+              <p style="color: var(--ff-text-muted); font-size: 0.85rem; margin-bottom: 16px;">
+                Das Logo erscheint oben links auf der A4 PDF-Rechnung. Empfohlene Größe: max. 300x100 Pixel (PNG, JPG oder GIF, max. 2 MB).
+              </p>
+              <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+                <div style="width: 220px; height: 90px; border: 1px dashed var(--ff-border); border-radius: var(--ff-radius); display: flex; align-items: center; justify-content: center; background: var(--ff-surface-2); overflow: hidden; padding: 6px;">
+                  <img v-if="overview?.settings?.rechnung_logo_exists" :src="'../' + overview?.settings?.rechnung_logo + '?t=' + Date.now()" alt="Logo" style="max-height: 100%; max-width: 100%; object-fit: contain;">
+                  <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">Kein Logo hochgeladen</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <input type="file" accept="image/png,image/jpeg,image/gif" @change="uploadLogo" class="form-control" style="max-width: 320px;">
+                  <div style="display: flex; gap: 8px;">
+                    <button v-if="overview?.settings?.rechnung_logo_exists" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteLogo">Logo löschen</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Model Context Protocol (MCP) -->
+        <div v-if="activeSubTab.stammdaten === 'mcp'">
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Model Context Protocol (MCP) Konfiguration</h3>
+              <span class="badge" :class="mcpStatus.configured ? 'badge-success' : 'badge-warning'">
+                {{ mcpStatus.configured ? (mcpStatus.has_db_token ? 'Aktiv (DB-Token)' : 'Aktiv (Server-Env)') : 'Nicht konfiguriert' }}
+              </span>
+            </div>
+            <div class="card-body">
+              <p style="color: var(--ff-text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 20px;">
+                Ermöglicht externen MCP-Clients (z. B. KI-Assistenten oder Kassen-Analysetools), über den gesicherten Endpunkt <code>/mcp.php</code> auf autorisierte Ressourcen zuzugreifen.
+              </p>
+              <div class="form-group" style="max-width: 600px;">
+                <label>MCP-HTTP-Token (mindestens 32 Zeichen)</label>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                  <input 
+                    :type="mcpTokenShow ? 'text' : 'password'" 
+                    v-model="mcpTokenInput" 
+                    class="form-control" 
+                    placeholder="Neues Token eingeben oder erzeugen"
+                  >
+                  <button type="button" class="btn btn-outline" @click="generateMcpToken">Erzeugen</button>
+                  <button type="button" class="btn btn-outline" @click="mcpTokenShow = !mcpTokenShow">
+                    {{ mcpTokenShow ? 'Verbergen' : 'Anzeigen' }}
+                  </button>
+                </div>
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                  <button type="button" class="btn btn-primary" @click="saveMcpToken">Token speichern</button>
+                  <button v-if="mcpStatus.configured" type="button" class="btn btn-outline" style="color: var(--ff-danger);" @click="removeMcpToken">Token entfernen</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Nummern -->
+        <div v-if="activeSubTab.stammdaten === 'nummern'">
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Nummernkreise &amp; Zählerstände</h3>
+              <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Direktverkauf Bon-Startnummer</label>
+                  <input type="number" v-model="settingsEdit.bon_nr_start" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Aktueller Bon-Zähler (DV)</label>
+                  <input type="number" v-model="settingsEdit.bon_nr_seq" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Bestellnummer-Zähler</label>
+                  <input type="number" v-model="settingsEdit.order_nr_seq" class="form-control">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Abrechnung & Sicherheit -->
+        <div v-if="activeSubTab.stammdaten === 'abrechnung'">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px;">
+            <!-- Schreibaus -->
+            <div class="admin-card">
+              <div class="card-header">
+                <h3><span>🧹</span> Verwaiste Posten schließen (Schreibaus)</h3>
+              </div>
+              <div class="card-body">
+                <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin-bottom: 16px;">
+                  Schließt verwaiste Bestellungen fachlich ab (z. B. Gäste gegangen, Tischreste), ohne die Datensätze zu löschen. Sauber für Kassen- und Steuerabschluss.
+                </p>
+                <div v-if="schreibausData.count > 0" class="kpi-tile kpi-warning" style="margin-bottom: 16px;">
+                  <span class="kpi-label">Zu schließende Posten</span>
+                  <span class="kpi-value">{{ schreibausData.count }}</span>
+                  <span class="kpi-sub">Gesamtwert: {{ formatEur(schreibausData.sum) }}</span>
+                </div>
+                <div v-else style="padding: 12px; background: var(--ff-surface-2); border-radius: var(--ff-radius-sm); margin-bottom: 16px; font-size: 0.85rem;">
+                  Aktuell keine offenen Posten vorhanden.
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-outline" @click="previewSchreibaus">Prüfen / Aktualisieren</button>
+                  <button v-if="schreibausData.count > 0" type="button" class="btn btn-warning" @click="executeSchreibaus">Jetzt abschreiben</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fest-Start -->
+            <div class="admin-card" style="border-left: 4px solid var(--ff-danger);">
+              <div class="card-header">
+                <h3><span>⚠️</span> Fest-Start vorbereiten</h3>
+                <span class="badge badge-danger">Super-Admin</span>
+              </div>
+              <div class="card-body">
+                <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin-bottom: 16px;">
+                  Bereinigt alle Test-Bestellungen, Queues, Kassenabschlüsse und setzt Zähler vor Festbeginn zurück. Stammdaten (Tische, Speisekarte, Benutzer) bleiben erhalten.
+                </p>
+                <button type="button" class="btn btn-danger" @click="executeFestStart">Fest-Start ausführen (FEST-START)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Selbsttests -->
+        <div v-if="activeSubTab.stammdaten === 'tests'">
+          <div class="toolbar">
+            <h3 style="font-size: 1.1rem; font-weight: 700;">Integrierte Selbsttests (Automatisierte Suite)</h3>
+            <button type="button" class="btn btn-primary" :disabled="isRunningTests" @click="runSelftests">
+              {{ isRunningTests ? 'Führe Tests aus…' : 'Alle 68 Tests jetzt starten' }}
+            </button>
+          </div>
+
+          <div v-if="testResults" class="admin-card">
+            <div class="card-header">
+              <h3>
+                <span>{{ testResults.ok ? '✅' : '❌' }}</span>
+                <span>{{ testResults.passed }} von {{ testResults.total }} Tests bestanden</span>
+              </h3>
+              <span class="badge" :class="testResults.ok ? 'badge-success' : 'badge-danger'">
+                {{ testResults.ok ? 'Alle Bestanden' : testResults.failed + ' Fehler' }}
+              </span>
+            </div>
+            <div class="card-body" style="padding: 0;">
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Test-Fall</th>
+                      <th>Status</th>
+                      <th>Details / Meldung</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(t, idx) in testResults.details" :key="idx">
+                      <td><code>{{ t.name }}</code></td>
+                      <td>
+                        <span class="badge" :class="(t.ok || t.passed) ? 'badge-success' : 'badge-danger'">
+                          {{ (t.ok || t.passed) ? 'OK' : 'FEHLER' }}
+                        </span>
+                      </td>
+                      <td style="font-size: 0.82rem; color: var(--ff-text-muted);">{{ t.detail || t.message || 'Erfolgreich' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ===================================================================
+           TAB: SPEISEKARTE & REZEPTUREN
+           =================================================================== -->
+      <section v-if="activeTab === 'speisekarte'">
+
+        <!-- SUB: Positionen / Speisen / Getränke / Ausverkauft -->
+        <div v-if="['positions', 'speisen', 'getraenke', 'locks'].includes(activeSubTab.speisekarte)">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" v-model="menuSearchQuery" class="form-control" placeholder="Position suchen (Name, Kurzbezeichnung, ID)...">
+            </div>
+
+            <select v-model="menuFilterSubcat" class="form-select" style="max-width: 200px;">
+              <option :value="0">Alle Unterkategorien</option>
+              <option v-for="sub in menuSubcategories" :key="sub.id" :value="sub.id">
+                {{ sub.type === 2 ? '🍺' : '🍔' }} {{ sub.name }}
+              </option>
+            </select>
+
+            <select v-if="menuFeste.length > 1" v-model="menuFilterFest" class="form-select" style="max-width: 200px;">
+              <option value="all">Alle Feste &amp; Global</option>
+              <option value="global">Nur Globale Positionen</option>
+              <option v-for="f in menuFeste" :key="f.id" :value="String(f.id)">
+                Fest: {{ f.name }} {{ f.aktiv ? '(Aktiv)' : '' }}
+              </option>
+            </select>
+
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.88rem; cursor: pointer; font-weight: 500;">
+              <input type="checkbox" v-model="menuFilterKassaOnly">
+              <span>Nur Kassa ({{ menuKassaOnlyCount }})</span>
+            </label>
+
+            <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+              <span style="color: var(--ff-text-muted); font-size: 0.85rem;">{{ filteredMenuPositions.length }} Positionen</span>
+              <button type="button" class="btn btn-primary" @click="openNewPositionModal(activeSubTab.speisekarte === 'getraenke' ? 2 : 1)">
+                <span>＋ Neue Position</span>
+              </button>
+              <button type="button" class="btn btn-outline" @click="loadMenuData()" title="Aktualisieren">
+                <span>↻</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Ladeanzeige -->
+          <div v-if="menuLoading" style="text-align: center; padding: 60px 20px; color: var(--ff-text-muted);">
+            <div style="font-size: 2rem; margin-bottom: 12px;">⏳</div>
+            <div>Speisekarte wird geladen...</div>
+          </div>
+
+          <!-- Positionen Tabelle -->
+          <div v-else class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 36px; text-align: center;"></th>
+                    <th style="width: 48px;">Typ</th>
+                    <th>Name &amp; Details</th>
+                    <th>Unterkategorie</th>
+                    <th style="width: 120px;">Preis (€)</th>
+                    <th>Druckziel</th>
+                    <th style="text-align: center;">Nur Kassa</th>
+                    <th style="text-align: center;">Status</th>
+                    <th style="text-align: center;">Zusatzinfos</th>
+                    <th style="text-align: center;">Rezeptur</th>
+                    <th style="text-align: right; width: 140px;">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in filteredMenuPositions" 
+                      :key="p.rowid"
+                      :draggable="true"
+                      @dragstart="onPosDragStart($event, p)"
+                      @dragover.prevent="onPosDragOver($event, p)"
+                      @dragleave="onPosDragLeave($event, p)"
+                      @drop.prevent="onPosDrop($event, p)"
+                      @dragend="onPosDragEnd"
+                      :class="{ 'row-drag-over': dragOverPos?.rowid === p.rowid, 'row-is-dragging': draggedPos?.rowid === p.rowid }"
+                      :style="p.is_locked ? 'background: rgba(239, 68, 68, 0.08);' : ''">
+                    <!-- Drag Handle -->
+                    <td style="text-align: center; cursor: grab; user-select: none; color: var(--ff-text-muted); font-size: 1.1rem;" title="Reihenfolge per Drag & Drop verschieben">
+                      ⠿
+                    </td>
+
+                    <!-- Typ Badge -->
+                    <td>
+                      <span class="badge" :class="p.type === 2 ? 'badge-getraenk' : 'badge-speise'">
+                        {{ p.type === 2 ? '🍺' : '🍔' }}
+                      </span>
+                    </td>
+
+                    <!-- Name & Kurzbez -->
+                    <td>
+                      <div style="font-weight: 600;">{{ p.Positionsname }}</div>
+                      <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ff-text-muted); margin-top: 2px;">
+                        <span>ID: {{ p.rowid }}</span>
+                        <span v-if="p.Kurzbezeichnung">• Kurz: {{ p.Kurzbezeichnung }}</span>
+                        <span v-if="p.tile_bg" :style="'display:inline-block; width:12px; height:12px; border-radius:3px; background:' + p.tile_bg + '; border:1px solid var(--ff-border);'" title="Kachelfarbe"></span>
+                        <span v-if="p.fest_id" style="color: var(--ff-warning-dark); font-weight: 600;">• {{ p.fest_name }}</span>
+                      </div>
+                    </td>
+
+                    <!-- Unterkategorie -->
+                    <td>
+                      <span v-if="p.subkat_name" class="badge" :style="'background:' + (p.subkat_tile_bg || 'var(--ff-surface-2)') + '; color: #0f172a; border: 1px solid var(--ff-border);'">
+                        {{ p.subkat_name }}
+                      </span>
+                      <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">–</span>
+                    </td>
+
+                    <!-- Preis (Inline Editing) -->
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 4px;">
+                        <span style="color: var(--ff-text-muted); font-size: 0.85rem;">€</span>
+                        <input type="text" 
+                               class="inline-edit-input" 
+                               :value="parseFloat(p.Betrag || 0).toFixed(2)" 
+                               @change="inlineUpdateBetrag(p, $event)"
+                               title="Klicken zum schnellen Ändern">
+                      </div>
+                    </td>
+
+                    <!-- Druckziel -->
+                    <td>
+                      <span style="font-size: 0.85rem; font-weight: 500;">
+                        {{ p.print_target_name }}
+                      </span>
+                    </td>
+
+                    <!-- Nur Kassa Checkbox -->
+                    <td style="text-align: center;">
+                      <button type="button" 
+                              class="btn-icon" 
+                              :style="p.kassa_only ? 'color: #9333ea; font-weight: bold;' : 'color: var(--ff-text-muted);'" 
+                              @click="togglePositionKassaOnly(p)"
+                              title="Umschalten: Nur Kassa">
+                        {{ p.kassa_only ? '💜 Ja' : '⚪ Nein' }}
+                      </button>
+                    </td>
+
+                    <!-- Ausverkauft / Status Toggle -->
+                    <td style="text-align: center;">
+                      <button type="button" 
+                              class="btn btn-sm" 
+                              :class="p.is_locked ? 'btn-danger' : 'btn-outline'"
+                              style="padding: 2px 8px; font-size: 0.78rem;"
+                              @click="togglePositionLock(p)"
+                              :title="p.is_locked ? 'Artikel ist gesperrt. Klicken zum Freigeben.' : 'Klicken zum sofortigen Ausverkauf sperren'">
+                        <span v-if="p.is_locked">🔒 Ausverkauft</span>
+                        <span v-else style="color: var(--ff-success-dark);">🟢 Verfügbar</span>
+                      </button>
+                    </td>
+
+                    <!-- Zusatzinfos / Beilagen Button -->
+                    <td style="text-align: center;">
+                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openBeilagen(p)">
+                        <span>➕ Beilagen</span>
+                        <span v-if="(menuBeilagenCounts[p.rowid] || p.beilagen_count || 0) > 0" class="badge badge-info" style="margin-left: 4px; padding: 1px 5px; font-size: 0.7rem;">
+                          {{ menuBeilagenCounts[p.rowid] || p.beilagen_count }}
+                        </span>
+                      </button>
+                    </td>
+
+                    <!-- Rezeptur Button -->
+                    <td style="text-align: center;">
+                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openRezeptur(p)">
+                        <span>🥣 Rezeptur</span>
+                        <span v-if="(menuRezepturCounts[p.rowid] || p.rezeptur_count || 0) > 0" class="badge badge-warning" style="margin-left: 4px; padding: 1px 5px; font-size: 0.7rem;">
+                          {{ menuRezepturCounts[p.rowid] || p.rezeptur_count }}
+                        </span>
+                      </button>
+                    </td>
+
+                    <!-- Aktionen (Bearbeiten, Sortieren, Löschen) -->
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button type="button" class="btn-icon" title="Nach oben schieben" @click="movePosition(p, -1)">▲</button>
+                      <button type="button" class="btn-icon" title="Nach unten schieben" @click="movePosition(p, 1)">▼</button>
+                      <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditPositionModal(p)">✏️</button>
+                      <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deletePosition(p)">🗑️</button>
+                    </td>
+                  </tr>
+
+                  <tr v-if="filteredMenuPositions.length === 0">
+                    <td colspan="11" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
+                      Keine Positionen für die aktuelle Filterung gefunden.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Unterkategorien -->
+        <div v-if="activeSubTab.speisekarte === 'subcategories'">
+          <div class="toolbar">
+            <p style="color: var(--ff-text-muted); font-size: 0.9rem; margin: 0;">
+              Unterkategorien teilen Speisen und Getränke in thematische Kachelgruppen (z. B. Grill, Pfanne, Alkoholfrei, Wein, Bar).
+            </p>
+            <div style="display: flex; gap: 8px; margin-left: auto;">
+              <button type="button" class="btn btn-primary" @click="openNewSubcatModal(1)">＋ Neue Unterkategorie</button>
+              <button type="button" class="btn btn-outline" @click="loadMenuData()" title="Aktualisieren">↻</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 36px; text-align: center;"></th>
+                    <th style="width: 80px;">Typ</th>
+                    <th>Name der Unterkategorie</th>
+                    <th style="width: 140px;">Kachelfarbe</th>
+                    <th style="width: 100px;">Sortierung</th>
+                    <th style="text-align: center; width: 120px;">Nur Kassa</th>
+                    <th style="text-align: right; width: 140px;">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in menuSubcategories" 
+                      :key="s.id"
+                      :draggable="true"
+                      @dragstart="onSubcatDragStart($event, s)"
+                      @dragover.prevent="onSubcatDragOver($event, s)"
+                      @dragleave="onSubcatDragLeave($event, s)"
+                      @drop.prevent="onSubcatDrop($event, s)"
+                      @dragend="onSubcatDragEnd"
+                      :class="{ 'row-drag-over': dragOverSubcat?.id === s.id, 'row-is-dragging': draggedSubcat?.id === s.id }">
+                    <!-- Drag Handle -->
+                    <td style="text-align: center; cursor: grab; user-select: none; color: var(--ff-text-muted); font-size: 1.1rem;" title="Reihenfolge per Drag & Drop verschieben">
+                      ⠿
+                    </td>
+                    <td>
+                      <span class="badge" :class="s.type === 2 ? 'badge-getraenk' : 'badge-speise'">
+                        {{ s.type === 2 ? '🍺 Getränke' : '🍔 Speisen' }}
+                      </span>
+                    </td>
+                    <td style="font-weight: 600;">{{ s.name }}</td>
+                    <td>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span :style="'width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--ff-border); background:' + (s.tile_bg || '#ffffff')"></span>
+                        <span style="font-size: 0.8rem; color: var(--ff-text-muted);">{{ s.tile_bg || '#ffffff' }}</span>
+                      </div>
+                    </td>
+                    <td>{{ s.sort_order }}</td>
+                    <td style="text-align: center;">
+                      <span v-if="s.kassa_only" class="badge badge-kassa">Nur Kassa</span>
+                      <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">Nein</span>
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button type="button" class="btn-icon" title="Nach oben schieben" @click="moveSubcategory(s, -1)">▲</button>
+                      <button type="button" class="btn-icon" title="Nach unten schieben" @click="moveSubcategory(s, 1)">▼</button>
+                      <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditSubcatModal(s)">✏️</button>
+                      <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deleteSubcategory(s)">🗑️</button>
+                    </td>
+                  </tr>
+
+                  <tr v-if="menuSubcategories.length === 0">
+                    <td colspan="7" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
+                      Noch keine Unterkategorien angelegt.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Bestandteile & Rohstoffe -->
+        <div v-if="activeSubTab.speisekarte === 'bestandteile'">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" v-model="bestandteilSearchQuery" class="form-control" placeholder="Bestandteil suchen (Name, Allergene, Einheit)...">
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-left: auto; align-items: center;">
+              <span style="color: var(--ff-text-muted); font-size: 0.85rem;">{{ filteredBestandteile.length }} Bestandteile</span>
+              <button type="button" class="btn btn-primary" @click="openNewBestandteilModal()">＋ Neuer Bestandteil</button>
+              <button type="button" class="btn btn-outline" @click="loadBestandteile()" title="Aktualisieren">↻</button>
+            </div>
+          </div>
+
+          <div class="alert alert-info" style="margin-bottom: 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <span>Bestandteile bilden die Rohstoffbasis für die automatische Küchenprognose, Lagerführung und Rezepturen.</span>
+            <div style="display: flex; gap: 12px; font-size: 0.8rem;">
+              <span><span class="badge badge-warning">Knapp</span> ab 80 % der Kapazität</span>
+              <span><span class="badge badge-danger">Überschritten</span> mehr bestellt als Kapazität</span>
+            </div>
+          </div>
+
+          <!-- Ladeanzeige -->
+          <div v-if="bestandteilLoading" style="text-align: center; padding: 60px 20px; color: var(--ff-text-muted);">
+            <div style="font-size: 2rem; margin-bottom: 12px;">⏳</div>
+            <div>Bestandteile werden geladen...</div>
+          </div>
+
+          <div v-else class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bestandteil / Rohstoff</th>
+                    <th style="width: 100px;">Einheit</th>
+                    <th style="text-align: right; width: 120px;">Kapazität</th>
+                    <th style="text-align: right; width: 140px;">Bereits bestellt</th>
+                    <th style="text-align: right; width: 120px;">Rest</th>
+                    <th style="width: 80px;">Sort.</th>
+                    <th>Allergene</th>
+                    <th style="text-align: right; width: 100px;">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in filteredBestandteile" :key="b.id"
+                      :style="b.kapazitaet > 0 && b.bestellt > b.kapazitaet ? 'background: rgba(239, 68, 68, 0.08);' : (b.kapazitaet > 0 && b.bestellt >= b.kapazitaet * 0.8 ? 'background: rgba(245, 158, 11, 0.08);' : '')">
+                    <td style="font-weight: 600;">
+                      {{ b.name }}
+                    </td>
+                    <td>
+                      <span class="badge badge-info">{{ b.einheit }}</span>
+                    </td>
+                    <td style="text-align: right; font-weight: 500; white-space: nowrap;">
+                      <span>{{ b.kapazitaet === -1 ? '∞ Unbegrenzt' : b.kapazitaet }}</span>
+                      <button type="button" class="btn-icon" style="margin-left: 6px;" title="Kapazitätsrechner" @click="openKapazitaetModal(b)">📐</button>
+                    </td>
+                    <td style="text-align: right; color: var(--ff-text-muted);">
+                      {{ formatBestandteilMenge(b.bestellt) }} {{ b.einheit }}
+                    </td>
+                    <td style="text-align: right; font-weight: 600;">
+                      <template v-if="b.kapazitaet === -1">
+                        <span style="color: var(--ff-text-muted);">–</span>
+                      </template>
+                      <template v-else>
+                        <span v-if="b.kapazitaet - b.bestellt < 0" class="badge badge-danger">
+                          {{ formatBestandteilMenge(b.kapazitaet - b.bestellt) }}
+                        </span>
+                        <span v-else-if="b.bestellt >= b.kapazitaet * 0.8" class="badge badge-warning">
+                          {{ formatBestandteilMenge(b.kapazitaet - b.bestellt) }}
+                        </span>
+                        <span v-else style="color: var(--ff-success-dark);">
+                          {{ formatBestandteilMenge(b.kapazitaet - b.bestellt) }}
+                        </span>
+                      </template>
+                    </td>
+                    <td>{{ b.sort_order }}</td>
+                    <td>
+                      <span v-if="b.allergene" style="font-size: 0.82rem; color: var(--ff-text-muted);">{{ b.allergene }}</span>
+                      <span v-else style="color: var(--ff-text-muted); font-size: 0.8rem;">–</span>
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                      <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditBestandteilModal(b)">✏️</button>
+                      <button type="button" class="btn-icon btn-icon-danger" title="Löschen" @click="deleteBestandteil(b)">🗑️</button>
+                    </td>
+                  </tr>
+
+                  <tr v-if="filteredBestandteile.length === 0">
+                    <td colspan="8" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
+                      Keine Bestandteile gefunden.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ===================================================================
+           TAB: PERSONAL & RECHNUNGEN
+           =================================================================== -->
+      <section v-if="activeTab === 'personal'">
+        
+        <!-- SUB: Benutzerverwaltung -->
+        <div v-if="activeSubTab.personal === 'benutzer'">
+          <div class="toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" v-model="userSearch" class="form-control" placeholder="Benutzer suchen...">
+            </div>
+            <button type="button" class="btn btn-primary" @click="openNewUserModal">＋ Neuer Benutzer</button>
+          </div>
+
+          <div class="admin-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Login</th>
+                    <th>Anzeigename</th>
+                    <th>Rolle</th>
+                    <th>Berechtigungen</th>
+                    <th>Startseite</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="u in filteredUsers" :key="u.id">
+                    <td><strong>{{ u.username }}</strong></td>
+                    <td>{{ u.display_name || '–' }}</td>
+                    <td>
+                      <span class="badge" :class="u.admin === 2 ? 'badge-danger' : (u.admin === 1 ? 'badge-info' : 'badge-success')">
+                        {{ u.admin === 2 ? 'Super-Admin' : (u.admin === 1 ? 'Administrator' : 'Benutzer') }}
+                      </span>
+                    </td>
+                    <td>
+                      <span v-if="u.can_direktverkauf" class="badge badge-warning" style="margin-right: 4px;">Kassa</span>
+                      <span v-if="u.can_finance" class="badge badge-primary">Finanzen</span>
+                    </td>
+                    <td><code>{{ u.start_page }}</code></td>
+                    <td>
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-outline btn-sm" @click="openPasskeyModal(u)" title="Passkeys verwalten">
+                          🔑 Passkeys <span v-if="u.passkeys_count > 0" class="badge badge-info" style="font-size: 0.7rem; padding: 1px 4px;">{{ u.passkeys_count }}</span>
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openEditUserModal(u)">Bearbeiten</button>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openResetPwModal(u)">Kennwort</button>
+                        <button v-if="u.id !== currentUser?.id" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteUser(u.id, u.username)">Löschen</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Rechnungsjournal -->
+        <div v-if="activeSubTab.personal === 'rechnungen'">
+          <div class="toolbar">
+            <div class="search-box" style="flex: 1; max-width: 400px;">
+              <span class="search-icon">🔍</span>
+              <input type="text" v-model="invoiceSearch" @keyup.enter="loadInvoices(1)" class="form-control" placeholder="Rechnungsnr, Tisch, Ersteller...">
+            </div>
+            <button type="button" class="btn btn-outline" @click="loadInvoices(1)">Suchen</button>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Rechnungsjournal</h3>
+              <span style="font-size: 0.85rem; color: var(--ff-text-muted);">
+                {{ invoicePagination.total_count }} Belege (Summe: {{ formatEur(invoicePagination.sum_total) }})
+              </span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Rechnungs-Nr.</th>
+                    <th>Datum</th>
+                    <th>Tisch</th>
+                    <th>Ersteller</th>
+                    <th>Betrag</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="inv in invoices" :key="inv.id">
+                    <td><strong>{{ inv.rechnungsnummer }}</strong></td>
+                    <td>{{ inv.created_at }}</td>
+                    <td>{{ inv.tischnummer ? '#' + inv.tischnummer : '–' }}</td>
+                    <td>{{ inv.created_by }}</td>
+                    <td><strong>{{ formatEur(inv.total) }}</strong></td>
+                    <td>
+                      <span class="badge" :class="inv.storniert ? 'badge-danger' : (inv.gedruckt ? 'badge-success' : 'badge-warning')">
+                        {{ inv.storniert ? 'Storniert' : (inv.gedruckt ? 'Gedruckt' : 'Offen') }}
+                      </span>
+                    </td>
+                    <td>
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <button type="button" class="btn btn-outline btn-sm" @click="openInvoiceDetail(inv)">Details</button>
+                        <a :href="'../rechnung_pdf.php?id=' + inv.id" target="_blank" rel="noopener" class="btn btn-outline btn-sm">PDF ↗</a>
+                        <button type="button" class="btn btn-outline btn-sm" @click="reprintInvoice(inv.id, 11)">Thermo-Druck</button>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openEditInvoiceRecipient(inv)">Empfänger</button>
+                        <button v-if="!inv.storniert" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="openInvoiceStorno(inv)" title="Rechnung stornieren">Storno</button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Mitarbeiter-Verpflegung -->
+        <div v-if="activeSubTab.personal === 'verpflegung'">
+          <div class="admin-card" style="margin-bottom: 24px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h3>Verpflegung erfassen</h3>
+                <input type="date" v-model="verpflegungDate" @change="loadVerpflegung" class="form-control" style="width: auto; padding: 4px 8px;">
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" @click="openBereicheModal">Bereiche verwalten ⚙️</button>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Helfer-Bereich</label>
+                  <select v-model="verpflegungForm.bereich_id" class="form-select">
+                    <option v-for="b in verpflegungData.bereiche" :key="b.id" :value="b.id">{{ b.name }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Artikel (Speise / Getränk)</label>
+                  <select v-model="verpflegungForm.position_id" class="form-select">
+                    <option v-for="p in verpflegungData.positionen" :key="p.rowid" :value="p.rowid">{{ p.Bezeichnung }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Menge</label>
+                  <input type="number" v-model="verpflegungForm.menge" class="form-control" min="1">
+                </div>
+                <div class="form-group">
+                  <label>Notiz (optional)</label>
+                  <input type="text" v-model="verpflegungForm.notiz" class="form-control" placeholder="z. B. Feuerwehrjugend">
+                </div>
+              </div>
+              <button type="button" class="btn btn-success" style="margin-top: 12px;" @click="addVerpflegung">＋ Verpflegung buchen</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Erfasste Mitarbeiter-Konsumationen ({{ verpflegungDate }})</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bereich</th>
+                    <th>Artikel</th>
+                    <th>Menge</th>
+                    <th>Notiz</th>
+                    <th>Erfasst von</th>
+                    <th>Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="e in verpflegungData.entries" :key="e.id">
+                    <td><strong>{{ e.bereich_name }}</strong></td>
+                    <td>{{ e.position_name }}</td>
+                    <td>{{ e.menge }}x</td>
+                    <td>{{ e.notiz || '–' }}</td>
+                    <td>{{ e.created_by }}</td>
+                    <td>
+                      <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteVerpflegung(e.id)">Löschen</button>
+                    </td>
+                  </tr>
+                  <tr v-if="!verpflegungData.entries?.length">
+                    <td colspan="6" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Für dieses Datum wurden noch keine Konsumationen erfasst.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ===================================================================
+           TAB: AUSWERTUNGEN
+           =================================================================== -->
+      <section v-if="activeTab === 'auswertungen'">
+
+        <!-- SUB: Kellner-Umsätze & Abrechnung -->
+        <div v-if="activeSubTab.auswertungen === 'kellner'">
+          <div class="toolbar">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <div class="search-box" style="min-width: 200px;">
+                <span class="search-icon">🔍</span>
+                <input type="text" v-model="kellnerFilter.kellner" @keyup.enter="loadKellnerReport" class="form-control" placeholder="Kellner-Login filtern...">
+              </div>
+              <input type="date" v-model="kellnerFilter.von" class="form-control" style="width: auto;" title="Datum von">
+              <input type="date" v-model="kellnerFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <button type="button" class="btn btn-outline" @click="loadKellnerReport">Aktualisieren</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-outline" @click="openKellnerMovement(null)">Zwischenentnahme 💶</button>
+              <button type="button" class="btn btn-outline" @click="exportKellnerCsv">CSV-Export 📄</button>
+            </div>
+          </div>
+
+          <!-- KPI Grid Kellner -->
+          <div class="kpi-grid" style="margin-bottom: 20px;">
+            <div class="kpi-tile kpi-primary">
+              <span class="kpi-label">Umsatz Gesamt (Soll)</span>
+              <span class="kpi-val">{{ formatEur(kellnerReport.totals?.umsatz_soll) }}</span>
+              <span class="kpi-sub">{{ kellnerReport.totals?.pos_count || 0 }} bezahlte Posten</span>
+            </div>
+            <div class="kpi-tile kpi-success">
+              <span class="kpi-label">Barzahlung</span>
+              <span class="kpi-val">{{ formatEur(kellnerReport.totals?.bar_umsatz) }}</span>
+              <span class="kpi-sub">Bargeld-Einnahmen</span>
+            </div>
+            <div class="kpi-tile kpi-info">
+              <span class="kpi-label">SumUp / Karte</span>
+              <span class="kpi-val">{{ formatEur(kellnerReport.totals?.sumup_umsatz) }}</span>
+              <span class="kpi-sub">Kartenzahlung Terminal</span>
+            </div>
+            <div class="kpi-tile kpi-warning">
+              <span class="kpi-label">Offen zur Abgabe</span>
+              <span class="kpi-val">{{ formatEur(kellnerReport.totals?.abgabe_soll) }}</span>
+              <span class="kpi-sub">{{ kellnerReport.totals?.offen_pos_count || 0 }} Posten nicht abgerechnet</span>
+            </div>
+          </div>
+
+          <!-- Kellner Datentabelle -->
+          <div class="admin-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3>Kellner-Umsätze &amp; Kassen-Soll</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Kellner (Anzeige · Login)</th>
+                    <th style="text-align: right;">Posten</th>
+                    <th style="text-align: right;">Umsatz Soll</th>
+                    <th style="text-align: right;">Bar</th>
+                    <th style="text-align: right;">SumUp</th>
+                    <th style="text-align: right;">Sammel</th>
+                    <th style="text-align: right;">Ehrengast</th>
+                    <th style="text-align: right;">Entnahmen</th>
+                    <th style="text-align: right;">Abgabe Soll</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="w in kellnerReport.waiters" :key="w.kellner_login">
+                    <td>
+                      <strong>{{ w.label }}</strong>
+                      <span v-if="w.label !== w.kellner_login" style="font-size: 0.8rem; color: var(--ff-text-muted); display: block;">{{ w.kellner_login }}</span>
+                    </td>
+                    <td style="text-align: right;">{{ w.pos_count }}</td>
+                    <td style="text-align: right;"><strong>{{ formatEur(w.umsatz_soll) }}</strong></td>
+                    <td style="text-align: right;">{{ formatEur(w.bar_umsatz) }}</td>
+                    <td style="text-align: right;">{{ formatEur(w.sumup_umsatz) }}</td>
+                    <td style="text-align: right;">{{ formatEur(w.sammel_umsatz) }}</td>
+                    <td style="text-align: right;">{{ formatEur(w.ehrengast_umsatz) }}</td>
+                    <td style="text-align: right; color: var(--ff-danger);">{{ w.entnahmen > 0 ? '-' + formatEur(w.entnahmen) : '–' }}</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(w.abgabe_soll) }}</td>
+                    <td>
+                      <div style="display: flex; gap: 6px;">
+                        <button type="button" class="btn btn-primary btn-sm" @click="openKellnerSettle(w)" :disabled="w.offen_pos_count === 0 && w.abgabe_soll === 0">Abrechnen</button>
+                        <button type="button" class="btn btn-outline btn-sm" @click="openKellnerMovement(w)">± Entnahme</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="!kellnerReport.waiters?.length">
+                    <td colspan="10" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Keine Umsätze für diesen Zeitraum gefunden.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Abrechnungs-Historie -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Abgeschlossene Abrechnungen (Historie)</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Datum</th>
+                    <th>Kellner</th>
+                    <th style="text-align: right;">Soll</th>
+                    <th style="text-align: right;">Abgegeben</th>
+                    <th style="text-align: right;">Wechselgeld</th>
+                    <th style="text-align: right;">Trinkgeld</th>
+                    <th>Erfasst von</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="s in kellnerSettlements" :key="s.id" :style="s.voided_at ? { opacity: 0.5, textDecoration: 'line-through' } : {}">
+                    <td>#{{ s.id }}</td>
+                    <td>{{ s.created_at }}</td>
+                    <td><strong>{{ s.kellner_label }}</strong></td>
+                    <td style="text-align: right;">{{ formatEur(s.umsatz_soll) }}</td>
+                    <td style="text-align: right;">{{ formatEur(s.betrag_abgegeben) }}</td>
+                    <td style="text-align: right;">{{ formatEur(s.wechselgeld_zurueck) }}</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--ff-success);">{{ formatEur(s.trinkgeld) }}</td>
+                    <td>{{ s.created_by }}</td>
+                    <td>
+                      <div style="display: flex; gap: 6px;">
+                        <button type="button" class="btn btn-outline btn-sm" @click="openSettlementDetail(s.id)">Beleg 📄</button>
+                        <button v-if="!s.voided_at" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="openSettlementVoid(s.id)" title="Abrechnung stornieren & Posten wieder öffnen">Zurücksetzen</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="!kellnerSettlements.length">
+                    <td colspan="9" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Bisher wurden noch keine Kellner-Abrechnungen durchgeführt.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Finanzen & Gewinn -->
+        <div v-if="activeSubTab.auswertungen === 'finanzen'">
+          <div class="toolbar">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <input type="date" v-model="financeFilter.von" class="form-control" style="width: auto;" title="Datum von">
+              <input type="date" v-model="financeFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <button type="button" class="btn btn-outline" @click="loadFinanceOverview">Aktualisieren</button>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <a href="../finance_kassen_export.php" class="btn btn-outline" title="Kassenbericht herunterladen">Kassenbericht ↗</a>
+              <button type="button" class="btn btn-outline" @click="exportFinanceCsv">Kassenbuch CSV 📄</button>
+            </div>
+          </div>
+
+          <!-- KPI Cards Finanzen -->
+          <div class="kpi-grid" style="margin-bottom: 24px;">
+            <div class="kpi-tile kpi-primary">
+              <span class="kpi-label">Gesamtumsatz (Kombiniert)</span>
+              <span class="kpi-val">{{ formatEur(financeOverview.umsatz_gesamt_kombiniert) }}</span>
+              <span class="kpi-sub">Verkauf + Kassenbereiche</span>
+            </div>
+            <div class="kpi-tile kpi-info">
+              <span class="kpi-label">Kellner &amp; Direktverkauf</span>
+              <span class="kpi-val">{{ formatEur(financeOverview.verkauf_kellner_direkt) }}</span>
+              <span class="kpi-sub">Theke + Tische</span>
+            </div>
+            <div class="kpi-tile kpi-warning">
+              <span class="kpi-label">Fixkosten &amp; Ausgaben</span>
+              <span class="kpi-val">{{ formatEur(financeOverview.fixe_ausgaben) }}</span>
+              <span class="kpi-sub">Aus Kassenbuchungen</span>
+            </div>
+            <div class="kpi-tile" :class="(financeOverview.gewinn >= 0) ? 'kpi-success' : 'kpi-danger'">
+              <span class="kpi-label">Rohgewinn (Deckungsbeitrag)</span>
+              <span class="kpi-val">{{ formatEur(financeOverview.gewinn) }}</span>
+              <span class="kpi-sub">Umsatz + Einnahmen - Kosten</span>
+            </div>
+          </div>
+
+          <!-- Kassenbereiche Übersicht -->
+          <div v-if="financeOverview.bereiche_umsatz?.length" class="admin-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3>Umsatz nach Kassenbereichen</h3>
+            </div>
+            <div class="card-body">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <div v-for="b in financeOverview.bereiche_umsatz" :key="b.id" style="padding: 12px 16px; border: 1px solid var(--ff-border); border-radius: var(--ff-radius); background: var(--ff-surface-2);">
+                  <div style="font-size: 0.85rem; color: var(--ff-text-muted); font-weight: 600;">{{ b.name }}</div>
+                  <div style="font-size: 1.25rem; font-weight: 800; color: var(--ff-text); margin-top: 4px;">{{ formatEur(b.umsatz) }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Buchungsformular (Neuer Kassenbucheintrag) -->
+          <div class="admin-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3>Kassenbuch – Buchung erfassen</h3>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Typ</label>
+                  <select v-model="bookingForm.typ" class="form-select">
+                    <option value="ausgabe">Ausgabe</option>
+                    <option value="einnahme">Einnahme (Bareinlage)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Bezeichnung</label>
+                  <input type="text" v-model="bookingForm.bezeichnung" class="form-control" placeholder="z. B. Wechselgeld Start oder Eis-Einkauf">
+                </div>
+                <div class="form-group">
+                  <label>Betrag (€)</label>
+                  <input type="number" step="0.01" v-model="bookingForm.betrag" class="form-control" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                  <label>Datum</label>
+                  <input type="date" v-model="bookingForm.datum" class="form-control">
+                </div>
+                <div class="form-group">
+                  <label>Bereich (optional)</label>
+                  <select v-model="bookingForm.bereich_id" class="form-select">
+                    <option :value="null">— Kein Bereich —</option>
+                    <option v-for="kb in financeBereiche" :key="kb.id" :value="kb.id">{{ kb.name }}</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Kategorie / Notiz</label>
+                  <input type="text" v-model="bookingForm.kategorie" class="form-control" placeholder="z. B. Wareneinkauf">
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary" style="margin-top: 14px;" @click="saveBooking">＋ Buchung speichern</button>
+            </div>
+          </div>
+
+          <!-- Buchungsjournal -->
+          <div class="admin-card">
+            <div class="card-header">
+              <h3>Kassenbuch-Journal ({{ financeBookings.length }} Einträge)</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Datum</th>
+                    <th>Typ</th>
+                    <th>Bezeichnung</th>
+                    <th>Bereich</th>
+                    <th>Kategorie</th>
+                    <th style="text-align: right;">Betrag</th>
+                    <th>Erfasst von</th>
+                    <th>Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in financeBookings" :key="b.id">
+                    <td>{{ b.datum }}</td>
+                    <td>
+                      <span class="badge" :class="b.typ === 'einnahme' ? 'badge-success' : 'badge-danger'">
+                        {{ b.typ === 'einnahme' ? 'Einnahme' : 'Ausgabe' }}
+                      </span>
+                    </td>
+                    <td><strong>{{ b.bezeichnung }}</strong></td>
+                    <td>{{ b.bereich_name || '–' }}</td>
+                    <td>{{ b.kategorie || '–' }}</td>
+                    <td style="text-align: right; font-weight: 700;" :style="{ color: b.typ === 'einnahme' ? 'var(--ff-success)' : 'var(--ff-danger)' }">
+                      {{ (b.typ === 'einnahme' ? '+' : '-') + formatEur(b.betrag) }}
+                    </td>
+                    <td>{{ b.created_by }}</td>
+                    <td>
+                      <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteBooking(b.id)">Löschen</button>
+                    </td>
+                  </tr>
+                  <tr v-if="!financeBookings.length">
+                    <td colspan="8" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Bisher keine Kassenbuchungen erfasst.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Artikel-Statistik -->
+        <div v-if="activeSubTab.auswertungen === 'statistik'">
+          <div class="toolbar">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+              <select v-model="statsFilter.kategorie" @change="loadStats" class="form-select" style="width: auto;">
+                <option value="">Alle Kategorien</option>
+                <option value="Speise">Speisen</option>
+                <option value="Getränk">Getränke</option>
+                <option value="Dessert">Dessert</option>
+              </select>
+              <input type="date" v-model="statsFilter.von" class="form-control" style="width: auto;" title="Datum von">
+              <input type="date" v-model="statsFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <button type="button" class="btn btn-outline" @click="loadStats">Aktualisieren</button>
+            </div>
+            <button type="button" class="btn btn-outline" @click="exportStatsCsv">Statistik CSV 📄</button>
+          </div>
+
+          <!-- KPI Cards Statistik -->
+          <div class="kpi-grid" style="margin-bottom: 24px;">
+            <div class="kpi-tile kpi-primary">
+              <span class="kpi-label">Verkaufte Positionen</span>
+              <span class="kpi-val">{{ statsTotals.total_count }}</span>
+              <span class="kpi-sub">Gesamtanzahl Artikel</span>
+            </div>
+            <div class="kpi-tile kpi-success">
+              <span class="kpi-label">Gesamtumsatz Artikel</span>
+              <span class="kpi-val">{{ formatEur(statsTotals.total_summe) }}</span>
+              <span class="kpi-sub">Über alle Positionen</span>
+            </div>
+            <div class="kpi-tile kpi-info">
+              <span class="kpi-label">Durchschnittswert</span>
+              <span class="kpi-val">{{ formatEur(statsTotals.total_count ? statsTotals.total_summe / statsTotals.total_count : 0) }}</span>
+              <span class="kpi-sub">Pro verkaufte Position</span>
+            </div>
+          </div>
+
+          <!-- Renner & Penner Tabelle -->
+          <div class="admin-card" style="margin-bottom: 24px;">
+            <div class="card-header">
+              <h3>Renner &amp; Penner (Verkaufsrangliste)</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">Rang</th>
+                    <th>Artikelname</th>
+                    <th>Kategorie</th>
+                    <th>Station</th>
+                    <th style="text-align: right;">Einzelpreis</th>
+                    <th style="text-align: right;">Menge</th>
+                    <th style="text-align: right;">Gesamtumsatz</th>
+                    <th style="width: 140px;">Umsatzanteil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(a, idx) in statsArticles" :key="a.id">
+                    <td>
+                      <span class="badge" :class="idx < 3 ? 'badge-primary' : 'badge-info'">#{{ idx + 1 }}</span>
+                    </td>
+                    <td><strong>{{ a.bezeichnung }}</strong></td>
+                    <td>{{ a.kategorie }}</td>
+                    <td>{{ a.druckbereich || '–' }}</td>
+                    <td style="text-align: right;">{{ formatEur(a.einzelpreis) }}</td>
+                    <td style="text-align: right; font-weight: 700;">{{ a.cnt }}x</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(a.summe) }}</td>
+                    <td>
+                      <div style="font-size: 0.8rem; font-weight: 600;">{{ a.anteil_prozent }}%</div>
+                      <div class="rank-bar-wrap">
+                        <div class="rank-bar" :style="{ width: Math.min(100, a.anteil_prozent * 3) + '%' }"></div>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr v-if="!statsArticles.length">
+                    <td colspan="8" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                      Keine Artikel-Verkaufszahlen vorhanden.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Stoßzeiten-Analyse -->
+          <div v-if="statsTimeline.length" class="admin-card">
+            <div class="card-header">
+              <h3>Stoßzeiten-Analyse (Umsatz nach Uhrzeit)</h3>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Uhrzeit</th>
+                    <th style="text-align: right;">Verkaufte Positionen</th>
+                    <th style="text-align: right;">Umsatz in dieser Stunde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="t in statsTimeline" :key="t.hour">
+                    <td><strong>{{ t.hour }} Uhr</strong></td>
+                    <td style="text-align: right;">{{ t.pos_count }}</td>
+                    <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(t.summe) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- 4. MODALS -->
+    <!-- Modal: Tisch -->
+    <div v-if="tableModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h4>{{ tableModal.isNew ? 'Neuen Tisch anlegen' : 'Tisch #' + tableModal.data.tischnummer + ' bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="tableModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Tischnummer *</label>
+            <input type="number" v-model.number="tableModal.data.tischnummer" class="form-control" :disabled="!tableModal.isNew">
+          </div>
+          <div class="form-group">
+            <label>Tischname *</label>
+            <input type="text" v-model="tableModal.data.tischname" class="form-control" placeholder="z. B. Tisch 12">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Position X (Spalte)</label>
+              <input type="number" v-model.number="tableModal.data.x" class="form-control" min="1" placeholder="1">
+            </div>
+            <div class="form-group">
+              <label>Position Y (Zeile)</label>
+              <input type="number" v-model.number="tableModal.data.y" class="form-control" min="1" placeholder="1">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Raster-Farbe</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="color" v-model="tableModal.data.color" class="form-control" style="width: 52px; height: 38px; padding: 2px; cursor: pointer;">
+              <input type="text" v-model="tableModal.data.color" class="form-control" placeholder="#ffffff" style="flex: 1; font-family: monospace;">
+            </div>
+          </div>
+          <div class="form-group" style="background: var(--ff-surface-2); padding: 12px; border-radius: var(--ff-radius-sm); border: 1px solid var(--ff-border);">
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 8px;">Tisch-Abrechnungsmodus:</div>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; font-size: 0.9rem;">
+              <input type="checkbox" :checked="tableModal.data.is_sammelrechnung === 1" @change="tableModal.data.is_sammelrechnung = $event.target.checked ? 1 : 0; if ($event.target.checked) tableModal.data.is_ehrengast = 0;">
+              <span><strong>Sammelrechnung (SR):</strong> Tisch zahlt gesammelt am Ende</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+              <input type="checkbox" :checked="tableModal.data.is_ehrengast === 1" @change="tableModal.data.is_ehrengast = $event.target.checked ? 1 : 0; if ($event.target.checked) tableModal.data.is_sammelrechnung = 0;">
+              <span><strong>Ehrengast (EG):</strong> Freiverzehr (zahlt nie)</span>
+            </label>
+            <div style="font-size: 0.75rem; color: var(--ff-text-muted); margin-top: 4px;">
+              Hinweis: Sammelrechnung und Ehrengast schließen sich gegenseitig aus.
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <button v-if="!tableModal.isNew" type="button" class="btn btn-outline" style="color: var(--ff-danger); border-color: var(--ff-danger);" @click="deleteTable(tableModal.data.tischnummer); tableModal.open = false;">Tisch löschen</button>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" class="btn btn-outline" @click="tableModal.open = false">Abbrechen</button>
+            <button type="button" class="btn btn-primary" @click="saveTable">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Benutzer -->
+    <div v-if="userModal.open" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>{{ userModal.isNew ? 'Neuen Benutzer anlegen' : 'Benutzer bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="userModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Benutzername (Login)</label>
+            <input type="text" v-model="userModal.data.username" class="form-control" :disabled="!userModal.isNew">
+          </div>
+          <div class="form-group">
+            <label>Anzeigename (Bon / Rechnung)</label>
+            <input type="text" v-model="userModal.data.display_name" class="form-control">
+          </div>
+          <div class="form-group" v-if="userModal.isNew">
+            <label>Kennwort</label>
+            <input type="password" v-model="userModal.data.password" class="form-control" autocomplete="new-password">
+          </div>
+          <div class="form-group">
+            <label>Rolle</label>
+            <select v-model="userModal.data.admin" class="form-select">
+              <option :value="0">Benutzer (Kellner)</option>
+              <option :value="1">Administrator</option>
+              <option v-if="isSuperAdmin" :value="2">Super-Administrator</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Startseite nach Login</label>
+            <select v-model="userModal.data.start_page" class="form-select">
+              <option value="menu">Tischansicht (Kellner)</option>
+              <option value="direktverkauf">Direktverkauf (Kassa)</option>
+              <option value="print_target">Station (Küche / Schank)</option>
+            </select>
+          </div>
+          <div class="form-check" style="margin-bottom: 8px;">
+            <input type="checkbox" id="chkDv" v-model="userModal.data.can_direktverkauf" :true-value="1" :false-value="0">
+            <label for="chkDv">Berechtigung für Direktverkauf (Kassa)</label>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" id="chkFin" v-model="userModal.data.can_finance" :true-value="1" :false-value="0">
+            <label for="chkFin">Berechtigung für Finanzberichte</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="userModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="saveUser">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Passwort zurücksetzen -->
+    <div v-if="userPwModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 440px;">
+        <div class="modal-header">
+          <h4>Kennwort für {{ userPwModal.username }}</h4>
+          <button type="button" class="btn-close" @click="userPwModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Neues Kennwort</label>
+            <input type="text" v-model="userPwModal.newPassword" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="userPwModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="submitResetPassword">Kennwort setzen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Rechnungsdetails -->
+    <div v-if="invoiceDetailModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 680px;">
+        <div class="modal-header">
+          <h4>Beleg {{ invoiceDetailModal.data?.rechnungsnummer }}</h4>
+          <button type="button" class="btn-close" @click="invoiceDetailModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="font-size: 0.88rem; margin-bottom: 16px;">
+            <div>Datum: <strong>{{ invoiceDetailModal.data?.created_at }}</strong></div>
+            <div>Erstellt von: <strong>{{ invoiceDetailModal.data?.created_by }}</strong></div>
+            <div>Tisch: <strong>{{ invoiceDetailModal.data?.tischnummer ? '#' + invoiceDetailModal.data?.tischnummer : '–' }}</strong></div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr><th>Menge</th><th>Position</th><th style="text-align: right;">Betrag</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(line, idx) in invoiceDetailModal.lines" :key="idx">
+                <td>{{ line.menge || line.qty || 1 }}x</td>
+                <td>{{ line.bezeichnung || line.name }}</td>
+                <td style="text-align: right;">{{ formatEur(line.gesamt || line.total || line.betrag) }}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2" style="font-weight: 700; text-align: right; padding-top: 12px;">Gesamtsumme:</td>
+                <td style="font-weight: 800; font-size: 1.1rem; text-align: right; padding-top: 12px; color: var(--ff-primary);">
+                  {{ formatEur(invoiceDetailModal.data?.total) }}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="invoiceDetailModal.open = false">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Rechnung Empfänger -->
+    <div v-if="invoiceEditModal.open" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>Empfänger für {{ invoiceEditModal.data.rechnungsnummer }}</h4>
+          <button type="button" class="btn-close" @click="invoiceEditModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-check" style="margin-bottom: 12px;">
+            <input type="checkbox" id="chkFirma" v-model="invoiceEditModal.data.is_firma" :true-value="1" :false-value="0">
+            <label for="chkFirma">Firmenrechnung (mit UID &amp; Anschrift)</label>
+          </div>
+          <div class="form-group">
+            <label>Name / Firmenname</label>
+            <input type="text" v-model="invoiceEditModal.data.empfaenger_name" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Straße &amp; Hausnummer</label>
+            <input type="text" v-model="invoiceEditModal.data.empfaenger_strasse" class="form-control">
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>PLZ</label>
+              <input type="text" v-model="invoiceEditModal.data.empfaenger_plz" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Ort</label>
+              <input type="text" v-model="invoiceEditModal.data.empfaenger_ort" class="form-control">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>UID-Nummer (optional)</label>
+            <input type="text" v-model="invoiceEditModal.data.empfaenger_uid" class="form-control">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="invoiceEditModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="saveInvoiceRecipient">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Fest -->
+    <div v-if="festModal.open" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>{{ festModal.isNew ? 'Neues Fest anlegen' : 'Fest bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="festModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Name des Fests</label>
+            <input type="text" v-model="festModal.data.name" class="form-control" placeholder="z. B. Feuerwehrfest 2026">
+          </div>
+          <div class="form-group">
+            <label>Code (eindeutig, kurz)</label>
+            <input type="text" v-model="festModal.data.code" class="form-control" placeholder="z. B. fest2026">
+          </div>
+          <div class="form-group">
+            <label>Datum</label>
+            <input type="date" v-model="festModal.data.datum" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Zahlungsmodus</label>
+            <select v-model="festModal.data.payment_mode" class="form-select">
+              <option value="after">Später am Tisch zahlen</option>
+              <option value="instant">Sofortzahlung bei Bestellung</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Rechnungs-Präfix (leer = Standard)</label>
+            <input type="text" v-model="festModal.data.rechnung_prefix" class="form-control" placeholder="z. B. R26-">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="festModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="saveFest">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Druckziel -->
+    <div v-if="targetModal.open" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h4>Druckziel konfigurieren</h4>
+          <button type="button" class="btn-close" @click="targetModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Druckziel ID</label>
+            <input type="number" v-model="targetModal.data.print_target" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" v-model="targetModal.data.name" class="form-control" placeholder="z. B. Grill / Küche / Schank">
+          </div>
+          <div class="form-group">
+            <label>Sortierung</label>
+            <input type="number" v-model="targetModal.data.sort_order" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Auto-Druck Schwellenwert (0 = Aus)</label>
+            <input type="number" v-model="targetModal.data.auto_print_limit" class="form-control">
+          </div>
+          <div class="form-check">
+            <input type="checkbox" id="chkPt" v-model="targetModal.data.active" :true-value="1" :false-value="0">
+            <label for="chkPt">Druckziel aktiv</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="targetModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="savePrintTarget">Speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Tisch QR & Token -->
+    <div v-if="tableQrModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 480px; text-align: center;">
+        <div class="modal-header">
+          <h4>Tisch #{{ tableQrModal.table?.tischnummer }} – QR &amp; Token</h4>
+          <button type="button" class="btn-close" @click="tableQrModal.open = false">×</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+          <div id="tableQrCanvas" class="qr-preview-box"></div>
+          <div style="font-size: 0.88rem; color: var(--ff-text-muted);">
+            Scannen für Gäste-Bestellungen an diesem Tisch.
+          </div>
+          <div style="width: 100%; text-align: left;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: var(--ff-text-muted);">TISCH-TOKEN</label>
+            <div style="display: flex; gap: 8px;">
+              <input type="text" :value="tableQrModal.table?.token || '–'" readonly class="form-control" style="font-family: monospace; font-size: 0.85rem;">
+              <button type="button" class="btn btn-secondary" @click="copyTableToken(tableQrModal.table?.token)">Kopieren</button>
+            </div>
+          </div>
+          <div style="width: 100%; text-align: left;">
+            <label style="font-size: 0.8rem; font-weight: 700; color: var(--ff-text-muted);">DIREKTLINK</label>
+            <input type="text" :value="tableQrModal.qrUrl" readonly class="form-control" style="font-size: 0.8rem;">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="tableQrModal.open = false">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Passkeys / WebAuthn -->
+    <div v-if="passkeyModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 580px;">
+        <div class="modal-header">
+          <h4>Passkeys für {{ passkeyModal.username }}</h4>
+          <button type="button" class="btn-close" @click="closePasskeyModal">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom: 16px;">
+            <h5 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 8px;">Registrierte Passkeys</h5>
+            <div v-if="!passkeyModal.passkeys.length" style="font-size: 0.88rem; color: var(--ff-text-muted);">
+              Keine Passkeys hinterlegt.
+            </div>
+            <table v-else class="data-table">
+              <thead>
+                <tr>
+                  <th>Bezeichnung</th>
+                  <th>Erstellt</th>
+                  <th>Zuletzt verwendet</th>
+                  <th style="width: 40px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="pk in passkeyModal.passkeys" :key="pk.id">
+                  <td><strong>{{ pk.name || 'Passkey #' + pk.id }}</strong></td>
+                  <td style="font-size: 0.82rem;">{{ pk.created_at || '–' }}</td>
+                  <td style="font-size: 0.82rem;">{{ pk.last_used_at || '–' }}</td>
+                  <td style="text-align: right;">
+                    <button type="button" class="btn btn-sm btn-danger" @click="deletePasskey(pk.id)" title="Passkey löschen">✕</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="border-top: 1px solid var(--ff-border); padding-top: 16px;">
+            <h5 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 8px;">Neuen Passkey registrieren (Remote)</h5>
+            <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin-bottom: 12px;">
+              Generieren Sie einen einmaligen QR-Code. Der Kellner scannt ihn mit seinem Smartphone und bestätigt Face ID / Touch ID.
+            </p>
+
+            <div v-if="!passkeyModal.isRegistering">
+              <button type="button" class="btn btn-primary" @click="startRemotePasskeyRegister">
+                Remote-Registrierung starten
+              </button>
+            </div>
+
+            <div v-else style="display: flex; flex-direction: column; align-items: center; gap: 12px; background: var(--ff-surface-variant); padding: 16px; border-radius: 8px;">
+              <div id="passkeyQrCanvas" class="qr-preview-box"></div>
+              <div style="font-size: 0.88rem; font-weight: 600; text-align: center;">
+                {{ passkeyModal.statusText }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline" @click="stopRemotePasskeyRegister">
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="closePasskeyModal">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Rechnung stornieren -->
+    <div v-if="invoiceStornoModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header" style="border-bottom: 2px solid var(--ff-danger);">
+          <h4 style="color: var(--ff-danger);">Rechnung {{ invoiceStornoModal.rechnungsnummer }} stornieren</h4>
+          <button type="button" class="btn-close" @click="invoiceStornoModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger" style="margin-bottom: 16px;">
+            <strong>Achtung:</strong> Die Rechnung über <strong>{{ formatEur(invoiceStornoModal.total) }}</strong> wird unwiderruflich storniert. Verknüpfte Bestellungen werden als storniert markiert und eventuelle Druckaufträge abgebrochen.
+          </div>
+          <div class="form-group">
+            <label>Stornobegründung (Pflichtfeld)</label>
+            <textarea v-model="invoiceStornoModal.reason" class="form-control" rows="3" placeholder="z. B. Falsche Tischauswahl / Doppelabrechnung / Gast reklamiert"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="invoiceStornoModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-danger" @click="submitInvoiceStorno">Rechnung jetzt stornieren</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Helfer-Bereiche verwalten -->
+    <div v-if="bereicheModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 640px;">
+        <div class="modal-header">
+          <h4>Helfer-Bereiche verwalten</h4>
+          <button type="button" class="btn-close" @click="bereicheModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="margin-bottom: 20px;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Sort.</th>
+                  <th>Bereichsname</th>
+                  <th style="text-align: right;">Einträge</th>
+                  <th style="width: 100px; text-align: right;">Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="b in bereicheModal.list" :key="b.id">
+                  <td style="width: 60px;">{{ b.sort_order }}</td>
+                  <td><strong>{{ b.name }}</strong></td>
+                  <td style="text-align: right;">{{ b.total_count || 0 }}</td>
+                  <td style="text-align: right;">
+                    <button type="button" class="btn btn-sm btn-outline" style="margin-right: 4px;" @click="bereicheModal.form = { id: b.id, name: b.name, sort_order: b.sort_order }">✎</button>
+                    <button type="button" class="btn btn-sm btn-danger" @click="deleteBereich(b.id)" :disabled="b.total_count > 0">✕</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style="background: var(--ff-surface-variant); padding: 14px; border-radius: 8px;">
+            <h5 style="font-size: 0.9rem; font-weight: 700; margin-bottom: 10px;">
+              {{ bereicheModal.form.id ? 'Bereich bearbeiten' : 'Neuen Bereich hinzufügen' }}
+            </h5>
+            <div class="form-grid">
+              <div class="form-group" style="flex: 2;">
+                <label>Name</label>
+                <input type="text" v-model="bereicheModal.form.name" class="form-control" placeholder="z. B. Feuerwehrjugend">
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Sortierung</label>
+                <input type="number" v-model="bereicheModal.form.sort_order" class="form-control">
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <button v-if="bereicheModal.form.id" type="button" class="btn btn-sm btn-outline" @click="bereicheModal.form = { id: 0, name: '', sort_order: (bereicheModal.list.length + 1) * 10 }">Neu anlegen</button>
+              <button type="button" class="btn btn-sm btn-primary" @click="saveBereich">
+                {{ bereicheModal.form.id ? 'Änderung speichern' : 'Bereich anlegen' }}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="bereicheModal.open = false">Schließen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Kellner Abrechnung -->
+    <div v-if="kellnerSettleModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+          <h4>Abrechnung: {{ kellnerSettleModal.waiter?.label }}</h4>
+          <button type="button" class="btn-close" @click="kellnerSettleModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="background: var(--ff-surface-variant); padding: 14px; border-radius: 8px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--ff-text-muted);">Soll-Umsatz (Bar):</span>
+              <strong>{{ formatEur(kellnerSettleModal.waiter?.umsatz_soll) }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--ff-text-muted);">Zwischenentnahmen:</span>
+              <strong style="color: var(--ff-danger);">- {{ formatEur(kellnerSettleModal.waiter?.entnahmen) }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+              <span style="color: var(--ff-text-muted);">Zuzahlungen:</span>
+              <strong style="color: var(--ff-success);">+ {{ formatEur(kellnerSettleModal.waiter?.zuzahlungen) }}</strong>
+            </div>
+            <div style="border-top: 1px solid var(--ff-border); padding-top: 8px; margin-top: 8px; display: flex; justify-content: space-between; font-weight: 700; font-size: 1.05rem;">
+              <span>Soll-Abgabe:</span>
+              <span style="color: var(--ff-primary);">{{ formatEur(kellnerSettleModal.waiter?.abgabe_soll) }}</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Tatsächlich abgegebenes Bargeld (€)</label>
+            <input type="text" v-model="kellnerSettleModal.betrag_abgegeben" class="form-control" placeholder="0,00" autofocus>
+          </div>
+          <div class="form-group">
+            <label>Wechselgeld-Rückgabe an Kellner (€)</label>
+            <input type="text" v-model="kellnerSettleModal.wechselgeld_zurueck" class="form-control" placeholder="0,00">
+          </div>
+
+          <div style="background: rgba(30, 144, 255, 0.08); border-left: 4px solid var(--ff-info); padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-weight: 600;">Ermitteltes Kellner-Trinkgeld / Differenz:</span>
+              <span style="font-weight: 800; font-size: 1.15rem;" :style="{ color: calculatedTrinkgeld >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)' }">
+                {{ formatEur(calculatedTrinkgeld) }}
+              </span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Notiz / Bemerkung</label>
+            <textarea v-model="kellnerSettleModal.notiz" class="form-control" rows="2" placeholder="z. B. Schichtende, Wechselgeld 100€ einbehalten"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="kellnerSettleModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="submitKellnerSettle">Abrechnung abschließen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Zwischenentnahme / Zuzahlung -->
+    <div v-if="kellnerMovementModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 440px;">
+        <div class="modal-header">
+          <h4>Zwischenbuchung: {{ kellnerMovementModal.kellner }}</h4>
+          <button type="button" class="btn-close" @click="kellnerMovementModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Buchungsart</label>
+            <select v-model="kellnerMovementModal.typ" class="form-select">
+              <option value="entnahme">Zwischenentnahme (Geld aus Kellnertasche entnommen)</option>
+              <option value="zuzahlung">Zuzahlung (Geld in Kellnertasche gegeben)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Betrag (€)</label>
+            <input type="text" v-model="kellnerMovementModal.betrag" class="form-control" placeholder="0,00" autofocus>
+          </div>
+          <div class="form-group">
+            <label>Notiz / Grund</label>
+            <input type="text" v-model="kellnerMovementModal.notiz" class="form-control" placeholder="z. B. Geldüberlauf geleert / Wechselgeldstock">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="kellnerMovementModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="submitKellnerMovement">Buchung speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Abrechnungs-Beleg (Druckansicht) -->
+    <div v-if="settlementDetailModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 540px;">
+        <div class="modal-header">
+          <h4>Abrechnungsbeleg #{{ settlementDetailModal.settlement?.id }}</h4>
+          <button type="button" class="btn-close" @click="settlementDetailModal.open = false">×</button>
+        </div>
+        <div class="modal-body print-area" style="font-family: monospace; font-size: 0.9rem;">
+          <div style="text-align: center; margin-bottom: 16px; border-bottom: 1px dashed var(--ff-border); padding-bottom: 12px;">
+            <div style="font-weight: 800; font-size: 1.1rem;">KELLNER-ABRECHNUNG</div>
+            <div>Beleg #{{ settlementDetailModal.settlement?.id }}</div>
+            <div>Datum: {{ settlementDetailModal.settlement?.created_at }}</div>
+            <div>Kellner: <strong>{{ settlementDetailModal.settlement?.kellner }}</strong></div>
+            <div>Erfasst von: {{ settlementDetailModal.settlement?.settled_by }}</div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Soll-Umsatz:</span>
+            <span>{{ formatEur(settlementDetailModal.settlement?.umsatz_soll) }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Zwischenentnahmen:</span>
+            <span>- {{ formatEur(settlementDetailModal.settlement?.entnahmen) }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Zuzahlungen:</span>
+            <span>+ {{ formatEur(settlementDetailModal.settlement?.zuzahlungen) }}</span>
+          </div>
+          <div style="border-top: 1px dashed var(--ff-border); padding-top: 6px; margin-top: 6px; display: flex; justify-content: space-between; font-weight: 700;">
+            <span>Soll-Abgabe:</span>
+            <span>{{ formatEur(settlementDetailModal.settlement?.abgabe_soll) }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; padding-top: 8px;">
+            <span>Abgegebenes Bargeld:</span>
+            <span>{{ formatEur(settlementDetailModal.settlement?.betrag_abgegeben) }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Wechselgeld zurück:</span>
+            <span>{{ formatEur(settlementDetailModal.settlement?.wechselgeld_zurueck) }}</span>
+          </div>
+          <div style="border-top: 1px dashed var(--ff-border); padding-top: 6px; margin-top: 6px; display: flex; justify-content: space-between; font-weight: 800; font-size: 1.05rem;">
+            <span>Trinkgeld / Differenz:</span>
+            <span>{{ formatEur(settlementDetailModal.settlement?.trinkgeld) }}</span>
+          </div>
+
+          <div v-if="settlementDetailModal.settlement?.notiz" style="margin-top: 14px; font-style: italic; font-size: 0.85rem; border-top: 1px solid var(--ff-border); padding-top: 8px;">
+            Notiz: {{ settlementDetailModal.settlement?.notiz }}
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="settlementDetailModal.open = false">Schließen</button>
+          <button type="button" class="btn btn-primary" @click="printSlip">Beleg drucken</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Abrechnung stornieren / zurücksetzen -->
+    <div v-if="settlementVoidModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header" style="border-bottom: 2px solid var(--ff-danger);">
+          <h4 style="color: var(--ff-danger);">Abrechnung #{{ settlementVoidModal.id }} zurücksetzen</h4>
+          <button type="button" class="btn-close" @click="settlementVoidModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger" style="margin-bottom: 16px;">
+            <strong>Achtung:</strong> Die Abrechnung wird rückgängig gemacht. Alle zugehörigen Bestellungen werden wieder für Abrechnungen freigegeben.
+          </div>
+          <div class="form-group">
+            <label>Begründung</label>
+            <input type="text" v-model="settlementVoidModal.reason" class="form-control" placeholder="z. B. Falscheingabe Bargeld">
+          </div>
+          <div class="form-group">
+            <label>Tippen Sie zur Bestätigung <code>ABRECHNUNG ZURUECKSETZEN</code> ein:</label>
+            <input type="text" v-model="settlementVoidModal.confirmPhrase" class="form-control" placeholder="ABRECHNUNG ZURUECKSETZEN">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="settlementVoidModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-danger" @click="submitSettlementVoid" :disabled="settlementVoidModal.confirmPhrase !== 'ABRECHNUNG ZURUECKSETZEN'">Zurücksetzen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Position anlegen / bearbeiten -->
+    <div v-if="posModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+          <h4>{{ posModal.isNew ? 'Neue Position anlegen' : 'Position bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="posModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Positionsname *</label>
+            <input type="text" v-model="posModal.form.Positionsname" class="form-control" placeholder="z. B. Grillhuhn mit Pommes">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Kurzbezeichnung</label>
+              <input type="text" v-model="posModal.form.Kurzbezeichnung" class="form-control" placeholder="z. B. Grillhuhn">
+            </div>
+            <div class="form-group">
+              <label>Typ *</label>
+              <select v-model="posModal.form.type" class="form-select">
+                <option :value="1">🍔 Speise</option>
+                <option :value="2">🍺 Getränk</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Verkaufspreis (€) *</label>
+              <input type="text" v-model="posModal.form.Betrag" class="form-control" placeholder="0.00">
+            </div>
+            <div class="form-group">
+              <label>Selbstkosten / EK (€)</label>
+              <input type="text" v-model="posModal.form.selbstkosten" class="form-control" placeholder="0.00">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Unterkategorie</label>
+              <select v-model="posModal.form.subcategory_id" class="form-select">
+                <option :value="0">Keine Unterkategorie</option>
+                <option v-for="s in menuSubcategories" :key="s.id" :value="s.id">
+                  {{ s.type === 2 ? '🍺' : '🍔' }} {{ s.name }}
+                </option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Druckziel *</label>
+              <select v-model="posModal.form.print_target" class="form-select">
+                <option v-for="pt in menuPrintTargets" :key="pt.id" :value="pt.id">
+                  {{ pt.name }} ({{ pt.id }})
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Kachelfarbe (Hex)</label>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="color" v-model="posModal.form.tile_bg" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
+                <input type="text" v-model="posModal.form.tile_bg" class="form-control" placeholder="#ffffff">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Schriftfarbe</label>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="color" v-model="posModal.form.color" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
+                <input type="text" v-model="posModal.form.color" class="form-control" placeholder="#000000">
+              </div>
+            </div>
+          </div>
+
+          <div v-if="menuFeste.length > 1" class="form-group">
+            <label>Fest-Zuordnung</label>
+            <select v-model="posModal.form.fest_id" class="form-select">
+              <option value="">Global (in allen Festen sichtbar)</option>
+              <option v-for="f in menuFeste" :key="f.id" :value="String(f.id)">
+                Fest: {{ f.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-top: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" v-model="posModal.form.kassa_only">
+              <span><strong>Nur Kassa:</strong> Artikel nur im Direktverkauf anzeigen (nicht für Kellner).</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="posModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" :disabled="savingPosition" @click="savePositionModal">
+            {{ savingPosition ? 'Speichert...' : 'Speichern' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Unterkategorie anlegen / bearbeiten -->
+    <div v-if="subcatModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+          <h4>{{ subcatModal.isNew ? 'Neue Unterkategorie' : 'Unterkategorie bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="subcatModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Name der Unterkategorie *</label>
+            <input type="text" v-model="subcatModal.form.name" class="form-control" placeholder="z. B. Burger, Pfanne, Schnaps">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Haupttyp *</label>
+              <select v-model="subcatModal.form.type" class="form-select">
+                <option :value="1">🍔 Speisen</option>
+                <option :value="2">🍺 Getränke</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Sortierung</label>
+              <input type="number" v-model.number="subcatModal.form.sort_order" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Kachel-Hintergrundfarbe (tile_bg)</label>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="color" v-model="subcatModal.form.tile_bg" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
+              <input type="text" v-model="subcatModal.form.tile_bg" class="form-control" placeholder="#ffffff">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" v-model="subcatModal.form.kassa_only">
+              <span><strong>Nur Kassa:</strong> Gesamte Unterkategorie nur im Direktverkauf anzeigen.</span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="subcatModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" :disabled="savingSubcat" @click="saveSubcatModal">
+            {{ savingSubcat ? 'Speichert...' : 'Speichern' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Zusatzinfos / Beilagen -->
+    <div v-if="beilagenModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+          <div>
+            <h4>Zusatzinfos &amp; Beilagen</h4>
+            <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--ff-text-muted);">
+              für: <strong>{{ beilagenModal.position ? beilagenModal.position.Positionsname : '' }}</strong>
+            </p>
+          </div>
+          <button type="button" class="btn-close" @click="beilagenModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <!-- Neue Zusatzinfo anlegen -->
+          <div style="background: var(--ff-surface-2); border: 1px solid var(--ff-border); border-radius: var(--ff-radius); padding: 14px; margin-bottom: 16px;">
+            <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 8px;">Neue Zusatzinfo hinzufügen:</div>
+            <div style="display: grid; grid-template-columns: 1fr 120px auto; gap: 8px;">
+              <input type="text" v-model="beilagenModal.newName" class="form-control" placeholder="z. B. Pommes oder ohne Zwiebel">
+              <input type="text" v-model="beilagenModal.newBetrag" class="form-control" placeholder="Aufpreis € (0.00)">
+              <button type="button" class="btn btn-primary" @click="addBeilage()">＋ Hinzufügen</button>
+            </div>
+          </div>
+
+          <!-- Häufige Freitexte mit 1-Klick Vorschlag -->
+          <div v-if="beilagenModal.freetexts && beilagenModal.freetexts.length > 0" style="margin-bottom: 16px;">
+            <div style="font-size: 0.8rem; font-weight: 600; color: var(--ff-text-muted); margin-bottom: 6px;">
+              Häufige Freitexte aus bisherigen Bestellungen (Klick zum Übernehmen):
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button v-for="ft in beilagenModal.freetexts" :key="ft.text" 
+                      type="button" 
+                      class="btn btn-outline btn-sm" 
+                      style="padding: 3px 8px; font-size: 0.78rem;"
+                      @click="addBeilage(ft.text)">
+                ＋ {{ ft.text }} ({{ ft.count }}x)
+              </button>
+            </div>
+          </div>
+
+          <!-- Vorhandene Zusatzinfos Liste -->
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Bezeichnung</th>
+                  <th style="width: 120px;">Aufpreis (€)</th>
+                  <th style="text-align: right; width: 60px;">Aktion</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="b in beilagenModal.rows" :key="b.rowid">
+                  <td style="font-weight: 500;">{{ b.name }}</td>
+                  <td>{{ parseFloat(b.betrag || 0).toFixed(2) }} €</td>
+                  <td style="text-align: right;">
+                    <button type="button" class="btn-icon btn-icon-danger" @click="deleteBeilage(b)">🗑️</button>
+                  </td>
+                </tr>
+                <tr v-if="beilagenModal.rows.length === 0">
+                  <td colspan="3" style="text-align: center; padding: 20px; color: var(--ff-text-muted);">
+                    Keine Zusatzinfos hinterlegt.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" @click="beilagenModal.open = false">Fertig</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Rezepturen & Rohstoffe -->
+    <div v-if="rezepturModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+          <div>
+            <h4>Rezeptur / Rohstoffe</h4>
+            <p style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--ff-text-muted);">
+              für: <strong>{{ rezepturModal.position ? rezepturModal.position.Positionsname : '' }}</strong>
+            </p>
+          </div>
+          <button type="button" class="btn-close" @click="rezepturModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 0.85rem; color: var(--ff-text-muted);">Zutaten &amp; Mengen für automatische Küchenprognose:</span>
+            <button type="button" class="btn btn-outline btn-sm" @click="addRezepturRow">
+              ＋ Zutat hinzufügen
+            </button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Bestandteil / Zutat</th>
+                  <th style="width: 120px;">Menge</th>
+                  <th style="width: 140px;">Gruppe</th>
+                  <th style="text-align: right; width: 60px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in rezepturModal.rows" :key="idx">
+                  <td>
+                    <select v-model="row.bestandteil_id" class="form-select" style="width: 100%;">
+                      <option v-for="b in rezepturModal.bestandteile" :key="b.id" :value="b.id">
+                        {{ b.name }} ({{ b.einheit }})
+                      </option>
+                    </select>
+                  </td>
+                  <td>
+                    <input type="number" step="0.01" v-model.number="row.menge" class="form-control" style="width: 100%;">
+                  </td>
+                  <td>
+                    <input type="text" v-model="row.option_group" placeholder="Standard" class="form-control" style="width: 100%;">
+                  </td>
+                  <td style="text-align: right;">
+                    <button type="button" class="btn-icon btn-icon-danger" @click="removeRezepturRow(idx)">✕</button>
+                  </td>
+                </tr>
+                <tr v-if="rezepturModal.rows.length === 0">
+                  <td colspan="4" style="text-align: center; padding: 30px; color: var(--ff-text-muted);">
+                    Noch keine Rezeptur hinterlegt.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="rezepturModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="saveRezeptur">Rezeptur speichern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Bestandteil anlegen / bearbeiten -->
+    <div v-if="bestandteilModal.open" class="modal-overlay">
+      <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+          <h4>{{ bestandteilModal.isNew ? 'Neuen Bestandteil anlegen' : 'Bestandteil bearbeiten' }}</h4>
+          <button type="button" class="btn-close" @click="bestandteilModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Name des Bestandteils / Rohstoffs *</label>
+            <input type="text" v-model="bestandteilModal.form.name" class="form-control" placeholder="z. B. Grillhuhn roh, Semmel, Pommes">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Einheit *</label>
+              <input type="text" v-model="bestandteilModal.form.einheit" class="form-control" list="einheitenList" placeholder="z. B. Stk, Liter, kg">
+              <datalist id="einheitenList">
+                <option value="Stk"></option>
+                <option value="Liter"></option>
+                <option value="kg"></option>
+                <option value="g"></option>
+                <option value="cl"></option>
+                <option value="Portion"></option>
+              </datalist>
+            </div>
+            <div class="form-group">
+              <label style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Kapazität (-1 = unbegrenzt)</span>
+                <button type="button" class="btn btn-outline btn-sm" style="padding: 1px 6px; font-size: 0.75rem;" @click="openKapazitaetModal(bestandteilModal.form, bestandteilModal.form)" title="Kapazität mit Rechner ermitteln">
+                  📐 Rechner
+                </button>
+              </label>
+              <input type="number" v-model.number="bestandteilModal.form.kapazitaet" class="form-control" placeholder="-1">
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label>Sortierung</label>
+              <input type="number" v-model.number="bestandteilModal.form.sort_order" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Allergene</label>
+              <input type="text" v-model="bestandteilModal.form.allergene" class="form-control" placeholder="z. B. Gluten, Milch, A, C, G">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="bestandteilModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" :disabled="savingBestandteil" @click="saveBestandteilModal">
+            {{ savingBestandteil ? 'Speichert...' : 'Speichern' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Kapazität anpassen (Kapazitätsrechner) -->
+    <div v-if="kapazitaetModal.open" class="modal-overlay" @click.self="kapazitaetModal.open = false">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+          <div>
+            <h4 class="modal-title">Kapazität anpassen</h4>
+            <div style="font-size: 0.85rem; color: var(--ff-text-muted); margin-top: 2px;">
+              {{ kapazitaetModal.bestandteil?.name || 'Bestandteil' }}
+            </div>
+          </div>
+          <button type="button" class="btn-close" @click="kapazitaetModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--ff-surface-2); border-radius: var(--ff-radius);">
+            <div>
+              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Kapazität</div>
+              <strong>{{ kapazitaetModal.bestandteil?.kapazitaet > 0 ? kapazitaetModal.bestandteil.kapazitaet + ' ' + (kapazitaetModal.bestandteil.einheit || 'Stk') : 'Unbegrenzt' }}</strong>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Bestellt</div>
+              <strong>{{ formatBestandteilMenge(kapazitaetModal.bestandteil?.bestellt || 0) }} {{ kapazitaetModal.bestandteil?.einheit || 'Stk' }}</strong>
+            </div>
+            <div>
+              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Rest</div>
+              <strong :style="(kapazitaetModal.bestandteil?.kapazitaet > 0 && (kapazitaetModal.bestandteil.kapazitaet - (kapazitaetModal.bestandteil.bestellt || 0)) <= 0) ? 'color: var(--ff-danger);' : ''">
+                {{ kapazitaetModal.bestandteil?.kapazitaet > 0 ? formatBestandteilMenge(kapazitaetModal.bestandteil.kapazitaet - (kapazitaetModal.bestandteil.bestellt || 0)) + ' ' + (kapazitaetModal.bestandteil.einheit || 'Stk') : '—' }}
+              </strong>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; display: block;">Berechnungsmodus</label>
+            <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+              <input type="radio" value="plus" v-model="kapazitaetModal.mode">
+              <span>Kapazität um eine Menge erhöhen (z. B. Nachlieferung)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" value="rest" v-model="kapazitaetModal.mode">
+              <span>Gewünschten Restbestand festlegen (z. B. gezählt / Inventur)</span>
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>{{ kapazitaetModal.mode === 'rest' ? 'Gewünschter Restbestand' : 'Zusätzliche Kapazität' }} *</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="number" v-model.number="kapazitaetModal.menge" :min="kapazitaetModal.mode === 'rest' ? 0 : 1" step="1" class="form-control" style="font-size: 1.1rem; font-weight: 600;">
+              <span style="font-weight: 600; color: var(--ff-text-muted); min-width: 40px;">{{ kapazitaetModal.bestandteil?.einheit || 'Stk' }}</span>
+            </div>
+          </div>
+
+          <div style="padding: 10px 14px; background: rgba(59, 130, 246, 0.08); border-left: 3px solid var(--ff-primary); border-radius: 4px; font-size: 0.88rem; margin-top: 14px;">
+            <strong>Vorschau:</strong> Neue Gesamtkapazität: <strong>{{ computedKapazitaetVorschau.newKapazitaet }} {{ kapazitaetModal.bestandteil?.einheit || 'Stk' }}</strong>
+            · voraussichtlicher Rest: <strong>{{ computedKapazitaetVorschau.newRest }} {{ kapazitaetModal.bestandteil?.einheit || 'Stk' }}</strong>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" @click="kapazitaetModal.open = false">Abbrechen</button>
+          <button type="button" class="btn btn-primary" @click="applyKapazitaet()">Kapazität übernehmen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. TOAST NOTIFICATIONS -->
+    <div v-if="toast" class="toast-container">
+      <div class="toast" :class="'toast-' + toast.type">
+        <span>{{ toast.message }}</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- QR-Code Library -->
+  <script src="assets/qrcode.min.js"></script>
+  <!-- Vue 3 App Initialisierung -->
+  <script type="module" src="admin.js?v=1"></script>
+</body>
+</html>

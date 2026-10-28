@@ -23,19 +23,42 @@ if (!function_exists('settings_ensure_table')) {
         );
     }
 
+    /**
+     * Alle Einstellungen werden pro Request mit einer einzigen Abfrage geladen (die DB liegt
+     * auf einem separaten Server – jeder Einzelaufruf kostete mehrere Roundtrips).
+     * Schreibzugriffe aktualisieren den Cache.
+     */
+    function ff_settings_cache(mysqli $conn, ?array $set = null, ?string $key = null): ?array
+    {
+        static $cache = null;
+        if ($key !== null && $set !== null) {
+            if ($cache !== null) {
+                $cache[$key] = $set['v'];
+            }
+            return $cache;
+        }
+        if ($cache === null) {
+            settings_ensure_table($conn);
+            $res = $conn->query('SELECT k, v FROM settings');
+            if (!$res) {
+                return null;
+            }
+            $cache = [];
+            while ($row = $res->fetch_assoc()) {
+                $cache[(string) $row['k']] = $row['v'];
+            }
+            $res->free();
+        }
+        return $cache;
+    }
+
     function setting_get(mysqli $conn, string $key, $default = null)
     {
-        settings_ensure_table($conn);
-        $stmt = $conn->prepare('SELECT v FROM settings WHERE k=? LIMIT 1');
-        $stmt->bind_param('s', $key);
-        if (!$stmt->execute()) {
+        $all = ff_settings_cache($conn);
+        if ($all === null) {
             return $default;
         }
-        $res = $stmt->get_result();
-        if ($row = $res->fetch_assoc()) {
-            return $row['v'];
-        }
-        return $default;
+        return array_key_exists($key, $all) ? $all[$key] : $default;
     }
 
     function setting_set(mysqli $conn, string $key, string $value): bool
@@ -43,7 +66,11 @@ if (!function_exists('settings_ensure_table')) {
         settings_ensure_table($conn);
         $stmt = $conn->prepare('REPLACE INTO settings (k,v) VALUES (?,?)');
         $stmt->bind_param('ss', $key, $value);
-        return $stmt->execute();
+        $ok = $stmt->execute();
+        if ($ok) {
+            ff_settings_cache($conn, ['v' => $value], $key);
+        }
+        return $ok;
     }
 
     // Rueckwaertskompatible Aliase (in einigen Steps wurden diese Namen verwendet)

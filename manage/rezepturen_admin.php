@@ -52,12 +52,21 @@ if ($bestandteile !== []) {
 
 $positionRecipeGroups = [];
 if ($hasPositionRezepturenTable) {
-    $recipeGroupQuery = mysqli_query(
+    $orderClause = 'pr.position_id, pr.reihenfolge';
+    $chkPrId = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
+    if ($chkPrId && mysqli_num_rows($chkPrId) > 0) {
+        $orderClause .= ', pr.id';
+    }
+    if ($chkPrId) {
+        @mysqli_free_result($chkPrId);
+    }
+
+    $recipeGroupQuery = @mysqli_query(
         $conn,
-        'SELECT pr.position_id, pr.bestandteil_id, pr.menge, pr.reihenfolge, b.name, b.einheit
+        "SELECT pr.position_id, pr.bestandteil_id, pr.menge, pr.reihenfolge, b.name, b.einheit
          FROM position_rezepturen pr
          LEFT JOIN bestandteile b ON b.id = pr.bestandteil_id
-         ORDER BY pr.position_id, pr.reihenfolge, pr.id'
+         ORDER BY {$orderClause}"
     );
     if ($recipeGroupQuery) {
         while ($row = mysqli_fetch_assoc($recipeGroupQuery)) {

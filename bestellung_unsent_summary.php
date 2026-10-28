@@ -13,7 +13,7 @@ require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/beilage_helpers.php';
 
 $sql = "
-    SELECT p.rowid, p.Positionsname AS name, COALESCE(b.betrag, p.Betrag, 0) AS price,
+    SELECT p.rowid, p.type AS ptype, p.Positionsname AS name, COALESCE(b.betrag, p.Betrag, 0) AS price,
            TRIM(COALESCE(b.Zusatzinfo, '')) AS zusatzinfo,
            COUNT(*) AS quantity, SUM(COALESCE(b.betrag, p.Betrag, 0)) AS total
     FROM bestellungen b
@@ -21,8 +21,8 @@ $sql = "
     WHERE b.tischnummer = ?
       AND b.delete = 0
       AND (b.bestellt IS NULL OR b.bestellt = 0)
-    GROUP BY p.rowid, p.Positionsname, TRIM(COALESCE(b.Zusatzinfo, '')), COALESCE(b.betrag, p.Betrag, 0)
-    ORDER BY p.Positionsname ASC, TRIM(COALESCE(b.Zusatzinfo, '')) ASC
+    GROUP BY p.rowid, p.type, p.Positionsname, TRIM(COALESCE(b.Zusatzinfo, '')), COALESCE(b.betrag, p.Betrag, 0)
+    ORDER BY CASE WHEN p.type = 2 THEN 0 WHEN p.type = 1 THEN 1 ELSE 2 END, p.Positionsname ASC, TRIM(COALESCE(b.Zusatzinfo, '')) ASC
 ";
 
 $stmt = mysqli_prepare($conn, $sql);
@@ -49,6 +49,7 @@ if ($result) {
         $total += $lineTotal;
         $lines[] = [
             'position_id' => $positionId,
+            'type' => (int) ($row['ptype'] ?? 0),
             'name' => (string) ($row['name'] ?? 'Unbekannt'),
             'quantity' => $qty,
             'price' => round($price, 2),
