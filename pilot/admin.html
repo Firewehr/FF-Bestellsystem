@@ -80,8 +80,8 @@
         </div>
 
         <!-- Absprung ins alte Admin -->
-        <a href="../admin.php" class="btn btn-outline btn-sm" title="Klassische admin.php Ansicht">
-          Klassisch ↗
+        <a href="../admin_page.php?legacy=1" class="btn btn-outline btn-sm" title="Klassische Legacy-Admin-Ansicht aufrufen">
+          🏛️ Altes Admin ↗
         </a>
       </div>
     </header>
@@ -229,14 +229,98 @@
                   <button type="button" class="btn btn-outline btn-sm" @click="clearCache">Cache jetzt leeren</button>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
                   <span style="font-size: 0.88rem;">Automatisierte Selbsttests</span>
                   <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">79 Tests ausführen</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.88rem;">Klassisches Admin (Legacy)</span>
+                  <a href="../admin_page.php?legacy=1" class="btn btn-outline btn-sm">Altes Admin ↗</a>
                 </div>
               </div>
             </div>
           </div>
 
+        </div>
+
+        <!-- Rohstoff- & Bestandteil-Kapazitäten (Fast ausverkauft / Neige) -->
+        <div class="admin-card" style="margin-bottom: 24px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <h3><span>📦</span> Rohstoffe &amp; Bestandteile (Kapazitäten &amp; Neige)</h3>
+              <span v-if="lowStockBestandteileCount > 0" class="badge badge-warning" style="font-size: 0.78rem; padding: 3px 8px;">
+                ⚠️ {{ lowStockBestandteileCount }} knapp / kritisch
+              </span>
+              <span v-else-if="allBestandteileStock?.length" class="badge badge-success" style="font-size: 0.78rem; padding: 3px 8px;">
+                ✓ Alle Bestände ausreichend
+              </span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button v-if="allBestandteileStock?.length" type="button" class="btn btn-outline btn-sm" @click="bestandteilFilterOnlyLow = !bestandteilFilterOnlyLow">
+                {{ bestandteilFilterOnlyLow ? 'Alle anzeigen (' + allBestandteileStock.length + ')' : 'Nur knappe filtern' }}
+              </button>
+              <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('speisekarte', 'bestandteile'); activeTab = 'speisekarte'">
+                Bestandteile verwalten ↗
+              </button>
+            </div>
+          </div>
+          <div class="card-body" style="padding: 0;">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Bestandteil / Rohstoff</th>
+                    <th>Einheit</th>
+                    <th>Verbleibend</th>
+                    <th>Status</th>
+                    <th>Rest / Kapazität</th>
+                    <th>Verbraucht</th>
+                    <th>Verwendet in Artikeln</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="b in displayedBestandteile" :key="b.bestandteil_id" :style="b.rest <= 0 ? 'background: rgba(239, 68, 68, 0.05);' : (b.rest_percent <= 25 ? 'background: rgba(245, 158, 11, 0.05);' : '')">
+                    <td><strong>{{ b.name }}</strong></td>
+                    <td><span class="badge badge-secondary">{{ b.einheit }}</span></td>
+                    <td style="min-width: 140px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="flex: 1; height: 8px; background: var(--ff-border-light); border-radius: 4px; overflow: hidden;">
+                          <div :style="{ width: Math.min(100, Math.max(0, b.rest_percent)) + '%', background: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'var(--ff-success)'), height: '100%', transition: 'width 0.3s' }"></div>
+                        </div>
+                        <span style="font-size: 0.82rem; font-weight: 700; width: 38px; text-align: right;" :style="{ color: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'var(--ff-text-muted)') }">
+                          {{ b.rest_percent }}%
+                        </span>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge" :class="b.rest <= 0 ? 'badge-danger' : (b.rest_percent <= 20 ? 'badge-danger' : (b.rest_percent <= 35 ? 'badge-warning' : 'badge-success'))">
+                        {{ b.rest <= 0 ? 'Ausverkauft' : (b.rest_percent <= 20 ? 'Kritisch' : (b.rest_percent <= 35 ? 'Wird knapp' : 'Ausreichend')) }}
+                      </span>
+                    </td>
+                    <td>
+                      <strong :style="{ color: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'inherit') }">
+                        {{ b.rest }}
+                      </strong>
+                      <span style="color: var(--ff-text-muted);"> / {{ b.max }} {{ b.einheit }}</span>
+                    </td>
+                    <td>{{ b.consumed }} {{ b.einheit }}</td>
+                    <td style="font-size: 0.8rem; color: var(--ff-text-muted); max-width: 260px;">
+                      <span v-if="b.used_in?.length">
+                        {{ b.used_in.map(u => u.name).join(', ') }}
+                      </span>
+                      <span v-else style="color: var(--ff-text-muted); font-style: italic;">–</span>
+                    </td>
+                  </tr>
+                  <tr v-if="!displayedBestandteile?.length">
+                    <td colspan="7" style="text-align: center; color: var(--ff-text-muted); padding: 20px;">
+                      {{ bestandteilFilterOnlyLow ? 'Keine Rohstoffe oder Zutaten im kritischen Bereich (alle über 30% Restbestand).' : 'Keine Bestandteile mit Kapazitätsgrenzen konfiguriert.' }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- Druck-Clients & Queues -->

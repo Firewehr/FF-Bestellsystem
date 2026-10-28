@@ -115,6 +115,31 @@ createApp({
       }
     }
 
+    // Rohstoff- & Bestandteil-Kapazitäten (Dashboard)
+    const bestandteilFilterOnlyLow = ref(true);
+
+    const allBestandteileStock = computed(() => {
+      return overview.value?.stats?.bestandteil_stock || [];
+    });
+
+    const lowStockBestandteile = computed(() => {
+      const list = allBestandteileStock.value;
+      return list.filter(b => (b.rest <= 0 || b.rest_percent <= 30 || b.rest <= 15));
+    });
+
+    const lowStockBestandteileCount = computed(() => {
+      const list = allBestandteileStock.value;
+      return list.filter(b => (b.rest <= 0 || b.rest_percent <= 25 || b.rest <= 10)).length;
+    });
+
+    const displayedBestandteile = computed(() => {
+      if (bestandteilFilterOnlyLow.value) {
+        const low = lowStockBestandteile.value;
+        return low.length > 0 ? low : allBestandteileStock.value.slice(0, 5);
+      }
+      return allBestandteileStock.value;
+    });
+
     async function saveBroadcast() {
       try {
         await apiRequest('../api/v1/admin.php', {
@@ -2550,6 +2575,12 @@ createApp({
       settingsEdit,
       saveSettings,
       clearCache,
+      // Rohstoff- & Bestandteil-Kapazitäten
+      bestandteilFilterOnlyLow,
+      allBestandteileStock,
+      lowStockBestandteile,
+      lowStockBestandteileCount,
+      displayedBestandteile,
       // Tische & Tischplan
       tables,
       tableSearch,

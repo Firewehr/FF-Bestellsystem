@@ -639,7 +639,7 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
                         <a href="#financePage" class="list-group-item list-group-item-action" onclick="FinanzAnsicht(); return false;"><span class="ff-menu-ico" aria-hidden="true">💶</span>Finanzen</a>
                     <?php endif; ?>
                     <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
-                        <a href="admin_page.php" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true">⚙️</span>Admin</a>
+                        <a href="pilot/admin.html" class="list-group-item list-group-item-action"><span class="ff-menu-ico" aria-hidden="true">⚙️</span>Admin</a>
                     <?php endif; ?>
                     <?php if (!empty($_SESSION['admin']) && (int)$_SESSION['admin'] >= 1): ?>
                         <a href="backup_download.php" class="list-group-item list-group-item-action" title="Während des Festes offen lassen: automatischer Notfall-Cache"><span class="ff-menu-ico" aria-hidden="true">💾</span>Offline-Sicherung</a>

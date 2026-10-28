@@ -26,7 +26,7 @@ $initialView = isset($_GET['view']) ? (string)$_GET['view'] : '';
   <!-- ===================================================================== -->
   <aside v-if="!isEmbedded" class="manage-sidebar">
     <div class="manage-sidebar-brand">
-      <a href="../admin_page.php" title="Zurück zur Admin-Übersicht">
+      <a href="../pilot/admin.html" title="Zurück zur Admin-Übersicht">
         <span>⚙️</span>
         <span>Stammdaten</span>
       </a>

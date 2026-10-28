@@ -228,12 +228,30 @@ def deploy_environment(env_key: str, env: dict, excludes: list[str], dry_run: bo
 
     # Exclude-Flags für lftp
     exclude_list = list(excludes)
-    for essential in [".git*", ".git/*", ".vscode*", "*__pycache__*", "*.pyc", "deploy.config*.json", "backups*"]:
+    for essential in [
+        ".git*",
+        ".git/*",
+        ".vscode*",
+        "*__pycache__*",
+        "*.pyc",
+        "deploy.config*.json",
+        "backups*",
+        "include/db.php",
+        "include/db.local.php",
+        "db.php",
+        "db.local.php",
+        "*db.php",
+        "*db.local.php",
+        "*.local.php",
+    ]:
         if essential not in exclude_list:
             exclude_list.append(essential)
 
-    # Regex-Excludes für rekursives Verhindern unerwünschter Ordner
-    dir_excludes = [r"(\.git|\.vscode|\.idea|__pycache__|\.cache|backups)(/|$)"]
+    # Regex-Excludes für rekursives Verhindern unerwünschter Ordner & DB-Konfigurationen
+    dir_excludes = [
+        r"(\.git|\.vscode|\.idea|__pycache__|\.cache|backups)(/|$)",
+        r"(^|/)(include/)?db(\.local)?\.php$",
+    ]
     exclude_args_list = [f'--exclude "{d}"' for d in dir_excludes]
     for ex in exclude_list:
         exclude_args_list.append(f'--exclude-glob "{ex}"')

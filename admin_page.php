@@ -1,4 +1,8 @@
 <?php
+if (!isset($_GET['legacy']) || $_GET['legacy'] !== '1') {
+    header('Location: pilot/admin.html');
+    exit;
+}
 header('Content-Type: text/html; charset=UTF-8');
 require_once('auth.php');
 //echo $_SESSION['admin'];
@@ -437,7 +441,7 @@ function BenutzerNeu() {
                     </ul>
                 </li>
                 <li class="nav-item ms-lg-2">
-                    <a href="pilot/admin.html" class="btn btn-sm btn-outline-warning text-nowrap my-1" title="Zur neuen Admin-App (Vue 3) wechseln">✨ Neues Admin (Vue)</a>
+                    <a href="pilot/admin.html" class="btn btn-sm btn-primary text-nowrap my-1 fw-bold" title="Zur neuen Standard-Admin-App wechseln">🚀 Zum neuen Admin (Pilot)</a>
                 </li>
             </ul>
         </div>
