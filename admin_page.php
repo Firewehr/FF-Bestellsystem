@@ -390,6 +390,8 @@ function BenutzerNeu() {
                 <li class="nav-item dropdown ff-admin-nav-group">
                     <button type="button" class="nav-link btn btn-link dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"><span class="ff-nav-ico d-lg-none" aria-hidden="true">🗂️</span>Stammdaten</button>
                     <ul class="dropdown-menu">
+                        <li><button type="button" class="dropdown-item ff-admin-page-link fw-bold text-primary" data-ff-page="stammdaten-preflight">🚀 Pre-Flight Checkliste</button></li>
+                        <li><hr class="dropdown-divider my-1"></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-tische">Tische</button></li>
                         <li><button type="button" class="dropdown-item ff-admin-page-link" data-ff-page="stammdaten-tischplan">Tischplan</button></li>
                         <li><button type="button" class="dropdown-item ff-sub-item" id="ffGenerateTableTokensBtn">Table-Tokens generieren</button></li>
@@ -602,10 +604,78 @@ function BenutzerNeu() {
                             </table>
                         </div>
                     </div>
-                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Finanzen">Finanzen öffnen</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Statistik">Statistik öffnen</button>
                         <button type="button" class="btn btn-outline-secondary btn-sm" data-ff-admin-section="Statistik" data-ff-admin-scroll="ffStatKellnerAbgerechnet">Kellner-Umsätze / Abrechnung</button>
+                    </div>
+
+                    <!-- Pre-Flight Checklist Card -->
+                    <div class="card border-primary shadow-sm mb-4" id="ffPreflightCard">
+                        <div class="card-header bg-dark text-white py-2 d-flex align-items-center justify-content-between gap-2">
+                            <span class="fw-bold">🚀 Fest-Vorbereitungsassistent (Pre-Flight Checklist)</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-secondary" id="ffPreflightSummaryBadge">Prüfung läuft…</span>
+                                <button type="button" class="btn btn-sm btn-outline-light py-0" id="ffPreflightReloadBtn" onclick="ffLoadPreflightCheck();">
+                                    🔄 Neu prüfen
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body p-3">
+                            <div id="ffPreflightSummaryBanner" class="alert alert-secondary py-2 mb-3">
+                                <span id="ffPreflightSummaryText">Lade Pre-Flight Status…</span>
+                            </div>
+                            <div class="row g-3" id="ffPreflightGrid">
+                                <div class="col-md-6 col-lg-3">
+                                    <div class="card h-100 border" id="pfCardOrders">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">1. Testdaten & Queues</span>
+                                                <span class="badge bg-secondary" id="pfBadgeOrders">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsOrders">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Bereinigen</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-lg-3">
+                                    <div class="card h-100 border" id="pfCardPrinters">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">2. Drucker & Testbon</span>
+                                                <span class="badge bg-secondary" id="pfBadgePrinters">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsPrinters">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-druckziele">Drucker & Testbon</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-lg-3">
+                                    <div class="card h-100 border" id="pfCardSeq">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">3. Rechnungsnummern</span>
+                                                <span class="badge bg-secondary" id="pfBadgeSeq">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsSeq">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-nummern">Nummernkreis</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-lg-3">
+                                    <div class="card h-100 border" id="pfCardBackup">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">4. Offline-Backup</span>
+                                                <span class="badge bg-secondary" id="pfBadgeBackup">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsBackup">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-rechnungsdaten">Backup-Token</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="card border-danger mt-4 mb-0">
@@ -653,6 +723,71 @@ function BenutzerNeu() {
             </div>
         </div>
 
+        </section>
+
+        <!-- Sektion: Pre-Flight Checkliste -->
+        <section class="ff-admin-page" data-admin-page="stammdaten-preflight" hidden>
+        <p class="small text-uppercase text-muted fw-bold admin-section-heading px-1">Stammdaten</p>
+        <div class="card shadow-sm border-primary mb-4">
+            <div class="card-header bg-dark text-white py-2 d-flex align-items-center justify-content-between gap-2">
+                <span class="fw-bold">🚀 Fest-Vorbereitungsassistent (Pre-Flight Checklist)</span>
+                <button type="button" class="btn btn-sm btn-outline-light py-0" onclick="ffLoadPreflightCheck();">🔄 Neu prüfen</button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Prüft vor dem Festbeginn alle vier kritischen Betriebsfaktoren. Erst wenn alle Punkte grün sind, ist das System optimal für den Festbetrieb vorbereitet.</p>
+                <div id="ffPreflightDetailBanner" class="alert alert-secondary py-2 mb-3">Prüfe Systemzustand…</div>
+
+                <div class="list-group mb-4" id="ffPreflightDetailList">
+                    <div class="list-group-item p-3" id="pfDetailRowOrders">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">1. Test-Bestellungen und Queues bereinigt</h6>
+                            <span class="badge bg-secondary" id="pfBadgeOrders2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextOrders2">Prüft, ob noch alte Test-Verkäufe, unbezahlte Tische oder hängende Druckaufträge in den Tabellen liegen.</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Zu Fest-Start vorbereiten</button>
+                    </div>
+
+                    <div class="list-group-item p-3" id="pfDetailRowPrinters">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">2. Alle Drucker online &amp; Testbon erfolgreich gedruckt</h6>
+                            <span class="badge bg-secondary" id="pfBadgePrinters2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextPrinters2">Prüft TCP-Socket-Verbindungen (Port 9100) zu Netzwerkdruckern und Heartbeats der Python-Clients.</p>
+                        <div id="pfPrinterTableContainer" class="table-responsive my-2 d-none">
+                            <table class="table table-sm table-bordered mb-2">
+                                <thead class="table-light"><tr><th>Druckziel</th><th>Typ</th><th>IP : Port</th><th>Status</th><th>Test</th></tr></thead>
+                                <tbody id="pfPrinterTbody"></tbody>
+                            </table>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-primary ff-admin-page-link" data-ff-page="stammdaten-druckziele">Druckziele &amp; Testbon verwalten</button>
+                    </div>
+
+                    <div class="list-group-item p-3" id="pfDetailRowSeq">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">3. Rechnungsnummernkreis korrekt gesetzt</h6>
+                            <span class="badge bg-secondary" id="pfBadgeSeq2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextSeq2">Prüft Rechnungspräfix (global / fest-spezifisch) und fortlaufende Nummerierung.</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary ff-admin-page-link" data-ff-page="stammdaten-nummern">Nummernkreis konfigurieren</button>
+                    </div>
+
+                    <div class="list-group-item p-3" id="pfDetailRowBackup">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">4. Offline-Backup eingerichtet</h6>
+                            <span class="badge bg-secondary" id="pfBadgeBackup2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextBackup2">Prüft, ob der Offline-Backup-Token hinterlegt ist und Notfall-Snapshots angelegt werden.</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary ff-admin-page-link" data-ff-page="stammdaten-rechnungsdaten">Backup-Token hinterlegen</button>
+                    </div>
+                </div>
+
+                <div class="card bg-light border-0 p-3">
+                    <h6 class="fw-bold mb-2">⚡ Last- &amp; Stresstest vorab simulieren</h6>
+                    <p class="small text-muted mb-2">Um Stoßzeiten (z. B. 20 Kellner, 500 Bestellungen in 60 Sekunden) vorab auf Datenbank-Lock-Waits und Renderzeiten zu testen, steht das CLI-Tool im Terminal bereit:</p>
+                    <code class="p-2 bg-white border rounded d-block mb-2 text-dark font-monospace" style="font-size:0.85rem;">python3 tools/stress_test.py --waiters 20 --tables 100 --orders 500 --duration 60 --cleanup</code>
+                </div>
+            </div>
+        </div>
         </section>
 
         <section class="ff-admin-page" data-admin-page="stammdaten-tische" hidden>
@@ -1002,22 +1137,29 @@ function BenutzerNeu() {
                     <div data-admin-subpage="stammdaten-druckziele">
                     <h4>Druckziele (Print Targets)</h4>
                     <p class="text-muted-small">Jedes Druckziel erscheint als eigener Menüpunkt (z. B. Küche, Schank).</p>
-                    <div class="alert alert-info small py-2 mb-3"><strong>Hinweis:</strong> Ein Druckziel erscheint nur im Hauptmenü, wenn mindestens eine Speisekarten-Position diesem Druckziel zugewiesen ist.</div>
+                    <div class="alert alert-info small py-2 mb-3"><strong>Hinweis:</strong> Ein Druckziel erscheint nur im Hauptmenü, wenn mindestens eine Speisekarten-Position diesem Druckziel zugewiesen ist. <strong>Netzwerk-Drucker:</strong> Unterstützt direkten RAW-Socket-Druck via TCP (Port 9100) ohne Python-Client; der Python-Client bleibt bei Verbindungsproblemen automatisch als Fallback aktiv.</div>
                     <?php
-                    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    require_once __DIR__ . '/include/ff_socket_printer.php';
+                    ff_socket_printer_ensure_schema($conn);
                     ff_auto_print_ensure_schema($conn);
-                    $ptRes = mysqli_query($conn, "SELECT print_target, name, active, sort_order, auto_print_limit FROM print_targets ORDER BY sort_order, name");
-                    echo '<div class="table-responsive mb-3"><table class="table table-hover table-sm" id="printTargetsTable"><thead><tr><th>ID</th><th>Name</th><th>Reihenfolge</th><th>Aktiv</th><th title="Wird eine Bestellung abgeschickt und sind in dieser Station weniger Bestellungen offen, wird sie sofort gedruckt. 0 = aus.">Auto-Druck bis</th><th class="text-nowrap">Aktion</th></tr></thead><tbody>';
+                    $ptRes = mysqli_query($conn, "SELECT print_target, name, active, sort_order, auto_print_limit, connection_type, ip_address, port FROM print_targets ORDER BY sort_order, name");
+                    echo '<div class="table-responsive mb-3"><table class="table table-hover table-sm align-middle" id="printTargetsTable"><thead><tr><th>ID</th><th>Name</th><th>Verbindung</th><th>IP : Port (Port 9100)</th><th>Reihe</th><th>Aktiv</th><th title="Wird eine Bestellung abgeschickt und sind in dieser Station weniger Bestellungen offen, wird sie sofort gedruckt. 0 = aus.">Auto-Druck</th><th class="text-nowrap">Aktion & Test</th></tr></thead><tbody>';
                     if ($ptRes) {
                         while ($pt = mysqli_fetch_assoc($ptRes)) {
                             $pid = (int)$pt['print_target'];
                             $ptBuiltIn = ($pid === 11 || $pid === 12);
-                            echo '<tr><td>'.$pid.'</td>';
+                            $cType = (string)($pt['connection_type'] ?? 'client');
+                            $ipVal = (string)($pt['ip_address'] ?? '');
+                            $portVal = (int)($pt['port'] ?? 9100) ?: 9100;
+                            echo '<tr><td><strong>'.$pid.'</strong></td>';
                             echo '<td><input type="text" id="pt_name_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" value="'.out($pt['name']).'"></td>';
-                            echo '<td><input type="number" id="pt_sort_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:5em" value="'.(int)$pt['sort_order'].'"></td>';
+                            echo '<td><select id="pt_conntype_'.$pid.'" class="form-select form-select-sm ff-pt-autosave" data-ptid="'.$pid.'"><option value="client"'.($cType === 'client' ? ' selected' : '').'>Client (Python)</option><option value="network"'.($cType === 'network' ? ' selected' : '').'>Netzwerk (Port 9100)</option></select></td>';
+                            echo '<td><div class="d-flex gap-1"><input type="text" id="pt_ip_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" placeholder="z. B. 192.168.1.150" value="'.out($ipVal).'" style="min-width:130px;"><input type="number" id="pt_port_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" value="'.$portVal.'" style="width:5.5em;"></div></td>';
+                            echo '<td><input type="number" id="pt_sort_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:4.5em" value="'.(int)$pt['sort_order'].'"></td>';
                             echo '<td><input type="checkbox" class="form-check-input ff-pt-autosave" id="pt_active_'.$pid.'" data-ptid="'.$pid.'" '.(((int)$pt['active']===1)?'checked':'').'></td>';
-                            echo '<td><input type="number" min="0" max="50" id="pt_autoprint_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:5em" value="'.(int)$pt['auto_print_limit'].'" title="Sofort drucken, solange weniger als N Bestellungen offen sind (0 = aus)"></td>';
+                            echo '<td><input type="number" min="0" max="50" id="pt_autoprint_'.$pid.'" class="form-control form-control-sm ff-pt-autosave" data-ptid="'.$pid.'" style="width:4.5em" value="'.(int)$pt['auto_print_limit'].'" title="Sofort drucken, solange weniger als N Bestellungen offen sind (0 = aus)"></td>';
                             echo '<td class="text-nowrap">';
+                            echo '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 me-1" id="pt_testbtn_'.$pid.'" onclick="testSocketPrinter('.$pid.');" title="Testbon drucken / Verbindung prüfen">🔌 Test</button>';
                             if (!$ptBuiltIn) {
                                 echo '<button type="button" class="btn btn-sm btn-outline-danger ff-icon-action" onclick="deletePrintTarget('.$pid.');" title="Druckziel löschen" aria-label="Druckziel löschen">&#128465;</button>';
                             } else {
@@ -1027,12 +1169,15 @@ function BenutzerNeu() {
                         }
                     }
                     echo '</tbody></table></div>';
-                    echo '<p class="small text-muted mb-3">Name/Reihenfolge/Auto-Druck beim Verlassen des Feldes, Aktiv-Häkchen sofort — ohne Speichern-Button. <strong>Auto-Druck bis N:</strong> Sind beim Abschicken einer Bestellung weniger als N Bestellungen in der Station offen (nicht ausgeliefert), wird sie sofort gedruckt, ohne auf „Bestellung abschließen“ zu warten (0 = aus).</p>';
+                    echo '<p class="small text-muted mb-3">Alle Felder speichern automatisch beim Verlassen des Feldes. <strong>🔌 Test:</strong> Sendet sofort einen RAW-Testbon an die IP-Adresse und prüft die Erreichbarkeit.</p>';
                     ?>
                     <div class="row g-2 align-items-end mb-4">
-                        <div class="col-auto"><label class="form-label">ID</label><input type="number" id="pt_new_id" class="form-control form-control-sm" value="13" min="1" style="width:5em"></div>
-                        <div class="col-auto"><label class="form-label">Name</label><input type="text" id="pt_new_name" class="form-control form-control-sm" placeholder="z. B. Grill" style="width:120px"></div>
-                        <div class="col-auto"><label class="form-label">Reihenfolge</label><input type="number" id="pt_new_sort" class="form-control form-control-sm" value="30" style="width:5em"></div>
+                        <div class="col-auto"><label class="form-label small mb-1">ID</label><input type="number" id="pt_new_id" class="form-control form-control-sm" value="13" min="1" style="width:5em"></div>
+                        <div class="col-auto"><label class="form-label small mb-1">Name</label><input type="text" id="pt_new_name" class="form-control form-control-sm" placeholder="z. B. Grill" style="width:120px"></div>
+                        <div class="col-auto"><label class="form-label small mb-1">Verbindung</label><select id="pt_new_conntype" class="form-select form-select-sm" style="width:140px"><option value="client">Client (Python)</option><option value="network">Netzwerk (Port 9100)</option></select></div>
+                        <div class="col-auto"><label class="form-label small mb-1">IP-Adresse</label><input type="text" id="pt_new_ip" class="form-control form-control-sm" placeholder="192.168.1.X" style="width:130px"></div>
+                        <div class="col-auto"><label class="form-label small mb-1">Port</label><input type="number" id="pt_new_port" class="form-control form-control-sm" value="9100" style="width:5.5em"></div>
+                        <div class="col-auto"><label class="form-label small mb-1">Reihenfolge</label><input type="number" id="pt_new_sort" class="form-control form-control-sm" value="30" style="width:5em"></div>
                         <div class="col-auto"><button type="button" class="btn btn-primary btn-sm" onclick="addPrintTarget();">Hinzufügen</button></div>
                     </div>
                     </div>

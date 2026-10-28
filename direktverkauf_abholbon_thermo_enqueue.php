@@ -113,6 +113,10 @@ if (!mysqli_query($conn, $ins)) {
     exit;
 }
 
+$newJobId = (int) mysqli_insert_id($conn);
+require_once __DIR__ . '/include/ff_socket_printer.php';
+$socketRes = ff_socket_printer_dispatch_job($conn, $newJobId);
+
 ff_print_events_publish($conn, [(int) $printTarget]);
 
 mysqli_close($conn);

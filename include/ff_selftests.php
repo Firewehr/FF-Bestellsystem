@@ -2381,6 +2381,74 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
             return null;
         });
+
+        $check($g, 'Socket-Drucker: RAW ESC/POS Generator & Dispatcher (include/ff_socket_printer.php)', function (mysqli $c) {
+            require_once __DIR__ . '/ff_socket_printer.php';
+            ff_socket_printer_ensure_schema($c);
+
+            // Prüfe Schema
+            $r = mysqli_query($c, "SHOW COLUMNS FROM print_targets LIKE 'connection_type'");
+            if (!$r || mysqli_num_rows($r) === 0) {
+                return 'Spalte connection_type fehlt in print_targets';
+            }
+
+            // Prüfe ESC/POS Kodierung
+            $encoded = ff_escpos_encode_text('Würstel & Schnitzel mit Weißbier € 12,50');
+            if ($encoded === '') {
+                return 'ff_escpos_encode_text lieferte leeren String';
+            }
+
+            // Prüfe Testbon-Erstellung
+            $testBon = ff_escpos_build_test_bon('Grill-Station', '192.168.1.150', 9100, 'Testfest');
+            if (strpos($testBon, 'Grill-Station') === false || strpos($testBon, '192.168.1.150:9100') === false) {
+                return 'Testbon enthält nicht die erwarteten Metadaten';
+            }
+
+            // Prüfe Kellner-Bon-Erstellung
+            $dummyTisch = [
+                'tischnummer' => 100140,
+                'tischname' => 'Tisch H-A1',
+                'bon_nr' => 42,
+                'kellner' => 'TestKellner',
+                'positionen' => [
+                    ['name' => 'Bratwurst', 'anzahl' => 2, 'einzelpreis' => 6.0, 'gesamtpreis' => 12.0, 'zusatzinfo' => 'mit Senf'],
+                ],
+            ];
+            $bonData = ff_escpos_build_kellner_bon($dummyTisch, 'Header-Test', 'Footer-Test');
+            if (strpos($bonData, 'Tisch H-A1') === false || strpos($bonData, 'Bratwurst') === false) {
+                return 'Kellner-Bon enthält nicht Tischname oder Position';
+            }
+
+            // Dispatch-Test mit nicht existierendem Job
+            $disp = ff_socket_printer_dispatch_job($c, 9999999);
+            if ($disp['attempted'] !== false) {
+                return 'Nicht existierender Job sollte nicht als attempted markiert werden';
+            }
+
+            return null;
+        });
+
+        $check($g, 'Pre-Flight Checkliste: 4 Fest-Start Kernkriterien (include/ff_preflight.php)', function (mysqli $c) {
+            require_once __DIR__ . '/ff_preflight.php';
+            $res = ff_preflight_check($c);
+
+            if (!isset($res['ok']) || !$res['ok']) {
+                return 'ff_preflight_check gab ok=false zurück';
+            }
+
+            $checks = $res['checks'] ?? [];
+            $required = ['orders', 'printers', 'invoice_seq', 'offline_backup'];
+            foreach ($required as $reqKey) {
+                if (!isset($checks[$reqKey])) {
+                    return "Kriterium '{$reqKey}' fehlt in preflight checks";
+                }
+                if (!isset($checks[$reqKey]['status']) || !isset($checks[$reqKey]['badge']) || !isset($checks[$reqKey]['details'])) {
+                    return "Kriterium '{$reqKey}' hat unvollständige Felder";
+                }
+            }
+
+            return null;
+        });
     } finally {
         mysqli_rollback($conn);
     }

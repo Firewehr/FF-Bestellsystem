@@ -77,6 +77,7 @@ Coding-Agenten müssen den bestehenden Funktionsumfang kennen, um redundante Imp
    * Teillieferungs-Druck und Bon-Nachdruck.
 5. **Drucksystem & Print-Clients:**
    * Multi-Druckziel-Routing (`print_targets` für Küche, Schank, Grill, Bar, Kassa).
+   * Native Socket-Druckoption (RAW ESC/POS via Port 9100) direkt aus PHP für Netzwerk-Bondrucker im LAN mit automatischem Fallback auf Python-Clients.
    * Event-basierter Push-Druck über SSE (`print_events.php`) mit automatischem Fallback-Polling.
    * Auto-Druck-Schwellenwert (`auto_print_limit`) zur direkten Bon-Ausgabe bei geringer Stationslast.
    * Job-Warteschlange (`printer_jobs`) mit Heartbeat-Prüfung und Recovery hängengebliebener Druckjobs.
@@ -156,8 +157,11 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Logo-Upload für Rechnungsbelege und Webansichten (`upload_logo.php`).
 * **Model Context Protocol (MCP) (`stammdaten-mcp`):**
   * MCP-Token generieren, Berechtigungen (Lesen/Schreiben) verwalten und sperren (`mcp_token_admin_api.php`, `mcp.php`).
+* **Pre-Flight Checkliste (`stammdaten-preflight` / Dashboard):**
+  * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
+  * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle 68 Selbsttests aus und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle 79 Selbsttests aus und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).

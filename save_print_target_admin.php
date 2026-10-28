@@ -7,12 +7,21 @@
 require_once('auth.php');
 require_once('include/db.php');
 require_once __DIR__ . '/include/ff_auto_print.php';
+require_once __DIR__ . '/include/ff_socket_printer.php';
 header('Content-Type: application/json; charset=utf-8');
 @mysqli_set_charset($conn, 'utf8mb4');
 
 if (!isset($_SESSION['admin']) || (int)$_SESSION['admin'] < 1) {
     echo json_encode(['ok' => false, 'error' => 'forbidden']);
     exit;
+}
+
+$rawInput = file_get_contents('php://input');
+if (!empty($rawInput)) {
+    $jsonInput = json_decode($rawInput, true);
+    if (is_array($jsonInput)) {
+        $_POST = array_merge($_POST, $jsonInput);
+    }
 }
 
 if (!empty($_POST['delete'])) {
@@ -86,12 +95,26 @@ if ($print_target <= 0 || $name === '') {
 
 @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+ff_socket_printer_ensure_schema($conn);
+
 $nameEsc = mysqli_real_escape_string($conn, $name);
+$connType = isset($_POST['connection_type']) && $_POST['connection_type'] === 'network' ? 'network' : 'client';
+$connTypeEsc = mysqli_real_escape_string($conn, $connType);
+$ipVal = isset($_POST['ip_address']) ? trim((string)$_POST['ip_address']) : null;
+$ipSql = ($ipVal !== null && $ipVal !== '') ? "'" . mysqli_real_escape_string($conn, $ipVal) . "'" : "NULL";
+$portVal = isset($_POST['port']) ? (int)$_POST['port'] : 9100;
+if ($portVal <= 0 || $portVal > 65535) {
+    $portVal = 9100;
+}
 
 if ($isNew) {
-    $sql = "INSERT INTO print_targets (print_target, name, active, sort_order) VALUES ($print_target, '$nameEsc', $active, $sort_order) ON DUPLICATE KEY UPDATE name=VALUES(name), active=VALUES(active), sort_order=VALUES(sort_order)";
+    $sql = "INSERT INTO print_targets (print_target, name, active, sort_order, connection_type, ip_address, port) "
+        . "VALUES ($print_target, '$nameEsc', $active, $sort_order, '$connTypeEsc', $ipSql, $portVal) "
+        . "ON DUPLICATE KEY UPDATE name=VALUES(name), active=VALUES(active), sort_order=VALUES(sort_order), "
+        . "connection_type=VALUES(connection_type), ip_address=VALUES(ip_address), port=VALUES(port)";
 } else {
-    $sql = "UPDATE print_targets SET name='$nameEsc', active=$active, sort_order=$sort_order WHERE print_target=$print_target";
+    $sql = "UPDATE print_targets SET name='$nameEsc', active=$active, sort_order=$sort_order, "
+        . "connection_type='$connTypeEsc', ip_address=$ipSql, port=$portVal WHERE print_target=$print_target";
 }
 
 $ok = mysqli_query($conn, $sql);

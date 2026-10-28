@@ -110,7 +110,12 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
         $conn,
         'INSERT INTO bestellung_rezeptur_komponenten
             (bestellung_rowid, bestandteil_id, name_snapshot, einheit_snapshot, menge, optional_enabled, default_selected, selected)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            menge = VALUES(menge),
+            optional_enabled = VALUES(optional_enabled),
+            default_selected = VALUES(default_selected),
+            selected = VALUES(selected)'
     );
     if (!$insert) {
         throw new RuntimeException('recipe_components_insert_prepare_failed');
@@ -129,8 +134,9 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
         $selected = isset($selectedIds[$componentId]) ? 1 : 0;
         mysqli_stmt_bind_param($insert, 'iissdiii', $orderRowId, $componentId, $name, $unit, $quantity, $optional, $defaultSelected, $selected);
         if (!mysqli_stmt_execute($insert)) {
+            $err = mysqli_stmt_error($insert);
             mysqli_stmt_close($insert);
-            throw new RuntimeException('recipe_components_insert_failed');
+            throw new RuntimeException('recipe_components_insert_failed: ' . $err);
         }
     }
     mysqli_stmt_close($insert);

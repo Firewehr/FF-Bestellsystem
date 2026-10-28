@@ -91,3 +91,14 @@ Einmaliger Abruf ohne Dauerschleife:
 ```bash
 python print_client.py --test
 ```
+
+---
+
+## Native Socket-Druckoption (RAW ESC/POS via Port 9100)
+
+Für moderne Netzwerk-Thermodrucker mit Ethernet- oder Wi-Fi-Schnittstelle (z. B. Epson TM-T88, TM-T20, Star Micronics, Citizen, Munbyn) steht eine **native Socket-Druckoption direkt aus PHP** zur Verfügung:
+
+- **Direktübertragung ohne Python-Client:** Der Webserver baut eine direkte TCP-Verbindung zu `IP:9100` auf und sendet die ESC/POS-Befehle unmittelbar nach der Bestellung oder beim Bezahlen.
+- **Automatischer Fallback:** Ist der Netzwerkdrucker vorübergehend nicht erreichbar oder ausgeschaltet, verbleibt der Druckauftrag mit Status `pending` in der Tabelle `printer_jobs`. Sobald ein Python-Client aktiv ist oder die Verbindung wiederhergestellt wird, wird der Bon gedruckt.
+- **Konfiguration:** Unter **Admin → Stammdaten → Druckziele** die Verbindung auf *„Netzwerk (Port 9100)“* stellen, die IP-Adresse eintragen und mit **🔌 Test** sofort einen Testbon senden.
+

@@ -74,19 +74,21 @@ if ($ffDocRoot !== '' && strpos($ffAppRootDir, $ffDocRoot) === 0) {
         $ffSessBasePath .= '/';
     }
 }
-session_name('FFPOS_' . substr(sha1($ffAppRootDir), 0, 12));
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_name('FFPOS_' . substr(sha1($ffAppRootDir), 0, 12));
 
-ini_set('session.gc_maxlifetime', (string) $ffSessLifetime);
+    ini_set('session.gc_maxlifetime', (string) $ffSessLifetime);
 
-if (PHP_VERSION_ID >= 70300) {
-    session_set_cookie_params([
-        'lifetime' => $ffSessLifetime,
-        'path' => $ffSessBasePath,
-        'domain' => '',
-        'secure' => $ffSessSecure,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-} else {
-    session_set_cookie_params($ffSessLifetime, $ffSessBasePath, '', $ffSessSecure, true);
+    if (PHP_VERSION_ID >= 70300) {
+        session_set_cookie_params([
+            'lifetime' => $ffSessLifetime,
+            'path' => $ffSessBasePath,
+            'domain' => '',
+            'secure' => $ffSessSecure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    } else {
+        session_set_cookie_params($ffSessLifetime, $ffSessBasePath, '', $ffSessSecure, true);
+    }
 }

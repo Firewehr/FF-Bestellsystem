@@ -321,5 +321,11 @@ function ff_rechnung_enqueue_thermo(mysqli $conn, int $printTarget, string $text
     $pk = mysqli_real_escape_string($conn, $printerKey);
     $ins = "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at)
             VALUES ('{$pk}', 'rechnung_thermo', '{$escPayload}', '{}', 'pending', 0, NULL, NULL, NOW())";
-    return (bool)mysqli_query($conn, $ins);
+    $ok = (bool)mysqli_query($conn, $ins);
+    if ($ok) {
+        $jobId = (int)mysqli_insert_id($conn);
+        require_once __DIR__ . '/ff_socket_printer.php';
+        ff_socket_printer_dispatch_job($conn, $jobId);
+    }
+    return $ok;
 }

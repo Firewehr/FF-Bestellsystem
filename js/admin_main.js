@@ -2425,7 +2425,116 @@ function adminDashboardRefresh() {
                 if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-danger">Dashboard: Netzwerkfehler. Bei erneutem Laden kommen KPIs aus der eingebetteten Vorschau.</td></tr>';
             }
         });
+    if (typeof ffLoadPreflightCheck === 'function') {
+        ffLoadPreflightCheck();
+    }
 }
+
+function ffLoadPreflightCheck() {
+    var summaryBadge = ffById('ffPreflightSummaryBadge');
+    var summaryBanner = ffById('ffPreflightSummaryBanner');
+    var summaryText = ffById('ffPreflightSummaryText');
+    if (summaryBadge) {
+        summaryBadge.className = 'badge bg-secondary';
+        summaryBadge.textContent = 'Prüfung läuft…';
+    }
+
+    fetch('admin_preflight_api.php')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.ok) return;
+            var checks = data.checks || {};
+            var overall = data.overall || 'warning';
+
+            var bannerClass = 'alert alert-info py-2 mb-3';
+            var badgeClass = 'badge bg-info';
+            var overallText = 'Systemzustand unvollständig.';
+
+            if (overall === 'ok') {
+                bannerClass = 'alert alert-success py-2 mb-3';
+                badgeClass = 'badge bg-success';
+                overallText = '✔ Alle 4 Kriterien erfüllt! Das System ist bereit für den Festbetrieb.';
+            } else if (overall === 'warning') {
+                bannerClass = 'alert alert-warning py-2 mb-3';
+                badgeClass = 'badge bg-warning text-dark';
+                overallText = '⚠ Bitte Punkte mit Warnung vor dem Feststart prüfen.';
+            } else if (overall === 'error') {
+                bannerClass = 'alert alert-danger py-2 mb-3';
+                badgeClass = 'badge bg-danger';
+                overallText = '❌ Wichtige Einstellungen fehlen vor dem Feststart!';
+            }
+
+            if (summaryBanner) {
+                summaryBanner.className = bannerClass;
+            }
+            if (summaryText) {
+                summaryText.innerHTML = '<strong>Status:</strong> ' + overallText + ' <span class="text-muted small ms-2">(' + (data.checked_at || '') + ')</span>';
+            }
+            if (summaryBadge) {
+                summaryBadge.className = badgeClass;
+                summaryBadge.textContent = (overall === 'ok' ? 'Bereit' : (overall === 'warning' ? 'Prüfen' : 'Fehler'));
+            }
+
+            var detailBanner = ffById('ffPreflightDetailBanner');
+            if (detailBanner) {
+                detailBanner.className = bannerClass;
+                detailBanner.innerHTML = '<strong>Gesamtstatus:</strong> ' + overallText;
+            }
+
+            function updateCard(idKey, badgeId, badge2Id, textId, text2Id, cardId) {
+                var c = checks[idKey];
+                if (!c) return;
+                var bCls = c.status === 'ok' ? 'bg-success' : (c.status === 'warning' ? 'bg-warning text-dark' : 'bg-danger');
+                var b1 = ffById(badgeId), b2 = ffById(badge2Id);
+                var t1 = ffById(textId), t2 = ffById(text2Id);
+                var card = ffById(cardId);
+
+                if (b1) { b1.className = 'badge ' + bCls; b1.textContent = c.badge; }
+                if (b2) { b2.className = 'badge ' + bCls; b2.textContent = c.badge; }
+                if (t1) { t1.textContent = c.details; }
+                if (t2) { t2.textContent = c.details; }
+                if (card) {
+                    card.className = 'card h-100 border ' + (c.status === 'ok' ? 'border-success' : (c.status === 'warning' ? 'border-warning' : 'border-danger'));
+                }
+            }
+
+            updateCard('orders', 'pfBadgeOrders', 'pfBadgeOrders2', 'pfDetailsOrders', 'pfTextOrders2', 'pfCardOrders');
+            updateCard('printers', 'pfBadgePrinters', 'pfBadgePrinters2', 'pfDetailsPrinters', 'pfTextPrinters2', 'pfCardPrinters');
+            updateCard('invoice_seq', 'pfBadgeSeq', 'pfBadgeSeq2', 'pfDetailsSeq', 'pfTextSeq2', 'pfCardSeq');
+            updateCard('offline_backup', 'pfBadgeBackup', 'pfBadgeBackup2', 'pfDetailsBackup', 'pfTextBackup2', 'pfCardBackup');
+
+            var prCheck = checks['printers'];
+            var prTableContainer = ffById('pfPrinterTableContainer');
+            var prTbody = ffById('pfPrinterTbody');
+            if (prCheck && prCheck.targets && prTbody && prTableContainer) {
+                prTableContainer.classList.remove('d-none');
+                var h = '';
+                prCheck.targets.forEach(function(p) {
+                    var statusBadge = p.online ? '<span class="badge bg-success">Online</span>' : '<span class="badge bg-danger">Offline</span>';
+                    var typeLabel = p.type === 'network' ? 'LAN Socket (9100)' : 'Client';
+                    var ipPort = p.ip ? (p.ip + ':' + p.port) : '—';
+                    h += '<tr>';
+                    h += '<td><strong>' + p.name + '</strong> (ID ' + p.id + ')</td>';
+                    h += '<td>' + typeLabel + '</td>';
+                    h += '<td><code>' + ipPort + '</code></td>';
+                    h += '<td>' + statusBadge + ' <span class="small text-muted ms-1">' + (p.status_text || '') + '</span></td>';
+                    h += '<td><button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="testSocketPrinter(' + p.id + ');">🔌 Test</button></td>';
+                    h += '</tr>';
+                });
+                prTbody.innerHTML = h;
+            }
+        })
+        .catch(function(err) {
+            if (summaryBadge) {
+                summaryBadge.className = 'badge bg-danger';
+                summaryBadge.textContent = 'Fehler';
+            }
+            if (summaryText) {
+                summaryText.textContent = 'Fehler beim Abrufen der Pre-Flight Checkliste.';
+            }
+        });
+}
+window.ffLoadPreflightCheck = ffLoadPreflightCheck;
 
 function adminDashboardPrintPollSetup() {
     var cb = ffById('dashPrintNotifyEnable');
@@ -2860,7 +2969,24 @@ function savePrintTarget(printTargetId, opts) {
     var active = ae.checked ? 1 : 0;
     var apEl = ffById('pt_autoprint_' + printTargetId);
     var autoPrintLimit = apEl ? Math.max(0, Math.min(50, parseInt(apEl.value, 10) || 0)) : 0;
-    return fetchPost('save_print_target_admin.php', { print_target: printTargetId, name: name, sort_order: sortOrder, active: active, auto_print_limit: autoPrintLimit })
+
+    var ctEl = ffById('pt_conntype_' + printTargetId);
+    var connectionType = ctEl ? ctEl.value : 'client';
+    var ipEl = ffById('pt_ip_' + printTargetId);
+    var ipAddress = ipEl ? ipEl.value.trim() : '';
+    var portEl = ffById('pt_port_' + printTargetId);
+    var port = portEl ? (parseInt(portEl.value, 10) || 9100) : 9100;
+
+    return fetchPost('save_print_target_admin.php', {
+        print_target: printTargetId,
+        name: name,
+        sort_order: sortOrder,
+        active: active,
+        auto_print_limit: autoPrintLimit,
+        connection_type: connectionType,
+        ip_address: ipAddress,
+        port: port
+    })
         .then(function(r) { return r.json(); })
         .then(function(r) {
             if (r && r.ok) {
@@ -2872,6 +2998,39 @@ function savePrintTarget(printTargetId, opts) {
         .catch(function(err) {
             if (!opts.silent) alert(err && err.message ? err.message : 'Fehler');
             throw err;
+        });
+}
+
+function testSocketPrinter(printTargetId, action) {
+    action = action || 'test_print';
+    var btn = ffById('pt_testbtn_' + printTargetId);
+    var origText = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Sende...';
+    }
+    fetchPost('socket_print_test_api.php', { print_target: printTargetId, action: action })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+            if (data && data.ok) {
+                alert('✔ ' + (data.message || 'Test erfolgreich!'));
+                if (typeof ffShowAdminToast === 'function') {
+                    ffShowAdminToast(data.message, 'success');
+                }
+            } else {
+                alert('❌ ' + (data && data.error ? data.error : 'Verbindungsfehler'));
+            }
+        })
+        .catch(function(err) {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origText;
+            }
+            alert('❌ Netzwerkfehler beim Testen: ' + (err && err.message ? err.message : 'Unbekannt'));
         });
 }
 
@@ -2901,7 +3060,24 @@ function addPrintTarget() {
     var name = String(nameEl.value || '').trim();
     var sortOrder = parseInt(sortEl.value, 10) || 30;
     if (!id || !name) { alert('ID und Name angeben'); return; }
-    fetchPost('save_print_target_admin.php', { new: 1, print_target: id, name: name, sort_order: sortOrder, active: 1 })
+
+    var ctEl = ffById('pt_new_conntype');
+    var connectionType = ctEl ? ctEl.value : 'client';
+    var ipEl = ffById('pt_new_ip');
+    var ipAddress = ipEl ? ipEl.value.trim() : '';
+    var portEl = ffById('pt_new_port');
+    var port = portEl ? (parseInt(portEl.value, 10) || 9100) : 9100;
+
+    fetchPost('save_print_target_admin.php', {
+        new: 1,
+        print_target: id,
+        name: name,
+        sort_order: sortOrder,
+        active: 1,
+        connection_type: connectionType,
+        ip_address: ipAddress,
+        port: port
+    })
         .then(function(r) { return r.json(); })
         .then(function(r) { if (r && r.ok) { alert('Hinzugefügt'); location.reload(); } else alert(r && r.error || 'Fehler'); })
         .catch(function() { alert('Fehler'); });
@@ -4513,6 +4689,7 @@ window.saveFestRechnungPrefix = saveFestRechnungPrefix;
 window.setCurrentFest = setCurrentFest;
 window.savePrintTarget = savePrintTarget;
 window.deletePrintTarget = deletePrintTarget;
+window.testSocketPrinter = testSocketPrinter;
 window.createFest = createFest;
 window.posStatAnzeigen = posStatAnzeigen;
 window.ffReloadStatistikBody = ffReloadStatistikBody;

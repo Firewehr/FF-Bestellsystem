@@ -66,11 +66,18 @@ if (!mysqli_query($conn, $ins)) {
     exit;
 }
 
+$newJobId = (int)mysqli_insert_id($conn);
+require_once __DIR__ . '/include/ff_socket_printer.php';
+$socketRes = ff_socket_printer_dispatch_job($conn, $newJobId);
+
 ff_print_events_publish($conn, [$print_target]);
+
+$msg = $socketRes['ok'] ? $socketRes['message'] : 'Bon steht in der Thermodrucker-Warteschlange.';
 
 echo json_encode([
     'ok' => true,
-    'message' => 'Bon steht in der Thermodrucker-Warteschlange.',
+    'message' => $msg,
+    'socket_printed' => $socketRes['ok'],
     'print_target' => $print_target,
     'count' => count($bestellungIds),
 ], JSON_UNESCAPED_UNICODE);
