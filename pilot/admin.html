@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="admin.css?v=1">
+  <link rel="stylesheet" href="admin.css?v=20261028_4">
 </head>
 <body>
   <div id="app" v-cloak>
@@ -280,27 +280,27 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="b in displayedBestandteile" :key="b.bestandteil_id" :style="b.rest <= 0 ? 'background: rgba(239, 68, 68, 0.05);' : (b.rest_percent <= 25 ? 'background: rgba(245, 158, 11, 0.05);' : '')">
+                  <tr v-for="b in displayedBestandteile" :key="b.bestandteil_id" :style="(b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'background: rgba(239, 68, 68, 0.08);' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'background: rgba(245, 158, 11, 0.08);' : '')">
                     <td><strong>{{ b.name }}</strong></td>
                     <td><span class="badge badge-secondary">{{ b.einheit }}</span></td>
                     <td style="min-width: 140px;">
                       <div style="display: flex; align-items: center; gap: 8px;">
                         <div style="flex: 1; height: 8px; background: var(--ff-border-light); border-radius: 4px; overflow: hidden;">
-                          <div :style="{ width: Math.min(100, Math.max(0, b.rest_percent)) + '%', background: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'var(--ff-success)'), height: '100%', transition: 'width 0.3s' }"></div>
+                          <div :style="{ width: Math.min(100, Math.max(0, b.rest_percent)) + '%', background: (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'var(--ff-danger)' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'var(--ff-warning)' : 'var(--ff-success)'), height: '100%', transition: 'width 0.3s' }"></div>
                         </div>
-                        <span style="font-size: 0.82rem; font-weight: 700; width: 38px; text-align: right;" :style="{ color: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'var(--ff-text-muted)') }">
+                        <span style="font-size: 0.82rem; font-weight: 700; width: 38px; text-align: right;" :style="{ color: (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'var(--ff-danger)' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'var(--ff-warning)' : 'var(--ff-text-muted)') }">
                           {{ b.rest_percent }}%
                         </span>
                       </div>
                     </td>
                     <td>
-                      <span class="badge" :class="b.rest <= 0 ? 'badge-danger' : (b.rest_percent <= 20 ? 'badge-danger' : (b.rest_percent <= 35 ? 'badge-warning' : 'badge-success'))">
-                        {{ b.rest <= 0 ? 'Ausverkauft' : (b.rest_percent <= 20 ? 'Kritisch' : (b.rest_percent <= 35 ? 'Wird knapp' : 'Ausreichend')) }}
+                      <span class="badge" :class="(b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'badge-danger' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'badge-warning' : 'badge-success')">
+                        {{ (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'Ausverkauft' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'Wird knapp' : 'Ausreichend') }}
                       </span>
                     </td>
                     <td>
-                      <strong :style="{ color: b.rest <= 0 ? 'var(--ff-danger)' : (b.rest_percent <= 25 ? 'var(--ff-warning)' : 'inherit') }">
-                        {{ b.rest }}
+                      <strong :style="{ color: (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'var(--ff-danger)' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'var(--ff-warning)' : 'inherit') }">
+                        {{ b.raw_rest < 0 ? b.raw_rest : b.rest }}
                       </strong>
                       <span style="color: var(--ff-text-muted);"> / {{ b.max }} {{ b.einheit }}</span>
                     </td>
@@ -3130,6 +3130,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=1"></script>
+  <script type="module" src="admin.js?v=20261028_4"></script>
 </body>
 </html>

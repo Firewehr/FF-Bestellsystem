@@ -92,7 +92,10 @@ createApp({
 
     async function loadOverview() {
       try {
-        const data = await apiRequest('../api/v1/admin.php?action=overview');
+        const [data] = await Promise.all([
+          apiRequest('../api/v1/admin.php?action=overview'),
+          loadBestandteile(true),
+        ]);
         if (!data) return;
         accessDenied.value = false;
         overview.value = data;
@@ -119,17 +122,60 @@ createApp({
     const bestandteilFilterOnlyLow = ref(true);
 
     const allBestandteileStock = computed(() => {
-      return overview.value?.stats?.bestandteil_stock || [];
+      const statsStock = overview.value?.stats?.bestandteil_stock || [];
+      const stockMap = new Map();
+      statsStock.forEach(s => stockMap.set(s.bestandteil_id || s.id, s));
+
+      // 1. Primär: menuBestandteile aus der Rezepturen-API (100% synchron mit "Bestandteile & Rohstoffe"!)
+      if (menuBestandteile.value && menuBestandteile.value.length > 0) {
+        return menuBestandteile.value
+          .filter(b => b.aktiv !== 0 && b.kapazitaet > 0)
+          .map(b => {
+            const kap = parseFloat(b.kapazitaet) || 0;
+            const best = parseFloat(b.bestellt) || 0;
+            const rawRest = kap - best;
+            const rest = Math.max(0, rawRest);
+            const restPercent = kap > 0 ? Math.max(0, Math.round((rest / kap) * 100)) : 0;
+            const fromStats = stockMap.get(b.id) || {};
+            return {
+              bestandteil_id: b.id,
+              name: b.name,
+              einheit: b.einheit,
+              max: kap,
+              consumed: Math.round(best * 100) / 100,
+              rest: Math.round(rest * 100) / 100,
+              raw_rest: Math.round(rawRest * 100) / 100,
+              rest_percent: restPercent,
+              is_oversold: best > kap,
+              is_warning: best >= kap * 0.8,
+              used_in: fromStats.used_in || [],
+            };
+          })
+          .sort((a, b) => {
+            if (a.raw_rest !== b.raw_rest) return a.raw_rest - b.raw_rest;
+            return a.rest_percent - b.rest_percent;
+          });
+      }
+
+      // 2. Fallback auf statsStock
+      return statsStock.map(b => ({
+        ...b,
+        raw_rest: b.rest,
+        is_oversold: b.rest <= 0 && b.consumed >= b.max,
+        is_warning: b.rest <= 0 || b.rest_percent <= 20 || b.consumed >= b.max * 0.8,
+      }));
     });
 
     const lowStockBestandteile = computed(() => {
       const list = allBestandteileStock.value;
-      return list.filter(b => (b.rest <= 0 || b.rest_percent <= 30 || b.rest <= 15));
+      // Exakt die Kriterien wie in "Bestandteile & Rohstoffe":
+      // Rot: bestellt > kapazitaet (is_oversold bzw. raw_rest < 0)
+      // Gelb: bestellt >= kapazitaet * 0.8 (is_warning bzw. rest_percent <= 20)
+      return list.filter(b => b.is_oversold || b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15);
     });
 
     const lowStockBestandteileCount = computed(() => {
-      const list = allBestandteileStock.value;
-      return list.filter(b => (b.rest <= 0 || b.rest_percent <= 25 || b.rest <= 10)).length;
+      return lowStockBestandteile.value.length;
     });
 
     const displayedBestandteile = computed(() => {
