@@ -1264,8 +1264,37 @@ createApp({
       vibrate(20);
     };
 
+    const toggleSplitGroup = (groupKey, max) => {
+      const cur = splitQuantities.value[groupKey] || 0;
+      if (cur >= max) {
+        splitQuantities.value[groupKey] = 0;
+      } else {
+        splitQuantities.value[groupKey] = max;
+      }
+      vibrate(20);
+    };
+
+    const selectAllPay = () => {
+      if (!tableOrders.value || !tableOrders.value.grouped) return;
+      const map = {};
+      tableOrders.value.grouped.forEach(g => {
+        map[g.group_key] = g.quantity;
+      });
+      splitQuantities.value = map;
+      vibrate(20);
+    };
+
+    const clearPaySelection = () => {
+      splitQuantities.value = {};
+      vibrate(20);
+    };
+
     const hasPartialSelection = computed(() => {
       return Object.values(splitQuantities.value).some(q => q > 0);
+    });
+
+    const selectedPayCount = computed(() => {
+      return Object.values(splitQuantities.value).reduce((acc, q) => acc + (Number(q) || 0), 0);
     });
 
     const selectedPayRows = computed(() => {
@@ -2018,6 +2047,10 @@ createApp({
       proceedToOrder,
       submitOrder,
       setSplitQty,
+      toggleSplitGroup,
+      selectAllPay,
+      clearPaySelection,
+      selectedPayCount,
       openPayDialog,
       openCartPayDialog,
       onPayModalConfirm,

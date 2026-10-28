@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261028_7">
+  <link rel="stylesheet" href="style.css?v=20261028_8">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -199,7 +199,7 @@
 
       <div v-else-if="tableOrders">
         <!-- Header-Karte -->
-        <div class="pay-card-header">
+        <div class="pay-card-header" :class="{ 'has-selection': hasPartialSelection }">
           <div class="pay-header-left">
             <span class="pay-table-name">Tisch {{ tableOrders.table.tischname }}</span>
             <div class="pay-table-badges">
@@ -209,8 +209,13 @@
             </div>
           </div>
           <div class="pay-header-total">
-            <span class="pay-header-total-label">Offener Gesamtbetrag</span>
-            <span class="pay-header-total-val">{{ formatPrice(tableOrders.total_amount) }}</span>
+            <span class="pay-header-total-label">{{ hasPartialSelection ? 'Auswahl (' + selectedPayCount + ' Pos.)' : 'Offener Gesamtbetrag' }}</span>
+            <span class="pay-header-total-val" :class="{ 'val-selected': hasPartialSelection }">
+              {{ formatPrice(hasPartialSelection ? selectedPayAmount : tableOrders.total_amount) }}
+            </span>
+            <span v-if="hasPartialSelection" class="pay-header-total-sub">
+              von {{ formatPrice(tableOrders.total_amount) }} Gesamt
+            </span>
           </div>
         </div>
 
@@ -236,16 +241,41 @@
           <p style="font-size:1.05rem;">Keine offenen Positionen mehr auf diesem Tisch.</p>
         </div>
 
+        <!-- Toolbar / Schnellauswahl & Tipp -->
+        <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_ehrengast && !tableOrders.table.is_sammelrechnung" class="pay-toolbar">
+          <div v-if="hasPartialSelection" class="pay-selection-info">
+            <span class="pay-selection-badge">Ausgewählt: {{ selectedPayCount }} Pos. · {{ formatPrice(selectedPayAmount) }}</span>
+            <button type="button" class="btn-text-action" @click="clearPaySelection">✕ Auswahl aufheben</button>
+          </div>
+          <div v-else class="pay-hint-bar">
+            <span class="pay-hint-text">💡 Tipp: Zeile antippen wählt alle gleichen Positionen</span>
+            <button type="button" class="btn-text-action" @click="selectAllPay">Alle wählen</button>
+          </div>
+        </div>
+
         <!-- Liste der Positionen mit Split-Steuerung -->
-        <div v-else class="pay-items-list" style="margin-top:10px;">
-          <div v-for="g in tableOrders.grouped" :key="g.group_key" class="pay-row">
+        <div v-if="tableOrders.grouped.length > 0" class="pay-items-list" style="margin-top:6px;">
+          <div 
+            v-for="g in tableOrders.grouped" 
+            :key="g.group_key" 
+            class="pay-row"
+            :class="{
+              'is-selected': (splitQuantities[g.group_key] || 0) === g.quantity && g.quantity > 0,
+              'is-part-selected': (splitQuantities[g.group_key] || 0) > 0 && (splitQuantities[g.group_key] || 0) < g.quantity
+            }"
+            @click="toggleSplitGroup(g.group_key, g.quantity)">
             <div class="pay-row-left">
               <span class="pay-row-title">{{ g.name }}</span>
               <span v-if="g.zusatzinfo" class="pay-row-notes">✎ {{ g.zusatzinfo }}</span>
-              <span class="pay-row-sub">{{ g.quantity }}× {{ formatPrice(g.single_price) }} = {{ formatPrice(g.total_price) }}</span>
+              <span class="pay-row-sub">
+                {{ g.quantity }}× {{ formatPrice(g.single_price) }} = {{ formatPrice(g.total_price) }}
+                <span v-if="(splitQuantities[g.group_key] || 0) > 0" class="pay-row-sub-selected">
+                  · {{ splitQuantities[g.group_key] }} gewählt ({{ formatPrice((splitQuantities[g.group_key] || 0) * g.single_price) }})
+                </span>
+              </span>
             </div>
 
-            <div class="pay-row-controls">
+            <div class="pay-row-controls" @click.stop>
               <div class="pay-qty-box">
                 <button 
                   class="pay-qty-btn" 
@@ -269,31 +299,50 @@
 
         <!-- Bezahl-Aktionen -->
         <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_sammelrechnung" style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
-          <!-- Wenn Teilmenge gewählt -->
-          <button 
-            v-if="hasPartialSelection" 
-            class="btn-primary-block" 
-            style="background: var(--ff-warning); color: #000; font-size: 1.1rem;"
-            @click="openPayDialog(false)">
-            Ausgewählte bezahlen ({{ formatPrice(selectedPayAmount) }})
-          </button>
+          <!-- Wenn Teilmenge gewählt: Primäre Aktionen für die Auswahl -->
+          <template v-if="hasPartialSelection">
+            <button 
+              class="btn-primary-block" 
+              style="background: var(--ff-warning); color: #000; font-size: 1.15rem; font-weight:800;"
+              @click="openPayDialog(false)">
+              Ausgewählte bezahlen ({{ formatPrice(selectedPayAmount) }})
+            </button>
 
-          <!-- Alles bezahlen -->
-          <button 
-            class="btn-primary-block" 
-            style="background: var(--ff-success); font-size: 1.15rem;"
-            @click="openPayDialog(true)">
-            Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
-          </button>
+            <!-- SumUp direkt für Auswahl falls aktiv -->
+            <button 
+              v-if="isSumupEnabled" 
+              class="btn-primary-block" 
+              style="background: #0284c7; font-size: 1.05rem;"
+              @click="openPayDialog(false, 'sumup')">
+              💳 Ausgewählte mit SumUp ({{ formatPrice(selectedPayAmount) }})
+            </button>
 
-          <!-- Wenn Rückgeld-Rechner deaktiviert ist, aber SumUp aktiv: Separater SumUp-Button -->
-          <button 
-            v-if="tableOrders.pay_cash_modal === false && tableOrders.sumup && tableOrders.sumup.enabled" 
-            class="btn-primary-block" 
-            style="background: #0284c7; font-size: 1.1rem;"
-            @click="openPayDialog(hasPartialSelection ? false : true, 'sumup', true)">
-            💳 Mit SumUp bezahlen ({{ formatPrice(hasPartialSelection ? selectedPayAmount : tableOrders.total_amount) }})
-          </button>
+            <!-- Alles bezahlen als Alternative darunter -->
+            <button 
+              class="btn-primary-block btn-pay-outline" 
+              style="font-size: 1.05rem;"
+              @click="openPayDialog(true)">
+              Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
+            </button>
+          </template>
+
+          <!-- Wenn nichts ausgewählt: Primäre Aktionen für den gesamten Tisch -->
+          <template v-else>
+            <button 
+              class="btn-primary-block" 
+              style="background: var(--ff-success); font-size: 1.15rem; font-weight:800;"
+              @click="openPayDialog(true)">
+              Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
+            </button>
+
+            <button 
+              v-if="isSumupEnabled" 
+              class="btn-primary-block" 
+              style="background: #0284c7; font-size: 1.05rem;"
+              @click="openPayDialog(true, 'sumup')">
+              💳 Mit SumUp bezahlen ({{ formatPrice(tableOrders.total_amount) }})
+            </button>
+          </template>
 
           <!-- Weitere Optionen: Verschieben & Nachträgliche Rechnung -->
           <div class="pay-actions-grid">
@@ -312,11 +361,10 @@
             </button>
 
             <button 
-              v-if="tableOrders.pay_cash_modal === false" 
               class="btn-pay-action btn-pay-outline" 
               style="color: var(--ff-success);"
               @click="openPayDialog(hasPartialSelection ? false : true, 'with_invoice', true)">
-              📄 Sofort mit Rechnung
+              📄 + Rechnung {{ hasPartialSelection ? '(Auswahl)' : '' }}
             </button>
           </div>
         </div>
@@ -1414,6 +1462,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261028_7"></script>
+  <script type="module" src="app.js?v=20261028_8"></script>
 </body>
 </html>
