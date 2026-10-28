@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261028_5">
+  <link rel="stylesheet" href="style.css?v=20261028_6">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -286,6 +286,15 @@
             Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
           </button>
 
+          <!-- Wenn Rückgeld-Rechner deaktiviert ist, aber SumUp aktiv: Separater SumUp-Button -->
+          <button 
+            v-if="tableOrders.pay_cash_modal === false && tableOrders.sumup && tableOrders.sumup.enabled" 
+            class="btn-primary-block" 
+            style="background: #0284c7; font-size: 1.1rem;"
+            @click="openPayDialog(hasPartialSelection ? false : true, 'sumup', true)">
+            💳 Mit SumUp bezahlen ({{ formatPrice(hasPartialSelection ? selectedPayAmount : tableOrders.total_amount) }})
+          </button>
+
           <!-- Weitere Optionen: Verschieben & Nachträgliche Rechnung -->
           <div class="pay-actions-grid">
             <button 
@@ -300,6 +309,14 @@
               style="color: var(--ff-info);"
               @click="triggerNachtraeglicheRechnung">
               📄 + Rechnung ({{ tableOrders.pending_rechnung_count }} bez.)
+            </button>
+
+            <button 
+              v-if="tableOrders.pay_cash_modal === false" 
+              class="btn-pay-action btn-pay-outline" 
+              style="color: var(--ff-success);"
+              @click="openPayDialog(hasPartialSelection ? false : true, 'with_invoice', true)">
+              📄 Sofort mit Rechnung
             </button>
           </div>
         </div>
@@ -1384,6 +1401,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261028_5"></script>
+  <script type="module" src="app.js?v=20261028_6"></script>
 </body>
 </html>

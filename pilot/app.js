@@ -1380,17 +1380,27 @@ createApp({
       }
     });
 
-    const openPayDialog = (isAll = true) => {
+    const openPayDialog = (isAll = true, forcedMethod = null, forceModal = false) => {
       payModeAll.value = isAll;
       const needed = isAll ? (tableOrders.value ? tableOrders.value.total_amount : 0) : selectedPayAmount.value;
       if (needed <= 0 && (!tableOrders.value || !tableOrders.value.table.is_ehrengast)) {
         showToast('Kein Betrag zum Abrechnen vorhanden', '⚠');
         return;
       }
+
+      const isCashModalEnabled = tableOrders.value ? (tableOrders.value.pay_cash_modal !== false) : true;
+
+      // Wenn Rückgeld-Rechner in den Systemeinstellungen deaktiviert ist und kein Modal erzwungen wird:
+      if (!isCashModalEnabled && !forceModal && !forcedMethod) {
+        calcMethod.value = 'bar';
+        executePayment();
+        return;
+      }
+
       const initialStr = needed > 0 ? (Math.round(needed * 100) / 100).toFixed(2).replace('.', ',') : '0,00';
       calcWishRaw.value = initialStr;
       calcGivenRaw.value = initialStr;
-      calcMethod.value = 'bar';
+      calcMethod.value = forcedMethod || 'bar';
       selectedThermoTarget.value = (tableOrders.value && tableOrders.value.print_targets.length > 0) ? tableOrders.value.print_targets[0].id : 0;
       showPayModal.value = true;
       vibrate(30);

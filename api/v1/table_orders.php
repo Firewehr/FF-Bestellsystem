@@ -68,8 +68,9 @@ if ($wq) {
     @mysqli_free_result($wq);
 }
 
-// 4. SumUp Einstellungen
+// 4. SumUp & Kassa Einstellungen
 $sumupEnabled = (setting_get($conn, 'sumup_open_app_button', '0') === '1');
+$payCashModal = (setting_get($conn, 'pay_cash_modal', '0') === '1');
 $sumupAffiliateKey = trim((string)setting_get($conn, 'sumup_affiliate_key', ''));
 $sumupAppId = trim((string)setting_get($conn, 'sumup_app_id', 'at.ff.bestellsystem.web'));
 if ($sumupAppId === '') {
@@ -182,6 +183,7 @@ api_response([
     ],
     'payment_mode' => $paymentMode,
     'wait_times' => $waitTimes,
+    'pay_cash_modal' => $payCashModal,
     'sumup' => [
         'enabled' => $sumupEnabled && !empty($sumupAffiliateKey),
         'affiliate_key' => $sumupAffiliateKey,

@@ -742,6 +742,55 @@
               </div>
             </div>
           </div>
+
+          <!-- Bezahlen, Rückgeld-Rechner & SumUp -->
+          <div class="admin-card" style="margin-top: 16px;">
+            <div class="card-header">
+              <h3>Bezahlen, Rückgeld-Rechner &amp; SumUp-Kartenzahlung</h3>
+              <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+            </div>
+            <div class="card-body">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Rückgeld-Rechner (Zahlen-Ansicht)</label>
+                  <select v-model="settingsEdit.pay_cash_modal" class="form-select">
+                    <option value="1">Aktiviert (Modal mit Rückgeld-, Trinkgeld- &amp; Bar-Rechner)</option>
+                    <option value="0">Deaktiviert (Schnellkassieren ohne Rechner-Modal)</option>
+                  </select>
+                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Steuert, ob beim Kassieren am Tisch der Rückgeld- und Trinkgeldrechner geöffnet wird.
+                  </small>
+                </div>
+
+                <div class="form-group">
+                  <label>SumUp-Integration (App-Button)</label>
+                  <select v-model="settingsEdit.sumup_open_app_button" class="form-select">
+                    <option value="1">Aktiviert („SumUp App öffnen“-Button beim Kassieren anzeigen)</option>
+                    <option value="0">Deaktiviert (Keine SumUp-Kartenzahlung)</option>
+                  </select>
+                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Ermöglicht Kartenzahlung am Tisch über die SumUp Merchant App per Deep-Link.
+                  </small>
+                </div>
+
+                <div class="form-group">
+                  <label>SumUp Affiliate Key (URI-Call)</label>
+                  <input type="text" v-model="settingsEdit.sumup_affiliate_key" class="form-control" placeholder="z. B. aff_xxxxxxxx" maxlength="120">
+                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Wird für die automatische Betragsübergabe benötigt. Schlüssel aus me.sumup.com/developers.
+                  </small>
+                </div>
+
+                <div class="form-group">
+                  <label>SumUp App ID (URI-Call)</label>
+                  <input type="text" v-model="settingsEdit.sumup_app_id" class="form-control" placeholder="at.ff.bestellsystem.web" maxlength="120">
+                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                    Beliebige eindeutige App-ID deines Systems (wird an SumUp übergeben).
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- SUB: Feste -->
@@ -3130,6 +3179,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261028_4"></script>
+  <script type="module" src="admin.js?v=20261028_5"></script>
 </body>
 </html>

@@ -220,7 +220,8 @@ if ($action === 'save_settings') {
     if (isset($incoming['rechnung_next_seq'])) {
         $nSeq = (int)$incoming['rechnung_next_seq'];
         if ($nSeq >= 1) {
-            ff_rechnung_next_write($conn, $nSeq);
+            settings_set($conn, FF_RECHNUNG_NEXT_KEY, (string)$nSeq);
+            setting_set($conn, 'rechnung_next_seq', (string)$nSeq);
         }
     }
 
