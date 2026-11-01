@@ -12,6 +12,7 @@ require_once dirname(__DIR__, 2) . '/include/menu_lock_helpers.php';
 require_once dirname(__DIR__, 2) . '/include/menu_tile_helpers.php';
 require_once dirname(__DIR__, 2) . '/include/menu_list_helpers.php';
 require_once dirname(__DIR__, 2) . '/include/ff_position_stock_summary.php';
+require_once dirname(__DIR__, 2) . '/include/ff_pilot_linked_articles.php';
 
 api_require_auth();
 
@@ -208,6 +209,22 @@ while ($pRow = mysqli_fetch_assoc($posRes)) {
     ];
 }
 mysqli_free_result($posRes);
+
+ff_pilot_linked_articles_ensure_schema($conn);
+$linksByParent = [];
+foreach (ff_pilot_linked_articles_for_parents($conn, array_column($items, 'id'), $activeFestId) as $link) {
+    $parentId = (int)$link['parent_position_id'];
+    $linksByParent[$parentId][] = [
+        'id' => (int)$link['id'],
+        'position_id' => (int)$link['child_position_id'],
+        'name' => (string)$link['name'],
+        'price' => (float)$link['price'],
+    ];
+}
+foreach ($items as &$item) {
+    $item['linked_articles'] = $linksByParent[(int)$item['id']] ?? [];
+}
+unset($item);
 
 api_response([
     'ok' => true,

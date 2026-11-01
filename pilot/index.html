@@ -46,9 +46,14 @@
       </div>
 
       <div class="header-right">
-        <span class="status-pill" :class="isOnline ? 'online' : 'offline'">
-          {{ isOnline ? '●' : '○' }}
-        </span>
+        <button
+          class="status-pill"
+          :class="syncStatus.state"
+          :title="updateReady && hasUnsentWork ? 'Update wartet: erst ausstehende Arbeit sichern oder abschicken.' : syncStatus.label"
+          @click="handleStatusAction">
+          {{ syncStatus.state === 'offline' ? '○' : '●' }} {{ syncStatus.label }}
+          <span v-if="updateReady && hasUnsentWork"> · Update wartet</span>
+        </button>
         <button class="icon-btn" title="Benutzer & Einstellungen" @click="showUserModal = true">
           👤
         </button>
@@ -139,6 +144,7 @@
                   <span v-if="item.is_sold_out" class="card-stock-sold">Ausverkauft</span>
                   <span v-else-if="item.is_low_stock" class="card-stock-low">Noch {{ item.rest }}×</span>
                   <span v-else-if="item.is_locked" class="card-stock-sold">Gesperrt</span>
+                  <span v-else-if="item.linked_articles && item.linked_articles.length > 0" class="card-stock-low">🔗 Auswahl</span>
                 </div>
 
                 <div class="card-bottom">
@@ -447,6 +453,9 @@
                 <button class="round-btn" @click="openBonPreview(r)">
                   📄 Bon
                 </button>
+                <button v-if="r.order_nr" class="round-btn" @click="openReceiptReprint(r)">
+                  🖨 Nachdruck
+                </button>
                 <button v-if="r.can_move" class="round-btn" @click="openMoveDialog(r)">
                   ↷ Verschieben
                 </button>
@@ -503,6 +512,9 @@
     <!-- TAB 5: TISCHÜBERSICHT (Großes Raster aller Tische)                     -->
     <!-- ===================================================================== -->
     <section v-else-if="currentTab === 'tables'" class="tables-view">
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <button type="button" class="chip-btn" @click="openQrScanner">📷 Tisch-QR scannen</button>
+      </div>
       <input 
         type="text" 
         v-model="tableSearchQuery" 
@@ -612,6 +624,7 @@
           <button class="sheet-close-btn" @click="showTableModal = false">✕</button>
         </div>
         <div class="sheet-body">
+          <button type="button" class="chip-btn" style="margin-bottom:8px;" @click="openQrScanner">📷 Tisch-QR scannen</button>
           <input 
             type="text" 
             v-model="tableSearchQuery" 
@@ -659,7 +672,65 @@
       </div>
     </div>
 
-    <!-- MODAL 2: Beilagen, Rezeptur & Sonderwünsche pro Position -->
+    <!-- MODAL: Tisch-QR Scanner mit Kamera und Bild-Fallback -->
+    <div v-if="showQrModal" class="modal-overlay" @click.self="stopQrCamera(); showQrModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Tisch-QR scannen</span>
+          <button class="sheet-close-btn" @click="stopQrCamera(); showQrModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <video ref="qrVideo" playsinline muted style="width:100%; min-height:180px; background:#0f172a; border-radius:var(--ff-radius);"></video>
+          <p v-if="qrScanMessage" style="margin-top:8px; color:var(--ff-text-muted);">{{ qrScanMessage }}</p>
+          <div style="display:flex; gap:8px; margin-top:12px;">
+            <button type="button" class="chip-btn active" @click="startQrCamera">📷 Kamera starten</button>
+            <button type="button" class="chip-btn" @click="qrImageInput.click()">🖼 Bild auswählen</button>
+            <input ref="qrImageInput" type="file" accept="image/*" capture="environment" style="display:none" @change="onQrImageSelected">
+          </div>
+          <p style="font-size:.8rem; color:var(--ff-text-muted); margin-top:10px;">Akzeptiert ausschließlich aktive Tisch-QR-Codes.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Verknüpfte echte Artikel -->
+    <div v-if="showLinkedArticlesModal && linkedParentItem" class="modal-overlay" @click.self="cancelLinkedArticles">
+      <div class="bottom-sheet options-sheet">
+        <div class="sheet-header">
+          <div>
+            <div class="sheet-title">{{ linkedParentItem.name }}</div>
+            <div style="font-size:0.85rem; color:var(--ff-text-muted); font-weight:700; margin-top:2px;">
+              {{ formatPrice(linkedParentItem.price) }} · Beilagen auswählen (optional)
+            </div>
+          </div>
+          <button type="button" class="sheet-close-btn" @click="cancelLinkedArticles">✕</button>
+        </div>
+        <div class="sheet-body">
+          <p style="font-size:0.86rem; color:var(--ff-text-muted); margin:0 0 10px;">
+            Verknüpfte Artikel werden einzeln bestellt, gedruckt und abgerechnet.
+          </p>
+          <div class="chips-wrap">
+            <button
+              v-for="linked in linkedParentItem.linked_articles"
+              :key="linked.id"
+              type="button"
+              class="chip-btn"
+              :class="{ active: selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
+              @click="toggleLinkedArticle(linked.position_id)">
+              <span v-if="selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
+              <strong style="margin-left:4px;">{{ formatPrice(linked.price) }}</strong>
+            </button>
+          </div>
+        </div>
+        <div class="sheet-footer" style="display:flex; gap:8px; padding:12px 16px;">
+          <button type="button" class="chip-btn" style="flex:1;" @click="cancelLinkedArticles">Abbrechen</button>
+          <button type="button" class="btn-primary-block" style="margin:0; flex:2;" @click="confirmLinkedArticles">
+            {{ selectedLinkedArticleIds.length ? 'Hinzufügen' : 'Ohne Beilage hinzufügen' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: Beilagen, Rezeptur & Sonderwünsche pro Position -->
     <div v-if="showOptionsModal && activeOptionItem" class="modal-overlay" @click.self="showOptionsModal = false">
       <div class="bottom-sheet options-sheet">
         <div class="sheet-header">
@@ -841,6 +912,25 @@
                   </div>
                 </div>
 
+                <div v-if="activeOptionItem.linked_articles && activeOptionItem.linked_articles.length > 0" class="options-group">
+                  <div class="options-group-header">
+                    <span class="options-group-title">Verknüpfte Artikel</span>
+                    <span class="options-group-sub">Werden als eigene Küchenposition bestellt</span>
+                  </div>
+                  <div class="chips-wrap">
+                    <button
+                      v-for="linked in activeOptionItem.linked_articles"
+                      :key="linked.id"
+                      type="button"
+                      class="chip-btn"
+                      :class="{ active: portions[activePortionIndex].selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
+                      @click="toggleLinkedArticleForPortion(linked.position_id, activePortionIndex)">
+                      <span v-if="portions[activePortionIndex].selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
+                      <strong style="margin-left:4px;">{{ formatPrice(linked.price) }}</strong>
+                    </button>
+                  </div>
+                </div>
+
                 <!-- Schnellauswahl für Getränke (nur wenn keine DB-Rezeptur vorhanden) -->
                 <div v-if="activeOptionItem.type === 2 && (!activeOptionItem.recipe_components || activeOptionItem.recipe_components.length === 0)" class="options-group">
                   <div class="options-group-header">
@@ -945,6 +1035,25 @@
                     :class="{ active: p.selectedBeilagen.includes(b.name) }"
                     @click="toggleBeilage(b.name, pIdx)">
                     {{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="activeOptionItem.linked_articles && activeOptionItem.linked_articles.length > 0" class="options-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">Verknüpfte Artikel</span>
+                  <span class="options-group-sub">Werden als eigene Küchenposition bestellt</span>
+                </div>
+                <div class="chips-wrap">
+                  <button
+                    v-for="linked in activeOptionItem.linked_articles"
+                    :key="linked.id"
+                    type="button"
+                    class="chip-btn"
+                    :class="{ active: p.selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
+                    @click="toggleLinkedArticleForPortion(linked.position_id, pIdx)">
+                    <span v-if="p.selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
+                    <strong style="margin-left:4px;">{{ formatPrice(linked.price) }}</strong>
                   </button>
                 </div>
               </div>
@@ -1114,16 +1223,6 @@
               :disabled="isSubmitting"
               @click="openCartPayDialog('bar')">
               💵 Sofort Bar bezahlt ({{ formatPrice(cartTotal) }})
-            </button>
-
-            <!-- Bei Sofortzahlung: SumUp (falls aktiv) -->
-            <button 
-              v-if="paymentMode === 'instant' && isSumupEnabled && (!selectedTable || (!selectedTable.is_ehrengast && !selectedTable.is_sammelrechnung))"
-              class="btn-primary-block" 
-              style="background: #0284c7; font-size: 1.05rem;"
-              :disabled="isSubmitting"
-              @click="openCartPayDialog('sumup')">
-              💳 Sofort mit SumUp zahlen ({{ formatPrice(cartTotal) }})
             </button>
 
             <!-- Später zahlen (wenn paymentMode != instant oder Ehrengast / Sammelrechnung) -->
@@ -1303,13 +1402,7 @@
               @click="launchSumup(calcWish)">
               📱 SumUp App öffnen ({{ formatPrice(calcWish) }})
             </button>
-            <button 
-              class="btn-primary-block" 
-              style="background:var(--ff-success);"
-              :disabled="isWishTooLow || isSubmitting"
-              @click="onPayModalConfirm">
-              ✓ Als SumUp bezahlt {{ isCartPayMode ? 'abschicken' : 'buchen' }} ({{ formatPrice(amountToPay) }})
-            </button>
+            <span style="font-size:.8rem; color:var(--ff-text-muted); text-align:center;">Nach Rückkehr aus SumUp werden die ausgewählten Positionen bestätigt.</span>
           </div>
           <button 
             v-else
@@ -1391,6 +1484,41 @@
       </div>
     </div>
 
+    <!-- MODAL: Bestellbon nachdrucken -->
+    <div v-if="showReceiptModal && receiptRound" class="modal-overlay" @click.self="showReceiptModal = false">
+      <div class="bottom-sheet">
+        <div class="sheet-header">
+          <span class="sheet-title">Bon #{{ receiptRound.order_nr }} nachdrucken</span>
+          <button class="sheet-close-btn" @click="showReceiptModal = false">✕</button>
+        </div>
+        <div class="sheet-body">
+          <label class="calc-label">Druckziel</label>
+          <select v-model="receiptTarget" class="text-input" style="margin-top:5px;">
+            <option :value="0">Druckziel wählen</option>
+            <option v-for="pt in (tableHistory ? tableHistory.print_targets : [])" :key="pt.id" :value="pt.id">🖨 {{ pt.name }}</option>
+          </select>
+        </div>
+        <div class="sheet-footer">
+          <button class="btn-primary-block" :disabled="!receiptTarget" @click="reprintReceipt">🖨 Nachdruck einreihen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Rückkehr aus der SumUp-App -->
+    <div v-if="sumupReturn" class="modal-overlay">
+      <div class="bottom-sheet">
+        <div class="sheet-header"><span class="sheet-title">SumUp-Zahlung zurück</span></div>
+        <div class="sheet-body">
+          <p>Wurde die Zahlung in der SumUp-App erfolgreich abgeschlossen?</p>
+          <p style="font-size:.85rem; color:var(--ff-text-muted);">Erst nach dieser Bestätigung werden genau die zuvor ausgewählten Positionen als bezahlt verbucht.</p>
+        </div>
+        <div class="sheet-footer" style="display:flex; gap:8px;">
+          <button class="chip-btn" @click="sumupReturn = null">Nicht bestätigen</button>
+          <button class="btn-primary-block" :disabled="isSubmitting" @click="confirmSumupReturn">✓ Zahlung bestätigen</button>
+        </div>
+      </div>
+    </div>
+
     <!-- MODAL 8: Benutzer, Terminal & Einstellungen -->
     <div v-if="showUserModal" class="modal-overlay" @click.self="showUserModal = false">
       <div class="bottom-sheet">
@@ -1462,6 +1590,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261028_8"></script>
+  <script type="module" src="app.js?v=20261101_8"></script>
 </body>
 </html>

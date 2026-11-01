@@ -4,6 +4,7 @@
  */
 
 import { createApp, ref, computed, onMounted, onUnmounted, watch, nextTick } from './assets/vue.esm-browser.prod.js';
+import { createPilotApi } from './api.js';
 
 createApp({
   setup() {
@@ -13,6 +14,7 @@ createApp({
     const isOnline = ref(navigator.onLine);
     const isLoading = ref(true);
     const isPolling = ref(false);
+    const liveConnectionStatus = ref(navigator.onLine ? 'reconnecting' : 'offline');
     const csrfToken = ref('');
     const currentUser = ref(null);
     const toast = ref(null);
@@ -87,12 +89,21 @@ createApp({
 
     // Letzte bekannte Batch-Keys zur Erkennung neuer Bestellungen für Sound
     let knownOrderKeys = new Set();
+    const knownOrderLimit = 2000;
+    const seenSseEventKeys = new Set();
+    const seenSseEventLimit = 500;
     let isInitialLoad = true;
     let suppressNotificationSound = false;
     let fetchSeq = 0;
     let pollInterval = null;
     let sseSource = null;
+    let sseReconnectTimer = null;
+    let sseRetryDelay = 1000;
+    let toastTimer = null;
+    let pendingStationFetchTimer = null;
+    let isUnmounted = false;
     let audioContext = null;
+    let isCompletingOrder = false;
 
     // -------------------------------------------------------------------------
     // 4. Berechnete Daten (Computed)
@@ -191,11 +202,32 @@ createApp({
     // -------------------------------------------------------------------------
     const showToast = (message, type = 'info') => {
       toast.value = { message, type };
-      setTimeout(() => {
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
         if (toast.value && toast.value.message === message) {
           toast.value = null;
         }
       }, 3500);
+    };
+
+    const rememberKey = (keys, key, limit) => {
+      if (!key || keys.has(key)) return false;
+      keys.add(key);
+      if (keys.size > limit) {
+        keys.delete(keys.values().next().value);
+      }
+      return true;
+    };
+
+    const getOrderNotificationKey = (order) => {
+      if (order.batch_key !== undefined && order.batch_key !== null && order.batch_key !== '') {
+        return `batch:${order.batch_key}|table:${order.tischnummer || ''}`;
+      }
+      if (order.bon_id) return `bon:${order.bon_id}`;
+      if (Array.isArray(order.order_nrs) && order.order_nrs.length > 0) {
+        return `orders:${order.order_nrs.join(',')}|table:${order.tischnummer || ''}`;
+      }
+      return '';
     };
 
     // -------------------------------------------------------------------------
@@ -292,46 +324,36 @@ createApp({
       return false;
     };
 
-    const apiPost = async (payload, retryOnCsrf = true, endpoint = '../api/v1/station.php') => {
-      let token = getCsrfToken();
-      if (!token) {
-        await loadAuth();
-        token = getCsrfToken();
-      }
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': token,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.status === 401) {
+    const pilotApi = createPilotApi({
+      getCsrfToken,
+      setCsrfToken: (token) => { csrfToken.value = token; },
+      onUnauthorized: () => {
         window.location.href = '../login.php?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
-        return { ok: false, error: 'unauthorized', message: 'Sitzung abgelaufen. Bitte neu anmelden.' };
-      }
+      },
+    });
 
-      let data = null;
-      try {
-        data = await res.json();
-      } catch (e) {
-        return { ok: false, error: 'invalid_json', message: 'Ungültige Serverantwort' };
-      }
-
-      if (data && data.csrf_token) {
-        csrfToken.value = data.csrf_token;
-      }
-
-      // Falls CSRF-Fehler (Token abgelaufen oder Session erneuert): Token neu laden und einmal wiederholen
-      if (!data.ok && (res.status === 403 || data.error === 'invalid_csrf') && retryOnCsrf) {
-        console.warn('CSRF-Token ungültig/abgelaufen. Erneuere Token...');
+    const apiPost = async (payload, retryOnCsrf = true, endpoint = '../api/v1/station.php') => {
+      if (!getCsrfToken()) {
         await loadAuth();
-        return apiPost(payload, false, endpoint);
       }
 
-      return data;
+      try {
+        return await pilotApi.request(endpoint, {
+          method: 'POST',
+          body: payload,
+        });
+      } catch (error) {
+        if ((error.status === 403 || error.code === 'invalid_csrf') && retryOnCsrf) {
+          console.warn('CSRF-Token ungültig/abgelaufen. Erneuere Token...');
+          await loadAuth();
+          return apiPost(payload, false, endpoint);
+        }
+        return {
+          ok: false,
+          error: error.code || 'request_failed',
+          message: error.message || 'Verbindungsfehler zum Server',
+        };
+      }
     };
 
     let isFetchingStation = false;
@@ -339,8 +361,10 @@ createApp({
     let sseDebounceTimer = null;
 
     const requestStationDataRefresh = (isSilent = true) => {
+      if (isUnmounted) return;
       clearTimeout(sseDebounceTimer);
       sseDebounceTimer = setTimeout(() => {
+        if (isUnmounted) return;
         if (isFetchingStation) {
           pendingStationFetch = true;
           return;
@@ -350,6 +374,7 @@ createApp({
     };
 
     const fetchStationData = async (isSilent = false) => {
+      if (isUnmounted) return;
       if (isFetchingStation) {
         pendingStationFetch = true;
         return;
@@ -398,8 +423,8 @@ createApp({
           if (!isInitialLoad && !suppressNotificationSound && newOrders.length > 0) {
             let hasNew = false;
             for (const ord of newOrders) {
-              const orderKey = `${ord.batch_key}_${ord.tischnummer}`;
-              if (ord.open_count > 0 && ord.bestellt === 1 && !knownOrderKeys.has(orderKey)) {
+              const orderKey = getOrderNotificationKey(ord);
+              if (orderKey && ord.open_count > 0 && ord.bestellt === 1 && !knownOrderKeys.has(orderKey)) {
                 hasNew = true;
                 break;
               }
@@ -412,7 +437,7 @@ createApp({
 
           // Known Keys akkumulieren (gesehene Bestellungen bleiben bekannt)
           for (const ord of newOrders) {
-            knownOrderKeys.add(`${ord.batch_key}_${ord.tischnummer}`);
+            rememberKey(knownOrderKeys, getOrderNotificationKey(ord), knownOrderLimit);
           }
           isInitialLoad = false;
           suppressNotificationSound = false;
@@ -433,12 +458,13 @@ createApp({
           isLoading.value = false;
           isPolling.value = false;
         }
-        if (pendingStationFetch) {
+        if (!isUnmounted && pendingStationFetch) {
           pendingStationFetch = false;
-          setTimeout(() => {
+          clearTimeout(pendingStationFetchTimer);
+          pendingStationFetchTimer = setTimeout(() => {
             if (!isFetchingStation) {
-            fetchStationData(true);
-          }
+              fetchStationData(true);
+            }
           }, 300);
         }
       }
@@ -744,10 +770,10 @@ createApp({
     // Bestellung abschließen (Ausgeliefert + Bon drucken oder ohne Bon bei DV)
     const completeOrder = async (order, withPrint = true) => {
       const rowids = order.all_rowids || [];
-      if (rowids.length === 0) return;
+      if (rowids.length === 0 || isCompletingOrder) return;
+      isCompletingOrder = true;
 
-      const orderKey = `${order.batch_key}_${order.tischnummer}`;
-      knownOrderKeys.add(orderKey);
+      rememberKey(knownOrderKeys, getOrderNotificationKey(order), knownOrderLimit);
 
       // Optimistic: Karte sofort lokal entfernen
       const idx = orders.value.findIndex(o => 
@@ -773,7 +799,28 @@ createApp({
       } catch (e) {
         showToast('Netzwerkfehler', 'error');
         requestStationDataRefresh(true);
+      } finally {
+        isCompletingOrder = false;
       }
+    };
+
+    const handleEnterComplete = (event) => {
+      if (event.key !== 'Enter' || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (viewMode.value !== 'cards' || isCompletingOrder) return;
+
+      const active = document.activeElement;
+      if (active && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(active.tagName)) return;
+      if (showSettingsModal.value || showLocksModal.value || showSubstationsConfigModal.value || showSubstationQrModal.value) return;
+
+      const order = filteredOrders.value.find(item =>
+        !item.is_direktverkauf &&
+        Array.isArray(item.all_rowids) &&
+        item.all_rowids.length > 0 &&
+        (item.items_open.length === 0 || stats.value.one_click_abschliessen)
+      );
+      if (!order) return;
+      event.preventDefault();
+      completeOrder(order);
     };
 
     // Teillieferung drucken
@@ -939,29 +986,95 @@ createApp({
     // -------------------------------------------------------------------------
     // 10. Realtime SSE & Polling
     // -------------------------------------------------------------------------
-    const initSse = () => {
+    const clearSseReconnect = () => {
+      clearTimeout(sseReconnectTimer);
+      sseReconnectTimer = null;
+    };
+
+    const closeSse = () => {
       if (sseSource) {
         sseSource.close();
         sseSource = null;
+      }
+    };
+
+    const sseEventKey = (event) => {
+      if (event.lastEventId) return `id:${event.lastEventId}`;
+      if (!event.data) return '';
+      try {
+        const data = JSON.parse(event.data);
+        const key = data.event_id || data.eventId || data.id || data.batch_key || data.order_key;
+        return key ? `data:${key}` : '';
+      } catch (e) {
+        return '';
+      }
+    };
+
+    const scheduleSseReconnect = () => {
+      if (isUnmounted || !isOnline.value || sseReconnectTimer) return;
+      liveConnectionStatus.value = 'polling';
+      const jitter = Math.round(sseRetryDelay * (Math.random() * 0.4 - 0.2));
+      const delay = Math.max(500, sseRetryDelay + jitter);
+      sseRetryDelay = Math.min(sseRetryDelay * 2, 30000);
+      sseReconnectTimer = setTimeout(() => {
+        sseReconnectTimer = null;
+        initSse();
+      }, delay);
+    };
+
+    const initSse = () => {
+      if (isUnmounted) return;
+      clearSseReconnect();
+      closeSse();
+
+      if (!isOnline.value) {
+        liveConnectionStatus.value = 'offline';
+        return;
       }
 
       // Bei "Alle Stationen" (0) hören wir primär auf 11 (Küche) oder nutzen intelligentes Polling
       const sseTarget = selectedTarget.value > 0 ? selectedTarget.value : 11;
       try {
-        sseSource = new EventSource(`../station_events.php?print_target=${sseTarget}`);
-        sseSource.addEventListener('station-change', () => {
+        liveConnectionStatus.value = 'reconnecting';
+        const source = new EventSource(`../station_events.php?print_target=${sseTarget}`);
+        sseSource = source;
+        source.onopen = () => {
+          if (sseSource !== source) return;
+          sseRetryDelay = 1000;
+          liveConnectionStatus.value = 'connected';
+        };
+        source.addEventListener('station-change', (event) => {
+          if (sseSource !== source) return;
+          const eventKey = sseEventKey(event);
+          if (eventKey && !rememberKey(seenSseEventKeys, eventKey, seenSseEventLimit)) return;
+          sseRetryDelay = 1000;
+          liveConnectionStatus.value = 'connected';
           requestStationDataRefresh(true);
         });
-        sseSource.onerror = () => {
+        source.onerror = () => {
+          if (sseSource !== source) return;
           // SSE unterbrochen -> Polling übernimmt
-          if (sseSource) {
-            sseSource.close();
-            sseSource = null;
-          }
+          closeSse();
+          scheduleSseReconnect();
         };
       } catch (e) {
         console.warn('SSE EventSource nicht unterstützt oder blockiert');
+        scheduleSseReconnect();
       }
+    };
+
+    const handleOnline = () => {
+      isOnline.value = true;
+      fetchStationData();
+      initSse();
+    };
+
+    const handleOffline = () => {
+      isOnline.value = false;
+      clearSseReconnect();
+      closeSse();
+      liveConnectionStatus.value = 'offline';
+      showToast('Keine Verbindung zum Netzwerk', 'error');
     };
 
     // -------------------------------------------------------------------------
@@ -1009,25 +1122,29 @@ createApp({
       }, 3500);
 
       // Online/Offline Events
-      window.addEventListener('online', () => {
-        isOnline.value = true;
-        fetchStationData();
-      });
-      window.addEventListener('offline', () => {
-        isOnline.value = false;
-        showToast('Keine Verbindung zum Netzwerk', 'error');
-      });
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      window.addEventListener('keydown', handleEnterComplete);
     });
 
     onUnmounted(() => {
-      if (pollInterval) clearInterval(pollInterval);
-      if (sseSource) sseSource.close();
+      isUnmounted = true;
+      clearInterval(pollInterval);
+      clearTimeout(sseDebounceTimer);
+      clearTimeout(pendingStationFetchTimer);
+      clearTimeout(toastTimer);
+      clearSseReconnect();
+      closeSse();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('keydown', handleEnterComplete);
     });
 
     return {
       isOnline,
       isLoading,
       isPolling,
+      liveConnectionStatus,
       currentUser,
       toast,
       targets,

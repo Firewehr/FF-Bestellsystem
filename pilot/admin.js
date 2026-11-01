@@ -3,7 +3,8 @@
  * Zero-Bootstrap, native Browser-Build Vue 3 Administration.
  */
 
-import { createApp, ref, computed, onMounted, watch } from './assets/vue.esm-browser.prod.js';
+import { createApp, ref, computed, onMounted, onUnmounted, watch } from './assets/vue.esm-browser.prod.js';
+import { createPilotApi } from './api.js';
 
 createApp({
   setup() {
@@ -52,33 +53,25 @@ createApp({
     // -------------------------------------------------------------------------
     // 2. HTTP / API Helfer
     // -------------------------------------------------------------------------
-    async function apiRequest(endpoint, options = {}) {
-      const headers = options.headers || {};
-      headers['Accept'] = 'application/json';
-      if (csrfToken.value) {
-        headers['X-CSRF-Token'] = csrfToken.value;
-      }
-      if (options.body && typeof options.body === 'object' && !(options.body instanceof FormData)) {
-        headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(options.body);
-      }
+    const pilotApi = createPilotApi({
+      getCsrfToken: () => csrfToken.value,
+      setCsrfToken: (token) => { csrfToken.value = token; },
+      onUnauthorized: () => {
+        window.location.href = '../login.php?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+      },
+    });
 
+    async function apiRequest(endpoint, options = {}) {
+      const { silent = false, ...requestOptions } = options;
       try {
-        const res = await fetch(endpoint, { credentials: 'same-origin', ...options, headers });
-        if (res.status === 401) {
-          window.location.href = '../login.php?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
-          return;
-        }
-        if (res.status === 403) {
+        return await pilotApi.request(endpoint, requestOptions);
+      } catch (err) {
+        if (err.status === 403) {
           accessDenied.value = true;
         }
-        const data = await res.json().catch(() => ({ ok: false, error: 'Ungültige Server-Antwort' }));
-        if (!res.ok || data.ok === false) {
-          throw new Error(data.message || data.error || `HTTP Fehler ${res.status}`);
+        if (!silent) {
+          showToast(err.message || 'Verbindungsfehler zum Server', 'error');
         }
-        return data;
-      } catch (err) {
-        showToast(err.message || 'Verbindungsfehler zum Server', 'error');
         throw err;
       }
     }
@@ -206,6 +199,83 @@ createApp({
         showToast('Einstellungen erfolgreich gespeichert.');
         loadOverview();
       } catch (e) {}
+    }
+
+    // -------------------------------------------------------------------------
+    // 3b. Live-Betriebsdiagnose
+    // -------------------------------------------------------------------------
+    const operations = ref(null);
+    const operationsLoading = ref(false);
+    const operationsError = ref('');
+    const operationsUpdatedAt = ref('');
+    let operationsPollTimer = null;
+    let overviewPollTimer = null;
+
+    function operationsBadgeClass(state) {
+      if (state === 'healthy' || state === 'active') return 'badge-success';
+      if (state === 'warning') return 'badge-warning';
+      if (state === 'idle') return 'badge-secondary';
+      return 'badge-danger';
+    }
+
+    function operationsStateLabel(state) {
+      return {
+        healthy: 'In Ordnung',
+        warning: 'Warnung',
+        unavailable: 'Nicht verfügbar',
+        active: 'Aktiv',
+        idle: 'Leerlauf',
+      }[state] || 'Unbekannt';
+    }
+
+    function formatAge(seconds) {
+      if (seconds === null || seconds === undefined) return '–';
+      const value = Math.max(0, Number(seconds) || 0);
+      if (value < 60) return `${value} Sek.`;
+      if (value < 3600) return `${Math.floor(value / 60)} Min.`;
+      return `${Math.floor(value / 3600)} Std.`;
+    }
+
+    function formatDateTime(value) {
+      if (!value) return '–';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('de-AT');
+    }
+
+    async function loadOperations() {
+      if (activeTab.value !== 'betrieb' || document.hidden || operationsLoading.value) return;
+      operationsLoading.value = true;
+      try {
+        operations.value = await apiRequest('../api/v1/operations.php', { silent: true, timeout: 8000 });
+        operationsError.value = '';
+        operationsUpdatedAt.value = new Date().toISOString();
+      } catch (err) {
+        operationsError.value = err.message || 'Betriebsdaten konnten nicht geladen werden.';
+      } finally {
+        operationsLoading.value = false;
+      }
+    }
+
+    function stopOperationsPolling() {
+      if (operationsPollTimer !== null) {
+        window.clearInterval(operationsPollTimer);
+        operationsPollTimer = null;
+      }
+    }
+
+    function startOperationsPolling() {
+      stopOperationsPolling();
+      if (activeTab.value !== 'betrieb' || document.hidden) return;
+      loadOperations();
+      operationsPollTimer = window.setInterval(loadOperations, 15000);
+    }
+
+    function onVisibilityChange() {
+      if (document.hidden) {
+        stopOperationsPolling();
+      } else if (activeTab.value === 'betrieb') {
+        startOperationsPolling();
+      }
     }
 
     async function clearCache() {
@@ -852,6 +922,26 @@ createApp({
       rows: [],
       bestandteile: [],
     });
+    const linkedArticlesModal = ref({
+      open: false,
+      loading: false,
+      saving: false,
+      position: null,
+      links: [],
+      childPositionId: 0,
+    });
+
+    const linkedArticleCandidates = computed(() => {
+      const parentId = Number(linkedArticlesModal.value.position?.rowid || 0);
+      const linkedIds = new Set(linkedArticlesModal.value.links.map(link => Number(link.child_position_id)));
+      const activeFestId = Number(menuFeste.value.find(fest => fest.aktiv)?.id || 0);
+      return menuPositions.value.filter(position =>
+        Number(position.rowid) !== parentId &&
+        !position.kassa_only &&
+        (!activeFestId || !position.fest_id || Number(position.fest_id) === activeFestId) &&
+        !linkedIds.has(Number(position.rowid))
+      );
+    });
 
     const filteredMenuPositions = computed(() => {
       let list = menuPositions.value || [];
@@ -1423,10 +1513,82 @@ createApp({
           beilagenModal.value.rows = res.rows || [];
           beilagenModal.value.freetexts = res.freetext_stats || [];
         }
+
       } catch (err) {
         showToast('Fehler beim Laden der Zusatzinfos: ' + err.message, 'error');
       } finally {
         beilagenModal.value.loading = false;
+      }
+    }
+
+    async function openLinkedArticles(p) {
+      linkedArticlesModal.value = {
+        open: true,
+        loading: true,
+        saving: false,
+        position: p,
+        links: [],
+        childPositionId: 0,
+      };
+      try {
+        const res = await apiRequest(`../api/v1/pilot_links.php?action=list&parent_position_id=${encodeURIComponent(p.rowid)}`);
+        linkedArticlesModal.value.links = res.links || [];
+      } catch (err) {
+        showToast(err.message || 'Verknüpfte Artikel konnten nicht geladen werden.', 'error');
+      } finally {
+        linkedArticlesModal.value.loading = false;
+      }
+    }
+
+    async function addLinkedArticle() {
+      const modal = linkedArticlesModal.value;
+      const childId = Number(modal.childPositionId);
+      if (!modal.position || !childId || childId === Number(modal.position.rowid)) {
+        showToast('Bitte eine andere sichtbare Kellner-Position auswählen.', 'error');
+        return;
+      }
+      if (modal.links.some(link => Number(link.child_position_id) === childId)) {
+        showToast('Diese Position ist bereits verknüpft.', 'error');
+        return;
+      }
+      modal.saving = true;
+      try {
+        const res = await apiRequest('../api/v1/pilot_links.php', {
+          method: 'POST',
+          body: {
+            action: 'save',
+            parent_position_id: modal.position.rowid,
+            child_position_id: childId,
+            sort_order: (modal.links.length + 1) * 10,
+          },
+        });
+        modal.links = res.links || [];
+        modal.childPositionId = 0;
+      } catch (err) {
+        showToast(err.message || 'Verknüpfung konnte nicht gespeichert werden.', 'error');
+      } finally {
+        modal.saving = false;
+      }
+    }
+
+    async function deleteLinkedArticle(link) {
+      const modal = linkedArticlesModal.value;
+      if (!modal.position || !confirm(`"${link.name}" aus den verknüpften Artikeln entfernen?`)) return;
+      modal.saving = true;
+      try {
+        const res = await apiRequest('../api/v1/pilot_links.php', {
+          method: 'POST',
+          body: {
+            action: 'delete',
+            parent_position_id: modal.position.rowid,
+            id: link.id,
+          },
+        });
+        modal.links = res.links || [];
+      } catch (err) {
+        showToast(err.message || 'Verknüpfung konnte nicht entfernt werden.', 'error');
+      } finally {
+        modal.saving = false;
       }
     }
 
@@ -1509,6 +1671,8 @@ createApp({
       rezepturModal.value.rows.push({
         bestandteil_id: rezepturModal.value.bestandteile[0].id,
         menge: 1.0,
+        optional_enabled: 0,
+        default_selected: 1,
         option_group: '',
         reihenfolge: rezepturModal.value.rows.length + 1,
       });
@@ -1519,6 +1683,25 @@ createApp({
     }
 
     async function saveRezeptur() {
+      for (let index = 0; index < rezepturModal.value.rows.length; index += 1) {
+        const row = rezepturModal.value.rows[index];
+        const menge = Number(row.menge);
+        if (!Number.isFinite(menge) || menge < 0.001) {
+          showToast(`Zeile ${index + 1}: Menge muss mindestens 0,001 sein.`, 'error');
+          return;
+        }
+        if (!Number.isInteger(Number(row.bestandteil_id)) || Number(row.bestandteil_id) <= 0) {
+          showToast(`Zeile ${index + 1}: Bitte einen Bestandteil auswählen.`, 'error');
+          return;
+        }
+        if (!Number.isInteger(Number(row.reihenfolge))) {
+          showToast(`Zeile ${index + 1}: Sortierung muss eine ganze Zahl sein.`, 'error');
+          return;
+        }
+        row.menge = menge;
+        row.option_group = (row.option_group || '').trim();
+      }
+
       try {
         const formData = new FormData();
         formData.append('action', 'save');
@@ -1592,7 +1775,7 @@ createApp({
           name: '',
           einheit: 'Stk',
           kapazitaet: -1,
-          sort_order: (menuBestandteile.value.length + 1) * 10,
+          sort_order: 0,
           allergene: '',
         }
       };
@@ -2591,16 +2774,27 @@ createApp({
       if (newTab === 'speisekarte') switchSubTab('speisekarte', activeSubTab.value.speisekarte);
       if (newTab === 'personal') switchSubTab('personal', activeSubTab.value.personal);
       if (newTab === 'auswertungen') switchSubTab('auswertungen', activeSubTab.value.auswertungen);
+      if (newTab === 'betrieb') startOperationsPolling();
+      else stopOperationsPolling();
     });
 
     onMounted(() => {
       applyTheme();
       loadOverview();
-      setInterval(() => {
+      overviewPollTimer = window.setInterval(() => {
         if (activeTab.value === 'uebersicht' && !document.hidden) {
           loadOverview();
         }
       }, 10000);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    });
+
+    onUnmounted(() => {
+      stopOperationsPolling();
+      if (overviewPollTimer !== null) {
+        window.clearInterval(overviewPollTimer);
+      }
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     });
 
     return {
@@ -2616,6 +2810,15 @@ createApp({
       isSuperAdmin,
       overview,
       loadOverview,
+      operations,
+      operationsLoading,
+      operationsError,
+      operationsUpdatedAt,
+      loadOperations,
+      operationsBadgeClass,
+      operationsStateLabel,
+      formatAge,
+      formatDateTime,
       broadcastInput,
       saveBroadcast,
       settingsEdit,
@@ -2737,6 +2940,11 @@ createApp({
       deleteBeilage,
       rezepturModal,
       openRezeptur,
+      linkedArticlesModal,
+      linkedArticleCandidates,
+      openLinkedArticles,
+      addLinkedArticle,
+      deleteLinkedArticle,
       addRezepturRow,
       removeRezepturRow,
       saveRezeptur,

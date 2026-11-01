@@ -4,18 +4,22 @@
  * die App auch bei unterbrochenem Festzelt-WLAN sofort geöffnet werden kann.
  */
 
-const CACHE_NAME = 'ff-pilot-v14';
+const CACHE_NAME = 'ff-pilot-v29';
 const APP_SHELL = [
   './index.html',
   './app.js',
-  './app.js?v=9',
+  './app.js?v=20261101_2',
+  './app.js?v=20261101_8',
+  './api.js',
+  './admin.html',
+  './admin.js?v=20261101_3',
   './style.css',
   './style.css?v=9',
   './station.html',
   './station.js',
-  './station.js?v=5',
+  './station.js?v=8',
   './station.css',
-  './station.css?v=2',
+  './station.css?v=4',
   './kueche.html',
   './schank.html',
   './manifest.webmanifest',
@@ -29,8 +33,12 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(APP_SHELL);
-    }).then(() => self.skipWaiting())
+    })
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 // Activate: Veraltete Caches bereinigen

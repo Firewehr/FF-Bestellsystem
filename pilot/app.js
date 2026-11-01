@@ -1,4 +1,5 @@
 import { createApp, ref, computed, onMounted, watch, nextTick } from './assets/vue.esm-browser.prod.js';
+import { createPilotApi } from './api.js';
 
 createApp({
   setup() {
@@ -33,6 +34,10 @@ createApp({
     const selectedBereich = ref(null);
     const bereiche = ref([]);
     const showTableModal = ref(false);
+    const showQrModal = ref(false);
+    const qrVideo = ref(null);
+    const qrImageInput = ref(null);
+    const qrScanMessage = ref('');
 
     const mustPayFirst = computed(() => {
       if (!selectedTable.value) return false;
@@ -53,6 +58,9 @@ createApp({
 
     // Optionen / Beilagen / Rezeptur Modal
     const showOptionsModal = ref(false);
+    const showLinkedArticlesModal = ref(false);
+    const linkedParentItem = ref(null);
+    const selectedLinkedArticleIds = ref([]);
     const activeOptionItem = ref(null);
     const optionQty = ref(1);
     const optionQtyInput = ref(1);
@@ -117,6 +125,11 @@ createApp({
     const showCartModal = ref(false);
     const showSubmitModal = ref(false);
     const pendingOrders = ref(JSON.parse(localStorage.getItem('ff_pending_orders') || '[]'));
+    const isSyncingPending = ref(false);
+    const isWorkStateReady = ref(false);
+    const updateReady = ref(false);
+    let serviceWorkerRegistration = null;
+    let updateActivationRequested = false;
 
     // -------------------------------------------------------------------------
     // 6. Abrechnung (Zahlen)
@@ -142,6 +155,10 @@ createApp({
     const moveTargetSearch = ref('');
     const showBonModal = ref(false);
     const activeBonRound = ref(null);
+    const showReceiptModal = ref(false);
+    const receiptRound = ref(null);
+    const receiptTarget = ref(0);
+    const sumupReturn = ref(null);
 
     // -------------------------------------------------------------------------
     // 8. Meine offenen Bestellungen
@@ -196,16 +213,207 @@ createApp({
       return '';
     };
 
+    const pilotApi = createPilotApi({
+      getCsrfToken,
+      setCsrfToken: (token) => { csrfToken.value = token; },
+      onUnauthorized: () => {
+        window.location.href = '../login.php?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+      },
+    });
+
+    const newClientKey = () => {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+      return `pilot-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
+    };
+
+    const paymentRequestKey = (action, table, rowids = [], extra = '') => {
+      const sortedRows = [...new Set(rowids.map(Number).filter(Number.isInteger))].sort((a, b) => a - b);
+      const requestId = `${action}:${Number(table)}:${sortedRows.join(',')}:${extra}`;
+      let keys = {};
+      try {
+        keys = JSON.parse(localStorage.getItem('ff_payment_request_keys') || '{}');
+      } catch (_) {
+        localStorage.removeItem('ff_payment_request_keys');
+      }
+      if (!keys[requestId]) {
+        keys[requestId] = { key: newClientKey(), createdAt: Date.now() };
+        const entries = Object.entries(keys)
+          .sort(([, a], [, b]) => Number(b.createdAt || 0) - Number(a.createdAt || 0))
+          .slice(0, 40);
+        keys = Object.fromEntries(entries);
+        localStorage.setItem('ff_payment_request_keys', JSON.stringify(keys));
+      }
+      return { requestId, key: keys[requestId].key };
+    };
+
+    const clearPaymentRequestKey = (requestId) => {
+      try {
+        const keys = JSON.parse(localStorage.getItem('ff_payment_request_keys') || '{}');
+        delete keys[requestId];
+        localStorage.setItem('ff_payment_request_keys', JSON.stringify(keys));
+      } catch (_) {
+        localStorage.removeItem('ff_payment_request_keys');
+      }
+    };
+
+    const savePendingOrders = () => localStorage.setItem('ff_pending_orders', JSON.stringify(pendingOrders.value));
+
+    const hasUnsentWork = computed(() => cart.value.length > 0 || pendingOrders.value.length > 0);
+    const unsentWorkCount = computed(() => {
+      const cartCount = cart.value.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+      return cartCount + pendingOrders.value.length;
+    });
+    const syncStatus = computed(() => {
+      if (!isOnline.value) return { label: 'Offline', state: 'offline' };
+      if (!isWorkStateReady.value) return { label: 'Prüfe Arbeit', state: 'syncing' };
+      if (isSubmitting.value || isDraftSaving.value || isSyncingPending.value) {
+        return { label: 'Synchronisiere', state: 'syncing' };
+      }
+      if (hasUnsentWork.value) return { label: `Ausstehend ${unsentWorkCount.value}`, state: 'pending' };
+      if (updateReady.value) return { label: 'Update bereit', state: 'update-ready' };
+      return { label: 'Online', state: 'online' };
+    });
+
+    const handleStatusAction = async () => {
+      if (!isWorkStateReady.value) {
+        showToast('Lokale Arbeit wird noch geprüft.', '⏳');
+        return;
+      }
+      if (pendingOrders.value.length > 0 && isOnline.value) {
+        await syncPendingOrders();
+        return;
+      }
+      if (cart.value.length > 0) {
+        currentTab.value = 'menu';
+        showCartModal.value = true;
+        showToast('Bitte Warenkorb prüfen und abschicken oder leeren.', '🛒', 4000);
+        return;
+      }
+      if (updateReady.value) activateWaitingUpdate();
+    };
+
+    const activateWaitingUpdate = () => {
+      if (!isWorkStateReady.value || hasUnsentWork.value) {
+        showToast('Update erst nach dem Sichern oder Abschicken aller Arbeit möglich.', '⚠', 4000);
+        return;
+      }
+      if (!serviceWorkerRegistration?.waiting) return;
+      updateActivationRequested = true;
+      serviceWorkerRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    };
+
+    const registerServiceWorker = async () => {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        serviceWorkerRegistration = await navigator.serviceWorker.register('sw.js');
+        const markUpdateReady = () => {
+          if (serviceWorkerRegistration?.waiting) updateReady.value = true;
+        };
+        markUpdateReady();
+        serviceWorkerRegistration.addEventListener('updatefound', () => {
+          const installing = serviceWorkerRegistration.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              markUpdateReady();
+            }
+          });
+        });
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          updateReady.value = false;
+          if (updateActivationRequested && !hasUnsentWork.value) {
+            window.location.reload();
+          }
+        });
+      } catch (e) {
+        console.warn('Service Worker konnte nicht registriert werden:', e);
+      }
+    };
+
+    const selectQrTable = async (value) => {
+      qrScanMessage.value = 'QR-Code wird geprüft …';
+      try {
+        const data = await pilotApi.request(`../api/v1/table_qr.php?value=${encodeURIComponent(value)}`);
+        const table = tables.value.find(t => t.tischnummer === data.table.tischnummer);
+        if (!table) throw new Error('Tisch ist für das aktive Fest nicht verfügbar.');
+        await stopQrCamera();
+        await selectTable(table);
+        showQrModal.value = false;
+        qrScanMessage.value = '';
+      } catch (error) {
+        qrScanMessage.value = error.message || 'Kein gültiger Tisch-QR-Code.';
+      }
+    };
+
+    let qrStream = null;
+    let qrScanning = false;
+    const stopQrCamera = async () => {
+      qrScanning = false;
+      if (qrStream) qrStream.getTracks().forEach(track => track.stop());
+      qrStream = null;
+    };
+    const scanQrImage = async (source) => {
+      if (!('BarcodeDetector' in window)) {
+        throw new Error('QR-Erkennung wird von diesem Browser nicht unterstützt. Bitte Tisch suchen.');
+      }
+      const codes = await new BarcodeDetector({ formats: ['qr_code'] }).detect(source);
+      if (!codes.length || !codes[0].rawValue) throw new Error('Kein lesbarer QR-Code gefunden.');
+      await selectQrTable(codes[0].rawValue);
+    };
+    const startQrCamera = async () => {
+      qrScanMessage.value = '';
+      try {
+        await stopQrCamera();
+        if (!navigator.mediaDevices?.getUserMedia || !('BarcodeDetector' in window)) {
+          throw new Error('Kamera-Scan wird nicht unterstützt. Bitte Bild auswählen oder Tisch suchen.');
+        }
+        qrStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+        await nextTick();
+        if (!qrVideo.value) throw new Error('Kamera konnte nicht gestartet werden.');
+        qrVideo.value.srcObject = qrStream;
+        await qrVideo.value.play();
+        qrScanning = true;
+        const loop = async () => {
+          if (!qrScanning || !qrVideo.value) return;
+          try { await scanQrImage(qrVideo.value); } catch (error) {
+            if (error.message && !error.message.includes('Kein lesbarer')) qrScanMessage.value = error.message;
+          }
+          if (qrScanning) window.setTimeout(loop, 250);
+        };
+        loop();
+      } catch (error) {
+        qrScanMessage.value = error.message || 'Kamera konnte nicht geöffnet werden.';
+      }
+    };
+    const onQrImageSelected = async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      qrScanMessage.value = 'Bild wird gelesen …';
+      try {
+        const image = await createImageBitmap(file);
+        await scanQrImage(image);
+      } catch (error) {
+        qrScanMessage.value = error.message || 'Bild konnte nicht gelesen werden.';
+      } finally {
+        event.target.value = '';
+      }
+    };
+    const openQrScanner = async () => {
+      showTableModal.value = false;
+      showQrModal.value = true;
+      await nextTick();
+      startQrCamera();
+    };
+
     const loadAuth = async () => {
       try {
-        const res = await fetch(`../api/v1/auth.php?_t=${Date.now()}`, {
+        const data = await pilotApi.request(`../api/v1/auth.php?_t=${Date.now()}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
             'Pragma': 'no-cache',
           },
         });
-        const data = await res.json();
         if (data.ok) {
           csrfToken.value = data.csrf_token || getCsrfToken();
           if (!data.logged_in) {
@@ -221,8 +429,7 @@ createApp({
 
     const loadTables = async () => {
       try {
-        const res = await fetch('../api/v1/tables.php');
-        const data = await res.json();
+        const data = await pilotApi.request('../api/v1/tables.php');
         if (data.ok) {
           tables.value = data.tables || [];
           if (data.bereiche) bereiche.value = data.bereiche;
@@ -248,7 +455,7 @@ createApp({
               const found = tables.value.find(t => t.tischnummer === Number(savedNr));
               if (found) {
                 selectedTable.value = found;
-                loadTableDraft(found.tischnummer);
+                await loadTableDraft(found.tischnummer);
               }
             }
           }
@@ -260,8 +467,7 @@ createApp({
 
     const loadMenu = async () => {
       try {
-        const res = await fetch('../api/v1/menu.php');
-        const data = await res.json();
+        const data = await pilotApi.request('../api/v1/menu.php');
         if (data.ok) {
           types.value = data.types || [];
           subcategories.value = data.subcategories || [];
@@ -294,8 +500,7 @@ createApp({
       if (!tn) return;
       isPayLoading.value = true;
       try {
-        const res = await fetch(`../api/v1/table_orders.php?table=${tn}`);
-        const data = await res.json();
+        const data = await pilotApi.request(`../api/v1/table_orders.php?table=${tn}`);
         if (data.ok) {
           tableOrders.value = data;
           if (data.wait_times) waitTimes.value = data.wait_times;
@@ -321,8 +526,7 @@ createApp({
       if (!tn) return;
       isHistoryLoading.value = true;
       try {
-        const res = await fetch(`../api/v1/table_history.php?table=${tn}`);
-        const data = await res.json();
+        const data = await pilotApi.request(`../api/v1/table_history.php?table=${tn}`);
         if (data.ok) {
           tableHistory.value = data;
         } else {
@@ -337,8 +541,7 @@ createApp({
 
     const loadMyOrders = async () => {
       try {
-        const res = await fetch('../api/v1/my_orders.php');
-        const data = await res.json();
+        const data = await pilotApi.request('../api/v1/my_orders.php');
         if (data.ok) {
           myOrders.value = data.orders || [];
           myOrdersReadyCount.value = data.ready_count || 0;
@@ -350,7 +553,8 @@ createApp({
 
     const refreshData = async () => {
       isLoading.value = true;
-      await Promise.all([loadAuth(), loadTables(), loadMenu(), loadMyOrders()]);
+      await loadAuth();
+      await Promise.all([loadTables(), loadMenu(), loadMyOrders()]);
       if (currentTab.value === 'pay' && selectedTable.value) {
         await loadTableOrders();
       } else if (currentTab.value === 'history' && selectedTable.value) {
@@ -576,7 +780,45 @@ createApp({
         return;
       }
 
+      if (Array.isArray(item.linked_articles) && item.linked_articles.length > 0) {
+        linkedParentItem.value = item;
+        selectedLinkedArticleIds.value = [];
+        showLinkedArticlesModal.value = true;
+        vibrate(25);
+        return;
+      }
+
       addItemToCart(item, 1, '', []);
+    };
+
+    const toggleLinkedArticle = (positionId) => {
+      const id = Number(positionId);
+      const index = selectedLinkedArticleIds.value.indexOf(id);
+      if (index >= 0) {
+        selectedLinkedArticleIds.value.splice(index, 1);
+      } else {
+        selectedLinkedArticleIds.value.push(id);
+      }
+      vibrate(15);
+    };
+
+    const cancelLinkedArticles = () => {
+      showLinkedArticlesModal.value = false;
+      linkedParentItem.value = null;
+      selectedLinkedArticleIds.value = [];
+    };
+
+    const confirmLinkedArticles = () => {
+      const parent = linkedParentItem.value;
+      if (!parent) return;
+      addItemToCart(parent, 1, '', []);
+      (parent.linked_articles || []).forEach((linked) => {
+        if (!selectedLinkedArticleIds.value.includes(Number(linked.position_id))) return;
+        const child = items.value.find(item => item.id === Number(linked.position_id));
+        if (!child || child.is_locked || child.is_sold_out) return;
+        addItemToCart(child, 1, '', [], null, [], parent.id);
+      });
+      cancelLinkedArticles();
     };
 
     const maxOptionQty = computed(() => {
@@ -602,12 +844,14 @@ createApp({
         const template = portions.value[0] || {
           selectedBeilagen: [],
           selectedRecipeComponents: [...defaultRecipe],
+          selectedLinkedArticleIds: [],
           customNote: ''
         };
         for (let i = currentCount; i < targetCount; i++) {
           portions.value.push({
             selectedBeilagen: [...template.selectedBeilagen],
             selectedRecipeComponents: [...template.selectedRecipeComponents],
+            selectedLinkedArticleIds: [...(template.selectedLinkedArticleIds || [])],
             customNote: template.customNote || ''
           });
         }
@@ -670,6 +914,7 @@ createApp({
       portions.value = [{
         selectedBeilagen: [],
         selectedRecipeComponents: [...defaultRecipe],
+        selectedLinkedArticleIds: [],
         customNote: '',
       }];
 
@@ -678,6 +923,10 @@ createApp({
     };
 
     const openCartItemOptions = (cartItem) => {
+      if (cart.value.some(line => Number(line.linked_parent_id || 0) === Number(cartItem.position_id))) {
+        showToast('Verknüpfte Artikel bitte gemeinsam über die Menge anpassen.', '🔗');
+        return;
+      }
       const baseItem = items.value.find(i => i.id === cartItem.position_id);
       if (!baseItem) return;
       activeOptionItem.value = baseItem;
@@ -696,6 +945,7 @@ createApp({
         portions.value.push({
           selectedBeilagen: [...initialBeilagen],
           selectedRecipeComponents: [...initialRecipe],
+          selectedLinkedArticleIds: [],
           customNote: initialNote,
         });
       }
@@ -761,6 +1011,21 @@ createApp({
       vibrate(20);
     };
 
+    const toggleLinkedArticleForPortion = (positionId, pIdx = null) => {
+      const targetIdx = pIdx !== null ? pIdx : activePortionIndex.value;
+      const portion = portions.value[targetIdx];
+      if (!portion) return;
+      if (!portion.selectedLinkedArticleIds) portion.selectedLinkedArticleIds = [];
+      const id = Number(positionId);
+      const index = portion.selectedLinkedArticleIds.indexOf(id);
+      if (index >= 0) {
+        portion.selectedLinkedArticleIds.splice(index, 1);
+      } else {
+        portion.selectedLinkedArticleIds.push(id);
+      }
+      vibrate(20);
+    };
+
     const toggleQuickNote = (noteText, pIdx = null) => {
       const targetIdx = pIdx !== null ? pIdx : activePortionIndex.value;
       const p = portions.value[targetIdx];
@@ -790,6 +1055,7 @@ createApp({
         if (idx !== sourceIdx) {
           p.selectedBeilagen = [...src.selectedBeilagen];
           p.selectedRecipeComponents = [...src.selectedRecipeComponents];
+          p.selectedLinkedArticleIds = [...(src.selectedLinkedArticleIds || [])];
           p.customNote = src.customNote;
         }
       });
@@ -802,6 +1068,7 @@ createApp({
       if (!src || !portions.value[targetIdx]) return;
       portions.value[targetIdx].selectedBeilagen = [...src.selectedBeilagen];
       portions.value[targetIdx].selectedRecipeComponents = [...src.selectedRecipeComponents];
+      portions.value[targetIdx].selectedLinkedArticleIds = [...(src.selectedLinkedArticleIds || [])];
       portions.value[targetIdx].customNote = src.customNote;
       vibrate(25);
       showToast(`Von Portion 1 übernommen`, '✓', 1200);
@@ -812,6 +1079,12 @@ createApp({
       const parts = [];
       if (portion.selectedBeilagen && portion.selectedBeilagen.length > 0) {
         parts.push(portion.selectedBeilagen.join(', '));
+      }
+      if (portion.selectedLinkedArticleIds && portion.selectedLinkedArticleIds.length > 0) {
+        const linkedNames = (activeOptionItem.value.linked_articles || [])
+          .filter(linked => portion.selectedLinkedArticleIds.includes(Number(linked.position_id)))
+          .map(linked => linked.name);
+        if (linkedNames.length > 0) parts.push(linkedNames.join(', '));
       }
       const diffs = getRecipeDiff(activeOptionItem.value, portion.selectedRecipeComponents || []);
       if (diffs.length > 0) {
@@ -835,7 +1108,10 @@ createApp({
     const getPortionPrice = (portion) => {
       if (!activeOptionItem.value) return 0;
       const base = Number(activeOptionItem.value.price) || 0;
-      return base + getPortionBeilagenSurcharge(portion);
+      const linkedTotal = (activeOptionItem.value.linked_articles || [])
+        .filter(linked => (portion.selectedLinkedArticleIds || []).includes(Number(linked.position_id)))
+        .reduce((sum, linked) => sum + (Number(linked.price) || 0), 0);
+      return base + getPortionBeilagenSurcharge(portion) + linkedTotal;
     };
 
     const beilagenSurcharge = computed(() => {
@@ -873,7 +1149,8 @@ createApp({
         }
 
         const sortedRecipe = [...(p.selectedRecipeComponents || [])].sort((a, b) => a - b);
-        const groupKey = `${fullNote}:::${JSON.stringify(sortedRecipe)}`;
+        const linkedArticleIds = [...(p.selectedLinkedArticleIds || [])].sort((a, b) => a - b);
+        const groupKey = `${fullNote}:::${JSON.stringify(sortedRecipe)}:::${JSON.stringify(linkedArticleIds)}`;
 
         const existingGroup = configGroups.find(g => g.key === groupKey);
         if (existingGroup) {
@@ -886,6 +1163,7 @@ createApp({
             fullNote: fullNote,
             beilagen: [...(p.selectedBeilagen || [])],
             recipe: sortedRecipe,
+            linkedArticleIds: linkedArticleIds,
             diffs: diffs,
             surcharge: bSurcharge,
           });
@@ -902,6 +1180,12 @@ createApp({
           grp.recipe,
           grp.diffs
         );
+        (item.linked_articles || []).forEach(linked => {
+          if (!grp.linkedArticleIds.includes(Number(linked.position_id))) return;
+          const child = items.value.find(candidate => candidate.id === Number(linked.position_id));
+          if (!child || child.is_locked || child.is_sold_out) return;
+          addItemToCart(child, grp.qty, '', [], null, [], item.id);
+        });
       });
 
       showOptionsModal.value = false;
@@ -909,7 +1193,7 @@ createApp({
       portions.value = [];
     };
 
-    const addItemToCart = (item, qty = 1, note = '', beilagenArr = [], recipeArr = null, recipeDiffs = []) => {
+    const addItemToCart = (item, qty = 1, note = '', beilagenArr = [], recipeArr = null, recipeDiffs = [], linkedParentId = null) => {
       // Aufpreis für vordefinierte Beilagen berechnen
       let bSurcharge = 0;
       if (beilagenArr.length > 0 && item.beilagen) {
@@ -939,6 +1223,7 @@ createApp({
       const existing = cart.value.find(c => 
         c.position_id === item.id && 
         c.zusatzinfo === fullNote &&
+        Number(c.linked_parent_id || 0) === Number(linkedParentId || 0) &&
         JSON.stringify(c.recipe_components || []) === JSON.stringify(finalRecipeArr)
       );
 
@@ -958,11 +1243,40 @@ createApp({
           recipe_components: finalRecipeArr,
           recipe_diffs: recipeDiffs,
           custom_note: cleanFr,
+          linked_parent_id: linkedParentId || null,
         });
       }
 
       vibrate(35);
       showToast(`${item.name} (+${qty})`, '＋', 1000);
+    };
+
+    const normalizeLinkedChildrenForParent = (parentId) => {
+      const parentQty = cart.value
+        .filter(line => Number(line.position_id) === Number(parentId))
+        .reduce((sum, line) => sum + Number(line.qty || 0), 0);
+      cart.value.slice().forEach(line => {
+        if (Number(line.linked_parent_id || 0) !== Number(parentId) || Number(line.qty || 0) <= parentQty) return;
+        if (parentQty > 0) {
+          line.qty = parentQty;
+        } else {
+          const index = cart.value.indexOf(line);
+          if (index >= 0) cart.value.splice(index, 1);
+        }
+      });
+    };
+
+    const canIncreaseCartLine = (line) => {
+      const parentId = Number(line.linked_parent_id || 0);
+      if (!parentId) return true;
+      const parentQty = cart.value
+        .filter(item => Number(item.position_id) === parentId)
+        .reduce((sum, item) => sum + Number(item.qty || 0), 0);
+      if (Number(line.qty || 0) >= parentQty) {
+        showToast('Jede verknüpfte Beilage ist einmal je Hauptposition möglich.', '🔗');
+        return false;
+      }
+      return true;
     };
 
     const decrementItem = (item) => {
@@ -977,6 +1291,7 @@ createApp({
 
     const incrementCartItem = (idx) => {
       if (cart.value[idx]) {
+        if (!canIncreaseCartLine(cart.value[idx])) return;
         cart.value[idx].qty += 1;
         vibrate(20);
       }
@@ -984,11 +1299,13 @@ createApp({
 
     const decrementCartItem = (idx) => {
       if (cart.value[idx]) {
+        const parentId = cart.value[idx].position_id;
         if (cart.value[idx].qty > 1) {
           cart.value[idx].qty -= 1;
         } else {
           cart.value.splice(idx, 1);
         }
+        normalizeLinkedChildrenForParent(parentId);
         vibrate(20);
       }
     };
@@ -1025,6 +1342,7 @@ createApp({
         zusatzinfo: c.zusatzinfo || '',
         beilagen: c.beilagen || [],
         recipe_components: c.recipe_components || [],
+        linked_parent_id: c.linked_parent_id || undefined,
       }));
 
       try {
@@ -1153,6 +1471,7 @@ createApp({
     });
 
     const incrementCartItemObj = (item) => {
+      if (!canIncreaseCartLine(item)) return;
       item.qty += 1;
       vibrate(20);
     };
@@ -1195,6 +1514,7 @@ createApp({
       const payload = {
         tischnummer: selectedTable.value.tischnummer,
         payment_type: paymentType,
+        idempotency_key: newClientKey(),
         items: cart.value.map(c => ({
           position_id: c.position_id,
           quantity: c.qty,
@@ -1205,40 +1525,30 @@ createApp({
       };
 
       try {
-        const res = await fetch('../api/v1/order.php', {
+        const data = await pilotApi.request('../api/v1/order.php', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken.value,
-          },
-          body: JSON.stringify(payload),
+          body: payload,
         });
-
-        const data = await res.json();
-
-        if (data.ok) {
-          vibrate([60, 60, 140]);
-          showToast(`Bestellung #${data.order_nr} erfolgreich freigegeben!`, '✓', 3500);
-          isRestoringDraft.value = true;
-          cart.value = [];
-          await nextTick();
-          isRestoringDraft.value = false;
-          draftSaveStatus.value = 'idle';
-          showSubmitModal.value = false;
-          showCartModal.value = false;
-          loadTables();
-          loadMyOrders();
-        } else {
-          showToast(data.message || 'Fehler beim Abschicken der Bestellung', '✕', 4000);
-        }
+        vibrate([60, 60, 140]);
+        showToast(`Bestellung #${data.order_nr} erfolgreich freigegeben!`, '✓', 3500);
+        isRestoringDraft.value = true;
+        cart.value = [];
+        await nextTick();
+        isRestoringDraft.value = false;
+        draftSaveStatus.value = 'idle';
+        showSubmitModal.value = false;
+        showCartModal.value = false;
+        loadTables();
+        loadMyOrders();
       } catch (err) {
         console.warn('Netzwerkfehler beim Abschicken, sichere lokal:', err);
+        if (!payload.idempotency_key) payload.idempotency_key = newClientKey();
         pendingOrders.value.push({
           ...payload,
           timestamp: new Date().toISOString(),
           tableName: selectedTable.value.tischname,
         });
-        localStorage.setItem('ff_pending_orders', JSON.stringify(pendingOrders.value));
+        savePendingOrders();
 
         isRestoringDraft.value = true;
         cart.value = [];
@@ -1554,20 +1864,19 @@ createApp({
         payment_method: calcMethod.value === 'sumup' ? 'sumup' : 'bar',
         thermo_target: calcMethod.value === 'with_invoice' ? selectedThermoTarget.value : 0,
       };
+      const request = payload.action === 'pay'
+        ? paymentRequestKey('pay', tn, targetRowids, payload.payment_method)
+        : null;
+      if (request) payload.idempotency_key = request.key;
 
       try {
-        const res = await fetch('../api/v1/pay.php', {
+        const data = await pilotApi.request('../api/v1/pay.php', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken.value,
-          },
-          body: JSON.stringify(payload),
+          body: payload,
         });
 
-        const data = await res.json();
-
         if (data.ok) {
+          if (request) clearPaymentRequestKey(request.requestId);
           vibrate([80, 80, 160]);
           showToast(data.message || 'Zahlung erfolgreich verbucht!', '✓', 3500);
           showPayModal.value = false;
@@ -1590,24 +1899,22 @@ createApp({
       if (!confirm(`Ehrengäste-Tisch ${tableOrders.value.table.tischname} wirklich mit 0,00 € abschließen?`)) return;
 
       isSubmitting.value = true;
+      const tn = tableOrders.value.table.tischnummer;
+      const request = paymentRequestKey('ehrengast', tn);
       try {
-        const res = await fetch('../api/v1/pay.php', {
+        const data = await pilotApi.request('../api/v1/pay.php', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken.value,
-          },
-          body: JSON.stringify({
-            tischnummer: tableOrders.value.table.tischnummer,
+          body: {
+            tischnummer: tn,
             action: 'ehrengast',
-          }),
+            idempotency_key: request.key,
+          },
         });
-
-        const data = await res.json();
         if (data.ok) {
+          clearPaymentRequestKey(request.requestId);
           vibrate([60, 100]);
           showToast('Ehrengäste-Tisch erfolgreich abgeschlossen', '✓', 3000);
-          await loadTableOrders(tableOrders.value.table.tischnummer);
+          await loadTableOrders(tn);
           loadTables();
         } else {
           showToast(data.message || 'Fehler beim Abschließen', '✕');
@@ -1662,7 +1969,7 @@ createApp({
       }
     };
 
-    const launchSumup = (amount) => {
+    const launchSumup = async (amount) => {
       const sumup = (tableOrders.value && tableOrders.value.sumup && tableOrders.value.sumup.enabled)
         ? tableOrders.value.sumup
         : sumupSettings.value;
@@ -1671,12 +1978,82 @@ createApp({
         showToast('SumUp ist nicht konfiguriert', '⚠');
         return;
       }
-      const amt = calcWish.value || Number(amount) || amountToPay.value || 0;
-      const amtStr = amt.toFixed(2);
-      const tableName = activePayTableName.value || 'Tisch';
-      const title = encodeURIComponent(`Tisch ${tableName}`);
-      const scheme = `sumupmerchant://pay/1.0?affiliate-key=${sumup.affiliate_key}&total=${amtStr}&currency=EUR&title=${title}`;
-      window.location.href = scheme;
+      if (!tableOrders.value || isSubmitting.value) return;
+      const rowids = payModeAll.value
+        ? tableOrders.value.grouped.flatMap(group => group.rowids)
+        : selectedPayRows.value;
+      if (!rowids.length) {
+        showToast('Keine Positionen für SumUp ausgewählt', '⚠');
+        return;
+      }
+      isSubmitting.value = true;
+      const request = paymentRequestKey('sumup_prepare', tableOrders.value.table.tischnummer, rowids);
+      try {
+        const prepared = await pilotApi.request('../api/v1/pay.php', {
+          method: 'POST',
+          body: { action: 'sumup_prepare', tischnummer: tableOrders.value.table.tischnummer, rowids, idempotency_key: request.key },
+        });
+        const intents = JSON.parse(localStorage.getItem('ff_sumup_intents') || '{}');
+        intents[prepared.intent_token] = { table: tableOrders.value.table.tischnummer, createdAt: Date.now() };
+        localStorage.setItem('ff_sumup_intents', JSON.stringify(intents));
+        clearPaymentRequestKey(request.requestId);
+        const amt = Number(prepared.amount) || calcWish.value || Number(amount) || amountToPay.value || 0;
+        const title = encodeURIComponent(`Tisch ${activePayTableName.value || 'Bestellung'}`);
+        const scheme = `sumupmerchant://pay/1.0?affiliate-key=${encodeURIComponent(sumup.affiliate_key)}&total=${amt.toFixed(2)}&currency=EUR&title=${title}&callbacksuccess=${encodeURIComponent(prepared.success_url)}&callbackfail=${encodeURIComponent(prepared.failure_url)}`;
+        window.location.href = scheme;
+      } catch (error) {
+        showToast(error.message || 'SumUp konnte nicht gestartet werden.', '✕', 4000);
+      } finally {
+        isSubmitting.value = false;
+      }
+    };
+
+    const confirmSumupReturn = async () => {
+      if (!sumupReturn.value || isSubmitting.value) return;
+      isSubmitting.value = true;
+      const request = paymentRequestKey('sumup_confirm', sumupReturn.value.table, [], sumupReturn.value.intent);
+      try {
+        const data = await pilotApi.request('../api/v1/pay.php', {
+          method: 'POST',
+          body: {
+            action: 'sumup_confirm',
+            tischnummer: sumupReturn.value.table,
+            intent_token: sumupReturn.value.intent,
+            idempotency_key: request.key,
+          },
+        });
+        const intents = JSON.parse(localStorage.getItem('ff_sumup_intents') || '{}');
+        delete intents[sumupReturn.value.intent];
+        localStorage.setItem('ff_sumup_intents', JSON.stringify(intents));
+        clearPaymentRequestKey(request.requestId);
+        showPayModal.value = false;
+        sumupReturn.value = null;
+        showToast(data.message || 'SumUp-Zahlung bestätigt.', '✓', 3500);
+        await loadTableOrders();
+        loadTables();
+        loadMyOrders();
+      } catch (error) {
+        showToast(error.message || 'SumUp-Zahlung konnte nicht bestätigt werden.', '✕', 4000);
+      } finally {
+        isSubmitting.value = false;
+      }
+    };
+
+    const promptPendingSumupReturn = () => {
+      if (sumupReturn.value) return;
+      let intents;
+      try {
+        intents = JSON.parse(localStorage.getItem('ff_sumup_intents') || '{}');
+      } catch (error) {
+        localStorage.removeItem('ff_sumup_intents');
+        return;
+      }
+      const pending = Object.entries(intents)
+        .filter(([, value]) => value && Number(value.table) > 0)
+        .sort(([, a], [, b]) => Number(b.createdAt || 0) - Number(a.createdAt || 0))[0];
+      if (pending) {
+        sumupReturn.value = { intent: pending[0], table: Number(pending[1].table) };
+      }
     };
 
     // -------------------------------------------------------------------------
@@ -1819,6 +2196,30 @@ createApp({
       vibrate(20);
     };
 
+    const openReceiptReprint = (round) => {
+      receiptRound.value = round;
+      receiptTarget.value = (tableHistory.value?.print_targets || [])[0]?.id || 0;
+      showReceiptModal.value = true;
+    };
+
+    const reprintReceipt = async () => {
+      if (!receiptRound.value || !selectedTable.value || !receiptTarget.value) return;
+      try {
+        const data = await pilotApi.request('../api/v1/order_receipt.php', {
+          method: 'POST',
+          body: {
+            tischnummer: selectedTable.value.tischnummer,
+            order_nr: receiptRound.value.order_nr,
+            print_target: receiptTarget.value,
+          },
+        });
+        showReceiptModal.value = false;
+        showToast(data.message || 'Bon-Nachdruck eingereiht.', '🖨');
+      } catch (error) {
+        showToast(error.message || 'Bon-Nachdruck fehlgeschlagen.', '✕');
+      }
+    };
+
     // -------------------------------------------------------------------------
     // Meine Bestellungen Klick
     // -------------------------------------------------------------------------
@@ -1865,28 +2266,30 @@ createApp({
         return;
       }
 
-      const queue = [...pendingOrders.value];
-      for (let i = 0; i < queue.length; i++) {
-        const order = queue[i];
-        try {
-          const res = await fetch('../api/v1/order.php', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrfToken.value,
-            },
-            body: JSON.stringify(order),
-          });
-          const data = await res.json();
-          if (data.ok) {
+      isSyncingPending.value = true;
+      try {
+        const queue = [...pendingOrders.value];
+        for (let i = 0; i < queue.length; i++) {
+          const order = queue[i];
+          try {
+            if (!order.idempotency_key) {
+              order.idempotency_key = newClientKey();
+              savePendingOrders();
+            }
+            const data = await pilotApi.request('../api/v1/order.php', {
+              method: 'POST',
+              body: order,
+            });
             pendingOrders.value.shift();
-            localStorage.setItem('ff_pending_orders', JSON.stringify(pendingOrders.value));
+            savePendingOrders();
             showToast(`Offline-Bestellung für ${order.tableName} erfolgreich übermittelt!`, '✓');
+          } catch (e) {
+            console.warn('Wartende Bestellung konnte noch nicht synchronisiert werden:', e);
+            break;
           }
-        } catch (e) {
-          console.warn('Wartende Bestellung konnte noch nicht synchronisiert werden:', e);
-          break;
         }
+      } finally {
+        isSyncingPending.value = false;
       }
     };
 
@@ -1907,12 +2310,36 @@ createApp({
         isOnline.value = false;
         showToast('Keine Verbindung (Offline-Modus)', '○');
       });
+      window.addEventListener('focus', () => {
+        window.setTimeout(promptPendingSumupReturn, 300);
+      });
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          window.setTimeout(promptPendingSumupReturn, 300);
+        }
+      });
+      window.addEventListener('beforeunload', (event) => {
+        if (!hasUnsentWork.value) return;
+        event.preventDefault();
+        event.returnValue = '';
+      });
 
-      if ('serviceWorker' in navigator) {
-        try { navigator.serviceWorker.register('sw.js'); } catch (e) {}
-      }
+      registerServiceWorker();
 
       await refreshData();
+      isWorkStateReady.value = true;
+      const params = new URLSearchParams(window.location.search);
+      const intent = params.get('sumup_intent');
+      const returned = params.get('sumup_return');
+      if (intent && returned) {
+        const intents = JSON.parse(localStorage.getItem('ff_sumup_intents') || '{}');
+        if (returned === 'success' && intents[intent]) {
+          sumupReturn.value = { intent, table: intents[intent].table };
+        } else if (returned !== 'success') {
+          showToast('SumUp-Zahlung wurde nicht bestätigt.', '⚠', 4000);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
 
       // Periodisches Polling für Status & Offline-Queue alle 15 Sekunden
       setInterval(() => {
@@ -1921,12 +2348,14 @@ createApp({
           loadMyOrders();
         }
       }, 15000);
+      window.setTimeout(promptPendingSumupReturn, 0);
     });
 
     return {
       isOnline,
       isLoading,
       isSubmitting,
+      isSyncingPending,
       toast,
       currentUser,
       activeFest,
@@ -1943,6 +2372,14 @@ createApp({
       bereiche,
       filteredTables,
       showTableModal,
+      showQrModal,
+      openQrScanner,
+      qrVideo,
+      qrImageInput,
+      qrScanMessage,
+      startQrCamera,
+      stopQrCamera,
+      onQrImageSelected,
       types,
       subcategories,
       items,
@@ -1952,6 +2389,9 @@ createApp({
       filteredItems,
       menuSections,
       showOptionsModal,
+      showLinkedArticlesModal,
+      linkedParentItem,
+      selectedLinkedArticleIds,
       activeOptionItem,
       optionQty,
       optionQtyInput,
@@ -1989,6 +2429,9 @@ createApp({
       showCartModal,
       showSubmitModal,
       pendingOrders,
+      hasUnsentWork,
+      syncStatus,
+      updateReady,
       cartItemCount,
       cartTotal,
       tableOrders,
@@ -2024,6 +2467,10 @@ createApp({
       moveTargetSearch,
       showBonModal,
       activeBonRound,
+      showReceiptModal,
+      receiptRound,
+      receiptTarget,
+      sumupReturn,
       myOrders,
       myOrdersReadyCount,
       showUserModal,
@@ -2034,9 +2481,13 @@ createApp({
       selectType,
       getItemCartQty,
       onItemClick,
+      toggleLinkedArticle,
+      cancelLinkedArticles,
+      confirmLinkedArticles,
       openItemOptions,
       openCartItemOptions,
       toggleBeilage,
+      toggleLinkedArticleForPortion,
       confirmAddItemWithOptions,
       decrementItem,
       incrementCartItem,
@@ -2062,16 +2513,20 @@ createApp({
       finishEhrengastTable,
       triggerNachtraeglicheRechnung,
       launchSumup,
+      confirmSumupReturn,
       cancelOrderRound,
       cancelSingleItem,
       openMoveDialog,
       filteredMoveTargetTables,
       executeMove,
       openBonPreview,
+      openReceiptReprint,
+      reprintReceipt,
       jumpToMyOrder,
       toggleTerminalMode,
       logout,
       refreshData,
+      handleStatusAction,
     };
   }
 }).mount('#app');

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="station.css?v=3">
+  <link rel="stylesheet" href="station.css?v=4">
   <script src="../assets/qrcode.min.js"></script>
 </head>
 <body>
@@ -48,6 +48,24 @@
       </div>
 
       <div class="header-right">
+        <div
+          class="live-status"
+          :class="'live-status-' + liveConnectionStatus"
+          :title="{
+            connected: 'Live-Verbindung aktiv',
+            reconnecting: 'Live-Verbindung wird aufgebaut',
+            polling: 'Polling-Fallback aktiv; Live-Verbindung wird erneut versucht',
+            offline: 'Keine Netzwerkverbindung'
+          }[liveConnectionStatus]">
+          <span class="live-status-dot" aria-hidden="true"></span>
+          <span>{{ {
+            connected: 'Live verbunden',
+            reconnecting: 'Live verbindet…',
+            polling: 'Polling-Fallback',
+            offline: 'Offline'
+          }[liveConnectionStatus] }}</span>
+        </div>
+
         <!-- Gesamt-Warte-Pill mit Farbstufe -->
         <div 
           class="load-indicator" 
@@ -1145,6 +1163,6 @@
   </div>
 
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="station.js?v=6"></script>
+  <script type="module" src="station.js?v=8"></script>
 </body>
 </html>

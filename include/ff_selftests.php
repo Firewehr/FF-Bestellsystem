@@ -14,6 +14,8 @@ require_once __DIR__ . '/ff_rezepturen_schema.php';
 require_once __DIR__ . '/ff_finance_bereich_helpers.php';
 require_once __DIR__ . '/ff_csrf.php';
 require_once __DIR__ . '/ff_rechnung_seq.php';
+require_once __DIR__ . '/ff_pilot_linked_articles.php';
+require_once __DIR__ . '/ff_pilot_orders.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -1464,8 +1466,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
           KEY `idx_position` (`position`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
+    ff_pilot_linked_articles_ensure_schema($conn);
 
-    $needed = ['bestellungen', 'positionen', 'bestandteile', 'position_rezepturen', 'beilagen'];
+    $needed = ['bestellungen', 'positionen', 'bestandteile', 'position_rezepturen', 'beilagen', 'pilot_position_links'];
     $hasMv = ff_position_mv_table_exists($conn);
     if ($hasMv) {
         $needed[] = 'mitarbeiter_verpflegung';
@@ -1582,6 +1585,16 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         return true;
     });
 
+    $gPilotRetries = 'Pilot Idempotenz';
+    $check($gPilotRetries, 'Client-Schlüssel akzeptieren nur sichere Retry-Formate', function () {
+        $valid = ff_pilot_valid_client_key('pilot-12345678-abcdef12');
+        $tooShort = ff_pilot_valid_client_key('pilot-short');
+        $unsafe = ff_pilot_valid_client_key('pilot-12345678-abc def');
+        return ($valid && !$tooShort && !$unsafe)
+            ? true
+            : 'Gültige oder ungültige Client-Schlüssel wurden falsch erkannt.';
+    });
+
     $gAuth = 'Authentifizierung & Session';
     $check($gAuth, 'Session auth_rev Fallback initialisiert fehlenden Wert', function () use ($conn) {
         require_once __DIR__ . '/ff_user_status.php';
@@ -1625,6 +1638,34 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
     mysqli_begin_transaction($conn);
     try {
+        $g = 'Pilot verknüpfte Artikel';
+
+        $check($g, 'Echte Artikelverknüpfung akzeptiert nur konfigurierte Kindpositionen', function (mysqli $c) {
+            $parent = ff_st_position($c, 8.00);
+            $child = ff_st_position($c, 3.50);
+            ff_st_exec(
+                $c,
+                'INSERT INTO pilot_position_links (parent_position_id, child_position_id, sort_order) VALUES (?, ?, 10)',
+                'ii',
+                [$parent, $child]
+            );
+            $festId = ff_pilot_linked_articles_active_fest_id($c);
+            $links = ff_pilot_linked_articles_for_parents($c, [$parent], $festId);
+            if (count($links) !== 1 || (int)$links[0]['child_position_id'] !== $child) {
+                return 'Gespeicherte Artikelverknüpfung wurde nicht korrekt geladen.';
+            }
+            $valid = ff_pilot_validate_linked_order_items($c, [
+                ['position_id' => $parent, 'quantity' => 1],
+                ['position_id' => $child, 'quantity' => 1, 'linked_parent_id' => $parent],
+            ], $festId);
+            $invalid = ff_pilot_validate_linked_order_items($c, [
+                ['position_id' => $parent, 'quantity' => 1],
+                ['position_id' => $parent, 'quantity' => 1, 'linked_parent_id' => $parent],
+            ], $festId);
+            return ff_st_expect_same(null, $valid, 'gültige Verknüpfung')
+                ?? ($invalid !== null ? true : 'Selbstverknüpfung wurde nicht abgelehnt.');
+        });
+
         $g = 'Preisberechnung';
 
         $check($g, 'Ohne Zusatzinfo = Katalogpreis', function (mysqli $c) {
@@ -1891,7 +1932,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Pilot-Bestellvorgang: Entwurf in Küche sichtbar und per FORCE freigebbar', function (mysqli $c) {
             require_once __DIR__ . '/ff_kueche_list_data.php';
             require_once __DIR__ . '/ff_kueche_station_view.php';
-            $t = 7120;
+            $t = random_int(800000000, 900000000);
             $p = ff_st_position($c, 8.50, -1);
 
             // 1. Entwurf über das Statement aus order_draft.php anlegen
@@ -1912,9 +1953,11 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $batches = ff_station_group_batches($lines, 'all');
             $foundBatch = null;
             foreach ($batches as $b) {
-                if ((int)($b['tischnummer'] ?? 0) === $t) {
-                    $foundBatch = $b;
-                    break;
+                foreach ((array)($b['lines'] ?? []) as $line) {
+                    if ((int)($line['rowid'] ?? 0) === $rowId) {
+                        $foundBatch = $b;
+                        break 2;
+                    }
                 }
             }
             if (!$foundBatch) {

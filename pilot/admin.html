@@ -27,12 +27,19 @@
 
         <!-- Haupt-Navigation Tabs -->
         <nav class="nav-tabs" aria-label="Hauptnavigation">
-          <button 
+          <button
             type="button"
             class="nav-tab-btn"
             :class="{ active: activeTab === 'uebersicht' }"
             @click="activeTab = 'uebersicht'">
             <span>📊 Übersicht</span>
+          </button>
+          <button
+            type="button"
+            class="nav-tab-btn"
+            :class="{ active: activeTab === 'betrieb' }"
+            @click="activeTab = 'betrieb'">
+            <span>🩺 Betrieb</span>
           </button>
           <button 
             type="button"
@@ -360,6 +367,88 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           TAB: BETRIEBSDIAGNOSE
+           =================================================================== -->
+      <section v-if="activeTab === 'betrieb'">
+        <div class="admin-card" style="margin-bottom: 20px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div>
+              <h3><span>🩺</span> Live-Betriebsdiagnose</h3>
+              <p style="margin: 4px 0 0; font-size: 0.84rem; color: var(--ff-text-muted);">Aktualisiert: {{ formatDateTime(operationsUpdatedAt) }}</p>
+            </div>
+            <button type="button" class="btn btn-outline btn-sm" @click="loadOperations" :disabled="operationsLoading">
+              {{ operationsLoading ? 'Aktualisiere…' : 'Jetzt aktualisieren' }}
+            </button>
+          </div>
+          <div class="card-body">
+            <div v-if="operationsError" class="alert alert-danger" style="margin-bottom: 16px;">
+              <strong>Live-Daten nicht erreichbar:</strong> {{ operationsError }}
+            </div>
+            <div v-if="!operations && operationsLoading" style="color: var(--ff-text-muted);">Betriebsdaten werden geladen…</div>
+
+            <div v-if="operations" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px;">
+              <div class="kpi-tile" style="padding: 16px;">
+                <span class="kpi-label">Druck-Clients</span>
+                <span class="kpi-value">{{ operations.printers.services.length }}</span>
+                <span class="badge" :class="operationsBadgeClass(operations.printers.state)">{{ operationsStateLabel(operations.printers.state) }}</span>
+              </div>
+              <div class="kpi-tile" style="padding: 16px;">
+                <span class="kpi-label">Druckwarteschlange</span>
+                <span class="kpi-value">{{ operations.queue.available ? operations.queue.pending : '–' }}</span>
+                <span class="kpi-sub">offen · {{ operations.queue.available ? operations.queue.reserved : '–' }} reserviert · {{ operations.queue.available ? operations.queue.failed : '–' }} fehlgeschlagen</span>
+              </div>
+              <div class="kpi-tile" style="padding: 16px;">
+                <span class="kpi-label">Stations-Realtime</span>
+                <span class="kpi-value">{{ operations.realtime.available ? operations.realtime.recent_count : '–' }}</span>
+                <span class="kpi-sub">Ereignisse in den letzten 5 Minuten</span>
+              </div>
+              <div class="kpi-tile" style="padding: 16px;">
+                <span class="kpi-label">Schema-Cache</span>
+                <span class="kpi-value">{{ operations.schema_cache.available ? formatAge(operations.schema_cache.age_sec) : '–' }}</span>
+                <span class="badge" :class="operationsBadgeClass(operations.schema_cache.state)">{{ operationsStateLabel(operations.schema_cache.state) }}</span>
+              </div>
+            </div>
+
+            <div v-if="operations" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px;">
+              <div>
+                <h4 style="margin: 0 0 8px; font-size: 0.95rem;">Druckdienste</h4>
+                <div v-if="operations.printers.services.length" class="table-responsive">
+                  <table class="data-table">
+                    <thead><tr><th>Druckziel</th><th>Status</th><th>Zuletzt gesehen</th></tr></thead>
+                    <tbody>
+                      <tr v-for="service in operations.printers.services" :key="service.label">
+                        <td><strong>{{ service.label }}</strong></td>
+                        <td><span class="badge" :class="operationsBadgeClass(service.state)">{{ operationsStateLabel(service.state) }}</span></td>
+                        <td>{{ service.last_seen || 'Noch kein Heartbeat' }}<span v-if="service.age_sec !== null"> (vor {{ formatAge(service.age_sec) }})</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else style="color: var(--ff-text-muted); margin: 0;">Keine aktiven Druckziele konfiguriert.</p>
+              </div>
+              <div>
+                <h4 style="margin: 0 0 8px; font-size: 0.95rem;">Echtzeit &amp; Warteschlange</h4>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                  <div>
+                    <span class="badge" :class="operationsBadgeClass(operations.queue.state)">{{ operationsStateLabel(operations.queue.state) }}</span>
+                    <span style="margin-left: 8px;">Druckwarteschlange</span>
+                    <div v-if="operations.queue.reason" style="font-size: 0.84rem; color: var(--ff-text-muted); margin-top: 4px;">{{ operations.queue.reason }}</div>
+                  </div>
+                  <div>
+                    <span class="badge" :class="operationsBadgeClass(operations.realtime.state)">{{ operationsStateLabel(operations.realtime.state) }}</span>
+                    <span style="margin-left: 8px;">Stationsereignisse</span>
+                    <div v-if="operations.realtime.last_event_age_sec !== null" style="font-size: 0.84rem; color: var(--ff-text-muted); margin-top: 4px;">Letztes Ereignis vor {{ formatAge(operations.realtime.last_event_age_sec) }}.</div>
+                    <div v-else-if="operations.realtime.reason" style="font-size: 0.84rem; color: var(--ff-text-muted); margin-top: 4px;">{{ operations.realtime.reason }}</div>
+                  </div>
+                  <div v-if="operations.schema_cache.reason" style="font-size: 0.84rem; color: var(--ff-text-muted);">{{ operations.schema_cache.reason }}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1190,6 +1279,7 @@
                     <th style="text-align: center;">Nur Kassa</th>
                     <th style="text-align: center;">Status</th>
                     <th style="text-align: center;">Zusatzinfos</th>
+                    <th style="text-align: center;">Verknüpfte Artikel</th>
                     <th style="text-align: center;">Rezeptur</th>
                     <th style="text-align: right; width: 140px;">Aktionen</th>
                   </tr>
@@ -1289,6 +1379,13 @@
                       </button>
                     </td>
 
+                    <!-- Verknüpfte echte Artikel -->
+                    <td style="text-align: center;">
+                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openLinkedArticles(p)">
+                        🔗 Artikel
+                      </button>
+                    </td>
+
                     <!-- Rezeptur Button -->
                     <td style="text-align: center;">
                       <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openRezeptur(p)">
@@ -1309,7 +1406,7 @@
                   </tr>
 
                   <tr v-if="filteredMenuPositions.length === 0">
-                    <td colspan="11" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
+                    <td colspan="12" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
                       Keine Positionen für die aktuelle Filterung gefunden.
                     </td>
                   </tr>
@@ -2760,6 +2857,51 @@
     </div>
 
     <!-- Modal: Position anlegen / bearbeiten -->
+    <div v-if="linkedArticlesModal.open" class="modal-overlay" @click.self="linkedArticlesModal.open = false">
+      <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+          <div>
+            <h4>Verknüpfte Artikel</h4>
+            <div style="font-size:0.85rem; color:var(--ff-text-muted);">für {{ linkedArticlesModal.position?.Positionsname }}</div>
+          </div>
+          <button type="button" class="btn-close" @click="linkedArticlesModal.open = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info" style="font-size:0.85rem;">
+            Diese Auswahl nutzt echte Positionen, keine Zusatzinfos: Preis, Druckziel, Station, Statistik und Rezeptur jeder ausgewählten Position bleiben erhalten.
+          </div>
+          <div style="display:flex; gap:8px; align-items:end; margin:16px 0;">
+            <div class="form-group" style="margin:0; flex:1;">
+              <label>Artikel hinzufügen</label>
+              <select v-model.number="linkedArticlesModal.childPositionId" class="form-select" :disabled="linkedArticlesModal.loading || linkedArticlesModal.saving">
+                <option :value="0">Position wählen …</option>
+                <option v-for="candidate in linkedArticleCandidates" :key="candidate.rowid" :value="candidate.rowid">
+                  {{ candidate.Positionsname }} · {{ formatEur(candidate.Betrag) }}
+                </option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-primary" @click="addLinkedArticle" :disabled="linkedArticlesModal.loading || linkedArticlesModal.saving || !linkedArticlesModal.childPositionId">Hinzufügen</button>
+          </div>
+          <div v-if="linkedArticlesModal.loading" style="padding:20px; text-align:center; color:var(--ff-text-muted);">Lade Verknüpfungen …</div>
+          <div v-else-if="linkedArticlesModal.links.length === 0" style="padding:16px 0; color:var(--ff-text-muted);">Noch keine Artikel verknüpft.</div>
+          <div v-else class="table-responsive">
+            <table class="data-table">
+              <thead><tr><th>Artikel</th><th style="width:110px;">Preis</th><th style="width:80px;"></th></tr></thead>
+              <tbody>
+                <tr v-for="link in linkedArticlesModal.links" :key="link.id">
+                  <td>{{ link.name }}</td>
+                  <td>{{ formatEur(link.price) }}</td>
+                  <td style="text-align:right;"><button type="button" class="btn-icon btn-icon-danger" title="Entfernen" :disabled="linkedArticlesModal.saving" @click="deleteLinkedArticle(link)">🗑️</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline" @click="linkedArticlesModal.open = false">Schließen</button></div>
+      </div>
+    </div>
+
+    <!-- Modal: Position anlegen / bearbeiten -->
     <div v-if="posModal.open" class="modal-overlay">
       <div class="modal-content" style="max-width: 600px;">
         <div class="modal-header">
@@ -3008,8 +3150,11 @@
               <thead>
                 <tr>
                   <th>Bestandteil / Zutat</th>
-                  <th style="width: 120px;">Menge</th>
+                  <th style="width: 105px;">Menge</th>
+                  <th style="width: 82px;">Optional</th>
+                  <th style="width: 90px;">Standard</th>
                   <th style="width: 140px;">Gruppe</th>
+                  <th style="width: 72px;">Sort.</th>
                   <th style="text-align: right; width: 60px;"></th>
                 </tr>
               </thead>
@@ -3023,17 +3168,26 @@
                     </select>
                   </td>
                   <td>
-                    <input type="number" step="0.01" v-model.number="row.menge" class="form-control" style="width: 100%;">
+                    <input type="number" min="0.001" step="0.001" v-model.number="row.menge" class="form-control" style="width: 100%;">
+                  </td>
+                  <td style="text-align: center;">
+                    <input type="checkbox" v-model="row.optional_enabled" title="Bestandteil kann beim Bestellen abgewählt oder gewählt werden">
+                  </td>
+                  <td style="text-align: center;">
+                    <input type="checkbox" v-model="row.default_selected" title="Beim optionalen Bestandteil standardmäßig auswählen">
                   </td>
                   <td>
-                    <input type="text" v-model="row.option_group" placeholder="Standard" class="form-control" style="width: 100%;">
+                    <input type="text" maxlength="64" v-model="row.option_group" placeholder="z. B. brotwahl" class="form-control" style="width: 100%;">
+                  </td>
+                  <td>
+                    <input type="number" step="1" v-model.number="row.reihenfolge" class="form-control" style="width: 100%;">
                   </td>
                   <td style="text-align: right;">
                     <button type="button" class="btn-icon btn-icon-danger" @click="removeRezepturRow(idx)">✕</button>
                   </td>
                 </tr>
                 <tr v-if="rezepturModal.rows.length === 0">
-                  <td colspan="4" style="text-align: center; padding: 30px; color: var(--ff-text-muted);">
+                  <td colspan="7" style="text-align: center; padding: 30px; color: var(--ff-text-muted);">
                     Noch keine Rezeptur hinterlegt.
                   </td>
                 </tr>
@@ -3058,20 +3212,24 @@
         <div class="modal-body">
           <div class="form-group">
             <label>Name des Bestandteils / Rohstoffs *</label>
-            <input type="text" v-model="bestandteilModal.form.name" class="form-control" placeholder="z. B. Grillhuhn roh, Semmel, Pommes">
+            <input type="text" maxlength="255" v-model="bestandteilModal.form.name" class="form-control" placeholder="z. B. Grillhuhn roh, Semmel, Pommes">
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
             <div class="form-group">
               <label>Einheit *</label>
-              <input type="text" v-model="bestandteilModal.form.einheit" class="form-control" list="einheitenList" placeholder="z. B. Stk, Liter, kg">
+              <input type="text" maxlength="30" v-model="bestandteilModal.form.einheit" class="form-control" list="einheitenList" placeholder="z. B. Stk, Liter, kg">
               <datalist id="einheitenList">
                 <option value="Stk"></option>
+                <option value="l"></option>
                 <option value="Liter"></option>
                 <option value="kg"></option>
                 <option value="g"></option>
                 <option value="cl"></option>
+                <option value="dl"></option>
+                <option value="ml"></option>
                 <option value="Portion"></option>
+                <option v-for="bestandteil in menuBestandteile" :key="'einheit-' + bestandteil.id" :value="bestandteil.einheit"></option>
               </datalist>
             </div>
             <div class="form-group">
@@ -3179,6 +3337,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261028_5"></script>
+  <script type="module" src="admin.js?v=20261101_3"></script>
 </body>
 </html>

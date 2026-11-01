@@ -16,6 +16,8 @@ require_once dirname(__DIR__, 2) . '/include/ff_event_notifications.php';
 require_once dirname(__DIR__, 2) . '/include/beilage_helpers.php';
 require_once dirname(__DIR__, 2) . '/include/menu_lock_helpers.php';
 require_once dirname(__DIR__, 2) . '/include/ff_order_recipe_components.php';
+require_once dirname(__DIR__, 2) . '/include/ff_pilot_orders.php';
+require_once dirname(__DIR__, 2) . '/include/ff_pilot_linked_articles.php';
 
 $user = api_require_auth();
 $data = api_get_request_data();
@@ -30,6 +32,15 @@ $rawItems = $data['items'] ?? [];
 if (!is_array($rawItems) || count($rawItems) === 0) {
     api_error('Der Warenkorb ist leer. Bitte mindestens eine Position auswählen.', 'empty_cart', 400);
 }
+$idempotencyKey = trim((string)($data['idempotency_key'] ?? ''));
+if (!ff_pilot_valid_client_key($idempotencyKey)) {
+    // Bereits installierte Pilot-Versionen senden den Schlüssel noch nicht.
+    // Sie bleiben funktionsfähig; nur eine Wiederholung derselben alten Anfrage
+    // kann naturgemäß nicht dedupliziert werden.
+    $idempotencyKey = 'legacy-' . bin2hex(random_bytes(24));
+}
+ff_pilot_orders_ensure_schema($conn);
+ff_pilot_linked_articles_ensure_schema($conn);
 
 // 1. Tisch prüfen & Flags holen
 $tStmt = mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer = ? LIMIT 1');
@@ -58,17 +69,14 @@ if ($fRes && ($fRow = mysqli_fetch_assoc($fRes))) {
     $paymentMode = (string)($fRow['payment_mode'] ?? 'after');
 }
 
-$paymentType = (string)($data['payment_type'] ?? 'later'); // 'later' oder 'instant' (Bar)
-
-// 3. Atomare Bestellnummer reservieren
-mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
-$orderNr = (int)mysqli_insert_id($conn);
-if ($orderNr <= 0) {
-    setting_set($conn, 'order_nr_seq', '1');
-    $orderNr = 1;
+$linkValidationError = ff_pilot_validate_linked_order_items($conn, $rawItems, $activeFestId);
+if ($linkValidationError !== null) {
+    api_error($linkValidationError, 'invalid_linked_article', 400);
 }
 
-// 4. Positionen validieren und aufbereiten
+$paymentType = (string)($data['payment_type'] ?? 'later'); // 'later' oder 'instant' (Bar)
+
+// 3. Positionen validieren und aufbereiten
 $lineItemsToInsert = [];
 $stationTargets = [];
 $totalOrderAmount = 0.0;
@@ -161,13 +169,54 @@ if ($lineItemsToInsert === []) {
     api_error('Keine gültigen Positionen zum Abschicken gefunden.', 'no_valid_items', 400);
 }
 
-// 5. In Transaktion speichern
+// 4. In Transaktion speichern
 if (!mysqli_begin_transaction($conn)) {
     api_error('Konnte Datenbanktransaktion nicht starten.', 'db_error', 500);
 }
 
 try {
     $username = (string)$user['username'];
+    $requestInsert = mysqli_prepare(
+        $conn,
+        'INSERT IGNORE INTO pilot_order_requests (client_key, username, tischnummer) VALUES (?, ?, ?)'
+    );
+    if (!$requestInsert) {
+        throw new RuntimeException('Idempotenzspeicher konnte nicht vorbereitet werden.');
+    }
+    mysqli_stmt_bind_param($requestInsert, 'ssi', $idempotencyKey, $username, $tischnummer);
+    if (!mysqli_stmt_execute($requestInsert)) {
+        mysqli_stmt_close($requestInsert);
+        throw new RuntimeException('Idempotenzspeicher konnte nicht angelegt werden.');
+    }
+    $newRequest = mysqli_stmt_affected_rows($requestInsert) === 1;
+    mysqli_stmt_close($requestInsert);
+    if (!$newRequest) {
+        $requestStmt = mysqli_prepare(
+            $conn,
+            'SELECT response_json FROM pilot_order_requests WHERE client_key = ? FOR UPDATE'
+        );
+        if (!$requestStmt) {
+            throw new RuntimeException('Idempotenzprüfung konnte nicht vorbereitet werden.');
+        }
+        mysqli_stmt_bind_param($requestStmt, 's', $idempotencyKey);
+        mysqli_stmt_execute($requestStmt);
+        $requestRes = mysqli_stmt_get_result($requestStmt);
+        $requestRow = $requestRes ? mysqli_fetch_assoc($requestRes) : null;
+        mysqli_stmt_close($requestStmt);
+        $previous = $requestRow ? json_decode((string)$requestRow['response_json'], true) : null;
+        if (!is_array($previous)) {
+            throw new RuntimeException('Bestellung wird noch verarbeitet. Bitte erneut versuchen.');
+        }
+        mysqli_commit($conn);
+        $previous['idempotent_replay'] = true;
+        api_response($previous);
+    }
+
+    mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
+    $orderNr = (int)mysqli_insert_id($conn);
+    if ($orderNr <= 0) {
+        throw new RuntimeException('Bestellnummer konnte nicht reserviert werden.');
+    }
     $isGratis = $isEhren ? 1 : 0;
     $isInstantPaid = ($paymentType === 'instant' && !$isEhren && !$isSammel);
     $festVal = $activeFestId > 0 ? $activeFestId : null;
@@ -301,6 +350,30 @@ try {
         mysqli_stmt_close($insStmt);
     }
 
+    $responsePayload = [
+        'ok' => true,
+        'order_nr' => $orderNr,
+        'tischnummer' => $tischnummer,
+        'item_count' => $totalItemsCount,
+        'total_amount' => round($totalOrderAmount, 2),
+        'is_sammelrechnung' => $isSammel,
+        'is_ehrengast' => $isEhren,
+        'payment_mode' => $isInstantPaid ? 'instant' : 'later',
+    ];
+    $responseJson = json_encode($responsePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $completeStmt = mysqli_prepare(
+        $conn,
+        'UPDATE pilot_order_requests SET order_nr = ?, response_json = ?, completed_at = NOW() WHERE client_key = ?'
+    );
+    if (!$completeStmt || $responseJson === false) {
+        throw new RuntimeException('Bestellantwort konnte nicht gesichert werden.');
+    }
+    mysqli_stmt_bind_param($completeStmt, 'iss', $orderNr, $responseJson, $idempotencyKey);
+    if (!mysqli_stmt_execute($completeStmt)) {
+        mysqli_stmt_close($completeStmt);
+        throw new RuntimeException('Bestellantwort konnte nicht gesichert werden.');
+    }
+    mysqli_stmt_close($completeStmt);
     mysqli_commit($conn);
 } catch (Throwable $e) {
     mysqli_rollback($conn);
@@ -323,13 +396,4 @@ if ($activeFestId > 0) {
     }
 }
 
-api_response([
-    'ok' => true,
-    'order_nr' => $orderNr,
-    'tischnummer' => $tischnummer,
-    'item_count' => $totalItemsCount,
-    'total_amount' => round($totalOrderAmount, 2),
-    'is_sammelrechnung' => $isSammel,
-    'is_ehrengast' => $isEhren,
-    'payment_mode' => $isInstantPaid ? 'instant' : 'later',
-]);
+api_response($responsePayload);

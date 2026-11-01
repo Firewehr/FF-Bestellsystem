@@ -177,6 +177,15 @@ foreach ($groupOrder as $bk) {
     ];
 }
 
+$printTargets = [];
+$printRes = mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+if ($printRes) {
+    while ($printRow = mysqli_fetch_assoc($printRes)) {
+        $printTargets[] = ['id' => (int)$printRow['print_target'], 'name' => (string)$printRow['name']];
+    }
+    mysqli_free_result($printRes);
+}
+
 api_response([
     'ok' => true,
     'table' => [
@@ -188,4 +197,5 @@ api_response([
     'is_admin' => $isAdmin,
     'rounds_count' => count($rounds),
     'rounds' => $rounds,
+    'print_targets' => $printTargets,
 ]);

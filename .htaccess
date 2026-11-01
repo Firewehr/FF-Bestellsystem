@@ -6,23 +6,25 @@
 # Keine automatischen Ordnerliste (Index)
 Options -Indexes
 
-# Datenbank-Dumps/-Skripte, Backups nie per HTTP ausliefern
+# Datenbank-Dumps/-Skripte und Backup-Archive nie per HTTP ausliefern
 <IfModule mod_authz_core.c>
-  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3)$">
+  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3|tar|tgz|gz|zip)$">
     Require all denied
   </FilesMatch>
 </IfModule>
 <IfModule !mod_authz_core.c>
-  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3)$">
+  <FilesMatch "(?i)\.(sql|bak|dump|sqlite|sqlite3|tar|tgz|gz|zip)$">
     Order deny,allow
     Deny from all
   </FilesMatch>
 </IfModule>
 
-# Repo-Konfig versehentlich hochgeladen → nicht auslesbar
+# Interne Verzeichnisse und Konfigurationen nie per HTTP ausliefern
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteRule ^\.git/ - [F,L]
+  RewriteRule ^(?:\.agents|backups|include|documentation|Client-Print-Skripte)(?:/|$) - [F,L,NC]
+  RewriteRule ^(?:deploy\.config\.json|\.deploy_secrets\.json|\.ff-debug)$ - [F,L,NC]
   # Authorization-Header an PHP durchreichen (CGI/FastCGI, z. B. für mcp.php)
   RewriteCond %{HTTP:Authorization} .
   RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

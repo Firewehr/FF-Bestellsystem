@@ -206,6 +206,59 @@ html, body {
   gap: 8px;
 }
 
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 1px solid var(--ff-border);
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface-2);
+  color: var(--ff-text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.live-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ff-text-muted);
+}
+
+.live-status-connected {
+  color: var(--ff-success-dark);
+  background: var(--ff-success-light);
+  border-color: #86efac;
+}
+.live-status-connected .live-status-dot { background: var(--ff-success); }
+
+.live-status-reconnecting {
+  color: var(--ff-warning-dark);
+  background: var(--ff-warning-light);
+  border-color: #fde68a;
+}
+.live-status-reconnecting .live-status-dot {
+  background: var(--ff-warning);
+  animation: pulseBadge 1.2s infinite;
+}
+
+.live-status-polling {
+  color: var(--ff-info);
+  background: var(--ff-info-light);
+  border-color: #7dd3fc;
+}
+.live-status-polling .live-status-dot { background: var(--ff-info); }
+
+.live-status-offline {
+  color: var(--ff-danger-dark);
+  background: var(--ff-danger-light);
+  border-color: #fca5a5;
+}
+.live-status-offline .live-status-dot { background: var(--ff-danger); }
+
 /* Load Pill */
 .load-indicator {
   display: flex;

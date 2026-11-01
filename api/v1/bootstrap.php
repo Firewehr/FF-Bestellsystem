@@ -12,6 +12,30 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 
+function api_request_id(): string
+{
+    static $requestId = null;
+    if ($requestId !== null) {
+        return $requestId;
+    }
+
+    $incoming = (string)($_SERVER['HTTP_X_REQUEST_ID'] ?? '');
+    if (preg_match('/^[A-Za-z0-9._:-]{8,128}$/', $incoming) === 1) {
+        $requestId = $incoming;
+    } else {
+        try {
+            $requestId = bin2hex(random_bytes(16));
+        } catch (Throwable $e) {
+            $requestId = uniqid('api-', true);
+        }
+    }
+
+    header('X-Request-ID: ' . $requestId);
+    return $requestId;
+}
+
+api_request_id();
+
 require_once dirname(__DIR__, 2) . '/include/runtime_bootstrap.php';
 require_once dirname(__DIR__, 2) . '/include/ff_session_bootstrap.php';
 
@@ -28,6 +52,9 @@ require_once dirname(__DIR__, 2) . '/include/ff_csrf.php';
 function api_response(array $payload, int $status = 200): void
 {
     http_response_code($status);
+    if (!isset($payload['request_id'])) {
+        $payload['request_id'] = api_request_id();
+    }
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }

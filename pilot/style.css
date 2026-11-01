@@ -207,9 +207,14 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 4px;
+  border: 0;
+  white-space: nowrap;
 }
 .status-pill.online { background: var(--ff-success-light); color: var(--ff-success-dark); }
 .status-pill.offline { background: var(--ff-danger-light); color: var(--ff-primary-dark); }
+.status-pill.syncing { background: #dbeafe; color: #1d4ed8; }
+.status-pill.pending { background: var(--ff-warning-light); color: var(--ff-warning-dark); }
+.status-pill.update-ready { background: #ede9fe; color: #6d28d9; }
 
 /* Offline Banner */
 .offline-banner {

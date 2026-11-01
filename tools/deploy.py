@@ -399,12 +399,19 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Vorschau ohne Dateien hochzuladen")
     parser.add_argument("--skip-backup", action="store_true", help="Remote-Backup vor Upload überspringen")
     parser.add_argument("--skip-tests", action="store_true", help="Selbsttests überspringen")
+    parser.add_argument("--selftests", action="store_true", help="Nur lokale Selbsttests ausführen")
     parser.add_argument("--backup-only", help="Nur Backup von Zielserver erstellen")
     parser.add_argument("--test-conn", help="Nur Verbindung testen")
     parser.add_argument("--git-push", action="store_true", help="Änderungen zu GitHub pushen")
     parser.add_argument("-m", "--message", help="Commit-Nachricht für GitHub Push")
 
     args = parser.parse_args()
+
+    if args.selftests:
+        if not run_selftests():
+            sys.exit(1)
+        return
+
     config = load_config()
 
     if args.git_push and not args.target:
