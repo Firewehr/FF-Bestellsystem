@@ -30,6 +30,7 @@ require_once dirname(__DIR__, 2) . '/include/ff_bestellung_storno.php';
 require_once dirname(__DIR__, 2) . '/include/ff_webauthn.php';
 require_once dirname(__DIR__, 2) . '/include/admin_statistik_body.php';
 require_once dirname(__DIR__, 2) . '/include/ff_printer_devices.php';
+require_once dirname(__DIR__, 2) . '/include/ff_printer_jobs.php';
 require_once dirname(__DIR__, 2) . '/include/ff_fest_scope.php';
 
 // Authentifizierung & Admin-Prüfung
@@ -536,6 +537,39 @@ if ($action === 'print_target_delete') {
 // -----------------------------------------------------------------------------
 // AKTION: DRUCK-CLIENTS (Geräte-Freischaltung)
 // -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// DRUCKWARTESCHLANGE: Problem-Jobs (fehlgeschlagen/hängend), erneut drucken, verwerfen
+// -----------------------------------------------------------------------------
+if ($action === 'print_jobs_problems') {
+    // Hängende Jobs vorher einordnen (neu einreihen bzw. als fehlgeschlagen markieren),
+    // damit die Liste den tatsächlichen Stand zeigt.
+    $recovered = ff_printer_jobs_recover_stuck($conn, null);
+    api_response([
+        'ok' => true,
+        'jobs' => ff_printer_jobs_problems($conn, 100),
+        'recovered' => $recovered,
+    ]);
+}
+
+if ($action === 'print_job_retry' || $action === 'print_job_discard') {
+    $ids = array_values(array_filter(array_map('intval', (array)($data['ids'] ?? [$data['id'] ?? 0])), static fn (int $id): bool => $id > 0));
+    if ($ids === []) {
+        api_error('Kein Druckauftrag angegeben.');
+    }
+    $done = 0;
+    foreach (array_slice($ids, 0, 200) as $id) {
+        $ok = $action === 'print_job_retry' ? ff_printer_job_retry($conn, $id) : ff_printer_job_discard($conn, $id);
+        if ($ok) {
+            $done++;
+        }
+    }
+    if ($done === 0) {
+        api_error('Druckauftrag nicht gefunden oder bereits erledigt.', 'not_found', 404);
+    }
+    $verb = $action === 'print_job_retry' ? 'erneut in die Warteschlange gestellt' : 'verworfen';
+    api_response(['ok' => true, 'count' => $done, 'message' => $done . ' Druckauftrag' . ($done === 1 ? '' : 'e') . ' ' . $verb . '.']);
+}
+
 if ($action === 'printer_devices_list') {
     api_response([
         'ok' => true,

@@ -89,7 +89,7 @@ Coding-Agenten müssen den bestehenden Funktionsumfang kennen, um redundante Imp
    * **Modus 4:** Ehrengast (Freiverzehr, `EhrengastAbschliessen.php`). Sammelrechnung und Ehrengast schließen sich pro Tisch gegenseitig aus.
    * SumUp-Integration für Kartenzahlung (`customer_order_submit_sumup.php`, `sumup_payment_return.php`).
    * QR-Code-Selbstbestellung für Gäste am Tisch (`customer_order_submit.php`).
-   * Rechnungs-Assistent (`rechnung_wizard.php`), PDF-Rechnungsgenerator (A4 mit Firmenanschrift/UID/Logo) und Thermo-Rechnungsbelege.
+   * Rechnungserstellung (`bezahlung_mit_rechnung.php`, `rechnung_anforderung.php`, `api/v1/pay.php`) mit zentralem Nummernkreis (`include/ff_rechnung_seq.php`), PDF-Rechnungsgenerator (A4 mit Firmenanschrift/UID/Logo) und Thermo-Rechnungsbelege.
    * Vollständiger Storno-Workflow (Pre-Payment Storno und Post-Payment Rechnungs-Storno mit Audit-Log).
 7. **Finanzen, Kassenführung & Festabschluss:**
    * Kellner-Abrechnung (Bargeld-Soll/Ist-Vergleich, Differenzen, Abrechnungsbeleg).
@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 97) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 100) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -276,7 +276,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 97 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 100 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Anpassung oder Erweiterung von Geschäftslogik (z. B. Storno, Rechnungsbeträge, Kapazitäten, Zahlungsmodi) sind entsprechende Testfälle in `include/ff_selftests.php` zu ergänzen.
 
 Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter https://pos.ballner.ipv64.de erreichbar. Login via username: ki passwort: ki12345

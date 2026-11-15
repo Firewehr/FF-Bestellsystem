@@ -1701,3 +1701,77 @@ body.theme-dark .form-control:focus, body.theme-dark .form-select:focus {
   /* Zweispaltige Formulare am Handy untereinander */
   .u-grid-2 { grid-template-columns: 1fr !important; }
 }
+
+/* Betrieb: Druckprobleme (fehlgeschlagene/hängende Aufträge) */
+.print-problems {
+  border: 1px solid var(--ff-warning, #f59e0b);
+  border-left-width: 4px;
+  border-radius: var(--ff-radius);
+  background: var(--ff-surface);
+  padding: 14px 16px;
+}
+
+.print-problems-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.print-problems-title {
+  margin: 0 0 2px;
+  font-size: 1rem;
+}
+
+.print-problems-head .u-hint {
+  margin: 0;
+}
+
+.print-problems-date {
+  white-space: nowrap;
+}
+
+.print-problems-error {
+  font-size: 0.85rem;
+  min-width: 220px;
+}
+
+.print-problems-actions {
+  white-space: nowrap;
+}
+
+.print-problems-actions .btn + .btn {
+  margin-left: 6px;
+}
+
+@media (max-width: 760px) {
+  /* Druckprobleme am Handy als Karten: Art | Druckziel · Zeit | Grund | Aktionen */
+  .print-problems { padding: 12px; }
+  .print-problems-table,
+  .print-problems-table tbody { display: block; }
+  .print-problems-table thead { display: none; }
+  .print-problems-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "art    id"
+      "target date"
+      "error  error"
+      "actions actions";
+    gap: 4px 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ff-border-light);
+  }
+  .print-problems-table td { display: block; padding: 0; border: 0; min-width: 0; }
+  .print-problems-table .pp-id      { grid-area: id; color: var(--ff-text-muted); font-size: 0.8rem; }
+  .print-problems-table .pp-id::before { content: '#'; }
+  .print-problems-table .pp-art     { grid-area: art; }
+  .print-problems-table .pp-target  { grid-area: target; font-size: 0.85rem; }
+  .print-problems-table .pp-date    { grid-area: date; font-size: 0.85rem; color: var(--ff-text-muted); }
+  .print-problems-table .pp-error   { grid-area: error; min-width: 0; }
+  .print-problems-table .pp-actions { grid-area: actions; text-align: left !important; display: flex; gap: 6px; margin-top: 4px; }
+  .print-problems-table .pp-actions .btn { flex: 1; justify-content: center; }
+  .print-problems-actions .btn + .btn { margin-left: 0; }
+}

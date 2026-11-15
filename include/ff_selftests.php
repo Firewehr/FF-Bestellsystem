@@ -18,6 +18,7 @@ require_once __DIR__ . '/ff_pilot_linked_articles.php';
 require_once __DIR__ . '/ff_pilot_orders.php';
 require_once __DIR__ . '/ff_printer_devices.php';
 require_once __DIR__ . '/ff_position_delete.php';
+require_once __DIR__ . '/ff_printer_jobs.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -2760,6 +2761,53 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Unbekannte Position liefert 404 statt stillem Erfolg', function (mysqli $c) {
             $res = ff_position_delete_guarded($c, 999999999);
             return ff_st_expect_same('not_found', $res['code'], 'Fehlercode');
+        });
+
+        $g = 'Druckwarteschlange';
+
+        $stJob = static function (mysqli $c, string $status, int $reservedMinAgo, int $createdMinAgo, int $attempts = 0): int {
+            return ff_st_exec(
+                $c,
+                "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at)
+                 VALUES ('target_77', 'kellner_bon', '{}', '{}', ?, ?, DATE_SUB(NOW(), INTERVAL ? MINUTE), 'selftest', DATE_SUB(NOW(), INTERVAL ? MINUTE))",
+                'siii',
+                [$status, $attempts, $reservedMinAgo, $createdMinAgo]
+            );
+        };
+        $stJobStatus = static function (mysqli $c, int $id): string {
+            $r = ff_st_fetch_one($c, 'SELECT status FROM printer_jobs WHERE id = ?', 'i', [$id]);
+            return $r === null ? 'gelöscht' : (string)$r['status'];
+        };
+
+        $check($g, 'Hängender, junger Job wird neu eingereiht; frisch reservierter bleibt unberührt', function (mysqli $c) use ($stJob, $stJobStatus) {
+            $stuck = $stJob($c, 'reserved', 30, 35);
+            $fresh = $stJob($c, 'reserved', 1, 2);
+            ff_printer_jobs_recover_stuck($c, 'target_77');
+            return ff_st_expect_same('pending', $stJobStatus($c, $stuck), 'hängender Job')
+                ?? ff_st_expect_same('reserved', $stJobStatus($c, $fresh), 'gerade reservierter Job');
+        });
+
+        $check($g, 'Alter oder zu oft versuchter hängender Job wird NICHT automatisch nachgedruckt', function (mysqli $c) use ($stJob, $stJobStatus) {
+            $old = $stJob($c, 'reserved', 60 * 24, 60 * 24 * 3);
+            $tooOften = $stJob($c, 'reserved', 30, 35, 99);
+            ff_printer_jobs_recover_stuck($c, 'target_77');
+            return ff_st_expect_same('error', $stJobStatus($c, $old), 'alter Job')
+                ?? ff_st_expect_same('error', $stJobStatus($c, $tooOften), 'zu oft versuchter Job');
+        });
+
+        $check($g, 'Erneut drucken und Verwerfen wirken nur auf fehlgeschlagene/hängende Jobs', function (mysqli $c) use ($stJob, $stJobStatus) {
+            $failed = $stJob($c, 'error', 30, 35);
+            $failed2 = $stJob($c, 'error', 30, 35);
+            $done = $stJob($c, 'done', 30, 35);
+            $retry = ff_printer_job_retry($c, $failed);
+            $discard = ff_printer_job_discard($c, $failed2);
+            $discardDone = ff_printer_job_discard($c, $done);
+            return ff_st_expect_same(true, $retry, 'retry')
+                ?? ff_st_expect_same('pending', $stJobStatus($c, $failed), 'Status nach retry')
+                ?? ff_st_expect_same(true, $discard, 'discard')
+                ?? ff_st_expect_same('gelöscht', $stJobStatus($c, $failed2), 'Status nach discard')
+                ?? ff_st_expect_same(false, $discardDone, 'erledigter Job darf nicht verworfen werden')
+                ?? ff_st_expect_same('done', $stJobStatus($c, $done), 'erledigter Job');
         });
 
         $g = 'Pre-Flight';

@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="admin.css?v=20261115_14">
+  <link rel="stylesheet" href="admin.css?v=20261115_16">
 </head>
 <body>
   <div id="app" v-cloak>
@@ -428,6 +428,41 @@
                 <span class="kpi-label">Schema-Cache</span>
                 <span class="kpi-value">{{ operations.schema_cache.available ? formatAge(operations.schema_cache.age_sec) : '–' }}</span>
                 <span class="badge" :class="operationsBadgeClass(operations.schema_cache.state)">{{ operationsStateLabel(operations.schema_cache.state) }}</span>
+              </div>
+            </div>
+
+            <!-- Druckprobleme: fehlgeschlagene oder hängende Aufträge -->
+            <div v-if="printJobProblems.length" class="print-problems u-mb-24">
+              <div class="print-problems-head">
+                <div>
+                  <h4 class="print-problems-title">⚠️ {{ printJobProblems.length }} Druckauftr{{ printJobProblems.length === 1 ? 'ag' : 'äge' }} nicht gedruckt</h4>
+                  <p class="u-hint">Hängende Aufträge werden bis 2 Stunden nach dem Anlegen automatisch neu eingereiht. Ältere druckt das System nicht von selbst nach – hier entscheiden.</p>
+                </div>
+                <div class="u-row-wrap" v-if="printJobProblems.length > 1">
+                  <button type="button" class="btn btn-outline btn-sm" :disabled="printJobBusy" @click="printJobAction('print_job_retry', printJobProblems)">Alle erneut drucken</button>
+                  <button type="button" class="btn btn-outline btn-sm u-text-danger" :disabled="printJobBusy" @click="printJobAction('print_job_discard', printJobProblems)">Alle verwerfen</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table print-problems-table">
+                  <thead><tr><th>#</th><th>Art</th><th>Druckziel</th><th>Angelegt</th><th>Grund</th><th class="u-text-right">Aktion</th></tr></thead>
+                  <tbody>
+                    <tr v-for="job in printJobProblems" :key="job.id">
+                      <td class="pp-id">{{ job.id }}</td>
+                      <td class="pp-art"><strong>{{ job.type_label }}</strong><div v-if="job.ref" class="u-hint">{{ job.ref }}</div></td>
+                      <td class="pp-target">{{ job.target_name || job.printer }}</td>
+                      <td class="print-problems-date pp-date">{{ formatDateTime(job.created_at) }}</td>
+                      <td class="print-problems-error pp-error">
+                        <span class="badge" :class="job.status === 'reserved' ? 'badge-warning' : 'badge-danger'">{{ job.status === 'reserved' ? 'hängt' : 'fehlgeschlagen' }}</span>
+                        <span v-if="job.error"> {{ job.error }}</span>
+                      </td>
+                      <td class="u-text-right print-problems-actions pp-actions">
+                        <button type="button" class="btn btn-outline btn-sm" :disabled="printJobBusy" @click="printJobAction('print_job_retry', job)">🖨️ Erneut drucken</button>
+                        <button type="button" class="btn btn-outline btn-sm u-text-danger" :disabled="printJobBusy" @click="printJobAction('print_job_discard', job)">Verwerfen</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -3452,6 +3487,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261115_6"></script>
+  <script type="module" src="admin.js?v=20261115_7"></script>
 </body>
 </html>

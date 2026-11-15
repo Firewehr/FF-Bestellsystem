@@ -1172,6 +1172,8 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
         'offline_backup_token' => '',
         'printer_warn_after_sec' => '60',
         'printer_job_stuck_reserved_min' => '10',
+        'printer_job_requeue_max_age_min' => '120',
+        'printer_job_max_attempts' => '3',
         'order_nr_seq' => '0',
         'bon_nr_seq' => '0',
         'bon_nr_start' => '1',

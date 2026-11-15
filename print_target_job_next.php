@@ -38,6 +38,12 @@ $thermoBonJsonExtra = [
 
 $printerKey = 'target_' . $print_target;
 
+// Hängengebliebene Jobs dieses Druckziels wiederherstellen: Holt der Client erneut ab,
+// ist ein früher reservierter, nie bestätigter Job verloren gegangen.
+require_once __DIR__ . '/include/ff_printer_jobs.php';
+$ffRecovered = ff_printer_jobs_recover_stuck($conn, $printerKey);
+$ffTimings['recovered'] = $ffRecovered;
+
 $ffT2 = microtime(true);
 mysqli_begin_transaction($conn);
 $sql = "SELECT id, payload, type FROM printer_jobs

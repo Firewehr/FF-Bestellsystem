@@ -306,6 +306,9 @@ createApp({
       if (activeTab.value !== 'betrieb' || document.hidden || operationsLoading.value) return;
       operationsLoading.value = true;
       try {
+        // Zuerst Problem-Jobs laden: dabei werden hängende Jobs eingeordnet,
+        // die Zähler der Warteschlange stimmen danach.
+        await loadPrintJobProblems();
         operations.value = await apiRequest('../api/v1/operations.php', { silent: true, timeout: 8000 });
         operationsError.value = '';
         operationsUpdatedAt.value = new Date().toISOString();
@@ -313,6 +316,42 @@ createApp({
         operationsError.value = err.message || 'Betriebsdaten konnten nicht geladen werden.';
       } finally {
         operationsLoading.value = false;
+      }
+    }
+
+    // Druckwarteschlange: fehlgeschlagene/hängende Jobs erneut drucken oder verwerfen
+    const printJobProblems = ref([]);
+    const printJobBusy = ref(false);
+
+    async function loadPrintJobProblems() {
+      try {
+        const res = await apiRequest('../api/v1/admin.php?action=print_jobs_problems', { silent: true, timeout: 8000 });
+        printJobProblems.value = res.jobs || [];
+      } catch (err) {
+        // Anzeige der Betriebsdaten soll daran nicht scheitern
+      }
+    }
+
+    async function printJobAction(action, jobs) {
+      const list = Array.isArray(jobs) ? jobs : [jobs];
+      if (!list.length || printJobBusy.value) return;
+      if (action === 'print_job_discard') {
+        const what = list.length === 1 ? `Druckauftrag #${list[0].id}` : `${list.length} Druckaufträge`;
+        if (!confirm(`${what} verwerfen? Es wird nichts gedruckt. Rechnungen und Bestellungen bleiben erhalten.`)) return;
+      }
+      printJobBusy.value = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action, ids: list.map(j => j.id) },
+        });
+        showToast(res.message || 'Erledigt.');
+        await loadPrintJobProblems();
+        operations.value = await apiRequest('../api/v1/operations.php', { silent: true, timeout: 8000 });
+      } catch (err) {
+        // apiRequest zeigt die Fehlermeldung an
+      } finally {
+        printJobBusy.value = false;
       }
     }
 
@@ -3056,6 +3095,9 @@ createApp({
       operationsError,
       operationsUpdatedAt,
       loadOperations,
+      printJobProblems,
+      printJobBusy,
+      printJobAction,
       operationsBadgeClass,
       operationsStateLabel,
       formatAge,

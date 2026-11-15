@@ -102,3 +102,14 @@ Für moderne Netzwerk-Thermodrucker mit Ethernet- oder Wi-Fi-Schnittstelle (z. B
 - **Automatischer Fallback:** Ist der Netzwerkdrucker vorübergehend nicht erreichbar oder ausgeschaltet, verbleibt der Druckauftrag mit Status `pending` in der Tabelle `printer_jobs`. Sobald ein Python-Client aktiv ist oder die Verbindung wiederhergestellt wird, wird der Bon gedruckt.
 - **Konfiguration:** Unter **Admin → Stammdaten → Druckziele** die Verbindung auf *„Netzwerk (Port 9100)“* stellen, die IP-Adresse eintragen und mit **🔌 Test** sofort einen Testbon senden.
 
+
+## Hängende und fehlgeschlagene Druckaufträge (`printer_jobs`)
+
+**Automatische Wiederherstellung** (`include/ff_printer_jobs.php`, beim Abholen durch den Client in `print_target_job_next.php`):
+- Ein Auftrag, der länger als `printer_job_stuck_reserved_min` (Standard 10 min) reserviert ist, aber nie bestätigt wurde, wird wieder eingereiht. Das passiert z. B., wenn der Client abstürzt oder das WLAN abreißt.
+- Das gilt nur, wenn er jünger als `printer_job_requeue_max_age_min` (Standard 120 min) ist und weniger als `printer_job_max_attempts` (Standard 3) Versuche hatte.
+- Ältere oder zu oft versuchte Aufträge werden **nicht** automatisch gedruckt, sonst käme z. B. ein Bon von gestern plötzlich in der Küche heraus. Sie werden als fehlgeschlagen markiert.
+
+**Admin, Reiter „Betrieb“:** Fehlgeschlagene und hängende Aufträge erscheinen als Liste mit Art, Rechnungs-/Bon-Nummer, Druckziel und Grund.
+- **Erneut drucken** stellt den Auftrag wieder in die Warteschlange.
+- **Verwerfen** entfernt nur den Druckauftrag. Rechnungen und Bestellungen bleiben unverändert.
