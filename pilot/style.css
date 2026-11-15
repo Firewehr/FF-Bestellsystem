@@ -2170,3 +2170,344 @@ button:disabled {
   border-color: var(--pc);
   color: #fff;
 }
+
+/* ===========================================================================
+   Warenkorb: Gruppen-Kasten (Getränke/Speisen), darin je Artikel ein Kasten.
+   Unterschiedliche Portionen tragen dieselben Nummern/Farben wie im
+   Portionsdialog; verknüpfte Artikel stehen beim Hauptartikel.
+   =========================================================================== */
+.cart-group-card + .cart-group-card {
+  margin-top: 12px;
+}
+
+.cart-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cart-article .cart-article-single {
+  margin: 0;
+}
+
+.cart-article.is-split {
+  border: 2px solid var(--ff-border);
+  border-radius: 12px;
+  background: var(--ff-surface);
+  overflow: hidden;
+}
+
+.cart-article-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ff-border-light);
+  background: var(--ff-bg);
+  color: var(--ff-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cart-article-qty {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--ff-text);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.cart-article-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.cart-article-total {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.cart-edit-hint {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ff-primary);
+  white-space: nowrap;
+}
+
+.cart-line-price {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.cart-recipe-diff {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+.cart-portion-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+}
+
+.cart-portion-line + .cart-portion-line {
+  border-top: 1px dashed var(--ff-border-light);
+}
+
+.cart-portion-line.is-linked {
+  background: #fafafa;
+}
+
+.cart-portion-nums {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  min-width: 26px;
+}
+
+.cart-portion-nums .portion-num {
+  min-width: 22px;
+  height: 22px;
+  font-size: 0.75rem;
+}
+
+.cart-portion-range {
+  color: var(--ff-text-muted);
+  font-weight: 700;
+}
+
+.cart-linked-icon {
+  display: inline-flex;
+  width: 22px;
+  justify-content: center;
+}
+
+.cart-portion-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cart-portion-note {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ff-text);
+  overflow-wrap: anywhere;
+}
+
+.cart-portion-standard {
+  font-size: 0.82rem;
+  color: var(--ff-text-muted);
+  font-weight: 600;
+}
+
+.cart-linked-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+/* ===========================================================================
+   Historie: Status einer Runde als Farbe (Rahmen + Kopf)
+   Offen/teilbezahlt = Orange (fällt auf), bezahlt = Grün (tritt zurück),
+   storniert = grau gestrichelt.
+   =========================================================================== */
+.round-card[class*="round-status-"] {
+  border-width: 2px;
+}
+
+.round-card.round-status-open,
+.round-card.round-status-partial {
+  border-color: var(--ff-warning);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.18);
+}
+
+.round-card.round-status-open .round-card-header,
+.round-card.round-status-partial .round-card-header {
+  background: var(--ff-warning-light);
+  border-bottom-color: #fde68a;
+  box-shadow: inset 4px 0 0 var(--ff-warning);
+}
+
+.round-card.round-status-paid {
+  border-color: #bbf7d0;
+}
+
+.round-card.round-status-paid .round-card-header {
+  background: #f0fdf4;
+  border-bottom-color: #dcfce7;
+  box-shadow: inset 4px 0 0 var(--ff-success);
+}
+
+.round-card.round-status-cancelled {
+  border-style: dashed;
+  border-color: var(--ff-border);
+}
+
+.round-card.round-status-cancelled .round-card-header {
+  background: var(--ff-bg);
+  box-shadow: inset 4px 0 0 var(--ff-border);
+}
+
+.round-card.round-status-cancelled .round-nr {
+  text-decoration: line-through;
+  color: var(--ff-text-muted);
+}
+
+/* ===========================================================================
+   Zahlen-Seite: fixierte Bezahl-Leiste über der unteren Navigation
+   Zeile 1: Betrag (offen bzw. Auswahl), Zeile 2: Hauptaktion + SumUp.
+   =========================================================================== */
+:root {
+  --ff-pay-bar-h: 124px;
+}
+
+#app.has-pay-bar {
+  padding-bottom: calc(var(--ff-nav-h) + var(--ff-pay-bar-h) + env(safe-area-inset-bottom, 0px) + 12px);
+}
+
+.pay-sticky-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--ff-nav-h) + env(safe-area-inset-bottom, 0px));
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: var(--ff-pay-bar-h);
+  padding: 10px 12px 12px;
+  background: var(--ff-surface);
+  border-top: 2px solid var(--ff-border);
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.12);
+}
+
+.pay-sticky-bar.has-selection {
+  background: #f0fdf4;
+  border-top-color: #86efac;
+}
+
+.pay-sticky-amount {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+}
+
+.pay-sticky-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ff-text-muted);
+  line-height: 1.25;
+}
+
+.pay-sticky-of {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.pay-sticky-value {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--ff-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-sticky-bar.has-selection .pay-sticky-value {
+  color: #15803d;
+}
+
+.pay-sticky-clear {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #86efac;
+  border-radius: 50%;
+  background: #fff;
+  color: #15803d;
+  font-size: 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pay-sticky-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.pay-sticky-buttons .btn-primary-block {
+  margin: 0;
+  min-height: 52px;
+  white-space: nowrap;
+}
+
+.pay-sticky-main {
+  flex: 1;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.pay-sticky-main.is-all {
+  background: var(--ff-success);
+}
+
+.pay-sticky-main.is-selection {
+  background: var(--ff-warning);
+  color: #000;
+}
+
+.pay-sticky-sumup {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 0 16px;
+  background: #0284c7;
+  font-size: 1rem;
+}
+
+/* Seltenere Aktionen unter der Liste */
+.pay-more-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pay-more-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ff-text-muted);
+}
+
+.pay-more-full {
+  width: 100%;
+}
+
+@media (max-height: 600px) {
+  /* Sehr niedrige Bildschirme: Leiste etwas kompakter */
+  :root { --ff-pay-bar-h: 110px; }
+  .pay-sticky-bar { gap: 6px; padding: 8px 12px 10px; }
+  .pay-sticky-value { font-size: 1.35rem; }
+  .pay-sticky-buttons .btn-primary-block { min-height: 46px; }
+}
+
+/* Zahlen-Seite ohne eigene Tisch-Karte: Tipp-Zeile steht oben, ohne Lücke */
+.pay-view .pay-toolbar {
+  margin-top: 0;
+}

@@ -1613,6 +1613,59 @@ createApp({
       return result;
     });
 
+    // Warenkorb-Ansicht: je Artikel ein Kasten. Mehrere Zeilen desselben Artikels
+    // (unterschiedliche Wünsche) werden als nummerierte Portionen gezeigt – gleiche
+    // Nummern/Farben wie im Portionsdialog. Verknüpfte Artikel stehen beim Hauptartikel.
+    const cartArticleGroups = computed(() => {
+      const typeOf = (line) => {
+        let t = line.type;
+        if (t === undefined || t === null) {
+          const found = items.value.find(i => i.id === line.position_id);
+          t = found ? found.type : 1;
+        }
+        return Number(t) === 2 ? 'drink' : (Number(t) === 1 ? 'food' : 'other');
+      };
+      const articles = new Map();
+      const getArticle = (id) => {
+        if (!articles.has(id)) {
+          articles.set(id, { key: 'art-' + id, id, name: '', group: null, lines: [], linked: [] });
+        }
+        return articles.get(id);
+      };
+      cart.value.forEach(line => {
+        const parentId = Number(line.linked_parent_id || 0);
+        if (parentId > 0 && cart.value.some(l => Number(l.position_id) === parentId && !l.linked_parent_id)) {
+          getArticle(parentId).linked.push({ item: line });
+          return;
+        }
+        const art = getArticle(Number(line.position_id));
+        art.name = art.name || line.name;
+        art.group = art.group || typeOf(line);
+        art.lines.push({ item: line, nums: [] });
+      });
+
+      const groups = {
+        drink: { title: 'Getränke', icon: '🍺', articles: [] },
+        food: { title: 'Speisen', icon: '🍔', articles: [] },
+        other: { title: 'Sonstiges', icon: '📦', articles: [] },
+      };
+      articles.forEach(art => {
+        let n = 0;
+        art.lines.forEach(ln => {
+          const q = Math.max(1, Number(ln.item.qty) || 1);
+          ln.nums = Array.from({ length: q }, () => ++n);
+        });
+        art.qty = art.lines.reduce((s, ln) => s + (Number(ln.item.qty) || 0), 0);
+        art.total = [...art.lines, ...art.linked].reduce((s, ln) => s + (Number(ln.item.price) || 0) * (Number(ln.item.qty) || 0), 0);
+        art.split = art.lines.length > 1 || art.linked.length > 0;
+        (groups[art.group || 'other'] || groups.other).articles.push(art);
+      });
+      return ['drink', 'food', 'other']
+        .map(k => groups[k])
+        .filter(g => g.articles.length > 0)
+        .map(g => ({ ...g, qty: g.articles.reduce((s, a) => s + a.qty + a.linked.reduce((x, l) => x + (Number(l.item.qty) || 0), 0), 0) }));
+    });
+
     const incrementCartItemObj = (item) => {
       if (!canIncreaseCartLine(item)) return;
       item.qty += 1;
@@ -1807,6 +1860,29 @@ createApp({
       }
       return selectedPayAmount.value;
     });
+
+    // Zahlen-Seite: Betrag + Bezahl-Buttons in einer fixierten Leiste am unteren Rand
+    const payBarVisible = computed(() => currentTab.value === 'pay'
+      && !!selectedTable.value
+      && !isPayLoading.value
+      && !!tableOrders.value
+      && Array.isArray(tableOrders.value.grouped)
+      && tableOrders.value.grouped.length > 0
+      && !tableOrders.value.table?.is_sammelrechnung);
+
+    // #app ist das Einhänge-Element von Vue – seine eigenen :class-Bindungen im
+    // Template werden nicht ausgewertet. Deshalb Layout-Klassen hier direkt setzen
+    // (Abstand unten für Warenkorb-Leiste bzw. Bezahl-Leiste).
+    watch(
+      () => [cart.value.length > 0 && currentTab.value === 'menu', payBarVisible.value],
+      ([hasCart, hasPayBar]) => {
+        const root = document.getElementById('app');
+        if (!root) return;
+        root.classList.toggle('has-cart', !!hasCart);
+        root.classList.toggle('has-pay-bar', !!hasPayBar);
+      },
+      { immediate: true }
+    );
 
     const isSumupEnabled = computed(() => {
       if (tableOrders.value && tableOrders.value.sumup && tableOrders.value.sumup.enabled !== undefined) {
@@ -2579,6 +2655,7 @@ createApp({
       draftSaveStatus,
       loadTableDraft,
       groupedCart,
+      cartArticleGroups,
       showCartModal,
       showSubmitModal,
       pendingOrders,
@@ -2593,6 +2670,7 @@ createApp({
       showPayModal,
       isCartPayMode,
       isSumupEnabled,
+      payBarVisible,
       activePayTableName,
       payCashModal,
       sumupSettings,

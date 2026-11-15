@@ -12,10 +12,10 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261115_4">
+  <link rel="stylesheet" href="style.css?v=20261115_8">
 </head>
 <body>
-  <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
+  <div id="app" v-cloak><!-- Klassen has-cart / has-pay-bar setzt app.js (Einhänge-Element) -->
     
     <!-- Offline Hinweis Banner -->
     <div v-if="!isOnline" class="offline-banner">
@@ -204,27 +204,7 @@
       </div>
 
       <div v-else-if="tableOrders">
-        <!-- Header-Karte -->
-        <div class="pay-card-header" :class="{ 'has-selection': hasPartialSelection }">
-          <div class="pay-header-left">
-            <span class="pay-table-name">Tisch {{ tableOrders.table.tischname }}</span>
-            <div class="pay-table-badges">
-              <span v-if="tableOrders.table.is_ehrengast" class="badge-tag paid">Ehrengast</span>
-              <span v-if="tableOrders.table.is_sammelrechnung" class="badge-tag unpaid">Sammelrechnung</span>
-              <span class="badge-tag" style="background:#e2e8f0; color:#334155;">{{ tableOrders.open_count }} offen</span>
-            </div>
-          </div>
-          <div class="pay-header-total">
-            <span class="pay-header-total-label">{{ hasPartialSelection ? 'Auswahl (' + selectedPayCount + ' Pos.)' : 'Offener Gesamtbetrag' }}</span>
-            <span class="pay-header-total-val" :class="{ 'val-selected': hasPartialSelection }">
-              {{ formatPrice(hasPartialSelection ? selectedPayAmount : tableOrders.total_amount) }}
-            </span>
-            <span v-if="hasPartialSelection" class="pay-header-total-sub">
-              von {{ formatPrice(tableOrders.total_amount) }} Gesamt
-            </span>
-          </div>
-        </div>
-
+        <!-- Kein eigener Tisch-Kopf: Der Tisch steht in der Kopfzeile (🪑), Anzahl und Betrag in der Leiste unten -->
         <!-- Ehrengast Hinweis & Abschluss -->
         <div v-if="tableOrders.table.is_ehrengast" style="background:var(--ff-success-light); border:1px solid #86efac; padding:12px; border-radius:var(--ff-radius); margin-top:8px;">
           <p style="font-weight:700; color:var(--ff-success-dark); margin-bottom:8px;">
@@ -249,11 +229,8 @@
 
         <!-- Toolbar / Schnellauswahl & Tipp -->
         <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_ehrengast && !tableOrders.table.is_sammelrechnung" class="pay-toolbar">
-          <div v-if="hasPartialSelection" class="pay-selection-info">
-            <span class="pay-selection-badge">Ausgewählt: {{ selectedPayCount }} Pos. · {{ formatPrice(selectedPayAmount) }}</span>
-            <button type="button" class="btn-text-action" @click="clearPaySelection">✕ Auswahl aufheben</button>
-          </div>
-          <div v-else class="pay-hint-bar">
+          <!-- Auswahl-Betrag und „Auswahl aufheben“ stehen in der Leiste unten -->
+          <div class="pay-hint-bar">
             <span class="pay-hint-text">💡 Tipp: Zeile antippen wählt alle gleichen Positionen</span>
             <button type="button" class="btn-text-action" @click="selectAllPay">Alle wählen</button>
           </div>
@@ -303,54 +280,15 @@
           </div>
         </div>
 
-        <!-- Bezahl-Aktionen -->
-        <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_sammelrechnung" style="margin-top:14px; display:flex; flex-direction:column; gap:8px;">
-          <!-- Wenn Teilmenge gewählt: Primäre Aktionen für die Auswahl -->
-          <template v-if="hasPartialSelection">
-            <button 
-              class="btn-primary-block" 
-              style="background: var(--ff-warning); color: #000; font-size: 1.15rem; font-weight:800;"
-              @click="openPayDialog(false)">
-              Ausgewählte bezahlen ({{ formatPrice(selectedPayAmount) }})
-            </button>
-
-            <!-- SumUp direkt für Auswahl falls aktiv -->
-            <button 
-              v-if="isSumupEnabled" 
-              class="btn-primary-block" 
-              style="background: #0284c7; font-size: 1.05rem;"
-              @click="openPayDialog(false, 'sumup')">
-              💳 Ausgewählte mit SumUp ({{ formatPrice(selectedPayAmount) }})
-            </button>
-
-            <!-- Alles bezahlen als Alternative darunter -->
-            <button 
-              class="btn-primary-block btn-pay-outline" 
-              style="font-size: 1.05rem;"
-              @click="openPayDialog(true)">
-              Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
-            </button>
-          </template>
-
-          <!-- Wenn nichts ausgewählt: Primäre Aktionen für den gesamten Tisch -->
-          <template v-else>
-            <button 
-              class="btn-primary-block" 
-              style="background: var(--ff-success); font-size: 1.15rem; font-weight:800;"
-              @click="openPayDialog(true)">
-              Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
-            </button>
-
-            <button 
-              v-if="isSumupEnabled" 
-              class="btn-primary-block" 
-              style="background: #0284c7; font-size: 1.05rem;"
-              @click="openPayDialog(true, 'sumup')">
-              💳 Mit SumUp bezahlen ({{ formatPrice(tableOrders.total_amount) }})
-            </button>
-          </template>
-
-          <!-- Weitere Optionen: Verschieben & Nachträgliche Rechnung -->
+        <!-- Weitere Optionen (unter der Liste; die Hauptaktionen stehen in der fixierten Leiste) -->
+        <div v-if="tableOrders.grouped.length > 0 && !tableOrders.table.is_sammelrechnung" class="pay-more-actions">
+          <div class="pay-more-title">Weitere Optionen</div>
+          <button 
+            v-if="hasPartialSelection"
+            class="btn-pay-action btn-pay-outline pay-more-full"
+            @click="openPayDialog(true)">
+            Alles bezahlen ({{ formatPrice(tableOrders.total_amount) }})
+          </button>
           <div class="pay-actions-grid">
             <button 
               class="btn-pay-action btn-pay-outline" 
@@ -371,6 +309,36 @@
               style="color: var(--ff-success);"
               @click="openPayDialog(hasPartialSelection ? false : true, 'with_invoice', true)">
               📄 + Rechnung {{ hasPartialSelection ? '(Auswahl)' : '' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Fixierte Bezahl-Leiste über der Navigation: Betrag + Hauptaktionen immer sichtbar -->
+        <div v-if="payBarVisible" class="pay-sticky-bar" :class="{ 'has-selection': hasPartialSelection }">
+          <div class="pay-sticky-amount">
+            <div class="pay-sticky-label">
+              <template v-if="hasPartialSelection">
+                Auswahl · {{ selectedPayCount }} Pos.
+                <span class="pay-sticky-of">von {{ formatPrice(tableOrders.total_amount) }}</span>
+              </template>
+              <template v-else>Offen · {{ tableOrders.open_count }} Pos.</template>
+            </div>
+            <div class="pay-sticky-value">{{ formatPrice(hasPartialSelection ? selectedPayAmount : tableOrders.total_amount) }}</div>
+            <button v-if="hasPartialSelection" type="button" class="pay-sticky-clear" @click="clearPaySelection" aria-label="Auswahl aufheben">✕</button>
+          </div>
+          <div class="pay-sticky-buttons">
+            <button 
+              class="btn-primary-block pay-sticky-main"
+              :class="hasPartialSelection ? 'is-selection' : 'is-all'"
+              @click="openPayDialog(!hasPartialSelection)">
+              {{ hasPartialSelection ? 'Auswahl bezahlen' : 'Alles bezahlen' }}
+            </button>
+            <button 
+              v-if="isSumupEnabled" 
+              class="btn-primary-block pay-sticky-sumup"
+              @click="openPayDialog(!hasPartialSelection, 'sumup')"
+              :title="hasPartialSelection ? 'Auswahl mit SumUp bezahlen' : 'Alles mit SumUp bezahlen'">
+              💳 SumUp
             </button>
           </div>
         </div>
@@ -407,7 +375,7 @@
             v-for="r in tableHistory.rounds" 
             :key="r.batch_key" 
             class="round-card"
-            :class="{ cancelled: r.is_cancelled }">
+            :class="[{ cancelled: r.is_cancelled }, 'round-status-' + (r.is_cancelled ? 'cancelled' : (r.status_payment === 'paid' ? 'paid' : (r.status_payment === 'open' ? 'open' : 'partial')))]">
             
             <div class="round-card-header">
               <div class="round-meta-top">
@@ -1006,23 +974,71 @@
           <div v-if="cart.length === 0" style="text-align:center; padding: 20px; color: var(--ff-text-muted);">
             Der Warenkorb ist leer.
           </div>
-          <div v-for="grp in groupedCart" :key="grp.title" class="cart-group-block" style="margin-bottom:8px;">
+          <!-- Gruppen (Getränke/Speisen) als Kasten, darin je Artikel ein Kasten -->
+          <div v-for="grp in cartArticleGroups" :key="grp.title" class="summary-group-card cart-group-card">
             <div class="summary-group-title">
               <span class="summary-group-icon">{{ grp.icon }}</span>
               <span class="summary-group-name">{{ grp.title }}</span>
-              <span class="summary-group-badge">{{ grp.items.reduce((sum, it) => sum + it.qty, 0) }}×</span>
+              <span class="summary-group-badge">{{ grp.qty }}×</span>
             </div>
-            <div v-for="(item, idx) in grp.items" :key="idx" class="pay-row">
-              <div class="pay-row-left" style="cursor:pointer;" @click="openCartItemOptions(item)">
-                <span class="pay-row-title">{{ item.name }}</span>
-                <span v-if="item.zusatzinfo" class="pay-row-notes">✎ {{ item.zusatzinfo }}</span>
-                <span v-if="item.recipe_diffs && item.recipe_diffs.length > 0" class="pay-row-notes" style="color:#b91c1c; font-weight:700;">⚙ {{ item.recipe_diffs.join(', ') }}</span>
-                <span style="font-weight:700; font-size:0.9rem;">{{ formatPrice(item.price * item.qty) }} <span style="font-size:0.75rem; color:var(--ff-primary); margin-left:4px;">(Bearbeiten ✎)</span></span>
-              </div>
-              <div class="pay-row-controls">
-                <button class="pay-qty-btn" @click="decrementCartItemObj(item)">−</button>
-                <span class="pay-qty-val">{{ item.qty }}</span>
-                <button class="pay-qty-btn" @click="incrementCartItemObj(item)">+</button>
+            <div class="cart-articles">
+              <div v-for="art in grp.articles" :key="art.key" class="cart-article" :class="{ 'is-split': art.split }">
+                <!-- Einfacher Artikel: eine Zeile -->
+                <div v-if="!art.split" class="pay-row cart-article-single">
+                  <div class="pay-row-left" style="cursor:pointer;" @click="openCartItemOptions(art.lines[0].item)">
+                    <span class="pay-row-title">{{ art.lines[0].item.name }}</span>
+                    <span v-if="art.lines[0].item.zusatzinfo" class="pay-row-notes">✎ {{ art.lines[0].item.zusatzinfo }}</span>
+                    <span v-if="art.lines[0].item.recipe_diffs && art.lines[0].item.recipe_diffs.length > 0" class="pay-row-notes cart-recipe-diff">⚙ {{ art.lines[0].item.recipe_diffs.join(', ') }}</span>
+                    <span class="cart-line-price">{{ formatPrice(art.lines[0].item.price * art.lines[0].item.qty) }} <span class="cart-edit-hint">(Bearbeiten ✎)</span></span>
+                  </div>
+                  <div class="pay-row-controls">
+                    <button class="pay-qty-btn" @click="decrementCartItemObj(art.lines[0].item)">−</button>
+                    <span class="pay-qty-val">{{ art.lines[0].item.qty }}</span>
+                    <button class="pay-qty-btn" @click="incrementCartItemObj(art.lines[0].item)">+</button>
+                  </div>
+                </div>
+
+                <!-- Artikel mit unterschiedlichen Portionen und/oder verknüpften Artikeln -->
+                <template v-else>
+                  <button type="button" class="cart-article-head" @click="openCartItemOptions(art.lines[0] ? art.lines[0].item : art.linked[0].item)">
+                    <span class="cart-article-qty">{{ art.qty }}×</span>
+                    <span class="cart-article-name">{{ art.name }}</span>
+                    <span class="cart-article-total">{{ formatPrice(art.total) }}</span>
+                    <span class="cart-edit-hint">Bearbeiten ✎</span>
+                  </button>
+                  <div v-for="(ln, lIdx) in art.lines" :key="'l' + lIdx" class="cart-portion-line">
+                    <span class="cart-portion-nums" :title="'Portion ' + ln.nums.join(', ')">
+                      <template v-if="ln.nums.length <= 3">
+                        <span v-for="n in ln.nums" :key="n" class="portion-num" :style="portionColorVars(n - 1)">{{ n }}</span>
+                      </template>
+                      <template v-else>
+                        <span class="portion-num" :style="portionColorVars(ln.nums[0] - 1)">{{ ln.nums[0] }}</span><span class="cart-portion-range">–</span><span class="portion-num" :style="portionColorVars(ln.nums[ln.nums.length - 1] - 1)">{{ ln.nums[ln.nums.length - 1] }}</span>
+                      </template>
+                    </span>
+                    <span class="cart-portion-info">
+                      <span v-if="ln.item.zusatzinfo" class="cart-portion-note">✎ {{ ln.item.zusatzinfo }}</span>
+                      <span v-if="ln.item.recipe_diffs && ln.item.recipe_diffs.length > 0" class="cart-portion-note cart-recipe-diff">⚙ {{ ln.item.recipe_diffs.join(', ') }}</span>
+                      <span v-if="!ln.item.zusatzinfo && !(ln.item.recipe_diffs && ln.item.recipe_diffs.length)" class="cart-portion-standard">Standard</span>
+                    </span>
+                    <span class="pay-row-controls">
+                      <button class="pay-qty-btn" @click="decrementCartItemObj(ln.item)">−</button>
+                      <span class="pay-qty-val">{{ ln.item.qty }}</span>
+                      <button class="pay-qty-btn" @click="incrementCartItemObj(ln.item)">+</button>
+                    </span>
+                  </div>
+                  <div v-for="(ln, kIdx) in art.linked" :key="'k' + kIdx" class="cart-portion-line is-linked">
+                    <span class="cart-portion-nums"><span class="cart-linked-icon" title="Verknüpfter Artikel">🔗</span></span>
+                    <span class="cart-portion-info">
+                      <span class="cart-linked-name">{{ ln.item.name }}</span>
+                      <span class="cart-portion-standard">{{ formatPrice(ln.item.price * ln.item.qty) }}</span>
+                    </span>
+                    <span class="pay-row-controls">
+                      <button class="pay-qty-btn" @click="decrementCartItemObj(ln.item)">−</button>
+                      <span class="pay-qty-val">{{ ln.item.qty }}</span>
+                      <button class="pay-qty-btn" @click="incrementCartItemObj(ln.item)">+</button>
+                    </span>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -1467,6 +1483,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261115_3"></script>
+  <script type="module" src="app.js?v=20261115_6"></script>
 </body>
 </html>
