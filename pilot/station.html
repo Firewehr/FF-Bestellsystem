@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="station.css?v=4">
+  <link rel="stylesheet" href="station.css?v=5">
   <script src="../assets/qrcode.min.js"></script>
 </head>
 <body>
@@ -303,11 +303,13 @@
               {
                 'is-dv': order.is_direktverkauf,
                 'is-paid': order.is_paid,
+                'has-table-color': !order.is_direktverkauf,
                 'card-highlighted': highlightedItem && (order.items_open.some(i => i.positionsname.toLowerCase().includes(highlightedItem.toLowerCase())) || order.items_done.some(i => i.positionsname.toLowerCase().includes(highlightedItem.toLowerCase())))
               }
-            ]">
+            ]"
+            :style="tableColorVars(order)">
 
-            <!-- Karten-Kopf -->
+            <!-- Karten-Kopf (gleicher Tisch = gleiche Farbe) -->
             <header class="card-header">
               <div class="header-table-info">
                 <!-- Zone-Tag -->
@@ -320,10 +322,11 @@
                   <span v-if="order.is_direktverkauf" class="dv-bon-badge">
                     {{ order.tischname }}
                   </span>
-                  <span v-else>
+                  <span v-else class="table-color-chip">
                     {{ order.tischname }}
                   </span>
                 </h2>
+                <span v-if="tableGroupLabel(order)" class="table-group-count" :title="'Bestellung ' + tableGroupLabel(order) + ' für diesen Tisch'">{{ tableGroupLabel(order) }}</span>
 
                 <!-- Direktverkauf Bezahl-Status Badge -->
                 <template v-if="order.is_direktverkauf">
@@ -1163,6 +1166,6 @@
   </div>
 
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="station.js?v=9"></script>
+  <script type="module" src="station.js?v=10"></script>
 </body>
 </html>

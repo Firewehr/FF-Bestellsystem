@@ -154,6 +154,36 @@ createApp({
       return list;
     });
 
+    // Gleicher Tisch = gleiche Farbe: Plakette + Streifen im Kartenkopf, dazu „1/3“,
+    // wenn mehrere Bestellungen desselben Tisches aufliegen. Farbe fest aus der
+    // Tischnummer (benachbarte Tische unterscheiden sich). RGB-Tripel, damit der
+    // Kopf mit rgba() getönt werden kann (hell und dunkel, ohne color-mix).
+    const TABLE_COLORS = [
+      '37, 99, 235', '124, 58, 237', '13, 148, 136', '219, 39, 119', '77, 124, 15',
+      '3, 105, 161', '192, 38, 211', '15, 118, 110', '79, 70, 229', '161, 98, 7',
+    ];
+    const tableColorVars = (order) => {
+      if (!order || order.is_direktverkauf) return null;
+      const n = Math.abs(parseInt(order.tischnummer, 10) || 0);
+      const rgb = TABLE_COLORS[n % TABLE_COLORS.length];
+      return { '--tc': `rgb(${rgb})`, '--tc-rgb': rgb };
+    };
+    const tableOrderGroups = computed(() => {
+      const map = {};
+      filteredOrders.value.forEach(o => {
+        if (o.is_direktverkauf) return;
+        const k = String(o.tischnummer);
+        (map[k] = map[k] || []).push(o.batch_key + '_' + o.tischnummer);
+      });
+      return map;
+    });
+    const tableGroupLabel = (order) => {
+      if (!order || order.is_direktverkauf) return '';
+      const list = tableOrderGroups.value[String(order.tischnummer)] || [];
+      if (list.length < 2) return '';
+      return (list.indexOf(order.batch_key + '_' + order.tischnummer) + 1) + '/' + list.length;
+    };
+
     // Verfügbare Zonen aus den aktuellen Bestellungen
     const availableZones = computed(() => {
       const zSet = new Set();
@@ -1181,6 +1211,8 @@ createApp({
       highlightedItem,
       orders,
       filteredOrders,
+      tableColorVars,
+      tableGroupLabel,
       availableZones,
       summary,
       historyOrders,
