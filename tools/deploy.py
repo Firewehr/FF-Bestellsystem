@@ -27,7 +27,13 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "deploy.config.json"
 CONFIG_EXAMPLE = BASE_DIR / "deploy.config.example.json"
-BACKUP_DIR = BASE_DIR / "backups"
+# Remote-Backups liegen AUSSERHALB des Webroots (Standard: <projekt>-backups
+# neben dem Projektordner, z. B. /var/www/bestellsystem-backups).
+# Überschreibbar per Umgebungsvariable FF_DEPLOY_BACKUP_DIR.
+BACKUP_DIR = Path(
+    os.environ.get("FF_DEPLOY_BACKUP_DIR")
+    or (BASE_DIR.parent / f"{BASE_DIR.name}-backups")
+).resolve()
 
 
 class Colors:

@@ -18,6 +18,36 @@
 
 declare(strict_types=1);
 
+// ----------------------------------------------------------------------------
+// Zugriffsschutz (Web): nur eingeloggter Super-Admin ODER expliziter
+// Setup-Modus über die Datei `.ff-setup-allow` im Projektverzeichnis
+// (per SSH anlegen für Neuinstallationen ohne Benutzer, danach wieder löschen).
+// CLI-Aufrufe (php db_update.php --analyze/--run) sind immer erlaubt.
+// ----------------------------------------------------------------------------
+if (PHP_SAPI !== 'cli') {
+    if (is_file(__DIR__ . '/.ff-setup-allow')) {
+        require_once __DIR__ . '/include/runtime_bootstrap.php';
+        require_once __DIR__ . '/include/ff_session_bootstrap.php';
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        require_once __DIR__ . '/include/ff_csrf.php';
+    } else {
+        require_once __DIR__ . '/auth.php';
+        if ((int) ($_SESSION['admin'] ?? 0) < 2) {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Zugriff verweigert: Datenbank-Update nur für Super-Admins.';
+            exit;
+        }
+    }
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+        ff_csrf_require(null, false);
+    }
+    header('Cache-Control: no-store');
+    header('X-Robots-Tag: noindex, nofollow');
+}
+
 // Maximale Ausführungszeit & Speicher für große Migrationen
 @ini_set('max_execution_time', '600');
 @ini_set('memory_limit', '512M');
@@ -544,6 +574,28 @@ function ff_migration_get_target_tables(): array {
             `error` text DEFAULT NULL,
             `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        'printer_devices' => "CREATE TABLE IF NOT EXISTS `printer_devices` (
+            `id` int(11) NOT NULL AUTO_INCREMENT,
+            `token_hash` char(64) NOT NULL,
+            `pair_code` varchar(8) NOT NULL,
+            `name` varchar(100) NOT NULL DEFAULT '',
+            `host` varchar(120) NOT NULL DEFAULT '',
+            `service` varchar(64) NOT NULL DEFAULT '',
+            `print_target` int(11) DEFAULT NULL,
+            `client` varchar(64) NOT NULL DEFAULT '',
+            `status` enum('pending','approved','blocked') NOT NULL DEFAULT 'pending',
+            `created_ip` varchar(45) NOT NULL DEFAULT '',
+            `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `approved_at` datetime DEFAULT NULL,
+            `approved_by` varchar(100) DEFAULT NULL,
+            `last_seen_at` datetime DEFAULT NULL,
+            `last_ip` varchar(45) DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `uq_printer_devices_token` (`token_hash`),
+            KEY `idx_printer_devices_status` (`status`, `created_at`),
+            KEY `idx_printer_devices_ip` (`created_ip`, `created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
         'bestandteile' => "CREATE TABLE IF NOT EXISTS `bestandteile` (
@@ -1190,7 +1242,9 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
     if ($userCountRes) @mysqli_free_result($userCountRes);
 
     if ($userCount === 0) {
-        $pwHash = password_hash('admin123', PASSWORD_DEFAULT);
+        // Zufälliges Initialpasswort statt festem Standardpasswort
+        $initialPw = substr(bin2hex(random_bytes(8)), 0, 12);
+        $pwHash = password_hash($initialPw, PASSWORD_DEFAULT);
         $uCols = [];
         $ucRes = @mysqli_query($conn, "SHOW COLUMNS FROM `users`");
         if ($ucRes) {
@@ -1204,10 +1258,11 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
         if (isset($uCols['can_finance'])) { $fields[] = '`can_finance`'; $values[] = '1'; }
         if (isset($uCols['can_direktverkauf'])) { $fields[] = '`can_direktverkauf`'; $values[] = '1'; }
         if (isset($uCols['start_page'])) { $fields[] = '`start_page`'; $values[] = "'menu'"; }
+        if (isset($uCols['force_password_change'])) { $fields[] = '`force_password_change`'; $values[] = '1'; }
 
         try {
             @mysqli_query($conn, "INSERT INTO `users` (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")");
-            $log[] = ['type' => 'warning', 'msg' => 'Sicherheit: Kein Benutzer vorhanden -> Standard-Admin angelegt (Benutzer: admin / Kennwort: admin123). Bitte sofort ändern!'];
+            $log[] = ['type' => 'warning', 'msg' => 'Sicherheit: Kein Benutzer vorhanden -> Standard-Admin angelegt (Benutzer: admin / Kennwort: ' . $initialPw . '). Kennwort jetzt notieren und nach dem Login sofort ändern!'];
         } catch (\Throwable $e) {
             $log[] = ['type' => 'warning', 'msg' => 'Hinweis bei Standard-Admin: ' . $e->getMessage()];
         }
@@ -2165,6 +2220,7 @@ if ($action === 'analyze') {
     <?php endif; ?>
 
     <form method="POST" action="">
+        <?= ff_csrf_input() ?>
         <div class="card">
             <div class="card-title">⚙️ Betriebsmodus wählen</div>
 
