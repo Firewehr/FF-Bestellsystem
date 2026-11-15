@@ -1861,3 +1861,109 @@ button:disabled {
   padding-bottom: 8px;
   border-bottom: 1.5px solid var(--ff-border-light);
 }
+
+/* ---------------------------------------------------------------------------
+   Optionsdialog: Modus „Alle gleich / Einzeln“, Zusatzinfo, Vorschau
+   --------------------------------------------------------------------------- */
+.options-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--ff-border-light);
+  border-radius: var(--ff-radius-sm);
+  padding: 3px;
+  gap: 3px;
+}
+
+.options-mode-switch .p-view-btn {
+  min-height: 40px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.options-mode-switch .p-view-btn.active {
+  background: var(--ff-surface);
+  color: var(--ff-text);
+}
+
+.portion-mode-hint {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--ff-text-muted);
+}
+
+.portion-tab.customized {
+  border-color: var(--ff-warning);
+}
+
+.portion-tab.customized .portion-tab-title {
+  color: var(--ff-warning-dark);
+}
+
+.note-group .options-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.note-group .quick-note-pill {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.quick-note-pills.recent {
+  align-items: center;
+}
+
+.quick-note-pills .recent-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ff-text-muted);
+}
+
+.note-textarea {
+  width: 100%;
+  margin-top: 8px;
+  min-height: 56px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1rem; /* ≥16px verhindert Auto-Zoom auf iOS */
+  line-height: 1.35;
+}
+
+.options-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+  max-height: 72px;
+  overflow-y: auto;
+}
+
+.options-preview-chip {
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: var(--ff-warning-light);
+  color: var(--ff-warning-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.options-preview-chip.plain {
+  background: var(--ff-bg);
+  color: var(--ff-text-muted);
+}
+
+.options-sheet .sheet-footer {
+  flex-wrap: wrap;
+}
+
+.options-sheet .sheet-footer .options-preview {
+  flex: 1 0 100%;
+  width: 100%;
+}

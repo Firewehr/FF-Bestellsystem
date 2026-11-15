@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261028_8">
+  <link rel="stylesheet" href="style.css?v=20261115_2">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -731,13 +731,16 @@
     </div>
 
     <!-- MODAL 3: Beilagen, Rezeptur & Sonderwünsche pro Position -->
-    <div v-if="showOptionsModal && activeOptionItem" class="modal-overlay" @click.self="showOptionsModal = false">
+    <div v-if="showOptionsModal && activeOptionItem" class="modal-overlay" @click.self="closeOptionsModal">
       <div class="bottom-sheet options-sheet">
         <div class="sheet-header">
           <div>
             <div style="display:flex; align-items:center; gap:8px;">
               <span class="sheet-title">{{ activeOptionItem.name }}</span>
-              <span v-if="getItemCartQty(activeOptionItem.id) > 0" class="badge-tag" style="background:#e0f2fe; color:#0369a1; font-size:0.75rem;">
+              <span v-if="optionsEditItemId !== null" class="badge-tag" style="background:#fef3c7; color:#92400e; font-size:0.75rem;">
+                ✏️ Bearbeiten
+              </span>
+              <span v-else-if="getItemCartQty(activeOptionItem.id) > 0" class="badge-tag" style="background:#e0f2fe; color:#0369a1; font-size:0.75rem;">
                 🛒 {{ getItemCartQty(activeOptionItem.id) }}× im Warenkorb
               </span>
             </div>
@@ -748,7 +751,7 @@
               </span>
             </div>
           </div>
-          <button class="sheet-close-btn" @click="showOptionsModal = false">✕</button>
+          <button class="sheet-close-btn" @click="closeOptionsModal">✕</button>
         </div>
         <div class="sheet-body">
           <!-- Portionsmenge Steuerung -->
@@ -790,214 +793,90 @@
             </div>
           </div>
 
-          <!-- Bei mehreren Portionen: Portionsauswahl (Tabs) & Aktionen -->
+          <!-- Mehrere Portionen: gleich oder einzeln -->
           <div v-if="optionQty > 1" class="portions-header-box">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-weight:800; font-size:0.85rem; text-transform:uppercase; color:var(--ff-text-muted);">
-                  Portionen ({{ optionQty }})
-                </span>
-                <span style="font-size:0.75rem; color:var(--ff-text-muted);">
-                  Individuell anpassbar
-                </span>
-              </div>
-              <div class="portions-view-toggle">
-                <button 
-                  type="button" 
-                  class="p-view-btn" 
-                  :class="{ active: optionsViewMode === 'tabs' }" 
-                  @click="optionsViewMode = 'tabs'">
-                  📑 Reiter
-                </button>
-                <button 
-                  type="button" 
-                  class="p-view-btn" 
-                  :class="{ active: optionsViewMode === 'list' }" 
-                  @click="optionsViewMode = 'list'">
-                  📄 Alle
-                </button>
-              </div>
+            <div class="options-mode-switch" role="tablist" aria-label="Angaben für Portionen">
+              <button type="button" class="p-view-btn" :class="{ active: optionsViewMode === 'same' }" @click="setOptionsMode('same')">
+                Alle gleich
+              </button>
+              <button type="button" class="p-view-btn" :class="{ active: optionsViewMode === 'tabs' }" @click="setOptionsMode('tabs')">
+                Einzeln
+              </button>
+              <button type="button" class="p-view-btn" :class="{ active: optionsViewMode === 'list' }" @click="setOptionsMode('list')">
+                Liste
+              </button>
+            </div>
+            <div v-if="optionsViewMode === 'same'" class="portion-mode-hint">
+              Die Angaben gelten für alle {{ optionQty }} Portionen. Für unterschiedliche Wünsche („2× ohne Zwiebel, 1× scharf“) auf <strong>Einzeln</strong> tippen.
             </div>
 
-            <!-- Tabs: Wenn Reiter-Ansicht aktiv -->
+            <!-- Reiter: Portion wählen (✎ = hat Zusatzinfos) -->
             <div v-if="optionsViewMode === 'tabs'" class="portions-tab-strip">
               <button 
                 v-for="(p, pIdx) in portions" 
                 :key="pIdx"
                 type="button"
                 class="portion-tab"
-                :class="{ active: activePortionIndex === pIdx }"
+                :class="{ active: activePortionIndex === pIdx, customized: isPortionCustomized(p) }"
                 @click="activePortionIndex = pIdx">
-                <span class="portion-tab-title">Portion {{ pIdx + 1 }}</span>
+                <span class="portion-tab-title">{{ isPortionCustomized(p) ? '✎ ' : '' }}Portion {{ pIdx + 1 }}</span>
                 <span class="portion-tab-summary">{{ getPortionSummary(p) }}</span>
               </button>
             </div>
-
-            <!-- Aktionsleiste für Portionen -->
-            <div class="portion-actions-bar">
-              <span v-if="optionsViewMode === 'tabs'" style="font-weight:700; color:var(--ff-text); font-size:0.82rem;">
-                Portion {{ activePortionIndex + 1 }} von {{ optionQty }}:
-              </span>
-              <span v-else style="font-weight:700; color:var(--ff-text); font-size:0.82rem;">
-                Alle {{ optionQty }} Portionen untereinander:
-              </span>
-              <button 
-                type="button" 
-                class="btn-text-action" 
-                title="Aktuelle Einstellungen auf alle Portionen anwenden"
-                @click="copyPortionToAll(optionsViewMode === 'tabs' ? activePortionIndex : 0)">
-                📋 Auf alle übertragen
-              </button>
-            </div>
           </div>
 
-          <!-- ANSICHT 1: TAB-MODUS (aktive Portion) ODER wenn nur 1 Portion -->
-          <div v-if="optionsViewMode === 'tabs' || optionQty === 1">
-            <div class="portion-form-container">
-              <div v-if="optionQty > 1" class="portion-form-header">
-                <span style="font-weight:800; font-size:0.95rem;">
-                  Einstellungen für Portion {{ activePortionIndex + 1 }}
-                </span>
-                <span style="font-size:0.85rem; font-weight:700; color:var(--ff-primary);">
-                  {{ formatPrice(getPortionPrice(portions[activePortionIndex])) }}
-                </span>
-              </div>
-
-              <!-- Optionen für aktive Portion -->
-              <div v-if="portions[activePortionIndex]">
-                <!-- Rezeptur / Zutaten (aus DB) -->
-                <div v-if="activeOptionItem.recipe_components && activeOptionItem.recipe_components.length > 0" class="options-group">
-                  <div class="options-group-header">
-                    <span class="options-group-title">Rezeptur</span>
-                    <span class="options-group-sub">Optionale Bestandteile abwählbar</span>
-                  </div>
-                  <div class="chips-wrap">
-                    <template v-for="c in activeOptionItem.recipe_components" :key="c.bestandteil_id">
-                      <!-- Fester Bestandteil (gesperrt) -->
-                      <span 
-                        v-if="!c.optional_enabled" 
-                        class="chip-btn fixed"
-                        title="Fester Bestandteil">
-                        🔒 {{ c.name }} <span v-if="c.menge" style="opacity:0.85;">({{ c.menge }} {{ c.einheit }})</span>
-                      </span>
-                      <!-- Optionaler Bestandteil (anpassbar) -->
-                      <button 
-                        v-else
-                        type="button"
-                        class="chip-btn"
-                        :class="{ active: isRecipeComponentSelected(c.bestandteil_id, activePortionIndex) }"
-                        @click="toggleRecipeComponent(c.bestandteil_id, activePortionIndex)">
-                        <span v-if="isRecipeComponentSelected(c.bestandteil_id, activePortionIndex)">✓ {{ c.name }}</span>
-                        <span v-else style="color:#ef4444; font-weight:700;">✕ Ohne {{ c.name }}</span>
-                      </button>
-                    </template>
-                  </div>
-                </div>
-
-                <!-- Gespeicherte Beilagen & Extras (aus DB) -->
-                <div v-if="activeOptionItem.beilagen && activeOptionItem.beilagen.length > 0" class="options-group">
-                  <div class="options-group-header">
-                    <span class="options-group-title">Beilagen & Extras</span>
-                  </div>
-                  <div class="chips-wrap">
-                    <button 
-                      v-for="b in activeOptionItem.beilagen" 
-                      :key="b.id"
-                      type="button"
-                      class="chip-btn"
-                      :class="{ active: portions[activePortionIndex].selectedBeilagen.includes(b.name) }"
-                      @click="toggleBeilage(b.name, activePortionIndex)">
-                      {{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div v-if="activeOptionItem.linked_articles && activeOptionItem.linked_articles.length > 0" class="options-group">
-                  <div class="options-group-header">
-                    <span class="options-group-title">Verknüpfte Artikel</span>
-                    <span class="options-group-sub">Werden als eigene Küchenposition bestellt</span>
-                  </div>
-                  <div class="chips-wrap">
-                    <button
-                      v-for="linked in activeOptionItem.linked_articles"
-                      :key="linked.id"
-                      type="button"
-                      class="chip-btn"
-                      :class="{ active: portions[activePortionIndex].selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
-                      @click="toggleLinkedArticleForPortion(linked.position_id, activePortionIndex)">
-                      <span v-if="portions[activePortionIndex].selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
-                      <strong style="margin-left:4px;">{{ formatPrice(linked.price) }}</strong>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Schnellauswahl für Getränke (nur wenn keine DB-Rezeptur vorhanden) -->
-                <div v-if="activeOptionItem.type === 2 && (!activeOptionItem.recipe_components || activeOptionItem.recipe_components.length === 0)" class="options-group">
-                  <div class="options-group-header">
-                    <span class="options-group-title">Getränke-Optionen</span>
-                  </div>
-                  <div class="chips-wrap">
-                    <button 
-                      v-for="opt in drinkQuickOptions" 
-                      :key="opt"
-                      type="button"
-                      class="chip-btn"
-                      :class="{ active: portions[activePortionIndex].selectedBeilagen.includes(opt) }"
-                      @click="toggleBeilage(opt, activePortionIndex)">
-                      {{ opt }}
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Freitext für Küche / Bon & Schnellnotizen -->
-                <div class="options-group">
-                  <div class="options-group-header">
-                    <span class="options-group-title">Freitext für Küche / Bon (optional)</span>
-                  </div>
-                  <input 
-                    type="text" 
-                    v-model="portions[activePortionIndex].customNote" 
-                    :placeholder="activeOptionItem.type === 2 ? 'z. B. mit Eis, gespritzt sauer, Zitrone...' : 'z. B. gut durch, Sauce separat...'" 
-                    class="text-input" 
-                    style="margin-top: 6px;">
-
-                  <!-- Schnellnotizen Tasten für Speisen -->
-                  <div v-if="activeOptionItem.type === 1" class="quick-note-pills">
-                    <button 
-                      v-for="qn in foodQuickOptions" 
-                      :key="qn"
-                      type="button"
-                      class="quick-note-pill"
-                      :class="{ active: isQuickNoteActive(qn, activePortionIndex) }"
-                      @click="toggleQuickNote(qn, activePortionIndex)">
-                      {{ qn }}
-                    </button>
-                  </div>
-                </div>
+          <!-- Formular: eine Portion (Alle gleich / Einzeln) oder alle untereinander -->
+          <div 
+            v-for="pIdx in visiblePortionIndexes" 
+            :key="'portion-' + pIdx"
+            :class="optionsViewMode === 'list' && optionQty > 1 ? 'portion-card-block' : 'portion-form-container'">
+            <div v-if="optionQty > 1 && optionsViewMode !== 'same'" class="portion-form-header">
+              <span style="font-weight:800; font-size:0.95rem;">Portion {{ pIdx + 1 }} von {{ optionQty }}</span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <button v-if="pIdx > 0" type="button" class="btn-text-action sm" @click="copyFromPortion1(pIdx)">↶ Wie Portion 1</button>
+                <span style="font-size:0.85rem; font-weight:700; color:var(--ff-primary);">{{ formatPrice(getPortionPrice(portions[pIdx])) }}</span>
               </div>
             </div>
-          </div>
 
-          <!-- ANSICHT 2: LISTEN-MODUS (Alle Portionen untereinander aufgeführt) -->
-          <div v-else-if="optionsViewMode === 'list'">
-            <div v-for="(p, pIdx) in portions" :key="pIdx" class="portion-card-block">
-              <div class="portion-card-title">
-                <span style="font-weight:800; font-size:0.95rem;">Portion {{ pIdx + 1 }}</span>
-                <div style="display:flex; align-items:center; gap:8px;">
+            <template v-if="portions[pIdx]">
+              <!-- Zusatzinfo für Küche / Bon: Schnellwahl + Freitext -->
+              <div class="options-group note-group">
+                <div class="options-group-header">
+                  <span class="options-group-title">📝 Info für Küche / Bon</span>
+                  <button v-if="portions[pIdx].customNote" type="button" class="btn-text-action sm" @click="clearPortionNote(pIdx)">Leeren</button>
+                </div>
+                <div v-if="activeOptionItem.type === 1" class="quick-note-pills">
                   <button 
-                    v-if="pIdx > 0"
-                    type="button" 
-                    class="btn-text-action sm" 
-                    @click="copyFromPortion1(pIdx)">
-                    ↶ Wie Portion 1
+                    v-for="qn in foodQuickOptions" 
+                    :key="qn"
+                    type="button"
+                    class="quick-note-pill"
+                    :class="{ active: isQuickNoteActive(qn, pIdx) }"
+                    @click="toggleQuickNote(qn, pIdx)">
+                    {{ isQuickNoteActive(qn, pIdx) ? '✓ ' : '' }}{{ qn }}
                   </button>
-                  <span style="color:var(--ff-primary); font-weight:700; font-size:0.9rem;">
-                    {{ formatPrice(getPortionPrice(p)) }}
-                  </span>
                 </div>
+                <div v-if="recentNotes.length > 0" class="quick-note-pills recent">
+                  <span class="recent-label">Zuletzt:</span>
+                  <button 
+                    v-for="rn in recentNotes" 
+                    :key="'recent-' + rn"
+                    type="button"
+                    class="quick-note-pill"
+                    :class="{ active: isQuickNoteActive(rn, pIdx) }"
+                    @click="toggleQuickNote(rn, pIdx)">
+                    {{ isQuickNoteActive(rn, pIdx) ? '✓ ' : '' }}{{ rn }}
+                  </button>
+                </div>
+                <textarea 
+                  v-model="portions[pIdx].customNote" 
+                  rows="2"
+                  maxlength="200"
+                  :placeholder="activeOptionItem.type === 2 ? 'z. B. mit Eis, gespritzt sauer, Zitrone …' : 'z. B. gut durch, Sauce separat …'" 
+                  class="text-input note-textarea"></textarea>
               </div>
 
-              <!-- Rezeptur -->
+              <!-- Rezeptur / Zutaten (aus DB) -->
               <div v-if="activeOptionItem.recipe_components && activeOptionItem.recipe_components.length > 0" class="options-group">
                 <div class="options-group-header">
                   <span class="options-group-title">Rezeptur</span>
@@ -1021,7 +900,7 @@
                 </div>
               </div>
 
-              <!-- Beilagen -->
+              <!-- Beilagen & Extras (aus DB) -->
               <div v-if="activeOptionItem.beilagen && activeOptionItem.beilagen.length > 0" class="options-group">
                 <div class="options-group-header">
                   <span class="options-group-title">Beilagen & Extras</span>
@@ -1032,13 +911,14 @@
                     :key="b.id"
                     type="button"
                     class="chip-btn"
-                    :class="{ active: p.selectedBeilagen.includes(b.name) }"
+                    :class="{ active: portions[pIdx].selectedBeilagen.includes(b.name) }"
                     @click="toggleBeilage(b.name, pIdx)">
-                    {{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
+                    {{ portions[pIdx].selectedBeilagen.includes(b.name) ? '✓ ' : '' }}{{ b.name }} <span v-if="b.price > 0">(+{{ formatPrice(b.price) }})</span>
                   </button>
                 </div>
               </div>
 
+              <!-- Verknüpfte Artikel -->
               <div v-if="activeOptionItem.linked_articles && activeOptionItem.linked_articles.length > 0" class="options-group">
                 <div class="options-group-header">
                   <span class="options-group-title">Verknüpfte Artikel</span>
@@ -1050,15 +930,15 @@
                     :key="linked.id"
                     type="button"
                     class="chip-btn"
-                    :class="{ active: p.selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
+                    :class="{ active: portions[pIdx].selectedLinkedArticleIds.includes(Number(linked.position_id)) }"
                     @click="toggleLinkedArticleForPortion(linked.position_id, pIdx)">
-                    <span v-if="p.selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
+                    <span v-if="portions[pIdx].selectedLinkedArticleIds.includes(Number(linked.position_id))">✓ </span>{{ linked.name }}
                     <strong style="margin-left:4px;">{{ formatPrice(linked.price) }}</strong>
                   </button>
                 </div>
               </div>
 
-              <!-- Getränke-Optionen -->
+              <!-- Getränke-Optionen (nur ohne DB-Rezeptur) -->
               <div v-if="activeOptionItem.type === 2 && (!activeOptionItem.recipe_components || activeOptionItem.recipe_components.length === 0)" class="options-group">
                 <div class="options-group-header">
                   <span class="options-group-title">Getränke-Optionen</span>
@@ -1069,43 +949,25 @@
                     :key="opt"
                     type="button"
                     class="chip-btn"
-                    :class="{ active: p.selectedBeilagen.includes(opt) }"
+                    :class="{ active: portions[pIdx].selectedBeilagen.includes(opt) }"
                     @click="toggleBeilage(opt, pIdx)">
-                    {{ opt }}
+                    {{ portions[pIdx].selectedBeilagen.includes(opt) ? '✓ ' : '' }}{{ opt }}
                   </button>
                 </div>
               </div>
-
-              <!-- Freitext & Schnellnotizen -->
-              <div class="options-group">
-                <div class="options-group-header">
-                  <span class="options-group-title">Freitext für Küche / Bon (optional)</span>
-                </div>
-                <input 
-                  type="text" 
-                  v-model="p.customNote" 
-                  :placeholder="activeOptionItem.type === 2 ? 'z. B. mit Eis, gespritzt sauer, Zitrone...' : 'z. B. gut durch, Sauce separat...'" 
-                  class="text-input" 
-                  style="margin-top: 6px;">
-
-                <div v-if="activeOptionItem.type === 1" class="quick-note-pills">
-                  <button 
-                    v-for="qn in foodQuickOptions" 
-                    :key="qn"
-                    type="button"
-                    class="quick-note-pill"
-                    :class="{ active: isQuickNoteActive(qn, pIdx) }"
-                    @click="toggleQuickNote(qn, pIdx)">
-                    {{ qn }}
-                  </button>
-                </div>
-              </div>
-            </div>
+            </template>
           </div>
         </div>
         <div class="sheet-footer">
+          <!-- Vorschau: so landet die Bestellung in Küche/Schank -->
+          <div v-if="optionGroupsPreview.some(g => g.label !== 'Standard')" class="options-preview">
+            <span v-for="g in optionGroupsPreview" :key="g.key || g.label" class="options-preview-chip" :class="{ plain: g.label === 'Standard' }">
+              <strong>{{ g.qty }}×</strong> {{ g.label }}
+            </span>
+          </div>
           <button class="btn-primary-block" @click="confirmAddItemWithOptions">
-            <span v-if="optionQty > 1">{{ optionQty }}× Hinzufügen ({{ formatPrice(optionItemTotalPrice) }})</span>
+            <span v-if="optionsEditItemId !== null">Übernehmen ({{ optionQty }}×, {{ formatPrice(optionItemTotalPrice) }})</span>
+            <span v-else-if="optionQty > 1">{{ optionQty }}× Hinzufügen ({{ formatPrice(optionItemTotalPrice) }})</span>
             <span v-else>Hinzufügen ({{ formatPrice(optionItemTotalPrice) }})</span>
           </button>
         </div>
@@ -1590,6 +1452,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261101_8"></script>
+  <script type="module" src="app.js?v=20261115_2"></script>
 </body>
 </html>

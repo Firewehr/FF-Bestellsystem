@@ -65,8 +65,17 @@ createApp({
     const optionQty = ref(1);
     const optionQtyInput = ref(1);
     const activePortionIndex = ref(0);
-    const optionsViewMode = ref('tabs'); // 'tabs' oder 'list'
+    const optionsViewMode = ref('same'); // 'same' (alle gleich) | 'tabs' (einzeln, Reiter) | 'list' (einzeln, untereinander)
     const portions = ref([]);
+    // Bearbeitungsmodus: Artikel ist bereits im Warenkorb → Dialog zeigt alle Stück als Portionen.
+    // Der Warenkorb wird erst beim Übernehmen geändert (Abbrechen = nichts passiert).
+    const optionsEditItemId = ref(null);
+    const recentNotes = ref([]);
+    const RECENT_NOTES_KEY = 'ff_pilot_recent_notes';
+    try {
+      const storedNotes = JSON.parse(localStorage.getItem(RECENT_NOTES_KEY) || '[]');
+      if (Array.isArray(storedNotes)) recentNotes.value = storedNotes.filter(n => typeof n === 'string').slice(0, 8);
+    } catch (e) { /* Speicher nicht verfügbar */ }
 
     // Kompatibilitäts-Aliase für aktive Portion
     const selectedBeilagen = computed({
@@ -897,11 +906,18 @@ createApp({
         return;
       }
 
+      if (startOptionsEdit(item)) {
+        showOptionsModal.value = true;
+        vibrate(25);
+        return;
+      }
+
+      optionsEditItemId.value = null;
       activeOptionItem.value = item;
       optionQty.value = 1;
       optionQtyInput.value = 1;
       activePortionIndex.value = 0;
-      optionsViewMode.value = 'tabs';
+      optionsViewMode.value = 'same';
 
       // Rezeptur-Vorauswahl: Fixe oder default_selected Komponenten
       let defaultRecipe = [];
@@ -922,42 +938,140 @@ createApp({
       vibrate(25);
     };
 
-    const openCartItemOptions = (cartItem) => {
-      if (cart.value.some(line => Number(line.linked_parent_id || 0) === Number(cartItem.position_id))) {
-        showToast('Verknüpfte Artikel bitte gemeinsam über die Menge anpassen.', '🔗');
-        return;
-      }
-      const baseItem = items.value.find(i => i.id === cartItem.position_id);
-      if (!baseItem) return;
-      activeOptionItem.value = baseItem;
-      const qty = Math.max(1, cartItem.qty || 1);
-      optionQty.value = qty;
-      optionQtyInput.value = qty;
-      activePortionIndex.value = 0;
-      optionsViewMode.value = 'tabs';
+    const defaultRecipeFor = (item) => (item && Array.isArray(item.recipe_components))
+      ? item.recipe_components.filter(rc => !rc.optional_enabled || rc.default_selected).map(rc => rc.bestandteil_id)
+      : [];
 
-      const initialBeilagen = [...(cartItem.beilagen || [])];
-      const initialRecipe = [...(cartItem.recipe_components || [])];
-      const initialNote = cartItem.custom_note || '';
+    const portionKey = (p) => JSON.stringify([
+      [...(p.selectedBeilagen || [])].sort(),
+      [...(p.selectedRecipeComponents || [])].sort((a, b) => a - b),
+      [...(p.selectedLinkedArticleIds || [])].sort((a, b) => a - b),
+      (p.customNote || '').trim(),
+    ]);
 
-      portions.value = [];
-      for (let i = 0; i < qty; i++) {
-        portions.value.push({
-          selectedBeilagen: [...initialBeilagen],
-          selectedRecipeComponents: [...initialRecipe],
-          selectedLinkedArticleIds: [],
-          customNote: initialNote,
+    const isEditLineFor = (line, itemId) =>
+      (Number(line.position_id) === Number(itemId) && !line.linked_parent_id)
+      || Number(line.linked_parent_id || 0) === Number(itemId);
+
+    /**
+     * Öffnet den Optionsdialog für einen Artikel, der bereits im Warenkorb liegt:
+     * Jedes Stück wird zu einer eigenen Portion (z. B. 4× angetippt → 4 Portionen),
+     * inklusive Beilagen, Rezeptur, Freitext und verknüpfter Artikel.
+     */
+    const startOptionsEdit = (item) => {
+      const lines = cart.value.filter(line => Number(line.position_id) === Number(item.id) && !line.linked_parent_id);
+      if (lines.length === 0) return false;
+      const defaultRecipe = defaultRecipeFor(item);
+      const list = [];
+      lines.forEach(line => {
+        for (let i = 0; i < Math.max(1, Number(line.qty) || 1); i++) {
+          list.push({
+            selectedBeilagen: [...(line.beilagen || [])],
+            selectedRecipeComponents: [...(Array.isArray(line.recipe_components) ? line.recipe_components : defaultRecipe)],
+            selectedLinkedArticleIds: [],
+            customNote: line.custom_note || '',
+          });
+        }
+      });
+      // Verknüpfte Artikel den Portionen zuordnen (je Stück eine Portion)
+      cart.value
+        .filter(line => Number(line.linked_parent_id || 0) === Number(item.id))
+        .forEach(child => {
+          let remaining = Math.max(0, Number(child.qty) || 0);
+          for (const p of list) {
+            if (remaining <= 0) break;
+            if (!p.selectedLinkedArticleIds.includes(Number(child.position_id))) {
+              p.selectedLinkedArticleIds.push(Number(child.position_id));
+              remaining--;
+            }
+          }
         });
-      }
 
-      // Aus Warenkorb entfernen, damit beim Bestätigen die aktualisierte Version hinzugefügt wird
-      const idx = cart.value.indexOf(cartItem);
-      if (idx >= 0) {
-        cart.value.splice(idx, 1);
-      }
+      activeOptionItem.value = item;
+      optionsEditItemId.value = item.id;
+      portions.value = list;
+      optionQty.value = list.length;
+      optionQtyInput.value = list.length;
+      activePortionIndex.value = 0;
+      const allSame = list.every(p => portionKey(p) === portionKey(list[0]));
+      optionsViewMode.value = allSame ? 'same' : 'tabs';
+      return true;
+    };
+
+    const openCartItemOptions = (cartItem) => {
+      // Klick auf einen verknüpften Artikel öffnet den zugehörigen Hauptartikel
+      const parentId = Number(cartItem.linked_parent_id || 0) || Number(cartItem.position_id);
+      const baseItem = items.value.find(i => i.id === parentId);
+      if (!baseItem || !startOptionsEdit(baseItem)) return;
       showCartModal.value = false;
       showOptionsModal.value = true;
       vibrate(25);
+    };
+
+    const closeOptionsModal = () => {
+      // Im Bearbeitungsmodus wurde der Warenkorb noch nicht verändert → nichts wiederherzustellen
+      showOptionsModal.value = false;
+      activeOptionItem.value = null;
+      optionsEditItemId.value = null;
+      portions.value = [];
+    };
+
+    const setOptionsMode = (mode) => {
+      if (mode === optionsViewMode.value) return;
+      if (mode === 'same' && portions.value.length > 1) {
+        const srcIdx = optionsViewMode.value === 'tabs' ? activePortionIndex.value : 0;
+        const differs = portions.value.some(p => portionKey(p) !== portionKey(portions.value[srcIdx]));
+        copyPortionToAll(srcIdx, false);
+        if (differs) showToast(`Angaben von Portion ${srcIdx + 1} gelten jetzt für alle`, '📋', 1800);
+        activePortionIndex.value = 0;
+      }
+      optionsViewMode.value = mode;
+      vibrate(15);
+    };
+
+    // Welche Portion(en) das Formular gerade zeigt
+    const visiblePortionIndexes = computed(() => {
+      if (portions.value.length <= 1 || optionsViewMode.value === 'same') return [0];
+      if (optionsViewMode.value === 'tabs') return [Math.min(activePortionIndex.value, portions.value.length - 1)];
+      return portions.value.map((_, idx) => idx);
+    });
+
+    const isPortionCustomized = (p) => getPortionSummary(p, 0) !== 'Standard';
+    const previewLabel = (p) => getPortionSummary(p, 0).replace(/"/g, '');
+
+    // Vorschau „2× Ohne Zwiebel · 2× Standard“ – so landet es in Küche/Bon
+    const optionGroupsPreview = computed(() => {
+      if (!activeOptionItem.value || portions.value.length === 0) return [];
+      if (optionsViewMode.value === 'same') {
+        return [{ qty: portions.value.length, label: previewLabel(portions.value[0]) }];
+      }
+      const groups = [];
+      portions.value.forEach(p => {
+        const key = portionKey(p);
+        const g = groups.find(x => x.key === key);
+        if (g) g.qty += 1;
+        else groups.push({ key, qty: 1, label: previewLabel(p) });
+      });
+      return groups;
+    });
+
+    const rememberNotes = () => {
+      const fresh = [];
+      portions.value.forEach(p => {
+        (p.customNote || '').split(',').map(n => n.trim()).filter(Boolean).forEach(n => {
+          if (n.length <= 40 && !foodQuickOptions.some(q => q.toLowerCase() === n.toLowerCase())) fresh.push(n);
+        });
+      });
+      if (fresh.length === 0) return;
+      const merged = [...fresh, ...recentNotes.value]
+        .filter((n, i, arr) => arr.findIndex(x => x.toLowerCase() === n.toLowerCase()) === i)
+        .slice(0, 8);
+      recentNotes.value = merged;
+      try { localStorage.setItem(RECENT_NOTES_KEY, JSON.stringify(merged)); } catch (e) { /* ignorieren */ }
+    };
+
+    const clearPortionNote = (pIdx) => {
+      if (portions.value[pIdx]) portions.value[pIdx].customNote = '';
     };
 
     const isRecipeComponentSelected = (componentId, pIdx = null) => {
@@ -1048,7 +1162,7 @@ createApp({
       return p.customNote.toLowerCase().includes(noteText.toLowerCase());
     };
 
-    const copyPortionToAll = (sourceIdx) => {
+    const copyPortionToAll = (sourceIdx, announce = true) => {
       const src = portions.value[sourceIdx];
       if (!src) return;
       portions.value.forEach((p, idx) => {
@@ -1059,8 +1173,10 @@ createApp({
           p.customNote = src.customNote;
         }
       });
-      vibrate(30);
-      showToast(`Optionen von Portion ${sourceIdx + 1} auf alle übertragen!`, '📋', 1500);
+      if (announce) {
+        vibrate(30);
+        showToast(`Optionen von Portion ${sourceIdx + 1} auf alle übertragen!`, '📋', 1500);
+      }
     };
 
     const copyFromPortion1 = (targetIdx) => {
@@ -1074,7 +1190,7 @@ createApp({
       showToast(`Von Portion 1 übernommen`, '✓', 1200);
     };
 
-    const getPortionSummary = (portion) => {
+    const getPortionSummary = (portion, maxLen = 22) => {
       if (!portion || !activeOptionItem.value) return 'Standard';
       const parts = [];
       if (portion.selectedBeilagen && portion.selectedBeilagen.length > 0) {
@@ -1095,7 +1211,7 @@ createApp({
       }
       if (parts.length === 0) return 'Standard';
       const text = parts.join(' | ');
-      return text.length > 22 ? text.substring(0, 21) + '…' : text;
+      return maxLen > 0 && text.length > maxLen ? text.substring(0, maxLen - 1) + '…' : text;
     };
 
     const getPortionBeilagenSurcharge = (portion) => {
@@ -1127,6 +1243,17 @@ createApp({
     const confirmAddItemWithOptions = () => {
       if (!activeOptionItem.value || portions.value.length === 0) return;
       const item = activeOptionItem.value;
+
+      // „Alle gleich“: Angaben der ersten Portion gelten für alle
+      if (optionsViewMode.value === 'same' && portions.value.length > 1) {
+        copyPortionToAll(0, false);
+      }
+      rememberNotes();
+
+      // Bearbeitungsmodus: bisherige Zeilen dieses Artikels (inkl. verknüpfter) ersetzen
+      if (optionsEditItemId.value !== null) {
+        cart.value = cart.value.filter(line => !isEditLineFor(line, optionsEditItemId.value));
+      }
 
       // Portions nach identischer Konfiguration gruppieren
       const configGroups = [];
@@ -1188,9 +1315,9 @@ createApp({
         });
       });
 
-      showOptionsModal.value = false;
-      activeOptionItem.value = null;
-      portions.value = [];
+      const wasEdit = optionsEditItemId.value !== null;
+      closeOptionsModal();
+      if (wasEdit) showToast(`${item.name}: Angaben übernommen`, '✓', 1200);
     };
 
     const addItemToCart = (item, qty = 1, note = '', beilagenArr = [], recipeArr = null, recipeDiffs = [], linkedParentId = null) => {
@@ -1521,6 +1648,7 @@ createApp({
           zusatzinfo: c.zusatzinfo || '',
           beilagen: c.beilagen || [],
           recipe_components: c.recipe_components || [],
+          linked_parent_id: c.linked_parent_id || undefined,
         })),
       };
 
@@ -2403,6 +2531,14 @@ createApp({
       onOptionQtyInputChange,
       onOptionQtyInputBlur,
       copyPortionToAll,
+      closeOptionsModal,
+      setOptionsMode,
+      visiblePortionIndexes,
+      isPortionCustomized,
+      optionGroupsPreview,
+      optionsEditItemId,
+      recentNotes,
+      clearPortionNote,
       copyFromPortion1,
       getPortionSummary,
       getPortionBeilagenSurcharge,
