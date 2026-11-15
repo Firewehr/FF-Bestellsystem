@@ -89,8 +89,7 @@ if (!$chk || mysqli_num_rows($chk) === 0) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 }
 
-$bonNr = ff_next_bon_nr($conn);
-$payload['bon_nr'] = $bonNr;
+$bonNr = ff_bon_nr_assign_tische($conn, $payload);
 $payload['print_target'] = $printTarget;
 
 $printerKey = 'target_' . $printTarget;

@@ -233,7 +233,13 @@ function ff_escpos_build_kellner_bon(array $tisch, string $headerText = '', stri
 
         $zi = trim((string) ($pos['zusatzinfo'] ?? ($pos['Zusatzinfo'] ?? '')));
         if ($zi !== '') {
-            $out .= ff_escpos_encode_text("   -> " . $zi . "\n");
+            // Fett und umgebrochen (wie im Python-Client), damit Sonderwünsche auffallen
+            $ziLines = explode("\n", wordwrap($zi, 36, "\n", true));
+            $out .= $ESC_BOLD_ON;
+            foreach ($ziLines as $i => $ziLine) {
+                $out .= ff_escpos_encode_text(($i === 0 ? '   -> ' : '      ') . $ziLine . "\n");
+            }
+            $out .= $ESC_BOLD_OFF;
         }
     }
 
@@ -245,6 +251,29 @@ function ff_escpos_build_kellner_bon(array $tisch, string $headerText = '', stri
     }
 
     $out .= $ESC_CUT;
+    return $out;
+}
+
+/**
+ * Kellner-/Abholbon-Payload ({tische: [...], bon_nr}) in ESC/POS umwandeln:
+ * pro Tisch ein eigener Bon (mit eigener Bon-Nr., Fallback auf payload.bon_nr).
+ * Ein einzelner Tisch ohne "tische"-Hülle wird ebenfalls akzeptiert.
+ */
+function ff_escpos_build_kellner_payload(array $payloadData, string $header = '', string $footer = ''): string
+{
+    $tischeList = (isset($payloadData['tische']) && is_array($payloadData['tische']))
+        ? $payloadData['tische']
+        : [$payloadData];
+    $out = '';
+    foreach ($tischeList as $tischData) {
+        if (!is_array($tischData)) {
+            continue;
+        }
+        if (empty($tischData['bon_nr']) && !empty($payloadData['bon_nr'])) {
+            $tischData['bon_nr'] = (int) $payloadData['bon_nr'];
+        }
+        $out .= ff_escpos_build_kellner_bon($tischData, $header, $footer);
+    }
     return $out;
 }
 
@@ -311,9 +340,10 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
         $ESC_CUT = "\x1B\x64\x03\x1D\x56\x01";
         $escData = "\x1B\x40" . ff_escpos_encode_text($text) . $ESC_CUT;
     } elseif ($type === 'kellner_bon' || $type === 'abholbon') {
-        $header = (string) settings_get($conn, 'thermo_bon_header', '');
-        $footer = (string) settings_get($conn, 'thermo_bon_footer', '');
-        $escData = ff_escpos_build_kellner_bon($payloadData, $header, $footer);
+        require_once __DIR__ . '/ff_bon_layout.php';
+        $header = ff_thermo_bon_header($conn);
+        $footer = ff_thermo_bon_footer($conn);
+        $escData = ff_escpos_build_kellner_payload($payloadData, $header, $footer);
     } else {
         // Generischer Fallback
         $text = (string) ($payloadData['text'] ?? $payloadRaw);

@@ -174,9 +174,9 @@ if ($method === 'POST') {
         $affectedTargets = ff_station_get_print_targets_for_rows($conn, $rowids);
         if ($affectedTargets !== []) {
             ff_station_events_publish($conn, $affectedTargets, 'station_change');
-            if ($mitDruck) {
-                ff_auto_print_refill($conn, $affectedTargets);
-            }
+            // Nachrücken immer: Auch ein Abschluss ohne Druck (z. B. Abholbon) gibt einen
+            // Auto-Druck-Platz frei – sonst bleiben wartende Bestellungen ungedruckt liegen.
+            ff_auto_print_refill($conn, $affectedTargets);
         }
 
         api_response([
@@ -199,7 +199,9 @@ if ($method === 'POST') {
         $printTarget = (int) ($data['print_target'] ?? 0);
         $in = implode(',', $rowids);
 
-        $sql = "UPDATE bestellungen SET print = 2, print_status = 0, kueche = 1 "
+        // print = 3 kennzeichnet eine angeforderte Teillieferung (print_target.php druckt sie,
+        // obwohl andere Positionen derselben Bestellung noch offen sind).
+        $sql = "UPDATE bestellungen SET print = 3, print_status = 0, kueche = 1 "
             . "WHERE rowid IN ($in) AND `delete` = 0 AND ausgeliefert = 0 AND COALESCE(print_status, 0) = 0 "
             . "AND (kueche = 1 OR (zeitKueche IS NOT NULL AND zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')))";
 
@@ -494,6 +496,7 @@ foreach ($batches as $batch) {
     $openRowids = [];
     $doneRowids = [];
     $printRowids = [];
+    $anyPrinted = false;
     $earliestTime = null;
     $isPaidDv = false;
     $hasUnpaidDv = false;
@@ -575,8 +578,13 @@ foreach ($batches as $batch) {
         } else {
             // Fertig
             $doneRowids[] = $rid;
-            if ((int) ($ln['print'] ?? 0) === 2 && (int) ($ln['print_status'] ?? 0) === 0) {
+            // Für Teillieferung druckbar: fertig, noch nicht gedruckt und noch nicht zum Druck angefordert.
+            // (item_done setzt print = 0 – früher wurde hier print = 2 verlangt, die Liste war daher immer leer.)
+            if ((int) ($ln['print_status'] ?? 0) === 0 && !in_array((int) ($ln['print'] ?? 0), [2, 3], true)) {
                 $printRowids[] = $rid;
+            }
+            if ((int) ($ln['print_status'] ?? 0) === 1) {
+                $anyPrinted = true;
             }
             $aggKey = $pname . '||' . $zi . '||' . $ptItem;
             if (!isset($doneItems[$aggKey])) {
@@ -621,7 +629,8 @@ foreach ($batches as $batch) {
         'wait_status' => $waitStatus,
         'open_count' => count($openRowids),
         'done_count' => count($doneRowids),
-        'print_status' => (count($printRowids) > 0 ? 1 : 0),
+        // 1 = für diese Bestellung wurde bereits (teilweise) ein Bon gedruckt (Anzeige „🖨️ Bon“)
+        'print_status' => $anyPrinted ? 1 : 0,
         'print_rowids' => array_values(array_unique($printRowids)),
         'items_open' => array_values($openItems),
         'items_done' => array_values($doneItems),

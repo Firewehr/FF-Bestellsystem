@@ -28,7 +28,7 @@ $stmt = mysqli_prepare(
     'SELECT p.Positionsname, b.Zusatzinfo, COALESCE(b.betrag, p.Betrag) AS betrag
        FROM bestellungen b
        LEFT JOIN positionen p ON p.rowid = b.position
-      WHERE b.tischnummer = ? AND b.order_nr = ?
+      WHERE b.tischnummer = ? AND b.order_nr = ? AND b.`delete` = 0
       ORDER BY b.rowid'
 );
 mysqli_stmt_bind_param($stmt, 'ii', $table, $orderNr);

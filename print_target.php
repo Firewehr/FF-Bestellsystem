@@ -42,18 +42,11 @@ $print_target = isset($_GET['print_target']) ? (int)$_GET['print_target'] : 0;
 $token = isset($_GET['token']) ? trim($_GET['token']) : '';
 $preview = isset($_GET['preview']) && $_GET['preview'] === '1';
 
-// Validierung
-if ($print_target <= 0) {
-    echo json_encode(['error' => 'print_target fehlt oder ungültig']);
-    exit;
-}
-
-// Token-Check (optional, aber empfohlen)
-$serverToken = setting_get($conn, 'printer_token', '');
-if ($serverToken !== '' && $token !== $serverToken) {
-    echo json_encode(['error' => 'Ungültiger Token']);
-    exit;
-}
+// Geräte-Freischaltung prüfen (Master-Token oder freigeschalteter Druck-Client)
+require_once __DIR__ . '/include/ff_printer_devices.php';
+$printerAuth = ff_printer_auth_require_json($conn, $token);
+// Im Admin zugewiesenes Druckziel hat Vorrang vor dem Client-Parameter
+$print_target = ff_printer_require_target($printerAuth, $print_target);
 
 // Charset setzen
 mysqli_set_charset($conn, 'utf8mb4');
@@ -89,6 +82,7 @@ $sql = "
         b.bon_id,
         b.timestampBestellung,
         " . ($ffAutoPrintCol ? 'b.auto_print' : '0') . " AS auto_print,
+        b.print AS print_flag,
         UNIX_TIMESTAMP(b.zeitstempel) AS zeitstempel_unix,
         " . ff_sql_bon_tischname_select('b', 't') . "
     FROM bestellungen b
@@ -97,7 +91,7 @@ $sql = "
     LEFT JOIN rechnungen r ON r.id = b.rechnung_id
     WHERE b.`delete` = 0
       AND b.bestellt = 1
-      AND " . ($ffAutoPrintCol ? "((b.kueche = 1 AND b.print = 2) OR b.auto_print = 1)" : "(b.kueche = 1 AND b.print = 2)") . "
+      AND " . ($ffAutoPrintCol ? "((b.kueche = 1 AND b.print IN (2, 3)) OR b.auto_print = 1)" : "(b.kueche = 1 AND b.print IN (2, 3))") . "
       AND b.print_status = 0
       AND COALESCE(b.print_target, p.print_target, 11) = " . $print_target . "
     ORDER BY b.tischnummer ASC, b.zeitstempel ASC
@@ -175,7 +169,9 @@ if (!empty($tischNummern) && !empty($rows)) {
 // Anwendung des Filters: $filteredRows enthält nur die druckbaren Kandidaten.
 $filteredRows = [];
 foreach ($rows as $r) {
-    if ((int) ($r['auto_print'] ?? 0) === 1) {
+    // print = 3: Teillieferung explizit in der Station angefordert – bewusst ohne Sibling-Filter,
+    // sonst würde der Bon erst gedruckt, wenn die ganze Bestellung fertig ist.
+    if (ff_print_target_bypasses_sibling_filter($r)) {
         $filteredRows[] = $r;
         continue;
     }
@@ -331,15 +327,18 @@ if (!$preview && count($bestellungIds) > 0) {
     ff_station_events_publish($conn, [$print_target], 'printed');
 }
 
-// Bon-Nr vergeben (nur wenn tatsächlich gedruckt wird)
+// Bon-Nr vergeben (nur wenn tatsächlich gedruckt wird) – jeder Tisch-Bon eine eigene Nummer
 $bonNr = 0;
 if (!$preview && count($bestellungIds) > 0) {
-    $bonNr = ff_next_bon_nr($conn);
+    $bonPayload = ['tische' => $tische];
+    $bonNr = ff_bon_nr_assign_tische($conn, $bonPayload);
+    $tische = $bonPayload['tische'];
 }
 
 // Thermo-Bon Kopf/Fuß (für Print-Client; leer = Client nutzt config.ini)
-$thermoBonHeader = (string)setting_get($conn, 'thermo_bon_header', '');
-$thermoBonFooter = (string)setting_get($conn, 'thermo_bon_footer', '');
+require_once __DIR__ . '/include/ff_bon_layout.php';
+$thermoBonHeader = ff_thermo_bon_header($conn);
+$thermoBonFooter = ff_thermo_bon_footer($conn);
 
 $ffTimings['total_ms'] = round((microtime(true) - $ffT0) * 1000, 1);
 

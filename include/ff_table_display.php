@@ -89,6 +89,16 @@ function ff_print_target_tisch_bucket_key(int $tischnummer, string $bonId): stri
 }
 
 /**
+ * Zeilen, die unabhängig vom Sibling-Filter sofort gedruckt werden:
+ *  - auto_print = 1 (Sofortdruck bei geringer Stationslast)
+ *  - print = 3 (Teillieferung in der Station explizit angefordert)
+ */
+function ff_print_target_bypasses_sibling_filter(array $row): bool
+{
+    return (int) ($row['auto_print'] ?? 0) === 1 || (int) ($row['print_flag'] ?? 0) === 3;
+}
+
+/**
  * Sibling-Filter (print_target.php): DV nur über bon_id, nicht 5-Min-Fenster über alle Gäste.
  *
  * @param array<string, mixed> $row

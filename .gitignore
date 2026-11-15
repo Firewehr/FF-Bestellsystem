@@ -38,3 +38,5 @@ Thumbs.db
 *.pem
 *.key
 *.crt
+Client-Print-Skripte/**/device_token*.txt
+Client-Print-Skripte/**/simulated_prints/

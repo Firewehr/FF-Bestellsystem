@@ -141,7 +141,7 @@ foreach ($allowedTargets as $pt) {
         continue;
     }
     [$payload, $bestellungIds] = $built;
-    $payload['bon_nr'] = ff_next_bon_nr($conn);
+    ff_bon_nr_assign_tische($conn, $payload);
     $payload['reprint'] = true;
 
     $printerKey = 'target_' . $pt;

@@ -40,7 +40,7 @@ if ($tischnummer <= 0 || $rowids === []) {
 
 $in = implode(',', $rowids);
 $sql = "UPDATE bestellungen SET "
-    . "print = 2, "
+    . "print = 3, "   // 3 = Teillieferung angefordert (ohne Sibling-Filter in print_target.php)
     . "print_status = 0, "
     . "kueche = 1 "
     . "WHERE rowid IN ($in) "

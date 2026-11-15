@@ -1208,7 +1208,7 @@ function BenutzerNeu() {
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
                                 <label class="form-label">Thermo-Bon Kopfzeile(n)</label>
-                                <textarea name="thermo_bon_header" class="form-control form-control-sm" rows="3" placeholder="Leer = aus config.ini (ff_name)"><?php echo out($setting_thermo_bon_header); ?></textarea>
+                                <textarea name="thermo_bon_header" class="form-control form-control-sm" rows="3" placeholder="Leer = Vereinsname aus den Rechnungsdaten"><?php echo out($setting_thermo_bon_header); ?></textarea>
                                 <span class="text-muted small">Mehrere Zeilen möglich. Erste Zeile groß gedruckt.</span>
                             </div>
                             <div class="col-md-6">

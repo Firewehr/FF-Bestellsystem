@@ -12,11 +12,9 @@ $jobId = isset($_POST['job_id']) ? (int)$_POST['job_id'] : 0;
 $status = isset($_POST['status']) ? trim((string)$_POST['status']) : '';
 $errorMsg = isset($_POST['error']) ? trim((string)$_POST['error']) : '';
 
-$serverToken = setting_get($conn, 'printer_token', '');
-if ($serverToken !== '' && $token !== $serverToken) {
-    echo json_encode(['ok' => false, 'error' => 'Ungültiger Token'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+require_once __DIR__ . '/include/ff_printer_devices.php';
+$printerAuth = ff_printer_auth_require_json($conn, $token);
+$assignedTarget = (int)($printerAuth['device']['print_target'] ?? 0);
 
 if ($jobId <= 0) {
     echo json_encode(['ok' => false, 'error' => 'job_id fehlt'], JSON_UNESCAPED_UNICODE);
@@ -26,20 +24,29 @@ if ($jobId <= 0) {
 $newStatus = $status === 'error' ? 'error' : 'done';
 mysqli_set_charset($conn, 'utf8mb4');
 
-if ($newStatus === 'error' && $errorMsg !== '') {
-    $escErr = "'" . mysqli_real_escape_string($conn, mb_substr($errorMsg, 0, 2000)) . "'";
-} else {
-    $escErr = 'NULL';
-}
+$finalStatus = $newStatus === 'error' ? 'error' : 'done';
+$errValue = ($newStatus === 'error' && $errorMsg !== '') ? mb_substr($errorMsg, 0, 2000) : null;
 
-$sql = "UPDATE printer_jobs SET status = '" . ($newStatus === 'error' ? 'error' : 'done') . "',
-        attempts = attempts + 1,
-        error = " . $escErr . "
-        WHERE id = " . $jobId . " AND type IN ('kellner_bon', 'rechnung_thermo')";
-
-if (!mysqli_query($conn, $sql)) {
-    echo json_encode(['ok' => false, 'error' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
+// Geräte mit zugewiesenem Druckziel dürfen nur Jobs ihres eigenen Ziels quittieren.
+$sql = "UPDATE printer_jobs SET status = ?, attempts = attempts + 1, error = ?
+         WHERE id = ? AND type IN ('kellner_bon', 'rechnung_thermo')"
+    . ($assignedTarget > 0 ? ' AND printer = ?' : '');
+$stmt = mysqli_prepare($conn, $sql);
+if (!$stmt) {
+    echo json_encode(['ok' => false, 'error' => 'Datenbankfehler'], JSON_UNESCAPED_UNICODE);
     exit;
 }
+if ($assignedTarget > 0) {
+    $printerKey = 'target_' . $assignedTarget;
+    mysqli_stmt_bind_param($stmt, 'ssis', $finalStatus, $errValue, $jobId, $printerKey);
+} else {
+    mysqli_stmt_bind_param($stmt, 'ssi', $finalStatus, $errValue, $jobId);
+}
+if (!mysqli_stmt_execute($stmt)) {
+    mysqli_stmt_close($stmt);
+    echo json_encode(['ok' => false, 'error' => 'Datenbankfehler'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+mysqli_stmt_close($stmt);
 
 echo json_encode(['ok' => true, 'job_id' => $jobId, 'status' => $newStatus], JSON_UNESCAPED_UNICODE);

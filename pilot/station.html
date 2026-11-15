@@ -434,9 +434,9 @@
 
             <!-- Karten-Footer mit Haupt-Aktionen -->
             <footer class="card-footer">
-              <!-- Teillieferungs-Druck (wenn eingestellt und mindestens 1 Pos. fertig ist) -->
+              <!-- Teillieferungs-Druck (wenn eingestellt und mindestens 1 fertige, noch ungedruckte Pos.) -->
               <button 
-                v-if="stats.teillieferung_enabled && !order.is_direktverkauf && order.items_open.length > 0 && order.items_done.length > 0"
+                v-if="stats.teillieferung_enabled && !order.is_direktverkauf && order.items_open.length > 0 && (order.print_rowids || []).length > 0"
                 type="button" 
                 class="act-btn act-btn-partial-print"
                 title="Druckt die fertigen Positionen als Teillieferung"
@@ -1163,6 +1163,6 @@
   </div>
 
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="station.js?v=8"></script>
+  <script type="module" src="station.js?v=9"></script>
 </body>
 </html>

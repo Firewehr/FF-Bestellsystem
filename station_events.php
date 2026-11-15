@@ -73,7 +73,9 @@ if ($lastEventId <= 0) {
 
 $startedAt = time();
 $heartbeatAt = $startedAt;
-echo "retry: 5000\n\n";
+// Nach dem regulären Verbindungsende (20 s) schnell neu verbinden: Bei 5 s Pause kamen
+// Bons/Stations-Updates in dieser Lücke spürbar verspätet an (gemessen bis zu 3,5 s).
+echo "retry: 1000\n\n";
 flush();
 while (!connection_aborted() && time() - $startedAt < 20) {
     $stmt = mysqli_prepare(
@@ -115,5 +117,7 @@ while (!connection_aborted() && time() - $startedAt < 20) {
         flush();
         $heartbeatAt = time();
     }
-    usleep(1000000);
+    // Druck-Kanal (wenige Druck-Clients) häufiger prüfen → Bon schneller am Drucker;
+    // Stationsbildschirme bleiben bei 1 s, um die Datenbank nicht unnötig zu belasten.
+    usleep($ffPrintChannel ? 400000 : 1000000);
 }

@@ -88,13 +88,8 @@ function ff_api_device_read_token(): string
 
 function ff_api_device_require_printer_token(mysqli $conn): void
 {
-    $token = ff_api_device_read_token();
-    $expected = (string) setting_get($conn, 'printer_token', '');
-    if ($expected !== '' && ($token === '' || !hash_equals($expected, $token))) {
-        http_response_code(403);
-        echo json_encode(['ok' => false, 'error' => 'forbidden'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    require_once __DIR__ . '/include/ff_printer_devices.php';
+    ff_printer_auth_require_json($conn, ff_api_device_read_token());
 }
 
 function ff_api_device_match_name(string $nameLower, string $needleLower, string $matchMode): bool

@@ -1,7 +1,12 @@
 <?php
+// Legacy-Druckschnittstelle (alte Skripte print_uni_win.py / printer_Schank.py).
+// Nur für freigeschaltete Druck-Clients oder mit Master-Token (?token=…).
+require_once __DIR__ . '/include/db.php';
+require_once __DIR__ . '/include/ff_printer_devices.php';
+ff_printer_auth_require_json($conn);
 
-$Tischnummer = intval($_GET['tischnummer']);
-$type = intval($_GET['type']);
+$Tischnummer = intval($_GET['tischnummer'] ?? 0);
+$type = intval($_GET['type'] ?? 0);
 
 try {
     include_once ("include/db.php");

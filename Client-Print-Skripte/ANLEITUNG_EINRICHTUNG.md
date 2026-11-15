@@ -44,13 +44,26 @@ Jeder Druckstandort (Küche, Schank, Feuerflecken) braucht:
    - Feuerflecken → **Feuerflecken (13)**
 3. **Speichern** nicht vergessen!
 
-### 1.3 Drucker-Token setzen (optional, aber empfohlen)
+### 1.3 Druck-Clients freischalten (Pflicht)
 
-1. Im Admin → **System-Einstellungen** → **Rechnungsdaten**
-2. Bei **Drucker-Token** einen geheimen Code eingeben, z.B.: `FF2024Druck`
-3. **Speichern**
+Druck-PCs müssen im Admin **freigeschaltet** werden, bevor sie Bons erhalten. Ohne Freischaltung liefert der Server keine Bestellungen aus, auch wenn kein Token gesetzt ist.
 
-Dieser Token muss dann in der `config.ini` jedes Druck-PCs eingetragen werden.
+1. Den Print-Client mit **leerem** `token =` in der `config.ini` starten (Teil 2).
+2. Der Client registriert sich selbst und zeigt in der Konsole einen **Kopplungscode** an, z. B. `Kopplungscode: B818DF`. Der zufällige Geräte-Token wird in `device_token.txt` neben dem Skript gespeichert.
+3. Im Pilot-Admin → **Stammdaten → Druckziele → Druck-Clients** erscheint das Gerät als „Wartet auf Freischaltung“. Im Dashboard steht zusätzlich ein Hinweis.
+4. In der Spalte **Druckziel** das Ziel wählen (z. B. Küche), den Kopplungscode vergleichen und auf **Freischalten** klicken. Der Client startet innerhalb von ca. 10 Sekunden den Druckbetrieb.
+
+**Druckziel umstellen:** Einfach in der Liste ein anderes Druckziel auswählen. Die Änderung wirkt beim nächsten Abruf (wenige Sekunden), am Druck-PC ist nichts zu tun. Die Zuweisung im Admin hat immer Vorrang vor `print_target` in der `config.ini`.
+
+Weitere Aktionen in der Liste:
+- **Sperren** entzieht den Zugriff sofort.
+- **Entfernen** löscht das Gerät. Ein selbst registrierter Client meldet sich danach automatisch neu an und muss erneut freigeschaltet werden.
+
+**Neuen Drucker hinzufügen:** Einfach einen weiteren PC mit leerem Token starten und freischalten.
+
+**ESP8266-Display oder alte Skripte ohne Selbstregistrierung:** Unter „Gerät manuell anlegen“ einen Token erzeugen (wird nur einmal angezeigt) und im Gerät bzw. als `token=` eintragen.
+
+Ein globaler Master-Token (Admin → Rechnungsdaten → Drucker-Token) wird weiterhin akzeptiert. Er ist aber nicht mehr nötig.
 
 ---
 
@@ -122,20 +135,18 @@ Diese Schritte für jeden Drucker-PC wiederholen (Küche, Schank, Feuerflecken).
 ```ini
 [Server]
 url = https://ffobritzberg.bplaced.net
-token = FF2024Druck
-print_target = 11
+token =
+device_name = Küche-Laptop
 ```
 
-**print_target** je nach Standort:
+Mehr ist nicht nötig. `token` leer lassen führt zur Selbstregistrierung mit Freischaltung im Admin (siehe 1.3). Das **Druckziel wird im Admin zugewiesen**. `print_target` muss in der `config.ini` nicht gesetzt werden und dient höchstens als Vorschlag.
+
+**print_target** (optional, nur ohne Zuweisung im Admin) je nach Standort:
 - Küche-PC: `print_target = 11`
 - Schank-PC: `print_target = 12`
 - Feuerflecken-PC: `print_target = 13`
 
-6. Unter `[Einstellungen]`:
-```ini
-ff_name = FF Obritzberg
-footer_text = Guten Appetit!
-```
+6. Der **Name auf dem Bon** (Kopfzeile) und die Fußzeile werden zentral im Admin gepflegt: **Stammdaten → Druckziele → Bon-Kopf & Fußzeile**. Bleibt die Kopfzeile leer, wird der Vereinsname aus den Rechnungsdaten verwendet. In der `config.ini` ist dafür nichts einzutragen.
 
 7. Unter `[Drucker]` den **exakten Windows-Druckernamen** eintragen (Freigabename gleich setzen):
 
@@ -167,6 +178,23 @@ Bei **Modellwechsel** (anderer Drucker am USB): Namen in Windows prüfen und `na
 1. Im Bestellsystem eine Test-Bestellung aufgeben
 2. In Küche/Schank auf "Fertig" klicken
 3. Der Bon sollte innerhalb von 3 Sekunden drucken
+
+### 2.5a Testen ohne Drucker (Simulation)
+
+Der komplette Ablauf lässt sich ohne angeschlossenen Drucker testen:
+
+```
+python print_client.py --simulate          # Bons in der Konsole anzeigen statt drucken
+python print_client.py --simulate --test   # nur eine Runde, dann beenden
+python print_client.py --simulate-fail     # jeden Druck als FEHLER melden (Fehlerbehandlung testen)
+```
+
+Alternativ dauerhaft in der `config.ini` unter `[Drucker]`: `simulate = true` (oder `fail`).
+
+- Der Ablauf ist identisch zum Echtbetrieb: Bestellungen werden abgeholt, Bon-Nummern vergeben und dem Server als gedruckt gemeldet.
+- Jeder Bon wird lesbar in der Konsole angezeigt und zusätzlich im Ordner `simulated_prints/` gespeichert: `.txt` als lesbarer Text, `.bin` als rohe ESC/POS-Daten.
+- **Achtung:** Abgeholte Bestellungen gelten danach als gedruckt. Zum Testen deshalb ein eigenes Druckziel verwenden (z. B. „Test“) und es im Admin dem Gerät zuweisen.
+- Nur ansehen, ohne etwas als gedruckt zu markieren: `--preview`.
 
 ### 2.6 Autostart einrichten (optional)
 
@@ -240,9 +268,10 @@ pip install requests
 - Internet-Verbindung prüfen
 - Server-URL in config.ini prüfen (kein Tippfehler?)
 
-### "Ungültiger Token"
-- Token in config.ini muss exakt mit Admin → Drucker-Token übereinstimmen
-- Groß-/Kleinschreibung beachten!
+### „Wartet auf Freischaltung“ / „Zugriff verweigert“
+- Im Admin → Druckziele → Druck-Clients das Gerät mit dem angezeigten Kopplungscode freischalten.
+- Status „Gesperrt“: wieder freischalten oder das Gerät entfernen. Danach meldet sich der Client neu an.
+- Ist ein Token in der `config.ini` eingetragen, muss er ein gültiger Master-Token oder ein im Admin erzeugter Geräte-Token sein. Sonst `token =` leer lassen und `device_token.txt` löschen.
 
 ### Drucker druckt nicht
 1. **Drucker eingeschaltet?**
@@ -272,7 +301,7 @@ pip install requests
 - [ ] Ordner `C:\POS-Daten` erstellt
 - [ ] `config.ini` erstellt und angepasst
 - [ ] `print_target` korrekt gesetzt (11/12/13)
-- [ ] Token eingetragen (falls verwendet)
+- [ ] Druck-Client im Admin freigeschaltet (Kopplungscode geprüft)
 - [ ] Test-Bestellung erfolgreich gedruckt
 - [ ] (Optional) Autostart eingerichtet
 

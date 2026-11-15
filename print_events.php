@@ -23,11 +23,13 @@ function ff_print_events_reply(string $event, int $retryMs, int $status = 200): 
     exit;
 }
 
-$serverToken = (string) setting_get($conn, 'printer_token', '');
-$token = isset($_GET['token']) ? trim((string) $_GET['token']) : '';
-if ($serverToken !== '' && !hash_equals($serverToken, $token)) {
-    ff_print_events_reply('print-denied', 60000, 401);
+require_once __DIR__ . '/include/ff_printer_devices.php';
+$printerAuth = ff_printer_auth_check($conn, ff_printer_token_from_request());
+if (!$printerAuth['ok']) {
+    ff_print_events_reply($printerAuth['code'] === 'printer_pending' ? 'print-pending' : 'print-denied', 60000, $printerAuth['http']);
 }
+// Im Admin zugewiesenes Druckziel hat Vorrang (station_events.php liest $_GET['print_target'])
+$_GET['print_target'] = (string) ff_printer_effective_target($printerAuth, (int) ($_GET['print_target'] ?? 0));
 if ((string) setting_get($conn, 'print_event_mode', '0') !== '1') {
     ff_print_events_reply('print-disabled', 60000);
 }

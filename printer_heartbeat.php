@@ -4,14 +4,19 @@
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/settings.php';
 
-$token = $_GET['token'] ?? '';
-$expected = setting_get($conn, 'printer_token', '');
-if ($expected !== '' && $token !== $expected) {
-    http_response_code(403);
-    echo "unauthorized";
+require_once __DIR__ . '/include/ff_printer_devices.php';
+$auth = ff_printer_auth_check($conn, ff_printer_token_from_request());
+if (!$auth['ok']) {
+    http_response_code($auth['http']);
+    echo $auth['code'];
     exit;
 }
 $service = preg_replace('/[^a-zA-Z0-9_-]/', '', ($_GET['service'] ?? 'unknown'));
+// Zugewiesenes Druckziel bestimmt den Heartbeat-Schlüssel (Anzeige im Admin pro Druckziel)
+$assignedTarget = (int)($auth['device']['print_target'] ?? 0);
+if ($assignedTarget > 0) {
+    $service = 'target_' . $assignedTarget;
+}
 $host = substr($_GET['host'] ?? '', 0, 120);
 $now = date('Y-m-d H:i:s');
 

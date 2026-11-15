@@ -45,8 +45,7 @@ if ($built === null) {
 
 [$payload, $bestellungIds] = $built;
 
-$bonNr = ff_next_bon_nr($conn);
-$payload['bon_nr'] = $bonNr;
+$bonNr = ff_bon_nr_assign_tische($conn, $payload);
 
 $printerKey = 'target_' . $print_target;
 $payloadJson = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

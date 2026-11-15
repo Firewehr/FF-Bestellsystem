@@ -14,16 +14,32 @@
 # Gratis-bplaced oft nur HTTP → dann http://… verwenden (kein https://, sonst SSL-Fehler).
 url = https://ffobritzberg.bplaced.net
 
-# Sicherheitstoken (muss im Admin -> Rechnungsdaten identisch sein)
-# Leer lassen wenn kein Token verwendet wird
+# Geräte-Freischaltung (empfohlen): token LEER lassen.
+# Der Client registriert sich beim ersten Start selbst, speichert seinen zufälligen
+# Geräte-Token in token_file und zeigt einen Kopplungscode an. Im Admin unter
+# Stammdaten -> Druckziele -> Druck-Clients das Gerät mit diesem Code freischalten –
+# erst danach wird gedruckt.
+# Alternativ: globalen Master-Token (Admin -> Rechnungsdaten) oder einen im Admin
+# manuell erzeugten Geräte-Token hier eintragen.
 token = 
 
-# Print Target ID - welches Druckziel dieser PC bedient:
+# Name, unter dem dieser Druck-PC im Admin erscheint (leer = Rechnername)
+; device_name = Küche-Laptop
+
+# Datei für den selbst registrierten Geräte-Token (relativ zu diesem Ordner)
+; token_file = device_token.txt
+
+# Print Target ID - OPTIONAL. Leer lassen = Druckziel wird zentral im Admin
+# (Stammdaten -> Druckziele -> Druck-Clients) zugewiesen und kann dort jederzeit
+# umgestellt werden, ohne diesen PC anzufassen. Eine Zuweisung im Admin hat immer Vorrang.
+# Wird hier ein Wert eingetragen, dient er nur als Vorschlag bzw. für Clients ohne Zuweisung.
+#
+# Welches Druckziel dieser PC bedient:
 #   11 = Küche
 #   12 = Schank
 #   13 = Feuerflecken (oder andere benutzerdefinierte)
 # Die IDs findest du im Admin unter "Druckziele (Print Targets)"
-print_target = 11
+print_target =
 
 # SSL-Zertifikat prüfen (true = sicher, Standard). Bei CERTIFICATE_VERIFY_FAILED / self-signed: false setzen
 # (nur im vertrauenswürdigen Netz; besser ist ein korrektes Zertifikat am Server).
@@ -58,6 +74,13 @@ verbose_timings = false
 
 
 [Drucker]
+# Test ohne Drucker: true = nichts drucken, Bon wird in der Konsole angezeigt und
+# als .txt/.bin in simulate_dir gespeichert. Der Ablauf (Abholen, Bon-Nr., Rückmeldung
+# an den Server) ist identisch zum Echtbetrieb. fail = jeden Druck als Fehler melden.
+# Alternativ beim Start: --simulate bzw. --simulate-fail
+simulate = false
+; simulate_dir = simulated_prints
+
 # === WINDOWS ===
 # Exakter Name wie in Windows „Geräte und Drucker“ (Freigabename gleich setzen).
 name = Receipt Printer
@@ -91,11 +114,9 @@ devices =
 
 
 [Einstellungen]
-# Kopf- und Fußtext des Thermo-Bons: Wenn im Admin unter Rechnungsdaten
-# „Thermo-Bon Kopfzeile/Fußzeile“ etwas eingetragen ist, kommen diese Texte
-# vom Server (mehrzeilig möglich). Leer lassen im Admin = diese Werte hier.
-# Name der Feuerwehr (erscheint oben auf jedem Bon)
-ff_name = FF Obritzberg
-
-# Text am Ende des Bons
-footer_text = Guten Appetit!
+# Name/Kopfzeile des Bons wird im Admin gepflegt:
+#   Stammdaten -> Druckziele -> „Bon-Kopf & Fußzeile“ (leer = Vereinsname aus den Rechnungsdaten).
+# Ein Eintrag ff_name hier wird nicht mehr verwendet.
+#
+# Optional: Fußzeile, falls im Admin keine Fußzeile eingetragen ist.
+; footer_text = Guten Appetit!

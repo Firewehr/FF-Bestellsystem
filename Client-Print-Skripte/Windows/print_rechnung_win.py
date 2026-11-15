@@ -17,7 +17,7 @@ SAVE_PATH = r"C:\POS-Daten"
 PRINT_FILE = os.path.join(SAVE_PATH, "printPOS.txt")
 BAT_FILE = r"C:\POS-Daten\printi.bat"
 SERVER_BASE = "http://.../"  # z.B. https://dein-webspace.tld/FeuerwehrBestellsystem-master/
-PRINTER_TOKEN = ""           # optional, muss im Admin -> Rechnungsdaten gleich sein
+PRINTER_TOKEN = ""           # leer = Selbstregistrierung; Freischaltung im Admin (Druckziele -> Druck-Clients)
 
 import argparse
 
@@ -118,7 +118,58 @@ def cut(lines_list):
     lines_list.append("\n\n\n\n\n\x0D\x0c")
     lines_list.append("\x1D\x56\x00\x0A")
 
+TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'device_token_rechnung.txt')
+
+
+def _pair_code(token):
+    import hashlib
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()[:6].upper()
+
+
+def ensure_approved():
+    """Token laden/registrieren und warten, bis der Admin den Client freischaltet."""
+    global PRINTER_TOKEN
+    base = SERVER_BASE.rstrip('/')
+    shown = ''
+    while True:
+        try:
+            if not PRINTER_TOKEN and os.path.exists(TOKEN_FILE):
+                with open(TOKEN_FILE, encoding='utf-8') as fh:
+                    PRINTER_TOKEN = fh.read().strip()
+            if not PRINTER_TOKEN:
+                host = os.environ.get('COMPUTERNAME', 'Windows')
+                r = requests.post(base + '/printer_register.php', data={
+                    'name': host + ' (Rechnung)', 'host': host, 'service': 'rechnung',
+                    'client': 'print_rechnung_win.py',
+                }, timeout=15).json()
+                if not r.get('ok'):
+                    print("Registrierung abgelehnt:", r.get('error'))
+                    time.sleep(60)
+                    continue
+                PRINTER_TOKEN = r['token']
+                with open(TOKEN_FILE, 'w', encoding='utf-8') as fh:
+                    fh.write(PRINTER_TOKEN)
+            st = requests.get(base + '/printer_register.php', params={'token': PRINTER_TOKEN}, timeout=15).json()
+            status = st.get('status')
+            if status == 'approved':
+                return
+            if status == 'unknown' and os.path.exists(TOKEN_FILE):
+                os.remove(TOKEN_FILE)
+                PRINTER_TOKEN = ''
+                continue
+            msg = ("Wartet auf Freischaltung im Admin, Kopplungscode: " + _pair_code(PRINTER_TOKEN)) \
+                if status == 'pending' else ("Druck-Client nicht akzeptiert (" + str(status) + ")")
+            if msg != shown:
+                print(msg)
+                shown = msg
+            time.sleep(10)
+        except Exception as e:
+            print("Freischaltung pruefen fehlgeschlagen:", e)
+            time.sleep(15)
+
+
 def main():
+    ensure_approved()
     if not os.path.isdir(SAVE_PATH):
         print("Ordner fehlt:", SAVE_PATH)
         sys.exit(1)
@@ -130,7 +181,12 @@ def main():
             params = {}
             if PRINTER_TOKEN:
                 params['token'] = PRINTER_TOKEN
-            jobs = requests.get(url, params=params, timeout=15).json()
+            resp = requests.get(url, params=params, timeout=15)
+            if resp.status_code in (401, 403):
+                print("Zugriff verweigert - pruefe Freischaltung...")
+                ensure_approved()
+                continue
+            jobs = resp.json()
             if isinstance(jobs, dict) and jobs.get('error'):
                 print("Server-Fehler:", jobs.get('error'))
                 time.sleep(10)

@@ -826,7 +826,10 @@ createApp({
     // Teillieferung drucken
     const printPartial = async (order) => {
       const rowids = order.print_rowids || [];
-      if (rowids.length === 0) return;
+      if (rowids.length === 0) {
+        showToast('Keine fertigen, noch ungedruckten Positionen für eine Teillieferung.', 'error');
+        return;
+      }
 
       try {
         const data = await apiPost({

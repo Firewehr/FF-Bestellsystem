@@ -7,9 +7,11 @@ Dieses Skript:
 1. Liest die Konfiguration aus config.ini
 2. Pollt den Server nach neuen Bestellungen für das konfigurierte Print Target
 3. Druckt die Bons auf dem konfigurierten Drucker
-4. Sendet regelmäßig einen Heartbeat an den Server (printer_heartbeat.php),
+4. Registriert sich ohne Token selbst am Server (printer_register.php) und wartet,
+   bis ein Admin den Druck-Client freischaltet (Kopplungscode in der Konsole).
+5. Sendet regelmäßig einen Heartbeat an den Server (printer_heartbeat.php),
    damit der Dienst nicht als abgestürzt/aufgehängt gilt.
-5. Unterstützt Windows (über Generic Text Only Drucker) und Linux (über /dev/usb/lpX)
+6. Unterstützt Windows (über Generic Text Only Drucker) und Linux (über /dev/usb/lpX)
 
 Unterstützte Drucker: Epson TM-T88 Serie (TM-T88IV, TM-T88V, TM-T88VI)
 """
@@ -17,6 +19,7 @@ Unterstützte Drucker: Epson TM-T88 Serie (TM-T88IV, TM-T88V, TM-T88VI)
 import argparse
 import configparser
 import datetime
+import hashlib
 import json
 import os
 import platform
@@ -66,6 +69,8 @@ class ESC:
     # Textformatierung
     NORMAL = b'\x1B!\x00'
     BOLD = b'\x1B!\x08'
+    EMPH_ON = b'\x1B\x45\x01'          # Hervorhebung (fett) an – z. B. für Zusatzinfos
+    EMPH_OFF = b'\x1B\x45\x00'         # Hervorhebung aus
     DOUBLE_HEIGHT = b'\x1B!\x10'
     DOUBLE_WIDTH = b'\x1B!\x20'
     DOUBLE_SIZE = b'\x1B!\x30'            # Doppelte Höhe + Breite
@@ -76,9 +81,18 @@ class ESC:
     CODEPAGE_WPC1252 = b'\x1B\x74\x10'    # Windows-1252
 
 
-def load_config():
-    """Lädt die Konfiguration aus config.ini"""
-    config_path = Path(__file__).parent / 'config.ini'
+def _config_int(config, section: str, key: str, default: int) -> int:
+    raw = config.get(section, key, fallback='')
+    raw = (raw or '').split('#')[0].split(';')[0].strip()
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        return default
+
+
+def load_config(path: str = ''):
+    """Lädt die Konfiguration aus config.ini (oder dem per --config angegebenen Pfad)"""
+    config_path = Path(path) if path else Path(__file__).parent / 'config.ini'
     
     if not config_path.exists():
         print(f"Fehler: Konfigurationsdatei nicht gefunden: {config_path}")
@@ -91,7 +105,8 @@ def load_config():
     return {
         'server_url': config.get('Server', 'url', fallback='').rstrip('/'),
         'token': config.get('Server', 'token', fallback=''),
-        'print_target': config.getint('Server', 'print_target', fallback=11),
+        # Optional: 0/leer = Druckziel kommt zentral vom Server (Admin -> Druck-Clients).
+        'print_target': _config_int(config, 'Server', 'print_target', 0),
         'poll_interval': config.getint('Server', 'poll_interval', fallback=3),
         # Pro Server-Runde: wie viele Einträge aus printer_jobs nacheinander holen (je Anfrage liefert der Server nur 1 Job).
         'max_printer_jobs_per_poll': config.getint('Server', 'max_printer_jobs_per_poll', fallback=25),
@@ -100,6 +115,10 @@ def load_config():
         'use_events': config.getboolean('Server', 'use_events', fallback=True),
         'event_fallback_interval': config.getint('Server', 'event_fallback_interval', fallback=30),
         'service_name': config.get('Server', 'service_name', fallback=''),  # leer = target_<id>
+        # Name, unter dem der Client im Admin zur Freischaltung erscheint (leer = Rechnername).
+        'device_name': config.get('Server', 'device_name', fallback=''),
+        # Ablage des selbst registrierten Geräte-Tokens (relativ zum Skriptordner).
+        'token_file': config.get('Server', 'token_file', fallback='device_token.txt'),
 
         'printer_name': config.get('Drucker', 'name', fallback=''),
         'printer_device': config.get('Drucker', 'device', fallback=''),
@@ -108,8 +127,13 @@ def load_config():
         # Linux: automatische USB-Drucker-Suche (siehe find_linux_usb_printer()).
         'auto_detect_printer': config.getboolean('Drucker', 'auto_detect', fallback=True),
         'usb_vendor_ids': config.get('Drucker', 'usb_vendor_ids', fallback='04b8, 067b'),
+        # Simulation: false | true | fail  (true = nichts drucken, Bon in Konsole + Datei;
+        # fail = Druckfehler simulieren, um die Fehlerbehandlung zu testen)
+        'simulate': (config.get('Drucker', 'simulate', fallback='false') or 'false').strip().lower(),
+        'simulate_dir': config.get('Drucker', 'simulate_dir', fallback='simulated_prints'),
 
-        'ff_name': config.get('Einstellungen', 'ff_name', fallback='Freiwillige Feuerwehr'),
+        # Name/Kopfzeile kommt zentral vom Server (Admin -> Druckziele -> Bon-Kopf & Fußzeile).
+        # footer_text ist nur noch Fallback, falls im Admin keine Fußzeile gesetzt ist.
         'footer_text': config.get('Einstellungen', 'footer_text', fallback='Guten Appetit!'),
 
         'verify_ssl': config.getboolean('Server', 'verify_ssl', fallback=True),
@@ -233,11 +257,12 @@ def wrap_bon_position_name(name: str, first_width: int, cont_width: int) -> list
 
 
 def bon_effective_header_footer(config: dict, server_data: Optional[dict] = None) -> Tuple[str, str]:
-    """Kopf/Fuß: aus Server-JSON (Admin), sonst Fallback config.ini ff_name / footer_text."""
+    """Kopf/Fuß aus dem Server-JSON (Admin). Der Name wird ausschließlich im Admin gepflegt;
+    der Server liefert immer einen Wert (Bon-Kopfzeile, sonst Vereinsname)."""
     srv = server_data or {}
     h = str(srv.get('thermo_bon_header') or '').strip()
     f = str(srv.get('thermo_bon_footer') or '').strip()
-    header = h if h else (config.get('ff_name') or '')
+    header = h
     footer = f if f else (config.get('footer_text') or '')
     return header, footer
 
@@ -319,7 +344,7 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
         if tnr == 999999:
             data.extend(encode_text(f"{tisch.get('tischname') or 'Direktverkauf'}\n"))
         else:
-            data.extend(encode_text(f"Tisch: {tisch['tischname']}\n"))
+            data.extend(encode_text(f"Tisch: {tisch.get('tischname') or ('Tisch ' + str(tnr))}\n"))
         data.extend(ESC.NORMAL)
         data.extend(b'\n')
 
@@ -361,8 +386,8 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
     data.extend(ESC.NORMAL)
     
     # Info
-    data.extend(encode_text(f"Kellner: {tisch['kellner']}\n"))
-    data.extend(encode_text(f"Bestellt: {format_time(tisch['bestellt_um'])}\n"))
+    data.extend(encode_text(f"Kellner: {tisch.get('kellner') or '-'}\n"))
+    data.extend(encode_text(f"Bestellt: {format_time(tisch.get('bestellt_um') or '')}\n"))
     now = datetime.datetime.now()
     data.extend(encode_text(f"Datum (Beleg): {now.strftime('%d.%m.%Y')}\n"))
     data.extend(encode_text(f"Druckzeit: {now.strftime('%H:%M')} Uhr\n"))
@@ -372,7 +397,7 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
     data.extend(encode_text('-' * 42 + '\n'))
     
     # Positionen (ggf. bereits gruppiert: anzahl, einzelpreis, gesamtpreis)
-    for pos in tisch['positionen']:
+    for pos in (tisch.get('positionen') or []):
         import textwrap
         name = format_bon_position_name(pos)
         anz = int(pos.get('anzahl') or 1)
@@ -422,8 +447,11 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
                 )
                 if not wrapped:
                     wrapped = [zi]
+                # Fett, damit Sonderwünsche (z. B. „Radler mit Almdudler“) nicht übersehen werden
+                data.extend(ESC.EMPH_ON)
                 for i, part in enumerate(wrapped):
                     data.extend(encode_text(f"{prefix if i == 0 else cont}{part}\n"))
+                data.extend(ESC.EMPH_OFF)
     
     # Trennlinie
     data.extend(encode_text('-' * 42 + '\n'))
@@ -431,7 +459,7 @@ def build_bon(tisch: dict, config: dict, server_data: Optional[dict] = None) -> 
     # Summe
     total = sum(
         float(p.get('gesamtpreis', p.get('betrag', 0)))
-        for p in tisch['positionen']
+        for p in (tisch.get('positionen') or [])
     )
     data.extend(ESC.DOUBLE_WIDTH)
     if is_teil:
@@ -595,8 +623,104 @@ def build_rechnung_thermo_text(text: str, config: dict) -> bytes:
     return bytes(data)
 
 
+# ---------------------------------------------------------------------------
+# Druck-Simulation (ohne Drucker testen)
+# ---------------------------------------------------------------------------
+_SIM_COUNTER = 0
+
+
+def simulate_mode(config: dict) -> str:
+    """'' (aus), 'ok' (Druck simulieren) oder 'fail' (Druckfehler simulieren)."""
+    v = str(config.get('simulate') or '').strip().lower()
+    if v in ('1', 'true', 'yes', 'ja', 'on', 'ok'):
+        return 'ok'
+    if v in ('fail', 'error', 'fehler'):
+        return 'fail'
+    return ''
+
+
+def escpos_to_text(data: bytes) -> str:
+    """Entfernt ESC/POS-Steuerbefehle und liefert den lesbaren Bon-Text."""
+    out = bytearray()
+    i, n = 0, len(data)
+    while i < n:
+        b = data[i]
+        if b == 0x1B and i + 1 < n:                       # ESC
+            c = data[i + 1]
+            if c == 0x40:                                  # ESC @  (Init)
+                i += 2
+            elif c == 0x45 and i + 2 < n:                  # ESC E n (Hervorhebung) → **…** in der Simulation
+                if data[i + 2] and data[i + 2] != 0x30:       # an: Markierung vor dem Text
+                    out.extend(b'**')
+                elif out.endswith(b'\n'):                      # aus: Markierung vor den Zeilenumbruch
+                    out[-1:] = b'**\n'
+                else:
+                    out.extend(b'**')
+                i += 3
+            elif c in b'a!RtdE-JMVG':                      # ESC x n
+                i += 3
+            else:
+                i += 2
+            continue
+        if b == 0x1D and i + 1 < n:                       # GS
+            c = data[i + 1]
+            if c == 0x56:                                  # GS V m [n]  (Schnitt)
+                m = data[i + 2] if i + 2 < n else 0
+                i += 4 if m in (65, 66) else 3
+                out.extend(b'\n' + b'-' * 15 + b' >8 Schnitt ' + b'-' * 15 + b'\n')
+            else:
+                i += 3
+            continue
+        if b in (0x0C, 0x0D, 0x00):
+            i += 1
+            continue
+        out.append(b)
+        i += 1
+    try:
+        text = out.decode('cp1252', errors='replace')
+    except LookupError:
+        text = out.decode('latin-1', errors='replace')
+    # Mehrfache Leerzeilen (Papiervorschub) zusammenfassen
+    while '\n\n\n' in text:
+        text = text.replace('\n\n\n', '\n\n')
+    return text.strip('\n')
+
+
+def simulate_print(data: bytes, config: dict) -> bool:
+    """Simuliert den Druck: Bon in der Konsole anzeigen und als .txt/.bin ablegen."""
+    global _SIM_COUNTER
+    mode = simulate_mode(config)
+    _SIM_COUNTER += 1
+    text = escpos_to_text(data)
+    width = 48
+    print("     +" + "-" * width + "+  [SIMULATION]")
+    for line in text.split('\n'):
+        print("     |" + line[:width].ljust(width) + "|")
+    print("     +" + "-" * width + "+")
+
+    target_dir = Path(config.get('simulate_dir') or 'simulated_prints')
+    if not target_dir.is_absolute():
+        target_dir = Path(__file__).parent / target_dir
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        base = target_dir / f"bon_{stamp}_{_SIM_COUNTER:04d}"
+        base.with_suffix('.bin').write_bytes(data)                  # Roh-ESC/POS (z. B. für späteren Echtdruck)
+        base.with_suffix('.txt').write_text(text + '\n', encoding='utf-8')
+        print(f"     [Simulation] gespeichert: {base.name}.txt / .bin")
+    except OSError as e:
+        print(f"     [Simulation] Datei konnte nicht gespeichert werden: {e}")
+
+    if mode == 'fail':
+        print("     [Simulation] Druckfehler simuliert (simulate = fail)")
+        return False
+    return True
+
+
 def do_print(data: bytes, config: dict) -> bool:
-    """Druckt die Daten je nach Betriebssystem"""
+    """Druckt die Daten je nach Betriebssystem (oder simuliert den Druck)."""
+    if simulate_mode(config):
+        return simulate_print(data, config)
     system = platform.system()
     
     if system == 'Windows':
@@ -608,13 +732,161 @@ def do_print(data: bytes, config: dict) -> bool:
         return False
 
 
+# ---------------------------------------------------------------------------
+# Geräte-Registrierung & Freischaltung
+# ---------------------------------------------------------------------------
+AUTH_CODES = ('printer_pending', 'printer_blocked', 'printer_unauthorized', 'printer_no_target')
+
+
+def host_name() -> str:
+    return os.environ.get('COMPUTERNAME', '') or os.environ.get('HOSTNAME', '') or platform.node() or 'localhost'
+
+
+def pair_code(token: str) -> str:
+    """Kopplungscode – identisch zur Anzeige im Admin (SHA-256, erste 6 Zeichen)."""
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()[:6].upper()
+
+
+def token_file_path(config: dict) -> Path:
+    p = Path(config.get('token_file') or 'device_token.txt')
+    return p if p.is_absolute() else Path(__file__).parent / p
+
+
+def auth_error_code(response) -> str:
+    """Liefert printer_pending/printer_blocked/printer_unauthorized bei 401/403, sonst ''."""
+    if response.status_code not in (401, 403, 409):
+        return ''
+    try:
+        code = str((response.json() or {}).get('code') or '')
+    except ValueError:
+        code = ''
+    return code if code in AUTH_CODES else 'printer_unauthorized'
+
+
+def register_device(config: dict) -> Optional[str]:
+    """Registriert diesen Druck-Client am Server und speichert den erhaltenen Token."""
+    url = config['server_url'] + '/printer_register.php'
+    payload = {
+        'name': config.get('device_name') or host_name(),
+        'host': host_name(),
+        'service': config.get('service_name') or (f"target_{config['print_target']}" if config['print_target'] else ''),
+        'print_target': config['print_target'] or '',
+        'client': f"print_client.py ({platform.system()})",
+    }
+    try:
+        r = get_http_session().post(url, data=payload, timeout=15, verify=config.get('verify_ssl', True))
+        data = r.json()
+    except (requests.exceptions.RequestException, ValueError) as e:
+        print(f"  [Registrierung] Server nicht erreichbar: {e}")
+        return None
+    if not data.get('ok') or not data.get('token'):
+        print(f"  [Registrierung] abgelehnt: {data.get('error') or r.status_code}")
+        return None
+    token = str(data['token'])
+    path = token_file_path(config)
+    try:
+        path.write_text(token + '\n', encoding='utf-8')
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    except OSError as e:
+        print(f"  [Registrierung] WARNUNG: Token konnte nicht gespeichert werden ({path}): {e}")
+    print(f"  [Registrierung] Neuer Druck-Client angelegt (Gerät #{data.get('device_id')}).")
+    return token
+
+
+def load_or_register_token(config: dict) -> Optional[str]:
+    """Token aus config.ini, sonst aus token_file, sonst neu registrieren."""
+    if config.get('token'):
+        return config['token']
+    path = token_file_path(config)
+    if path.exists():
+        t = path.read_text(encoding='utf-8').strip()
+        if t:
+            return t
+    return register_device(config)
+
+
+def wait_for_approval(config: dict) -> None:
+    """
+    Blockiert, bis der Server diesen Client akzeptiert. Registriert sich bei Bedarf
+    (neu) und zeigt den Kopplungscode für den Abgleich im Admin an.
+    """
+    from_config = bool(config.get('_token_from_config'))
+    last_msg = ''
+    while True:
+        token = config.get('token') or load_or_register_token(config)
+        if not token:
+            time.sleep(30)
+            continue
+        config['token'] = token
+        try:
+            r = get_http_session().get(
+                config['server_url'] + '/printer_register.php',
+                params={'token': token}, timeout=15, verify=config.get('verify_ssl', True),
+            )
+            st = r.json() or {}
+            status = str(st.get('status') or '')
+        except (requests.exceptions.RequestException, ValueError) as e:
+            print(f"  [Freischaltung] Server nicht erreichbar ({e}) - neuer Versuch in 15s")
+            time.sleep(15)
+            continue
+
+        if status == 'approved':
+            apply_server_target(config, st.get('print_target'))
+            if config.get('print_target', 0) > 0:
+                if last_msg:
+                    print("  [Freischaltung] Druck-Client ist freigeschaltet - starte Druckbetrieb.")
+                return
+            msg = ("  [Freischaltung] Freigeschaltet, aber noch KEIN Druckziel zugewiesen. "
+                   "Bitte im Admin unter Druck-Clients auswählen.")
+            wait_s = 10
+        elif status == 'pending':
+            msg = (f"  [Freischaltung] Wartet auf Freischaltung im Admin "
+                   f"(Stammdaten -> Druckziele -> Druck-Clients). Kopplungscode: {pair_code(token)}")
+            wait_s = 10
+        elif status == 'blocked':
+            msg = "  [Freischaltung] Dieser Druck-Client ist im Admin GESPERRT."
+            wait_s = 60
+        else:
+            if from_config:
+                msg = "  [Freischaltung] Token aus config.ini wird vom Server nicht akzeptiert. Bitte prüfen."
+                wait_s = 60
+            else:
+                print("  [Freischaltung] Gerät dem Server unbekannt (im Admin entfernt?) - registriere neu.")
+                try:
+                    token_file_path(config).unlink()
+                except OSError:
+                    pass
+                config['token'] = ''
+                time.sleep(30)
+                continue
+        if msg != last_msg:
+            print(msg)
+            last_msg = msg
+        time.sleep(wait_s)
+
+
+def apply_server_target(config: dict, server_target) -> None:
+    """Übernimmt das im Admin zugewiesene Druckziel (zentrale Konfiguration)."""
+    try:
+        target = int(server_target or 0)
+    except (TypeError, ValueError):
+        target = 0
+    if target > 0 and target != config.get('print_target'):
+        old = config.get('print_target') or '-'
+        config['print_target'] = target
+        print(f"  [Konfiguration] Druckziel vom Server: {target} (vorher {old})")
+
+
 def send_heartbeat(config: dict) -> bool:
     """Sendet Heartbeat an den Server (Dienst läuft noch)."""
     base = config['server_url']
     url = base + '/printer_heartbeat.php'
     params = {
         'service': config.get('service_name') or f"target_{config['print_target']}",
-        'host': os.environ.get('COMPUTERNAME', '') or os.environ.get('HOSTNAME', 'localhost'),
+        'host': host_name(),
     }
     if config.get('token'):
         params['token'] = config['token']
@@ -645,6 +917,9 @@ def fetch_kellner_bon_job(config: dict) -> dict:
         t0 = time.time()
         response = get_http_session().get(url, params=params, timeout=15, verify=config.get('verify_ssl', True))
         dt_ms = int((time.time() - t0) * 1000)
+        code = auth_error_code(response)
+        if code:
+            return {'ok': False, 'error': code, 'auth_code': code}
         response.raise_for_status()
         data = response.json()
         data['_http_ms'] = dt_ms
@@ -678,6 +953,9 @@ def process_one_printer_job_from_server(config: dict) -> bool:
     Rückgabe True, wenn ein Job verarbeitet wurde; False, wenn die Queue leer war oder ein Abruf-Fehler.
     """
     job = fetch_kellner_bon_job(config)
+    if job.get('auth_code'):
+        config['_auth_lost'] = job['auth_code']
+        return False
     if job.get('error') and not job.get('ok'):
         print(f"  Job-Queue: {job.get('error', 'Fehler')}")
         return False
@@ -712,11 +990,18 @@ def process_one_printer_job_from_server(config: dict) -> bool:
         print(f"  Kellner-Bon-Job #{jid} (Bon Nr. {job_bon_nr}, {job['count']} Position(en))")
         ok_all = True
         for tisch in job.get('tische', []):
-            tisch['_bon_nr'] = job_bon_nr
+            # Neuere Server liefern pro Tisch eine eigene Bon-Nr.
+            tisch['_bon_nr'] = tisch.get('bon_nr') or job_bon_nr
             tname = tisch.get('tischname', '?')
             npos = len(tisch.get('positionen', []))
-            print(f"  -> Drucke Tisch: {tname} ({npos} Pos.)")
-            bon_data = build_bon(tisch, config, job)
+            print(f"  -> Drucke Tisch: {tname} ({npos} Pos., Bon Nr. {tisch['_bon_nr']})")
+            try:
+                bon_data = build_bon(tisch, config, job)
+            except Exception as e:
+                # Fehlerhafter Payload darf den Job nicht dauerhaft "reserved" hängen lassen
+                ok_all = False
+                print(f"     FEHLER beim Erzeugen des Bons: {e}")
+                continue
             if do_print(bon_data, config):
                 print("     OK - gedruckt")
             else:
@@ -737,13 +1022,14 @@ def print_events_loop(config: dict, wake: threading.Event, active: threading.Eve
     active ist nur gesetzt, solange der Server den Event-Kanal anbietet (Admin: "Druck per Event").
     """
     url = config['server_url'] + '/print_events.php'
-    params = {'print_target': config['print_target']}
-    if config['token']:
-        params['token'] = config['token']
     last_id = ''
     session = requests.Session()
     while not stop.is_set():
         wait_s = 5
+        conn_target = config['print_target']
+        params = {'print_target': conn_target}
+        if config['token']:
+            params['token'] = config['token']
         try:
             headers = {'Accept': 'text/event-stream'}
             if last_id:
@@ -751,13 +1037,18 @@ def print_events_loop(config: dict, wake: threading.Event, active: threading.Eve
             with session.get(url, params=params, headers=headers, stream=True, timeout=(10, 45),
                              verify=config.get('verify_ssl', True)) as resp:
                 ctype = resp.headers.get('Content-Type', '')
-                if resp.status_code != 200 and resp.status_code != 401:
+                if resp.status_code not in (200, 401, 403):
                     raise RuntimeError(f"HTTP {resp.status_code}")
                 if 'text/event-stream' not in ctype:
                     raise RuntimeError(f"unerwarteter Content-Type: {ctype}")
                 event_name = 'message'
                 for raw in resp.iter_lines(decode_unicode=True):
                     if stop.is_set():
+                        break
+                    if config['print_target'] != conn_target:
+                        # Druckziel wurde im Admin umgestellt -> Event-Kanal neu verbinden
+                        last_id = ''
+                        wait_s = 0
                         break
                     if raw is None:
                         continue
@@ -777,7 +1068,7 @@ def print_events_loop(config: dict, wake: threading.Event, active: threading.Eve
                                 print("  [Event] Event-Kanal aktiv")
                             active.set()
                             wake.set()
-                        elif event_name in ('print-disabled', 'print-denied'):
+                        elif event_name in ('print-disabled', 'print-denied', 'print-pending'):
                             if active.is_set():
                                 print(f"  [Event] {event_name}: Fallback auf Polling")
                             active.clear()
@@ -794,7 +1085,8 @@ def print_events_loop(config: dict, wake: threading.Event, active: threading.Eve
                 print(f"  [Event] Verbindung unterbrochen ({e}) - Polling als Fallback")
             active.clear()
             wait_s = 5
-        stop.wait(wait_s)
+        if wait_s > 0:
+            stop.wait(wait_s)
 
 
 def fetch_orders(config: dict) -> dict:
@@ -803,6 +1095,9 @@ def fetch_orders(config: dict) -> dict:
     params = {
         'print_target': config['print_target']
     }
+    if config.get('preview'):
+        # Server markiert die Bestellungen dann NICHT als gedruckt (und vergibt keine Bon-Nr.)
+        params['preview'] = '1'
     if config['token']:
         params['token'] = config['token']
     
@@ -810,6 +1105,9 @@ def fetch_orders(config: dict) -> dict:
         t0 = time.time()
         response = get_http_session().get(url, params=params, timeout=15, verify=config.get('verify_ssl', True))
         dt_ms = int((time.time() - t0) * 1000)
+        code = auth_error_code(response)
+        if code:
+            return {'error': code, 'auth_code': code}
         response.raise_for_status()
         data = response.json()
         data['_http_ms'] = dt_ms
@@ -827,13 +1125,24 @@ def main():
     parser.add_argument('--test', action='store_true', help='Testmodus (einmal abrufen und beenden)')
     parser.add_argument('--preview', action='store_true', help='Preview-Modus (nicht als gedruckt markieren)')
     parser.add_argument('--verbose', action='store_true', help='Zeitmessungen pro Poll-Runde ausgeben (Fehlersuche)')
+    parser.add_argument('--simulate', action='store_true',
+                        help='Nichts drucken: Bons in der Konsole anzeigen und in simulated_prints/ speichern '
+                             '(Ablauf inkl. Rückmeldung an den Server wie im Echtbetrieb)')
+    parser.add_argument('--simulate-fail', action='store_true',
+                        help='Wie --simulate, meldet aber jeden Druck als fehlgeschlagen (Fehlerbehandlung testen)')
+    parser.add_argument('--config', default='', help='Alternativer Pfad zur config.ini')
     args = parser.parse_args()
     
     print("=" * 50)
     print("FeuerwehrBestellsystem - Print Client")
     print("=" * 50)
     
-    config = load_config()
+    config = load_config(args.config)
+    if args.simulate_fail:
+        config['simulate'] = 'fail'
+    elif args.simulate:
+        config['simulate'] = 'true'
+    config['preview'] = bool(args.preview)
 
     # Verbose-Timings: über CLI-Flag --verbose oder config.ini (Server.verbose_timings=true) aktivierbar.
     # Bleibt standardmäßig aus, damit das normale Log schlank bleibt.
@@ -856,13 +1165,17 @@ def main():
         sys.exit(1)
 
     print(f"Server: {config['server_url']}")
-    print(f"Print Target: {config['print_target']}")
+    print(f"Print Target: {config['print_target'] or 'zentral vom Server (Admin)'}")
     print(f"Poll-Intervall: {config['poll_interval']}s")
     print(f"Jobs pro Runde (printer_jobs): bis {config.get('max_printer_jobs_per_poll', 25)}")
     hb = config.get('heartbeat_interval', 60)
     print(f"Heartbeat: {'alle ' + str(hb) + 's' if hb > 0 else 'aus'}")
     print(f"Betriebssystem: {platform.system()}")
-    if platform.system() == 'Windows':
+    if simulate_mode(config):
+        print("Drucker: SIMULATION – es wird nichts gedruckt"
+              + (" (jeder Druck meldet FEHLER)" if simulate_mode(config) == 'fail' else ""))
+        print(f"          Bons landen in der Konsole und in '{config.get('simulate_dir')}/'")
+    elif platform.system() == 'Windows':
         pn = (config.get('printer_name') or '').strip() or 'Receipt Printer'
         print(f"Drucker: {pn}")
     elif platform.system() == 'Linux':
@@ -870,6 +1183,10 @@ def main():
             print("Drucker-Suche: automatisch (auto_detect=true in config.ini)")
         print(f"Drucker-Device: {resolve_linux_printer_device(config)}")
     print("-" * 50)
+
+    # Geräte-Token: config.ini > device_token.txt > Selbstregistrierung. Gedruckt wird erst nach Freischaltung.
+    config['_token_from_config'] = bool(config.get('token'))
+    wait_for_approval(config)
 
     # Heartbeat im Hintergrund (damit der Dienst auch bei langem Druck/Abruf als „lebendig“ gilt)
     heartbeat_stop = threading.Event()
@@ -905,16 +1222,21 @@ def main():
                     if not process_one_printer_job_from_server(config):
                         break
                     jobs_this_round += 1
-                    if args.test:
-                        print("\n[Test-Modus] Beende.")
-                        break
-                if args.test:
-                    break
+                # Hinweis: Im Test-Modus wird danach auch print_target.php abgefragt
+                # (früher endete --test hier und hat Bestellungen nie abgerufen).
             jobs_dt_ms = int((time.time() - t_jobs_start) * 1000)
             if verbose and jobs_this_round > 0:
                 print(f"  [queue] {jobs_this_round} Job(s) verarbeitet in {jobs_dt_ms}ms")
 
-            data = fetch_orders(config)
+            data = {} if config.get('_auth_lost') else fetch_orders(config)
+            if data.get('auth_code'):
+                config['_auth_lost'] = data['auth_code']
+            if data.get('print_target'):
+                apply_server_target(config, data.get('print_target'))
+            if config.get('_auth_lost'):
+                print(f"  Zugriff verweigert ({config.pop('_auth_lost')}) - warte auf Freischaltung...")
+                wait_for_approval(config)
+                continue
             if verbose:
                 _http_ms = data.get('_http_ms')
                 _srv = data.get('server_timings') or {}
@@ -939,8 +1261,9 @@ def main():
                 
                 auto_bon_nr = data.get('bon_nr', 0)
                 for tisch in data.get('tische', []):
-                    tisch['_bon_nr'] = auto_bon_nr
-                    print(f"  -> Drucke Tisch: {tisch['tischname']} ({len(tisch['positionen'])} Pos., Bon Nr. {auto_bon_nr})")
+                    # Neuere Server liefern pro Tisch eine eigene Bon-Nr.
+                    tisch['_bon_nr'] = tisch.get('bon_nr') or auto_bon_nr
+                    print(f"  -> Drucke Tisch: {tisch.get('tischname', '?')} ({len(tisch.get('positionen') or [])} Pos., Bon Nr. {tisch['_bon_nr']})")
                     
                     bon_data = build_bon(tisch, config, data)
                     

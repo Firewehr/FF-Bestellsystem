@@ -75,15 +75,15 @@ Dann `config.ini` bearbeiten:
 ```ini
 [Server]
 url = https://ffobritzberg.bplaced.net
-token = DEIN_TOKEN_AUS_ADMIN
+token =              # leer = Selbstregistrierung, Freischaltung im Admin (Druckziele -> Druck-Clients)
 print_target = 11    # 11=Küche, 12=Schank, etc.
 
 [Drucker]
 name = Receipt Printer
 
-[Einstellungen]
-ff_name = FF Obritzberg
 ```
+
+Der Name auf dem Bon wird im Admin gepflegt (Stammdaten → Druckziele → Bon-Kopf & Fußzeile).
 
 ## Verwendung
 

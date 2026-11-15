@@ -3,13 +3,8 @@ include_once('include/db.php');
 require_once 'include/settings.php';
 require_once __DIR__ . '/include/ff_rechnungen_ensure_columns.php';
 
-$token = $_POST['token'] ?? '';
-$expected = settings_get($conn, 'printer_token', '');
-if($expected !== '' && !hash_equals($expected, $token)){
-    header('HTTP/1.1 403 Forbidden');
-    echo 'forbidden';
-    exit;
-}
+require_once __DIR__ . '/include/ff_printer_devices.php';
+ff_printer_auth_require_json($conn);
 
 $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
 $reserved_by = $_POST['reserved_by'] ?? '';

@@ -21,21 +21,16 @@ $ffTimings['schema_ms'] = round((microtime(true) - $ffT1) * 1000, 1);
 $print_target = isset($_GET['print_target']) ? (int)$_GET['print_target'] : 0;
 $token = isset($_GET['token']) ? trim((string)$_GET['token']) : '';
 
-if ($print_target <= 0) {
-    echo json_encode(['ok' => false, 'error' => 'print_target fehlt oder ungültig'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
-
-$serverToken = setting_get($conn, 'printer_token', '');
-if ($serverToken !== '' && $token !== $serverToken) {
-    echo json_encode(['ok' => false, 'error' => 'Ungültiger Token'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
+require_once __DIR__ . '/include/ff_printer_devices.php';
+$printerAuth = ff_printer_auth_require_json($conn, $token);
+// Im Admin zugewiesenes Druckziel hat Vorrang vor dem Client-Parameter
+$print_target = ff_printer_require_target($printerAuth, $print_target);
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-$thermoBonHeader = (string)setting_get($conn, 'thermo_bon_header', '');
-$thermoBonFooter = (string)setting_get($conn, 'thermo_bon_footer', '');
+require_once __DIR__ . '/include/ff_bon_layout.php';
+$thermoBonHeader = ff_thermo_bon_header($conn);
+$thermoBonFooter = ff_thermo_bon_footer($conn);
 $thermoBonJsonExtra = [
     'thermo_bon_header' => $thermoBonHeader,
     'thermo_bon_footer' => $thermoBonFooter,
