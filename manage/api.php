@@ -12,6 +12,7 @@ require_once __DIR__ . '/../include/menu_lock_helpers.php';
 require_once __DIR__ . '/../include/ff_fest_scope.php';
 require_once __DIR__ . '/../include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/../include/ff_rezepturen_schema.php';
+require_once __DIR__ . '/../include/ff_position_delete.php';
 
 header('Content-Type: application/json; charset=utf-8');
 mysqli_set_charset($conn, 'utf8mb4');
@@ -21,6 +22,28 @@ ff_fest_scope_ensure_columns($conn);
 ff_position_kassa_ensure_schema($conn);
 menu_lock_ensure_tables($conn);
 ff_rezepturen_ensure_schema($conn);
+
+/**
+ * Prepared Statement ausführen (Pflicht laut AGENTS.md: keine Variablen direkt im SQL).
+ *
+ * @param list<int|float|string|null> $params
+ * @return mysqli_result|bool Ergebnis bei SELECT, sonst true/false
+ */
+function manage_db_exec(mysqli $conn, string $sql, string $types = '', array $params = [])
+{
+    $stmt = mysqli_prepare($conn, $sql);
+    if (!$stmt) {
+        return false;
+    }
+    if (!ff_mysqli_stmt_bind($stmt, $types, $params) || !mysqli_stmt_execute($stmt)) {
+        mysqli_stmt_close($stmt);
+        return false;
+    }
+    $res = mysqli_stmt_get_result($stmt);
+    mysqli_stmt_close($stmt);
+
+    return $res !== false ? $res : true;
+}
 
 function api_out(array $data, int $status = 200): void
 {
@@ -108,6 +131,18 @@ if ($action === 'init') {
         }
     }
 
+    // Verknüpfte-Artikel-Counts pro Position (Tabelle ist optional, kein DDL hier)
+    $linkCounts = [];
+    $lkChk = mysqli_query($conn, "SHOW TABLES LIKE 'pilot_position_links'");
+    if ($lkChk && mysqli_num_rows($lkChk) > 0) {
+        $lkRes = mysqli_query($conn, "SELECT parent_position_id, COUNT(*) AS cnt FROM pilot_position_links GROUP BY parent_position_id");
+        if ($lkRes) {
+            while ($r = mysqli_fetch_assoc($lkRes)) {
+                $linkCounts[(int)$r['parent_position_id']] = (int)$r['cnt'];
+            }
+        }
+    }
+
     // Aktive Locks
     menu_lock_cleanup_expired($conn);
     $activeLocks = [];
@@ -155,7 +190,8 @@ if ($action === 'init') {
                 'is_locked' => isset($activeLocks[$pid]),
                 'lock_info' => $activeLocks[$pid] ?? null,
                 'beilagen_count' => $beilagenCounts[$pid] ?? 0,
-                'rezeptur_count' => $rezCounts[$pid] ?? 0
+                'rezeptur_count' => $rezCounts[$pid] ?? 0,
+                'linked_count' => $linkCounts[$pid] ?? 0
             ];
         }
     }
@@ -227,9 +263,9 @@ if ($action === 'save_position') {
 
     if ($rowid <= 0) {
         // Neu anlegen
-        $rMax = mysqli_query($conn, "SELECT COALESCE(MAX(reihenfolge), 0) + 1 AS n FROM positionen WHERE type = $type");
+        $rMax = manage_db_exec($conn, 'SELECT COALESCE(MAX(reihenfolge), 0) + 1 AS n FROM positionen WHERE type = ?', 'i', [$type]);
         $reihenfolge = 1;
-        if ($rMax && ($rm = mysqli_fetch_assoc($rMax))) {
+        if ($rMax instanceof mysqli_result && ($rm = mysqli_fetch_assoc($rMax))) {
             $reihenfolge = (int)$rm['n'];
         }
 
@@ -317,19 +353,12 @@ if ($action === 'delete_position') {
         api_out(['ok' => false, 'error' => 'Ungültige Positions-ID.'], 400);
     }
 
-    $stmt = mysqli_prepare($conn, "DELETE FROM positionen WHERE rowid = ? LIMIT 1");
-    mysqli_stmt_bind_param($stmt, 'i', $rowid);
-    if (!mysqli_stmt_execute($stmt)) {
-        api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
+    // Geschützt: Positionen mit Bestellungen/Verpflegung bleiben erhalten (Statistik, Steuer-Export).
+    $del = ff_position_delete_guarded($conn, $rowid);
+    if (!$del['ok']) {
+        api_out(['ok' => false, 'error' => $del['message'], 'code' => $del['code'], 'usage' => $del['usage'] ?? null], $del['http']);
     }
-    mysqli_stmt_close($stmt);
-
-    // Verknüpfte Locks & Beilagen säubern
-    @mysqli_query($conn, "DELETE FROM menu_locks WHERE scope = 'position' AND position_id = $rowid");
-    @mysqli_query($conn, "DELETE FROM beilagen WHERE position = $rowid");
-    @mysqli_query($conn, "DELETE FROM position_rezepturen WHERE position_id = $rowid");
-
-    api_out(['ok' => true, 'message' => 'Position gelöscht.']);
+    api_out(['ok' => true, 'message' => $del['message']]);
 }
 
 // -----------------------------------------------------------------------------
@@ -392,8 +421,8 @@ if ($action === 'save_table') {
 
     if ($isNew) {
         if ($tischnummer > 0) {
-            $chk = mysqli_query($conn, "SELECT tischnummer FROM tische WHERE tischnummer = $tischnummer LIMIT 1");
-            if ($chk && mysqli_num_rows($chk) > 0) {
+            $chk = manage_db_exec($conn, 'SELECT tischnummer FROM tische WHERE tischnummer = ? LIMIT 1', 'i', [$tischnummer]);
+            if ($chk instanceof mysqli_result && mysqli_num_rows($chk) > 0) {
                 api_out(['ok' => false, 'error' => "Die Tischnummer $tischnummer existiert bereits."], 400);
             }
         }
@@ -531,10 +560,10 @@ if ($action === 'toggle_lock') {
     }
 
     // Prüfen, ob aktuell gesperrt
-    $chk = mysqli_query($conn, "SELECT id FROM menu_locks WHERE scope = 'position' AND position_id = $positionId LIMIT 1");
-    if ($chk && ($r = mysqli_fetch_assoc($chk))) {
+    $chk = manage_db_exec($conn, "SELECT id FROM menu_locks WHERE scope = 'position' AND position_id = ? LIMIT 1", 'i', [$positionId]);
+    if ($chk instanceof mysqli_result && ($r = mysqli_fetch_assoc($chk))) {
         // Sperre aufheben
-        mysqli_query($conn, "DELETE FROM menu_locks WHERE id = " . (int)$r['id']);
+        manage_db_exec($conn, 'DELETE FROM menu_locks WHERE id = ?', 'i', [(int)$r['id']]);
         api_out(['ok' => true, 'is_locked' => false, 'message' => 'Sperre aufgehoben (wieder verfügbar).']);
     } else {
         // Sperre setzen
@@ -623,8 +652,14 @@ if ($action === 'delete_subcategory') {
     }
 
     // Bei Positionen auf 0 setzen
-    mysqli_query($conn, "UPDATE positionen SET subcategory_id = 0 WHERE subcategory_id = $id");
-    mysqli_query($conn, "DELETE FROM position_subcategories WHERE id = $id LIMIT 1");
+    mysqli_begin_transaction($conn);
+    $okSub = manage_db_exec($conn, 'UPDATE positionen SET subcategory_id = 0 WHERE subcategory_id = ?', 'i', [$id]) !== false
+        && manage_db_exec($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1', 'i', [$id]) !== false;
+    if (!$okSub) {
+        mysqli_rollback($conn);
+        api_out(['ok' => false, 'error' => 'Unterkategorie konnte nicht gelöscht werden.'], 500);
+    }
+    mysqli_commit($conn);
     api_out(['ok' => true, 'message' => 'Unterkategorie gelöscht.']);
 }
 

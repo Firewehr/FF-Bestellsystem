@@ -11,19 +11,41 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="admin.css?v=20261028_4">
+  <link rel="stylesheet" href="admin.css?v=20261115_14">
 </head>
 <body>
   <div id="app" v-cloak>
 
-    <!-- 1. APP HEADER -->
+    <!-- 1. APP HEADER (Kopfzeile + Haupt- und Unternavigation gemeinsam fixiert) -->
+    <div class="admin-sticky">
     <header class="admin-header">
-      <div class="header-left">
+      <div class="header-top">
         <a href="index.html" class="brand-badge" title="Zur Kellner-App">
           <span class="icon">🔥</span>
-          <span>Admin Pilot</span>
+          <span>Admin</span>
+          <span v-if="overview?.settings?.app_title" class="brand-sub">{{ overview.settings.app_title }}</span>
         </a>
-        <span class="badge-pill">Vue 3</span>
+
+        <div class="header-right">
+          <!-- Schnell-Umschalter Theme -->
+          <button type="button" class="btn btn-outline btn-sm btn-square" @click="toggleTheme" :title="isDarkTheme ? 'Helles Design' : 'Dunkles Design'" :aria-label="isDarkTheme ? 'Helles Design' : 'Dunkles Design'">
+            {{ isDarkTheme ? '☀️' : '🌙' }}
+          </button>
+
+          <!-- Benutzer Info -->
+          <div v-if="currentUser" class="user-chip" :title="isSuperAdmin ? 'Super-Admin' : 'Administrator'">
+            <span class="user-chip-name">{{ currentUser.display_name || currentUser.username }}</span>
+            <span class="badge" :class="isSuperAdmin ? 'badge-danger' : 'badge-info'">
+              {{ isSuperAdmin ? 'Super-Admin' : 'Admin' }}
+            </span>
+          </div>
+
+          <!-- Absprung ins alte Admin -->
+          <a href="../admin_page.php?legacy=1" class="btn btn-outline btn-sm header-legacy" title="Klassische Admin-Ansicht (Legacy) öffnen">
+            Klassisch ↗
+          </a>
+        </div>
+      </div>
 
         <!-- Haupt-Navigation Tabs -->
         <nav class="nav-tabs" aria-label="Hauptnavigation">
@@ -70,42 +92,30 @@
             <span>📈 Auswertungen</span>
           </button>
         </nav>
-      </div>
-
-      <div class="header-right">
-        <!-- Schnell-Umschalter Theme -->
-        <button type="button" class="btn btn-outline btn-sm" @click="toggleTheme" :title="isDarkTheme ? 'Helles Design' : 'Dunkles Design'">
-          {{ isDarkTheme ? '☀️' : '🌙' }}
-        </button>
-
-        <!-- Benutzer Info -->
-        <div v-if="currentUser" style="font-size: 0.82rem; font-weight: 600; text-align: right;">
-          <div>{{ currentUser.display_name || currentUser.username }}</div>
-          <span class="badge" :class="isSuperAdmin ? 'badge-danger' : 'badge-info'">
-            {{ isSuperAdmin ? 'Super-Admin' : 'Administrator' }}
-          </span>
-        </div>
-
-        <!-- Absprung ins alte Admin -->
-        <a href="../admin_page.php?legacy=1" class="btn btn-outline btn-sm" title="Klassische Legacy-Admin-Ansicht aufrufen">
-          🏛️ Altes Admin ↗
-        </a>
-      </div>
     </header>
 
     <!-- 2. SUB NAVIGATION (Kontextabhängig) -->
-    <nav v-if="activeTab === 'stammdaten'" class="sub-nav">
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'preflight' }" @click="switchSubTab('stammdaten', 'preflight')">✈️ Pre-Flight</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tische' }" @click="switchSubTab('stammdaten', 'tische')">Tische</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tischplan' }" @click="switchSubTab('stammdaten', 'tischplan')">Tischplan (Visuell)</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'einstellungen' }" @click="switchSubTab('stammdaten', 'einstellungen')">Allgemeine Einstellungen</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'feste' }" @click="switchSubTab('stammdaten', 'feste')">Feste / Events</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'druckziele' }" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'rechnungsdaten' }" @click="switchSubTab('stammdaten', 'rechnungsdaten')">Rechnungsdaten</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'mcp' }" @click="switchSubTab('stammdaten', 'mcp')">MCP</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'nummern' }" @click="switchSubTab('stammdaten', 'nummern')">Nummernkreise</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'abrechnung' }" @click="switchSubTab('stammdaten', 'abrechnung')">Abrechnung &amp; Sicherheit</button>
-      <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tests' }" @click="switchSubTab('stammdaten', 'tests')">Automatisierte Tests</button>
+    <nav v-if="activeTab === 'stammdaten'" class="sub-nav sub-nav-grouped">
+      <div class="sub-nav-group" role="group" aria-label="Fest &amp; Saal">
+        <span class="sub-nav-group-label">Fest &amp; Saal</span>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'preflight' }" @click="switchSubTab('stammdaten', 'preflight')">✈️ Pre-Flight</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'feste' }" @click="switchSubTab('stammdaten', 'feste')">Feste / Events</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tische' }" @click="switchSubTab('stammdaten', 'tische')">Tische</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tischplan' }" @click="switchSubTab('stammdaten', 'tischplan')">Tischplan (Visuell)</button>
+      </div>
+      <div class="sub-nav-group" role="group" aria-label="Drucken &amp; Belege">
+        <span class="sub-nav-group-label">Drucken &amp; Belege</span>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'druckziele' }" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele <span v-if="printerDevicesPending > 0" class="badge badge-warning" :title="printerDevicesPending + ' Druck-Client(s) warten auf Freischaltung'">{{ printerDevicesPending }}</span></button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'rechnungsdaten' }" @click="switchSubTab('stammdaten', 'rechnungsdaten')">Rechnungsdaten</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'nummern' }" @click="switchSubTab('stammdaten', 'nummern')">Nummernkreise</button>
+      </div>
+      <div class="sub-nav-group" role="group" aria-label="System">
+        <span class="sub-nav-group-label">System</span>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'einstellungen' }" @click="switchSubTab('stammdaten', 'einstellungen')">Allgemeine Einstellungen</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'abrechnung' }" @click="switchSubTab('stammdaten', 'abrechnung')">Abrechnung &amp; Sicherheit</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'mcp' }" @click="switchSubTab('stammdaten', 'mcp')">MCP</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tests' }" @click="switchSubTab('stammdaten', 'tests')">Automatisierte Tests</button>
+      </div>
     </nav>
 
     <nav v-if="activeTab === 'speisekarte'" class="sub-nav">
@@ -132,8 +142,10 @@
       <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.auswertungen === 'statistik' }" @click="switchSubTab('auswertungen', 'statistik')">Statistik</button>
     </nav>
 
+    </div><!-- /admin-sticky -->
+
     <!-- 3. HAUPTINHALT -->
-    <main class="admin-main">
+    <main class="admin-main" :class="{ 'admin-main-fill': isFillView }">
 
       <!-- Fehlende Admin-Rechte Meldung -->
       <div v-if="accessDenied" class="admin-card" style="border-left: 4px solid var(--ff-danger); max-width: 620px; margin: 40px auto; text-align: center; padding: 32px 24px;">
@@ -152,6 +164,10 @@
            TAB: ÜBERSICHT / LIVE-DASHBOARD
            =================================================================== -->
       <section v-if="activeTab === 'uebersicht'">
+        <div v-if="printerDevicesPending > 0" class="admin-card" style="border-left: 4px solid var(--ff-warning, #f59e0b); padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <span>🖨️ <strong>{{ printerDevicesPending }} neue(r) Druck-Client(s)</strong> warten auf Freischaltung. Bis dahin wird auf diesen Geräten nichts gedruckt.</span>
+          <button type="button" class="btn btn-primary btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'druckziele')">Jetzt prüfen</button>
+        </div>
         <!-- KPI Kacheln -->
         <div class="kpi-grid">
           <div class="kpi-tile kpi-primary">
@@ -199,12 +215,12 @@
                 <textarea v-model="broadcastInput.message" class="form-control" placeholder="z. B. Küche: Grillhuhn vorübergehend ausverkauft!"></textarea>
               </div>
               <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
-                <div style="display: flex; gap: 8px;">
+                <div class="u-row">
                   <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'danger' ? 'btn-danger' : 'btn-outline'" @click="broadcastInput.type = 'danger'">Gefahr (Rot)</button>
                   <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'warning' ? 'btn-warning' : 'btn-outline'" @click="broadcastInput.type = 'warning'">Warnung (Gelb)</button>
                   <button type="button" class="btn btn-sm" :class="broadcastInput.type === 'info' ? 'btn-primary' : 'btn-outline'" @click="broadcastInput.type = 'info'">Info (Blau)</button>
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div class="u-row">
                   <button v-if="broadcastInput.active" type="button" class="btn btn-outline btn-sm" @click="broadcastInput.active = false; saveBroadcast()">Aufheben</button>
                   <button type="button" class="btn btn-primary btn-sm" @click="broadcastInput.active = true; saveBroadcast()">Senden</button>
                 </div>
@@ -219,30 +235,30 @@
             </div>
             <div class="card-body">
               <div style="display: flex; flex-direction: column; gap: 12px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
-                  <span style="font-size: 0.88rem;">Aktives Fest</span>
+                <div class="u-kv-head">
+                  <span class="u-fs-sm">Aktives Fest</span>
                   <select v-if="overview?.feste" :value="overview?.settings?.current_fest_id" @change="setCurrentFest($event.target.value)" class="form-select" style="max-width: 220px; padding: 4px 8px; font-size: 0.85rem;">
                     <option v-for="f in overview.feste" :key="f.id" :value="f.id">{{ f.name }} ({{ f.code }})</option>
                   </select>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
-                  <span style="font-size: 0.88rem;">Pre-Flight Checkliste (Fest-Start)</span>
+                <div class="u-kv-head">
+                  <span class="u-fs-sm">Pre-Flight Checkliste (Fest-Start)</span>
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'preflight'); activeTab = 'stammdaten'">Pre-Flight prüfen</button>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
-                  <span style="font-size: 0.88rem;">Schema- &amp; Abfrage-Cache</span>
+                <div class="u-kv-head">
+                  <span class="u-fs-sm">Schema- &amp; Abfrage-Cache</span>
                   <button type="button" class="btn btn-outline btn-sm" @click="clearCache">Cache jetzt leeren</button>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--ff-border-light);">
-                  <span style="font-size: 0.88rem;">Automatisierte Selbsttests</span>
-                  <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">79 Tests ausführen</button>
+                <div class="u-kv-head">
+                  <span class="u-fs-sm">Automatisierte Selbsttests</span>
+                  <button type="button" class="btn btn-primary btn-sm" @click="switchSubTab('stammdaten', 'tests'); activeTab = 'stammdaten'">Selbsttests ausführen</button>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <span style="font-size: 0.88rem;">Klassisches Admin (Legacy)</span>
+                <div class="u-row-between">
+                  <span class="u-fs-sm">Klassisches Admin (Legacy)</span>
                   <a href="../admin_page.php?legacy=1" class="btn btn-outline btn-sm">Altes Admin ↗</a>
                 </div>
               </div>
@@ -252,9 +268,9 @@
         </div>
 
         <!-- Rohstoff- & Bestandteil-Kapazitäten (Fast ausverkauft / Neige) -->
-        <div class="admin-card" style="margin-bottom: 24px;">
+        <div class="admin-card u-mb-24">
           <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="u-row-center">
               <h3><span>📦</span> Rohstoffe &amp; Bestandteile (Kapazitäten &amp; Neige)</h3>
               <span v-if="lowStockBestandteileCount > 0" class="badge badge-warning" style="font-size: 0.78rem; padding: 3px 8px;">
                 ⚠️ {{ lowStockBestandteileCount }} knapp / kritisch
@@ -291,7 +307,7 @@
                     <td><strong>{{ b.name }}</strong></td>
                     <td><span class="badge badge-secondary">{{ b.einheit }}</span></td>
                     <td style="min-width: 140px;">
-                      <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="u-row-center">
                         <div style="flex: 1; height: 8px; background: var(--ff-border-light); border-radius: 4px; overflow: hidden;">
                           <div :style="{ width: Math.min(100, Math.max(0, b.rest_percent)) + '%', background: (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'var(--ff-danger)' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'var(--ff-warning)' : 'var(--ff-success)'), height: '100%', transition: 'width 0.3s' }"></div>
                         </div>
@@ -309,7 +325,7 @@
                       <strong :style="{ color: (b.is_oversold || b.raw_rest < 0 || b.rest <= 0) ? 'var(--ff-danger)' : ((b.is_warning || b.rest_percent <= 25 || b.raw_rest <= 15) ? 'var(--ff-warning)' : 'inherit') }">
                         {{ b.raw_rest < 0 ? b.raw_rest : b.rest }}
                       </strong>
-                      <span style="color: var(--ff-text-muted);"> / {{ b.max }} {{ b.einheit }}</span>
+                      <span class="u-muted"> / {{ b.max }} {{ b.einheit }}</span>
                     </td>
                     <td>{{ b.consumed }} {{ b.einheit }}</td>
                     <td style="font-size: 0.8rem; color: var(--ff-text-muted); max-width: 260px;">
@@ -350,7 +366,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(h, idx) in (overview?.stats?.printer_heartbeats || [])" :key="idx">
+                  <tr v-for="(h, idx) in printerHeartbeatRows" :key="idx">
                     <td><strong>{{ h.service }}</strong></td>
                     <td>
                       <span class="badge" :class="h.level === 'ok' ? 'badge-success' : (h.level === 'warn' ? 'badge-warning' : 'badge-danger')">
@@ -360,8 +376,8 @@
                     <td>{{ h.last_seen }}</td>
                     <td>{{ h.host || '–' }}</td>
                   </tr>
-                  <tr v-if="!overview?.stats?.printer_heartbeats?.length">
-                    <td colspan="4" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                  <tr v-if="!printerHeartbeatRows.length">
+                    <td class="u-empty-cell" colspan="4">
                       Keine Druck-Clients aktiv oder konfiguriert.
                     </td>
                   </tr>
@@ -387,28 +403,28 @@
             </button>
           </div>
           <div class="card-body">
-            <div v-if="operationsError" class="alert alert-danger" style="margin-bottom: 16px;">
+            <div v-if="operationsError" class="alert alert-danger u-mb-16">
               <strong>Live-Daten nicht erreichbar:</strong> {{ operationsError }}
             </div>
-            <div v-if="!operations && operationsLoading" style="color: var(--ff-text-muted);">Betriebsdaten werden geladen…</div>
+            <div class="u-muted" v-if="!operations && operationsLoading">Betriebsdaten werden geladen…</div>
 
             <div v-if="operations" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 18px;">
-              <div class="kpi-tile" style="padding: 16px;">
+              <div class="kpi-tile u-p-16">
                 <span class="kpi-label">Druck-Clients</span>
                 <span class="kpi-value">{{ operations.printers.services.length }}</span>
                 <span class="badge" :class="operationsBadgeClass(operations.printers.state)">{{ operationsStateLabel(operations.printers.state) }}</span>
               </div>
-              <div class="kpi-tile" style="padding: 16px;">
+              <div class="kpi-tile u-p-16">
                 <span class="kpi-label">Druckwarteschlange</span>
                 <span class="kpi-value">{{ operations.queue.available ? operations.queue.pending : '–' }}</span>
                 <span class="kpi-sub">offen · {{ operations.queue.available ? operations.queue.reserved : '–' }} reserviert · {{ operations.queue.available ? operations.queue.failed : '–' }} fehlgeschlagen</span>
               </div>
-              <div class="kpi-tile" style="padding: 16px;">
+              <div class="kpi-tile u-p-16">
                 <span class="kpi-label">Stations-Realtime</span>
                 <span class="kpi-value">{{ operations.realtime.available ? operations.realtime.recent_count : '–' }}</span>
                 <span class="kpi-sub">Ereignisse in den letzten 5 Minuten</span>
               </div>
-              <div class="kpi-tile" style="padding: 16px;">
+              <div class="kpi-tile u-p-16">
                 <span class="kpi-label">Schema-Cache</span>
                 <span class="kpi-value">{{ operations.schema_cache.available ? formatAge(operations.schema_cache.age_sec) : '–' }}</span>
                 <span class="badge" :class="operationsBadgeClass(operations.schema_cache.state)">{{ operationsStateLabel(operations.schema_cache.state) }}</span>
@@ -461,7 +477,7 @@
         
         <!-- SUB: Pre-Flight Checkliste -->
         <div v-if="activeSubTab.stammdaten === 'preflight'">
-          <div class="toolbar" style="margin-bottom: 16px;">
+          <div class="toolbar u-mb-16">
             <div>
               <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0;">✈️ Fest-Vorbereitungsassistent („Pre-Flight Checklist“)</h3>
               <p style="margin: 0; font-size: 0.85rem; color: var(--ff-text-muted);">
@@ -495,17 +511,17 @@
             
             <!-- Check 1: Testdaten -->
             <div class="admin-card">
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.orders?.status === 'ok' ? '✅' : '⚠️' }}</span>
-                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">1. Test-Bestellungen und Queues bereinigt</h4>
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.orders?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">1. Test-Bestellungen und Queues bereinigt</h4>
                 </div>
                 <span class="badge" :class="preflightData.checks?.orders?.status === 'ok' ? 'badge-success' : 'badge-warning'">
                   {{ preflightData.checks?.orders?.badge }}
                 </span>
               </div>
               <div class="card-body">
-                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.orders?.details }}</p>
+                <p class="u-subtitle">{{ preflightData.checks?.orders?.details }}</p>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'abrechnung')">Zu Fest-Start vorbereiten / Bereinigen</button>
                 </div>
@@ -514,20 +530,20 @@
 
             <!-- Check 2: Netzwerk-Bondrucker & Stationen -->
             <div class="admin-card">
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.printers?.status === 'ok' ? '✅' : '⚠️' }}</span>
-                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">2. Netzwerk-Bondrucker &amp; Stationen (Alle Drucker online &amp; Testbon)</h4>
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.printers?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">2. Netzwerk-Bondrucker &amp; Stationen (Alle Drucker online &amp; Testbon)</h4>
                 </div>
                 <span class="badge" :class="preflightData.checks?.printers?.status === 'ok' ? 'badge-success' : 'badge-warning'">
                   {{ preflightData.checks?.printers?.badge }}
                 </span>
               </div>
               <div class="card-body">
-                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.printers?.details }}</p>
+                <p class="u-subtitle">{{ preflightData.checks?.printers?.details }}</p>
                 
                 <div class="table-responsive" style="margin-bottom: 12px;">
-                  <table class="data-table" style="font-size: 0.88rem;">
+                  <table class="data-table u-fs-sm">
                     <thead>
                       <tr>
                         <th>Druckziel</th>
@@ -550,7 +566,7 @@
                           <span v-if="target.ip" class="font-mono text-sm" style="background: var(--ff-bg-card); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ff-border-light);">
                             {{ target.ip }}:{{ target.port }}
                           </span>
-                          <span v-else style="color: var(--ff-text-muted);">—</span>
+                          <span class="u-muted" v-else>—</span>
                         </td>
                         <td>
                           <span class="badge" :class="target.online ? 'badge-success' : 'badge-danger'">
@@ -559,7 +575,7 @@
                         </td>
                         <td>{{ target.latency_ms !== null ? target.latency_ms + ' ms' : '—' }}</td>
                         <td>
-                          <div style="display: flex; gap: 6px;">
+                          <div class="u-row-6">
                             <button v-if="target.type === 'network'" type="button" class="btn btn-outline btn-sm" :disabled="testingTargetId === target.id" @click="testPrintTarget({ print_target: target.id, name: target.name })">
                               {{ testingTargetId === target.id ? 'Sende…' : '🔌 Testbon' }}
                             </button>
@@ -579,17 +595,17 @@
 
             <!-- Check 3: Rechnungsnummernkreis -->
             <div class="admin-card">
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.invoice_seq?.status === 'ok' ? '✅' : '⚠️' }}</span>
-                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">3. Rechnungsnummernkreis &amp; Stammdaten</h4>
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.invoice_seq?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">3. Rechnungsnummernkreis &amp; Stammdaten</h4>
                 </div>
                 <span class="badge" :class="preflightData.checks?.invoice_seq?.status === 'ok' ? 'badge-success' : 'badge-warning'">
                   {{ preflightData.checks?.invoice_seq?.badge }}
                 </span>
               </div>
               <div class="card-body">
-                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.invoice_seq?.details }}</p>
+                <p class="u-subtitle">{{ preflightData.checks?.invoice_seq?.details }}</p>
                 <div style="display: flex; gap: 10px;">
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'nummern')">Nummernkreise anpassen</button>
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'rechnungsdaten')">Rechnungsdaten prüfen</button>
@@ -599,17 +615,17 @@
 
             <!-- Check 4: Offline-Backup -->
             <div class="admin-card">
-              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <span style="font-size: 1.2rem;">{{ preflightData.checks?.offline_backup?.status === 'ok' ? '✅' : '⚠️' }}</span>
-                  <h4 style="margin: 0; font-size: 1rem; font-weight: 700;">4. Offline-Backup &amp; Ausfallsicherung</h4>
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.offline_backup?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">4. Offline-Backup &amp; Ausfallsicherung</h4>
                 </div>
                 <span class="badge" :class="preflightData.checks?.offline_backup?.status === 'ok' ? 'badge-success' : 'badge-warning'">
                   {{ preflightData.checks?.offline_backup?.badge }}
                 </span>
               </div>
               <div class="card-body">
-                <p style="margin: 0 0 12px 0; font-size: 0.9rem;">{{ preflightData.checks?.offline_backup?.details }}</p>
+                <p class="u-subtitle">{{ preflightData.checks?.offline_backup?.details }}</p>
                 <div style="display: flex; gap: 10px;">
                   <a href="../fest_offline_snapshot.php" class="btn btn-outline btn-sm" target="_blank">Offline-Snapshot herunterladen ↗</a>
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'feste')">Feste &amp; Backups verwalten</button>
@@ -621,13 +637,13 @@
         </div>
 
         <!-- SUB: Tische -->
-        <div v-if="activeSubTab.stammdaten === 'tische'">
+        <div v-if="activeSubTab.stammdaten === 'tische'" class="fill-view">
           <div class="toolbar">
             <div class="search-box">
               <span class="search-icon">🔍</span>
               <input type="text" v-model="tableSearch" class="form-control" placeholder="Tisch suchen (Nummer oder Name)...">
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div class="u-row">
               <button type="button" class="btn btn-outline" @click="switchSubTab('stammdaten', 'tischplan')">Visueller Tischplan 🗺️</button>
               <button type="button" class="btn btn-outline" @click="generateTableTokens">Tokens erzeugen</button>
               <a href="../qr_codes.php" target="_blank" rel="noopener" class="btn btn-outline">QR-Codes drucken ↗</a>
@@ -635,15 +651,15 @@
             </div>
           </div>
 
-          <div class="admin-card">
+          <div class="admin-card fill-view-card">
             <div class="table-responsive">
               <table class="data-table">
                 <thead>
                   <tr>
                     <th>Tischname</th>
                     <th style="width: 80px;">Nr.</th>
-                    <th style="text-align: center;">Sammelrechnung</th>
-                    <th style="text-align: center;">Ehrengast</th>
+                    <th class="u-text-center">Sammelrechnung</th>
+                    <th class="u-text-center">Ehrengast</th>
                     <th>Offen</th>
                     <th>Aktionen</th>
                   </tr>
@@ -651,16 +667,16 @@
                 <tbody>
                   <tr v-for="t in filteredTables" :key="t.tischnummer">
                     <td>
-                      <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="u-row-center">
                         <span :style="{ display: 'inline-block', width: '14px', height: '14px', borderRadius: '50%', background: t.color || '#ccc', flexShrink: 0 }"></span>
                         <strong style="font-size: 1.05rem; color: var(--ff-text);">{{ t.tischname }}</strong>
                       </div>
                     </td>
                     <td><span style="color: var(--ff-text-muted); font-size: 0.82rem;">#{{ t.tischnummer }}</span></td>
-                    <td style="text-align: center;">
+                    <td class="u-text-center">
                       <input type="checkbox" :checked="t.is_sammelrechnung === 1" @change="toggleTableFlag(t.tischnummer, 'sr', t.is_sammelrechnung)">
                     </td>
-                    <td style="text-align: center;">
+                    <td class="u-text-center">
                       <input type="checkbox" :checked="t.is_ehrengast === 1" @change="toggleTableFlag(t.tischnummer, 'eg', t.is_ehrengast)">
                     </td>
                     <td>
@@ -670,11 +686,11 @@
                       <span v-else style="color: var(--ff-text-muted); font-size: 0.8rem;">–</span>
                     </td>
                     <td>
-                      <div style="display: flex; gap: 6px;">
+                      <div class="u-row-6">
                         <button type="button" class="btn btn-outline btn-sm" @click="openTableQr(t)" title="QR-Code für Tisch-Selbstbestellung anzeigen">QR 📱</button>
                         <button v-if="t.token" type="button" class="btn btn-outline btn-sm" @click="copyTableToken(t.token)" title="Table-Token kopieren">Token</button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditTableModal(t)">Bearbeiten</button>
-                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteTable(t.tischnummer)">Löschen</button>
+                        <button type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteTable(t.tischnummer)">Löschen</button>
                       </div>
                     </td>
                   </tr>
@@ -690,7 +706,7 @@
             <p style="color: var(--ff-text-muted); font-size: 0.9rem; margin: 0;">
               <strong>Interaktiver Raumplan:</strong> Tische per Drag &amp; Drop verschieben. Klick auf einen Tisch öffnet Namen und Einstellungen. Klick auf <strong>SR</strong> oder <strong>EG</strong> schaltet Sammelrechnung bzw. Ehrengast um. Klick auf ein leeres Feld legt dort einen Tisch an.
             </p>
-            <div style="display: flex; gap: 8px;">
+            <div class="u-row">
               <button type="button" class="btn btn-outline" @click="switchSubTab('stammdaten', 'tische')">Zurück zur Liste</button>
               <button type="button" class="btn btn-outline" @click="loadTables">Aktualisieren</button>
               <button type="button" class="btn btn-primary" @click="openNewTableModal(1, 1)">＋ Tisch anlegen</button>
@@ -701,16 +717,16 @@
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
               <h3>Visueller Raumplan ({{ tables.length }} Tische)</h3>
               <div style="display: flex; gap: 12px; font-size: 0.8rem; align-items: center; flex-wrap: wrap;">
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                <span class="u-inline-center">
                   <span style="width: 12px; height: 12px; border-radius: 3px; background: #bbf7d0; display: inline-block;"></span> Frei
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                <span class="u-inline-center">
                   <span style="width: 12px; height: 12px; border-radius: 3px; background: #fef08a; display: inline-block;"></span> Offene Runde
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                <span class="u-inline-center">
                   <span style="width: 12px; height: 12px; border-radius: 3px; background: #dbeafe; display: inline-block;"></span> Sammelrechnung (SR)
                 </span>
-                <span style="display: inline-flex; align-items: center; gap: 4px;">
+                <span class="u-inline-center">
                   <span style="width: 12px; height: 12px; border-radius: 3px; background: #ede9fe; display: inline-block;"></span> Ehrengast (EG)
                 </span>
               </div>
@@ -767,7 +783,7 @@
                     </div>
                   </template>
                   <template v-else>
-                    <span style="font-size: 0.75rem; color: var(--ff-text-muted);">+</span>
+                    <span class="u-hint-xs">+</span>
                   </template>
                 </div>
               </div>
@@ -846,7 +862,7 @@
                     <option value="1">Aktiviert (Modal mit Rückgeld-, Trinkgeld- &amp; Bar-Rechner)</option>
                     <option value="0">Deaktiviert (Schnellkassieren ohne Rechner-Modal)</option>
                   </select>
-                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                  <small class="u-help">
                     Steuert, ob beim Kassieren am Tisch der Rückgeld- und Trinkgeldrechner geöffnet wird.
                   </small>
                 </div>
@@ -857,7 +873,7 @@
                     <option value="1">Aktiviert („SumUp App öffnen“-Button beim Kassieren anzeigen)</option>
                     <option value="0">Deaktiviert (Keine SumUp-Kartenzahlung)</option>
                   </select>
-                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                  <small class="u-help">
                     Ermöglicht Kartenzahlung am Tisch über die SumUp Merchant App per Deep-Link.
                   </small>
                 </div>
@@ -865,7 +881,7 @@
                 <div class="form-group">
                   <label>SumUp Affiliate Key (URI-Call)</label>
                   <input type="text" v-model="settingsEdit.sumup_affiliate_key" class="form-control" placeholder="z. B. aff_xxxxxxxx" maxlength="120">
-                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                  <small class="u-help">
                     Wird für die automatische Betragsübergabe benötigt. Schlüssel aus me.sumup.com/developers.
                   </small>
                 </div>
@@ -873,7 +889,7 @@
                 <div class="form-group">
                   <label>SumUp App ID (URI-Call)</label>
                   <input type="text" v-model="settingsEdit.sumup_app_id" class="form-control" placeholder="at.ff.bestellsystem.web" maxlength="120">
-                  <small style="color: var(--ff-text-muted); font-size: 0.8rem; margin-top: 4px; display: block;">
+                  <small class="u-help">
                     Beliebige eindeutige App-ID deines Systems (wird an SumUp übergeben).
                   </small>
                 </div>
@@ -917,12 +933,12 @@
                       </span>
                     </td>
                     <td>
-                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <div class="u-row-wrap">
                         <button v-if="!f.is_current" type="button" class="btn btn-outline btn-sm" @click="setCurrentFest(f.id)">Aktivieren</button>
                         <a :href="'../fest_export.php?id=' + f.id" class="btn btn-outline btn-sm" title="Fest-Daten als JSON exportieren">Export ↗</a>
                         <a :href="'../fest_steuerpaket_zip.php?id=' + f.id" class="btn btn-outline btn-sm" title="Steuerberater-Paket als ZIP herunterladen">Steuerpaket ZIP ↗</a>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditFestModal(f)">Bearbeiten</button>
-                        <button v-if="isSuperAdmin && !f.is_current" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteFest(f.id, f.name)">Löschen</button>
+                        <button v-if="isSuperAdmin && !f.is_current" type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteFest(f.id, f.name)">Löschen</button>
                       </div>
                     </td>
                   </tr>
@@ -970,7 +986,7 @@
                       <span v-if="pt.connection_type === 'network' && pt.ip_address" class="font-mono text-sm" style="background: var(--ff-bg-card); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--ff-border-light);">
                         {{ pt.ip_address }}:{{ pt.port || 9100 }}
                       </span>
-                      <span v-else style="color: var(--ff-text-muted);">—</span>
+                      <span class="u-muted" v-else>—</span>
                     </td>
                     <td>{{ pt.sort_order }}</td>
                     <td>{{ pt.auto_print_limit > 0 ? pt.auto_print_limit + ' Posten' : 'Aus' }}</td>
@@ -980,17 +996,139 @@
                       </span>
                     </td>
                     <td>
-                      <div style="display: flex; gap: 6px;">
+                      <div class="u-row-6">
                         <button v-if="pt.connection_type === 'network' || pt.ip_address" type="button" class="btn btn-outline btn-sm" :disabled="testingTargetId === pt.print_target" @click="testPrintTarget(pt)" title="RAW Testbon an Drucker senden">
                           {{ testingTargetId === pt.print_target ? 'Druckt…' : '🔌 Testbon' }}
                         </button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditTargetModal(pt)">Bearbeiten</button>
-                        <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deletePrintTarget(pt.print_target)">Entfernen</button>
+                        <button type="button" class="btn btn-outline btn-sm u-text-danger" @click="deletePrintTarget(pt.print_target)">Entfernen</button>
                       </div>
                     </td>
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          <!-- Bon-Kopf & Fuß (zentral für alle Druck-Clients und Netzwerkdrucker) -->
+          <div class="admin-card" style="margin-top: 20px;">
+            <div class="card-header">
+              <h3>🧾 Bon-Kopf &amp; Fußzeile</h3>
+              <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+            </div>
+            <div class="card-body">
+              <p style="font-size: 0.88rem; line-height: 1.45; margin-bottom: 12px;">
+                Gilt für alle Küchen-, Schank- und Abholbons. Die Druck-PCs übernehmen die Texte beim nächsten Abruf, in der <code>config.ini</code> ist dafür nichts mehr nötig.
+              </p>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Name / Kopfzeile auf Bons</label>
+                  <textarea v-model="settingsEdit.thermo_bon_header" class="form-control" rows="2" maxlength="500"
+                    :placeholder="'Leer = ' + (settingsEdit.seller_name || settingsEdit.app_title || 'Freiwillige Feuerwehr')"></textarea>
+                  <small class="u-muted">Mehrzeilig möglich. Leer lassen = Vereinsname aus den Rechnungsdaten.</small>
+                </div>
+                <div class="form-group">
+                  <label>Fußzeile auf Bons</label>
+                  <textarea v-model="settingsEdit.thermo_bon_footer" class="form-control" rows="2" maxlength="500" placeholder="Leer = „Guten Appetit!“ (Standard des Druck-Clients)"></textarea>
+                </div>
+              </div>
+              <div style="margin-top: 8px; font-size: 0.85rem;">
+                Vorschau Kopfzeile:
+                <strong style="white-space: pre-line;">{{ (settingsEdit.thermo_bon_header || '').trim() || settingsEdit.seller_name || settingsEdit.app_title || 'Freiwillige Feuerwehr' }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Druck-Clients (Geräte-Freischaltung) -->
+          <div class="admin-card" style="margin-top: 20px;">
+            <div class="card-header">
+              <h3>🖨️ Druck-Clients (Freischaltung)</h3>
+              <button type="button" class="btn btn-outline btn-sm" :disabled="printerDevicesLoading" @click="loadPrinterDevices()">Aktualisieren</button>
+            </div>
+            <div class="card-body">
+              <p style="font-size: 0.88rem; line-height: 1.45; margin-bottom: 12px;">
+                Neue Druck-PCs (Python-Client) melden sich ohne Token selbst an und erhalten einen zufälligen Geräte-Token.
+                Gedruckt wird erst nach der <strong>Freischaltung</strong> hier. Vergleiche vorher den <strong>Kopplungscode</strong> mit der Anzeige in der Konsole des Druck-PCs.
+                Das <strong>Druckziel</strong> wird hier zentral zugewiesen und hat Vorrang vor der <code>config.ini</code> – Umstellen wirkt beim nächsten Abruf, ohne den Druck-PC anzufassen.
+                <span v-if="printerDevicesMasterToken"> Zusätzlich ist ein globaler Master-Token (Rechnungsdaten) gesetzt und weiterhin gültig.</span>
+              </p>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Gerät</th>
+                      <th>Kopplungscode</th>
+                      <th>Druckziel (zentral)</th>
+                      <th>Letzter Kontakt</th>
+                      <th>Status</th>
+                      <th>Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="d in printerDevices" :key="d.id">
+                      <td>
+                        <strong>{{ d.name }}</strong>
+                        <div class="u-hint">{{ d.client || '—' }}<span v-if="d.host && d.host !== d.name"> · {{ d.host }}</span></div>
+                      </td>
+                      <td><span class="font-mono" style="font-weight: 700; letter-spacing: 0.08em;">{{ d.pair_code }}</span></td>
+                      <td>
+                        <select class="form-control" style="min-width: 150px; padding: 4px 8px;" :value="d.print_target || ''" @change="setPrinterDeviceTarget(d, $event.target.value)" title="Druckziel dieses Geräts – wirkt beim nächsten Abruf, ohne Änderung am Druck-PC">
+                          <option value="">— nicht zugewiesen —</option>
+                          <option v-for="pt in overview?.print_targets" :key="pt.print_target" :value="pt.print_target">#{{ pt.print_target }} {{ pt.name }}</option>
+                        </select>
+                        <div class="u-hint" v-if="d.service && d.service !== 'target_' + d.print_target">Dienst: {{ d.service }}</div>
+                      </td>
+                      <td>
+                        <span v-if="d.last_seen_at">{{ d.last_seen_at }}</span><span class="u-muted" v-else>nie</span>
+                        <div class="u-hint">{{ d.last_ip || d.created_ip }}</div>
+                      </td>
+                      <td>
+                        <span class="badge" :class="printerDeviceStatusClass(d.status)">{{ printerDeviceStatusLabel(d.status) }}</span>
+                        <div class="u-hint" v-if="d.approved_by && d.status === 'approved'">von {{ d.approved_by }}</div>
+                      </td>
+                      <td>
+                        <div class="u-row-wrap">
+                          <button v-if="d.status !== 'approved'" type="button" class="btn btn-primary btn-sm" @click="approvePrinterDevice(d)">Freischalten</button>
+                          <button v-if="d.status !== 'blocked'" type="button" class="btn btn-outline btn-sm" @click="blockPrinterDevice(d)">Sperren</button>
+                          <button type="button" class="btn btn-outline btn-sm" @click="renamePrinterDevice(d)">Umbenennen</button>
+                          <button type="button" class="btn btn-outline btn-sm u-text-danger" @click="deletePrinterDevice(d)">Entfernen</button>
+                        </div>
+                      </td>
+                    </tr>
+                    <tr v-if="!printerDevices.length">
+                      <td colspan="6" style="text-align: center; color: var(--ff-text-muted);">
+                        {{ printerDevicesLoading ? 'Lade…' : 'Noch keine Druck-Clients registriert. Starte den Python-Client mit leerem Token – er erscheint dann hier.' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <details style="margin-top: 16px;">
+                <summary style="cursor: pointer; font-weight: 600;">Gerät manuell anlegen (z. B. ESP8266-Display oder alter Client ohne Selbstregistrierung)</summary>
+                <div class="form-grid" style="margin-top: 12px;">
+                  <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" v-model="printerDeviceForm.name" class="form-control" maxlength="100" placeholder="z. B. Grillhuhn-Display">
+                  </div>
+                  <div class="form-group">
+                    <label>Druckziel (optional)</label>
+                    <select v-model="printerDeviceForm.print_target" class="form-control">
+                      <option value="">—</option>
+                      <option v-for="pt in overview?.print_targets" :key="pt.print_target" :value="pt.print_target">#{{ pt.print_target }} {{ pt.name }}</option>
+                    </select>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" style="margin-top: 8px;" @click="createPrinterDevice">Anlegen &amp; Token erzeugen</button>
+                <div v-if="printerDeviceCreated" style="margin-top: 12px; padding: 12px; border: 1px dashed var(--ff-border-light); border-radius: var(--ff-radius);">
+                  <div style="margin-bottom: 6px;"><strong>{{ printerDeviceCreated.name }}</strong> ist freigeschaltet. Token jetzt kopieren – er wird <strong>nicht erneut angezeigt</strong>:</div>
+                  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <code style="word-break: break-all; user-select: all;">{{ printerDeviceCreated.token }}</code>
+                    <button type="button" class="btn btn-outline btn-sm" @click="copyPrinterDeviceToken">Kopieren</button>
+                    <button type="button" class="btn btn-outline btn-sm" @click="printerDeviceCreated = null">Ausblenden</button>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -1024,10 +1162,6 @@
                   <label>Nächste Rechnungsnummer</label>
                   <input type="number" v-model="settingsEdit.rechnung_next_seq" class="form-control">
                 </div>
-                <div class="form-group">
-                  <label>Bon-Kopfzeile (ESC/POS)</label>
-                  <input type="text" v-model="settingsEdit.thermo_bon_header" class="form-control">
-                </div>
               </div>
               <div class="form-group" style="margin-top: 12px;">
                 <label>Rechnungs-Fußzeile (PDF / Thermo)</label>
@@ -1048,12 +1182,12 @@
               <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <div style="width: 220px; height: 90px; border: 1px dashed var(--ff-border); border-radius: var(--ff-radius); display: flex; align-items: center; justify-content: center; background: var(--ff-surface-2); overflow: hidden; padding: 6px;">
                   <img v-if="overview?.settings?.rechnung_logo_exists" :src="'../' + overview?.settings?.rechnung_logo + '?t=' + Date.now()" alt="Logo" style="max-height: 100%; max-width: 100%; object-fit: contain;">
-                  <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">Kein Logo hochgeladen</span>
+                  <span class="u-muted-sm" v-else>Kein Logo hochgeladen</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
                   <input type="file" accept="image/png,image/jpeg,image/gif" @change="uploadLogo" class="form-control" style="max-width: 320px;">
-                  <div style="display: flex; gap: 8px;">
-                    <button v-if="overview?.settings?.rechnung_logo_exists" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteLogo">Logo löschen</button>
+                  <div class="u-row">
+                    <button v-if="overview?.settings?.rechnung_logo_exists" type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteLogo">Logo löschen</button>
                   </div>
                 </div>
               </div>
@@ -1090,7 +1224,7 @@
                 </div>
                 <div style="display: flex; gap: 8px; margin-top: 12px;">
                   <button type="button" class="btn btn-primary" @click="saveMcpToken">Token speichern</button>
-                  <button v-if="mcpStatus.configured" type="button" class="btn btn-outline" style="color: var(--ff-danger);" @click="removeMcpToken">Token entfernen</button>
+                  <button v-if="mcpStatus.configured" type="button" class="btn btn-outline u-text-danger" @click="removeMcpToken">Token entfernen</button>
                 </div>
               </div>
             </div>
@@ -1135,7 +1269,7 @@
                 <p style="font-size: 0.85rem; color: var(--ff-text-muted); margin-bottom: 16px;">
                   Schließt verwaiste Bestellungen fachlich ab (z. B. Gäste gegangen, Tischreste), ohne die Datensätze zu löschen. Sauber für Kassen- und Steuerabschluss.
                 </p>
-                <div v-if="schreibausData.count > 0" class="kpi-tile kpi-warning" style="margin-bottom: 16px;">
+                <div v-if="schreibausData.count > 0" class="kpi-tile kpi-warning u-mb-16">
                   <span class="kpi-label">Zu schließende Posten</span>
                   <span class="kpi-value">{{ schreibausData.count }}</span>
                   <span class="kpi-sub">Gesamtwert: {{ formatEur(schreibausData.sum) }}</span>
@@ -1143,7 +1277,7 @@
                 <div v-else style="padding: 12px; background: var(--ff-surface-2); border-radius: var(--ff-radius-sm); margin-bottom: 16px; font-size: 0.85rem;">
                   Aktuell keine offenen Posten vorhanden.
                 </div>
-                <div style="display: flex; gap: 8px;">
+                <div class="u-row">
                   <button type="button" class="btn btn-outline" @click="previewSchreibaus">Prüfen / Aktualisieren</button>
                   <button v-if="schreibausData.count > 0" type="button" class="btn btn-warning" @click="executeSchreibaus">Jetzt abschreiben</button>
                 </div>
@@ -1220,7 +1354,8 @@
       <section v-if="activeTab === 'speisekarte'">
 
         <!-- SUB: Positionen / Speisen / Getränke / Ausverkauft -->
-        <div v-if="['positions', 'speisen', 'getraenke', 'locks'].includes(activeSubTab.speisekarte)">
+        <!-- Fixierte Listenansicht: Filterleiste + Tabellenkopf bleiben stehen, nur die Zeilen scrollen (siehe documentation/Pilot_Admin_UI_Richtlinien.md) -->
+        <div v-if="['positions', 'speisen', 'getraenke', 'locks'].includes(activeSubTab.speisekarte)" class="fill-view">
           <div class="toolbar">
             <div class="search-box">
               <span class="search-icon">🔍</span>
@@ -1248,7 +1383,7 @@
             </label>
 
             <div style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
-              <span style="color: var(--ff-text-muted); font-size: 0.85rem;">{{ filteredMenuPositions.length }} Positionen</span>
+              <span class="u-muted-sm">{{ filteredMenuPositions.length }} Positionen</span>
               <button type="button" class="btn btn-primary" @click="openNewPositionModal(activeSubTab.speisekarte === 'getraenke' ? 2 : 1)">
                 <span>＋ Neue Position</span>
               </button>
@@ -1265,23 +1400,18 @@
           </div>
 
           <!-- Positionen Tabelle -->
-          <div v-else class="admin-card">
+          <div v-else class="admin-card fill-view-card">
             <div class="table-responsive">
-              <table class="data-table">
+              <table class="data-table pos-table">
                 <thead>
                   <tr>
-                    <th style="width: 36px; text-align: center;"></th>
-                    <th style="width: 48px;">Typ</th>
-                    <th>Name &amp; Details</th>
-                    <th>Unterkategorie</th>
-                    <th style="width: 120px;">Preis (€)</th>
-                    <th>Druckziel</th>
-                    <th style="text-align: center;">Nur Kassa</th>
-                    <th style="text-align: center;">Status</th>
-                    <th style="text-align: center;">Zusatzinfos</th>
-                    <th style="text-align: center;">Verknüpfte Artikel</th>
-                    <th style="text-align: center;">Rezeptur</th>
-                    <th style="text-align: right; width: 140px;">Aktionen</th>
+                    <th class="pos-col-drag"><span class="visually-hidden">Reihenfolge</span></th>
+                    <th class="pos-col-pos">Position</th>
+                    <th class="pos-col-price">Preis (€)</th>
+                    <th class="pos-col-target">Druckziel</th>
+                    <th class="pos-col-status">Status</th>
+                    <th class="pos-col-extras">Extras</th>
+                    <th class="pos-col-actions">Aktionen</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1294,110 +1424,85 @@
                       @drop.prevent="onPosDrop($event, p)"
                       @dragend="onPosDragEnd"
                       :class="{ 'row-drag-over': dragOverPos?.rowid === p.rowid, 'row-is-dragging': draggedPos?.rowid === p.rowid }"
-                      :style="p.is_locked ? 'background: rgba(239, 68, 68, 0.08);' : ''">
+                      :class="{ 'pos-row-locked': p.is_locked }">
                     <!-- Drag Handle -->
-                    <td style="text-align: center; cursor: grab; user-select: none; color: var(--ff-text-muted); font-size: 1.1rem;" title="Reihenfolge per Drag & Drop verschieben">
+                    <td class="pos-col-drag pos-drag" title="Reihenfolge per Drag & Drop verschieben">
                       ⠿
                     </td>
 
-                    <!-- Typ Badge -->
-                    <td>
-                      <span class="badge" :class="p.type === 2 ? 'badge-getraenk' : 'badge-speise'">
-                        {{ p.type === 2 ? '🍺' : '🍔' }}
-                      </span>
-                    </td>
-
-                    <!-- Name & Kurzbez -->
-                    <td>
-                      <div style="font-weight: 600;">{{ p.Positionsname }}</div>
-                      <div style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ff-text-muted); margin-top: 2px;">
-                        <span>ID: {{ p.rowid }}</span>
-                        <span v-if="p.Kurzbezeichnung">• Kurz: {{ p.Kurzbezeichnung }}</span>
-                        <span v-if="p.tile_bg" :style="'display:inline-block; width:12px; height:12px; border-radius:3px; background:' + p.tile_bg + '; border:1px solid var(--ff-border);'" title="Kachelfarbe"></span>
-                        <span v-if="p.fest_id" style="color: var(--ff-warning-dark); font-weight: 600;">• {{ p.fest_name }}</span>
+                    <!-- Position: Typ, Name, Unterkategorie, Details -->
+                    <td class="pos-col-pos pos-cell">
+                      <div class="pos-cell-title">
+                        <span class="pos-type-icon" :class="p.type === 2 ? 'badge-getraenk' : 'badge-speise'" :title="p.type === 2 ? 'Getränk' : 'Speise'">{{ p.type === 2 ? '🍺' : '🍔' }}</span>
+                        <span class="pos-name">{{ p.Positionsname }}</span>
+                        <span v-if="p.subkat_name" class="badge pos-subkat" :style="'background:' + (p.subkat_tile_bg || 'var(--ff-surface-2)')">{{ p.subkat_name }}</span>
+                      </div>
+                      <div class="pos-cell-meta">
+                        <span>ID {{ p.rowid }}</span>
+                        <span v-if="p.Kurzbezeichnung">· Kurz: {{ p.Kurzbezeichnung }}</span>
+                        <span v-if="p.tile_bg" class="pos-swatch" :style="'background:' + p.tile_bg" title="Kachelfarbe"></span>
+                        <span v-if="p.fest_id" class="pos-fest">· {{ p.fest_name }}</span>
                       </div>
                     </td>
 
-                    <!-- Unterkategorie -->
-                    <td>
-                      <span v-if="p.subkat_name" class="badge" :style="'background:' + (p.subkat_tile_bg || 'var(--ff-surface-2)') + '; color: #0f172a; border: 1px solid var(--ff-border);'">
-                        {{ p.subkat_name }}
-                      </span>
-                      <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">–</span>
-                    </td>
-
                     <!-- Preis (Inline Editing) -->
-                    <td>
-                      <div style="display: flex; align-items: center; gap: 4px;">
-                        <span style="color: var(--ff-text-muted); font-size: 0.85rem;">€</span>
+                    <td class="pos-col-price">
+                      <div class="pos-price">
+                        <span class="pos-price-cur">€</span>
                         <input type="text" 
                                class="inline-edit-input" 
                                :value="parseFloat(p.Betrag || 0).toFixed(2)" 
                                @change="inlineUpdateBetrag(p, $event)"
+                               :aria-label="'Preis ' + p.Positionsname"
                                title="Klicken zum schnellen Ändern">
                       </div>
                     </td>
 
                     <!-- Druckziel -->
-                    <td>
-                      <span style="font-size: 0.85rem; font-weight: 500;">
-                        {{ p.print_target_name }}
-                      </span>
+                    <td class="pos-col-target pos-target">{{ p.print_target_name || '–' }}</td>
+
+                    <!-- Status: Verfügbarkeit + Nur Kassa -->
+                    <td class="pos-col-status">
+                      <div class="pos-chips">
+                        <button type="button"
+                                class="pos-chip"
+                                :class="p.is_locked ? 'pos-chip-danger' : 'pos-chip-ok'"
+                                @click="togglePositionLock(p)"
+                                :aria-pressed="p.is_locked ? 'true' : 'false'"
+                                :title="p.is_locked ? 'Artikel ist gesperrt. Klicken zum Freigeben.' : 'Klicken zum sofortigen Ausverkauf sperren'">
+                          {{ p.is_locked ? '🔒 Ausverkauft' : '🟢 Verfügbar' }}
+                        </button>
+                        <button type="button"
+                                class="pos-chip"
+                                :class="p.kassa_only ? 'pos-chip-kassa' : 'pos-chip-off'"
+                                @click="togglePositionKassaOnly(p)"
+                                :aria-pressed="p.kassa_only ? 'true' : 'false'"
+                                :title="p.kassa_only ? 'Nur im Direktverkauf sichtbar. Klicken für alle Kellner.' : 'Für alle sichtbar. Klicken für „Nur Kassa“.'">
+                          {{ p.kassa_only ? '💜 Nur Kassa' : 'Nur Kassa' }}
+                        </button>
+                      </div>
                     </td>
 
-                    <!-- Nur Kassa Checkbox -->
-                    <td style="text-align: center;">
-                      <button type="button" 
-                              class="btn-icon" 
-                              :style="p.kassa_only ? 'color: #9333ea; font-weight: bold;' : 'color: var(--ff-text-muted);'" 
-                              @click="togglePositionKassaOnly(p)"
-                              title="Umschalten: Nur Kassa">
-                        {{ p.kassa_only ? '💜 Ja' : '⚪ Nein' }}
-                      </button>
-                    </td>
-
-                    <!-- Ausverkauft / Status Toggle -->
-                    <td style="text-align: center;">
-                      <button type="button" 
-                              class="btn btn-sm" 
-                              :class="p.is_locked ? 'btn-danger' : 'btn-outline'"
-                              style="padding: 2px 8px; font-size: 0.78rem;"
-                              @click="togglePositionLock(p)"
-                              :title="p.is_locked ? 'Artikel ist gesperrt. Klicken zum Freigeben.' : 'Klicken zum sofortigen Ausverkauf sperren'">
-                        <span v-if="p.is_locked">🔒 Ausverkauft</span>
-                        <span v-else style="color: var(--ff-success-dark);">🟢 Verfügbar</span>
-                      </button>
-                    </td>
-
-                    <!-- Zusatzinfos / Beilagen Button -->
-                    <td style="text-align: center;">
-                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openBeilagen(p)">
-                        <span>➕ Beilagen</span>
-                        <span v-if="(menuBeilagenCounts[p.rowid] || p.beilagen_count || 0) > 0" class="badge badge-info" style="margin-left: 4px; padding: 1px 5px; font-size: 0.7rem;">
-                          {{ menuBeilagenCounts[p.rowid] || p.beilagen_count }}
-                        </span>
-                      </button>
-                    </td>
-
-                    <!-- Verknüpfte echte Artikel -->
-                    <td style="text-align: center;">
-                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openLinkedArticles(p)">
-                        🔗 Artikel
-                      </button>
-                    </td>
-
-                    <!-- Rezeptur Button -->
-                    <td style="text-align: center;">
-                      <button type="button" class="btn btn-outline btn-sm" style="padding: 2px 8px; font-size: 0.78rem;" @click="openRezeptur(p)">
-                        <span>🥣 Rezeptur</span>
-                        <span v-if="(menuRezepturCounts[p.rowid] || p.rezeptur_count || 0) > 0" class="badge badge-warning" style="margin-left: 4px; padding: 1px 5px; font-size: 0.7rem;">
-                          {{ menuRezepturCounts[p.rowid] || p.rezeptur_count }}
-                        </span>
-                      </button>
+                    <!-- Extras: Beilagen, verknüpfte Artikel, Rezeptur -->
+                    <td class="pos-col-extras">
+                      <div class="pos-extras">
+                        <button type="button" class="pos-extra-btn" @click="openBeilagen(p)" title="Beilagen &amp; Zusatzinfos">
+                          ➕ <span class="pos-extra-label">Beilagen</span>
+                          <span v-if="(menuBeilagenCounts[p.rowid] || p.beilagen_count || 0) > 0" class="badge badge-info pos-extra-count">{{ menuBeilagenCounts[p.rowid] || p.beilagen_count }}</span>
+                        </button>
+                        <button type="button" class="pos-extra-btn" @click="openLinkedArticles(p)" title="Verknüpfte Artikel">
+                          🔗 <span class="pos-extra-label">Artikel</span>
+                          <span v-if="(p.linked_count || 0) > 0" class="badge badge-success pos-extra-count">{{ p.linked_count }}</span>
+                        </button>
+                        <button type="button" class="pos-extra-btn" @click="openRezeptur(p)" title="Rezeptur">
+                          🥣 <span class="pos-extra-label">Rezeptur</span>
+                          <span v-if="(menuRezepturCounts[p.rowid] || p.rezeptur_count || 0) > 0" class="badge badge-warning pos-extra-count">{{ menuRezepturCounts[p.rowid] || p.rezeptur_count }}</span>
+                        </button>
+                      </div>
                     </td>
 
                     <!-- Aktionen (Bearbeiten, Sortieren, Löschen) -->
-                    <td style="text-align: right; white-space: nowrap;">
+                    <td class="pos-col-actions">
                       <button type="button" class="btn-icon" title="Nach oben schieben" @click="movePosition(p, -1)">▲</button>
                       <button type="button" class="btn-icon" title="Nach unten schieben" @click="movePosition(p, 1)">▼</button>
                       <button type="button" class="btn-icon" title="Bearbeiten" @click="openEditPositionModal(p)">✏️</button>
@@ -1406,7 +1511,7 @@
                   </tr>
 
                   <tr v-if="filteredMenuPositions.length === 0">
-                    <td colspan="12" style="text-align: center; padding: 40px; color: var(--ff-text-muted);">
+                    <td colspan="7" class="table-empty">
                       Keine Positionen für die aktuelle Filterung gefunden.
                     </td>
                   </tr>
@@ -1463,15 +1568,15 @@
                     </td>
                     <td style="font-weight: 600;">{{ s.name }}</td>
                     <td>
-                      <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="u-row-center">
                         <span :style="'width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--ff-border); background:' + (s.tile_bg || '#ffffff')"></span>
                         <span style="font-size: 0.8rem; color: var(--ff-text-muted);">{{ s.tile_bg || '#ffffff' }}</span>
                       </div>
                     </td>
                     <td>{{ s.sort_order }}</td>
-                    <td style="text-align: center;">
+                    <td class="u-text-center">
                       <span v-if="s.kassa_only" class="badge badge-kassa">Nur Kassa</span>
-                      <span v-else style="color: var(--ff-text-muted); font-size: 0.85rem;">Nein</span>
+                      <span class="u-muted-sm" v-else>Nein</span>
                     </td>
                     <td style="text-align: right; white-space: nowrap;">
                       <button type="button" class="btn-icon" title="Nach oben schieben" @click="moveSubcategory(s, -1)">▲</button>
@@ -1493,7 +1598,7 @@
         </div>
 
         <!-- SUB: Bestandteile & Rohstoffe -->
-        <div v-if="activeSubTab.speisekarte === 'bestandteile'">
+        <div v-if="activeSubTab.speisekarte === 'bestandteile'" class="fill-view">
           <div class="toolbar">
             <div class="search-box">
               <span class="search-icon">🔍</span>
@@ -1501,7 +1606,7 @@
             </div>
 
             <div style="display: flex; gap: 8px; margin-left: auto; align-items: center;">
-              <span style="color: var(--ff-text-muted); font-size: 0.85rem;">{{ filteredBestandteile.length }} Bestandteile</span>
+              <span class="u-muted-sm">{{ filteredBestandteile.length }} Bestandteile</span>
               <button type="button" class="btn btn-primary" @click="openNewBestandteilModal()">＋ Neuer Bestandteil</button>
               <button type="button" class="btn btn-outline" @click="loadBestandteile()" title="Aktualisieren">↻</button>
             </div>
@@ -1521,7 +1626,7 @@
             <div>Bestandteile werden geladen...</div>
           </div>
 
-          <div v-else class="admin-card">
+          <div v-else class="admin-card fill-view-card">
             <div class="table-responsive">
               <table class="data-table">
                 <thead>
@@ -1554,7 +1659,7 @@
                     </td>
                     <td style="text-align: right; font-weight: 600;">
                       <template v-if="b.kapazitaet === -1">
-                        <span style="color: var(--ff-text-muted);">–</span>
+                        <span class="u-muted">–</span>
                       </template>
                       <template v-else>
                         <span v-if="b.kapazitaet - b.bestellt < 0" class="badge badge-danger">
@@ -1598,7 +1703,7 @@
       <section v-if="activeTab === 'personal'">
         
         <!-- SUB: Benutzerverwaltung -->
-        <div v-if="activeSubTab.personal === 'benutzer'">
+        <div v-if="activeSubTab.personal === 'benutzer'" class="fill-view">
           <div class="toolbar">
             <div class="search-box">
               <span class="search-icon">🔍</span>
@@ -1607,7 +1712,7 @@
             <button type="button" class="btn btn-primary" @click="openNewUserModal">＋ Neuer Benutzer</button>
           </div>
 
-          <div class="admin-card">
+          <div class="admin-card fill-view-card">
             <div class="table-responsive">
               <table class="data-table">
                 <thead>
@@ -1635,13 +1740,13 @@
                     </td>
                     <td><code>{{ u.start_page }}</code></td>
                     <td>
-                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <div class="u-row-wrap">
                         <button type="button" class="btn btn-outline btn-sm" @click="openPasskeyModal(u)" title="Passkeys verwalten">
                           🔑 Passkeys <span v-if="u.passkeys_count > 0" class="badge badge-info" style="font-size: 0.7rem; padding: 1px 4px;">{{ u.passkeys_count }}</span>
                         </button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditUserModal(u)">Bearbeiten</button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openResetPwModal(u)">Kennwort</button>
-                        <button v-if="u.id !== currentUser?.id" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteUser(u.id, u.username)">Löschen</button>
+                        <button v-if="u.id !== currentUser?.id" type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteUser(u.id, u.username)">Löschen</button>
                       </div>
                     </td>
                   </tr>
@@ -1652,7 +1757,7 @@
         </div>
 
         <!-- SUB: Rechnungsjournal -->
-        <div v-if="activeSubTab.personal === 'rechnungen'">
+        <div v-if="activeSubTab.personal === 'rechnungen'" class="fill-view">
           <div class="toolbar">
             <div class="search-box" style="flex: 1; max-width: 400px;">
               <span class="search-icon">🔍</span>
@@ -1661,7 +1766,7 @@
             <button type="button" class="btn btn-outline" @click="loadInvoices(1)">Suchen</button>
           </div>
 
-          <div class="admin-card">
+          <div class="admin-card fill-view-card">
             <div class="card-header">
               <h3>Rechnungsjournal</h3>
               <span style="font-size: 0.85rem; color: var(--ff-text-muted);">
@@ -1694,12 +1799,12 @@
                       </span>
                     </td>
                     <td>
-                      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                      <div class="u-row-wrap">
                         <button type="button" class="btn btn-outline btn-sm" @click="openInvoiceDetail(inv)">Details</button>
                         <a :href="'../rechnung_pdf.php?id=' + inv.id" target="_blank" rel="noopener" class="btn btn-outline btn-sm">PDF ↗</a>
                         <button type="button" class="btn btn-outline btn-sm" @click="reprintInvoice(inv.id, 11)">Thermo-Druck</button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openEditInvoiceRecipient(inv)">Empfänger</button>
-                        <button v-if="!inv.storniert" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="openInvoiceStorno(inv)" title="Rechnung stornieren">Storno</button>
+                        <button v-if="!inv.storniert" type="button" class="btn btn-outline btn-sm u-text-danger" @click="openInvoiceStorno(inv)" title="Rechnung stornieren">Storno</button>
                       </div>
                     </td>
                   </tr>
@@ -1711,7 +1816,7 @@
 
         <!-- SUB: Mitarbeiter-Verpflegung -->
         <div v-if="activeSubTab.personal === 'verpflegung'">
-          <div class="admin-card" style="margin-bottom: 24px;">
+          <div class="admin-card u-mb-24">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
               <div style="display: flex; align-items: center; gap: 10px;">
                 <h3>Verpflegung erfassen</h3>
@@ -1770,11 +1875,11 @@
                     <td>{{ e.notiz || '–' }}</td>
                     <td>{{ e.created_by }}</td>
                     <td>
-                      <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteVerpflegung(e.id)">Löschen</button>
+                      <button type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteVerpflegung(e.id)">Löschen</button>
                     </td>
                   </tr>
                   <tr v-if="!verpflegungData.entries?.length">
-                    <td colspan="6" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                    <td class="u-empty-cell" colspan="6">
                       Für dieses Datum wurden noch keine Konsumationen erfasst.
                     </td>
                   </tr>
@@ -1799,11 +1904,11 @@
                 <span class="search-icon">🔍</span>
                 <input type="text" v-model="kellnerFilter.kellner" @keyup.enter="loadKellnerReport" class="form-control" placeholder="Kellner-Login filtern...">
               </div>
-              <input type="date" v-model="kellnerFilter.von" class="form-control" style="width: auto;" title="Datum von">
-              <input type="date" v-model="kellnerFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <input type="date" v-model="kellnerFilter.von" class="form-control u-w-auto" title="Datum von">
+              <input type="date" v-model="kellnerFilter.bis" class="form-control u-w-auto" title="Datum bis">
               <button type="button" class="btn btn-outline" @click="loadKellnerReport">Aktualisieren</button>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div class="u-row">
               <button type="button" class="btn btn-outline" @click="openKellnerMovement(null)">Zwischenentnahme 💶</button>
               <button type="button" class="btn btn-outline" @click="exportKellnerCsv">CSV-Export 📄</button>
             </div>
@@ -1834,7 +1939,7 @@
           </div>
 
           <!-- Kellner Datentabelle -->
-          <div class="admin-card" style="margin-bottom: 24px;">
+          <div class="admin-card u-mb-24">
             <div class="card-header">
               <h3>Kellner-Umsätze &amp; Kassen-Soll</h3>
             </div>
@@ -1843,14 +1948,14 @@
                 <thead>
                   <tr>
                     <th>Kellner (Anzeige · Login)</th>
-                    <th style="text-align: right;">Posten</th>
-                    <th style="text-align: right;">Umsatz Soll</th>
-                    <th style="text-align: right;">Bar</th>
-                    <th style="text-align: right;">SumUp</th>
-                    <th style="text-align: right;">Sammel</th>
-                    <th style="text-align: right;">Ehrengast</th>
-                    <th style="text-align: right;">Entnahmen</th>
-                    <th style="text-align: right;">Abgabe Soll</th>
+                    <th class="u-text-right">Posten</th>
+                    <th class="u-text-right">Umsatz Soll</th>
+                    <th class="u-text-right">Bar</th>
+                    <th class="u-text-right">SumUp</th>
+                    <th class="u-text-right">Sammel</th>
+                    <th class="u-text-right">Ehrengast</th>
+                    <th class="u-text-right">Entnahmen</th>
+                    <th class="u-text-right">Abgabe Soll</th>
                     <th>Aktionen</th>
                   </tr>
                 </thead>
@@ -1860,23 +1965,23 @@
                       <strong>{{ w.label }}</strong>
                       <span v-if="w.label !== w.kellner_login" style="font-size: 0.8rem; color: var(--ff-text-muted); display: block;">{{ w.kellner_login }}</span>
                     </td>
-                    <td style="text-align: right;">{{ w.pos_count }}</td>
-                    <td style="text-align: right;"><strong>{{ formatEur(w.umsatz_soll) }}</strong></td>
-                    <td style="text-align: right;">{{ formatEur(w.bar_umsatz) }}</td>
-                    <td style="text-align: right;">{{ formatEur(w.sumup_umsatz) }}</td>
-                    <td style="text-align: right;">{{ formatEur(w.sammel_umsatz) }}</td>
-                    <td style="text-align: right;">{{ formatEur(w.ehrengast_umsatz) }}</td>
+                    <td class="u-text-right">{{ w.pos_count }}</td>
+                    <td class="u-text-right"><strong>{{ formatEur(w.umsatz_soll) }}</strong></td>
+                    <td class="u-text-right">{{ formatEur(w.bar_umsatz) }}</td>
+                    <td class="u-text-right">{{ formatEur(w.sumup_umsatz) }}</td>
+                    <td class="u-text-right">{{ formatEur(w.sammel_umsatz) }}</td>
+                    <td class="u-text-right">{{ formatEur(w.ehrengast_umsatz) }}</td>
                     <td style="text-align: right; color: var(--ff-danger);">{{ w.entnahmen > 0 ? '-' + formatEur(w.entnahmen) : '–' }}</td>
                     <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(w.abgabe_soll) }}</td>
                     <td>
-                      <div style="display: flex; gap: 6px;">
+                      <div class="u-row-6">
                         <button type="button" class="btn btn-primary btn-sm" @click="openKellnerSettle(w)" :disabled="w.offen_pos_count === 0 && w.abgabe_soll === 0">Abrechnen</button>
                         <button type="button" class="btn btn-outline btn-sm" @click="openKellnerMovement(w)">± Entnahme</button>
                       </div>
                     </td>
                   </tr>
                   <tr v-if="!kellnerReport.waiters?.length">
-                    <td colspan="10" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                    <td class="u-empty-cell" colspan="10">
                       Keine Umsätze für diesen Zeitraum gefunden.
                     </td>
                   </tr>
@@ -1897,10 +2002,10 @@
                     <th>#</th>
                     <th>Datum</th>
                     <th>Kellner</th>
-                    <th style="text-align: right;">Soll</th>
-                    <th style="text-align: right;">Abgegeben</th>
-                    <th style="text-align: right;">Wechselgeld</th>
-                    <th style="text-align: right;">Trinkgeld</th>
+                    <th class="u-text-right">Soll</th>
+                    <th class="u-text-right">Abgegeben</th>
+                    <th class="u-text-right">Wechselgeld</th>
+                    <th class="u-text-right">Trinkgeld</th>
                     <th>Erfasst von</th>
                     <th>Aktionen</th>
                   </tr>
@@ -1910,20 +2015,20 @@
                     <td>#{{ s.id }}</td>
                     <td>{{ s.created_at }}</td>
                     <td><strong>{{ s.kellner_label }}</strong></td>
-                    <td style="text-align: right;">{{ formatEur(s.umsatz_soll) }}</td>
-                    <td style="text-align: right;">{{ formatEur(s.betrag_abgegeben) }}</td>
-                    <td style="text-align: right;">{{ formatEur(s.wechselgeld_zurueck) }}</td>
+                    <td class="u-text-right">{{ formatEur(s.umsatz_soll) }}</td>
+                    <td class="u-text-right">{{ formatEur(s.betrag_abgegeben) }}</td>
+                    <td class="u-text-right">{{ formatEur(s.wechselgeld_zurueck) }}</td>
                     <td style="text-align: right; font-weight: 700; color: var(--ff-success);">{{ formatEur(s.trinkgeld) }}</td>
                     <td>{{ s.created_by }}</td>
                     <td>
-                      <div style="display: flex; gap: 6px;">
+                      <div class="u-row-6">
                         <button type="button" class="btn btn-outline btn-sm" @click="openSettlementDetail(s.id)">Beleg 📄</button>
-                        <button v-if="!s.voided_at" type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="openSettlementVoid(s.id)" title="Abrechnung stornieren & Posten wieder öffnen">Zurücksetzen</button>
+                        <button v-if="!s.voided_at" type="button" class="btn btn-outline btn-sm u-text-danger" @click="openSettlementVoid(s.id)" title="Abrechnung stornieren & Posten wieder öffnen">Zurücksetzen</button>
                       </div>
                     </td>
                   </tr>
                   <tr v-if="!kellnerSettlements.length">
-                    <td colspan="9" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                    <td class="u-empty-cell" colspan="9">
                       Bisher wurden noch keine Kellner-Abrechnungen durchgeführt.
                     </td>
                   </tr>
@@ -1937,18 +2042,18 @@
         <div v-if="activeSubTab.auswertungen === 'finanzen'">
           <div class="toolbar">
             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-              <input type="date" v-model="financeFilter.von" class="form-control" style="width: auto;" title="Datum von">
-              <input type="date" v-model="financeFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <input type="date" v-model="financeFilter.von" class="form-control u-w-auto" title="Datum von">
+              <input type="date" v-model="financeFilter.bis" class="form-control u-w-auto" title="Datum bis">
               <button type="button" class="btn btn-outline" @click="loadFinanceOverview">Aktualisieren</button>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div class="u-row">
               <a href="../finance_kassen_export.php" class="btn btn-outline" title="Kassenbericht herunterladen">Kassenbericht ↗</a>
               <button type="button" class="btn btn-outline" @click="exportFinanceCsv">Kassenbuch CSV 📄</button>
             </div>
           </div>
 
           <!-- KPI Cards Finanzen -->
-          <div class="kpi-grid" style="margin-bottom: 24px;">
+          <div class="kpi-grid u-mb-24">
             <div class="kpi-tile kpi-primary">
               <span class="kpi-label">Gesamtumsatz (Kombiniert)</span>
               <span class="kpi-val">{{ formatEur(financeOverview.umsatz_gesamt_kombiniert) }}</span>
@@ -1972,7 +2077,7 @@
           </div>
 
           <!-- Kassenbereiche Übersicht -->
-          <div v-if="financeOverview.bereiche_umsatz?.length" class="admin-card" style="margin-bottom: 24px;">
+          <div v-if="financeOverview.bereiche_umsatz?.length" class="admin-card u-mb-24">
             <div class="card-header">
               <h3>Umsatz nach Kassenbereichen</h3>
             </div>
@@ -1987,7 +2092,7 @@
           </div>
 
           <!-- Buchungsformular (Neuer Kassenbucheintrag) -->
-          <div class="admin-card" style="margin-bottom: 24px;">
+          <div class="admin-card u-mb-24">
             <div class="card-header">
               <h3>Kassenbuch – Buchung erfassen</h3>
             </div>
@@ -2042,7 +2147,7 @@
                     <th>Bezeichnung</th>
                     <th>Bereich</th>
                     <th>Kategorie</th>
-                    <th style="text-align: right;">Betrag</th>
+                    <th class="u-text-right">Betrag</th>
                     <th>Erfasst von</th>
                     <th>Aktionen</th>
                   </tr>
@@ -2063,11 +2168,11 @@
                     </td>
                     <td>{{ b.created_by }}</td>
                     <td>
-                      <button type="button" class="btn btn-outline btn-sm" style="color: var(--ff-danger);" @click="deleteBooking(b.id)">Löschen</button>
+                      <button type="button" class="btn btn-outline btn-sm u-text-danger" @click="deleteBooking(b.id)">Löschen</button>
                     </td>
                   </tr>
                   <tr v-if="!financeBookings.length">
-                    <td colspan="8" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                    <td class="u-empty-cell" colspan="8">
                       Bisher keine Kassenbuchungen erfasst.
                     </td>
                   </tr>
@@ -2081,21 +2186,21 @@
         <div v-if="activeSubTab.auswertungen === 'statistik'">
           <div class="toolbar">
             <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-              <select v-model="statsFilter.kategorie" @change="loadStats" class="form-select" style="width: auto;">
+              <select v-model="statsFilter.kategorie" @change="loadStats" class="form-select u-w-auto">
                 <option value="">Alle Kategorien</option>
                 <option value="Speise">Speisen</option>
                 <option value="Getränk">Getränke</option>
                 <option value="Dessert">Dessert</option>
               </select>
-              <input type="date" v-model="statsFilter.von" class="form-control" style="width: auto;" title="Datum von">
-              <input type="date" v-model="statsFilter.bis" class="form-control" style="width: auto;" title="Datum bis">
+              <input type="date" v-model="statsFilter.von" class="form-control u-w-auto" title="Datum von">
+              <input type="date" v-model="statsFilter.bis" class="form-control u-w-auto" title="Datum bis">
               <button type="button" class="btn btn-outline" @click="loadStats">Aktualisieren</button>
             </div>
             <button type="button" class="btn btn-outline" @click="exportStatsCsv">Statistik CSV 📄</button>
           </div>
 
           <!-- KPI Cards Statistik -->
-          <div class="kpi-grid" style="margin-bottom: 24px;">
+          <div class="kpi-grid u-mb-24">
             <div class="kpi-tile kpi-primary">
               <span class="kpi-label">Verkaufte Positionen</span>
               <span class="kpi-val">{{ statsTotals.total_count }}</span>
@@ -2114,7 +2219,7 @@
           </div>
 
           <!-- Renner & Penner Tabelle -->
-          <div class="admin-card" style="margin-bottom: 24px;">
+          <div class="admin-card u-mb-24">
             <div class="card-header">
               <h3>Renner &amp; Penner (Verkaufsrangliste)</h3>
             </div>
@@ -2126,9 +2231,9 @@
                     <th>Artikelname</th>
                     <th>Kategorie</th>
                     <th>Station</th>
-                    <th style="text-align: right;">Einzelpreis</th>
-                    <th style="text-align: right;">Menge</th>
-                    <th style="text-align: right;">Gesamtumsatz</th>
+                    <th class="u-text-right">Einzelpreis</th>
+                    <th class="u-text-right">Menge</th>
+                    <th class="u-text-right">Gesamtumsatz</th>
                     <th style="width: 140px;">Umsatzanteil</th>
                   </tr>
                 </thead>
@@ -2140,7 +2245,7 @@
                     <td><strong>{{ a.bezeichnung }}</strong></td>
                     <td>{{ a.kategorie }}</td>
                     <td>{{ a.druckbereich || '–' }}</td>
-                    <td style="text-align: right;">{{ formatEur(a.einzelpreis) }}</td>
+                    <td class="u-text-right">{{ formatEur(a.einzelpreis) }}</td>
                     <td style="text-align: right; font-weight: 700;">{{ a.cnt }}x</td>
                     <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(a.summe) }}</td>
                     <td>
@@ -2151,7 +2256,7 @@
                     </td>
                   </tr>
                   <tr v-if="!statsArticles.length">
-                    <td colspan="8" style="text-align: center; color: var(--ff-text-muted); padding: 16px;">
+                    <td class="u-empty-cell" colspan="8">
                       Keine Artikel-Verkaufszahlen vorhanden.
                     </td>
                   </tr>
@@ -2170,14 +2275,14 @@
                 <thead>
                   <tr>
                     <th>Uhrzeit</th>
-                    <th style="text-align: right;">Verkaufte Positionen</th>
-                    <th style="text-align: right;">Umsatz in dieser Stunde</th>
+                    <th class="u-text-right">Verkaufte Positionen</th>
+                    <th class="u-text-right">Umsatz in dieser Stunde</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="t in statsTimeline" :key="t.hour">
                     <td><strong>{{ t.hour }} Uhr</strong></td>
-                    <td style="text-align: right;">{{ t.pos_count }}</td>
+                    <td class="u-text-right">{{ t.pos_count }}</td>
                     <td style="text-align: right; font-weight: 700; color: var(--ff-primary);">{{ formatEur(t.summe) }}</td>
                   </tr>
                 </tbody>
@@ -2208,7 +2313,7 @@
             <label>Tischname *</label>
             <input type="text" v-model="tableModal.data.tischname" class="form-control" placeholder="z. B. Tisch 12">
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Position X (Spalte)</label>
               <input type="number" v-model.number="tableModal.data.x" class="form-control" min="1" placeholder="1">
@@ -2240,11 +2345,11 @@
             </div>
           </div>
         </div>
-        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="modal-footer u-row-between">
           <div>
             <button v-if="!tableModal.isNew" type="button" class="btn btn-outline" style="color: var(--ff-danger); border-color: var(--ff-danger);" @click="deleteTable(tableModal.data.tischnummer); tableModal.open = false;">Tisch löschen</button>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div class="u-row">
             <button type="button" class="btn btn-outline" @click="tableModal.open = false">Abbrechen</button>
             <button type="button" class="btn btn-primary" @click="saveTable">Speichern</button>
           </div>
@@ -2339,13 +2444,13 @@
           </div>
           <table class="data-table">
             <thead>
-              <tr><th>Menge</th><th>Position</th><th style="text-align: right;">Betrag</th></tr>
+              <tr><th>Menge</th><th>Position</th><th class="u-text-right">Betrag</th></tr>
             </thead>
             <tbody>
               <tr v-for="(line, idx) in invoiceDetailModal.lines" :key="idx">
                 <td>{{ line.menge || line.qty || 1 }}x</td>
                 <td>{{ line.bezeichnung || line.name }}</td>
-                <td style="text-align: right;">{{ formatEur(line.gesamt || line.total || line.betrag) }}</td>
+                <td class="u-text-right">{{ formatEur(line.gesamt || line.total || line.betrag) }}</td>
               </tr>
             </tbody>
             <tfoot>
@@ -2494,13 +2599,13 @@
             <label for="chkPt">Druckziel aktiv</label>
           </div>
         </div>
-        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="modal-footer u-row-between">
           <div>
             <button v-if="targetModal.data.connection_type === 'network' && targetModal.data.ip_address" type="button" class="btn btn-outline" :disabled="testingTargetModal" @click="testPrintModalTarget">
               {{ testingTargetModal ? 'Sende…' : '🔌 Testbon an IP senden' }}
             </button>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div class="u-row">
             <button type="button" class="btn btn-outline" @click="targetModal.open = false">Abbrechen</button>
             <button type="button" class="btn btn-primary" @click="savePrintTarget">Speichern</button>
           </div>
@@ -2522,7 +2627,7 @@
           </div>
           <div style="width: 100%; text-align: left;">
             <label style="font-size: 0.8rem; font-weight: 700; color: var(--ff-text-muted);">TISCH-TOKEN</label>
-            <div style="display: flex; gap: 8px;">
+            <div class="u-row">
               <input type="text" :value="tableQrModal.table?.token || '–'" readonly class="form-control" style="font-family: monospace; font-size: 0.85rem;">
               <button type="button" class="btn btn-secondary" @click="copyTableToken(tableQrModal.table?.token)">Kopieren</button>
             </div>
@@ -2546,7 +2651,7 @@
           <button type="button" class="btn-close" @click="closePasskeyModal">×</button>
         </div>
         <div class="modal-body">
-          <div style="margin-bottom: 16px;">
+          <div class="u-mb-16">
             <h5 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 8px;">Registrierte Passkeys</h5>
             <div v-if="!passkeyModal.passkeys.length" style="font-size: 0.88rem; color: var(--ff-text-muted);">
               Keine Passkeys hinterlegt.
@@ -2565,7 +2670,7 @@
                   <td><strong>{{ pk.name || 'Passkey #' + pk.id }}</strong></td>
                   <td style="font-size: 0.82rem;">{{ pk.created_at || '–' }}</td>
                   <td style="font-size: 0.82rem;">{{ pk.last_used_at || '–' }}</td>
-                  <td style="text-align: right;">
+                  <td class="u-text-right">
                     <button type="button" class="btn btn-sm btn-danger" @click="deletePasskey(pk.id)" title="Passkey löschen">✕</button>
                   </td>
                 </tr>
@@ -2606,11 +2711,11 @@
     <div v-if="invoiceStornoModal.open" class="modal-overlay">
       <div class="modal-content" style="max-width: 480px;">
         <div class="modal-header" style="border-bottom: 2px solid var(--ff-danger);">
-          <h4 style="color: var(--ff-danger);">Rechnung {{ invoiceStornoModal.rechnungsnummer }} stornieren</h4>
+          <h4 class="u-text-danger">Rechnung {{ invoiceStornoModal.rechnungsnummer }} stornieren</h4>
           <button type="button" class="btn-close" @click="invoiceStornoModal.open = false">×</button>
         </div>
         <div class="modal-body">
-          <div class="alert alert-danger" style="margin-bottom: 16px;">
+          <div class="alert alert-danger u-mb-16">
             <strong>Achtung:</strong> Die Rechnung über <strong>{{ formatEur(invoiceStornoModal.total) }}</strong> wird unwiderruflich storniert. Verknüpfte Bestellungen werden als storniert markiert und eventuelle Druckaufträge abgebrochen.
           </div>
           <div class="form-group">
@@ -2639,7 +2744,7 @@
                 <tr>
                   <th>Sort.</th>
                   <th>Bereichsname</th>
-                  <th style="text-align: right;">Einträge</th>
+                  <th class="u-text-right">Einträge</th>
                   <th style="width: 100px; text-align: right;">Aktionen</th>
                 </tr>
               </thead>
@@ -2647,8 +2752,8 @@
                 <tr v-for="b in bereicheModal.list" :key="b.id">
                   <td style="width: 60px;">{{ b.sort_order }}</td>
                   <td><strong>{{ b.name }}</strong></td>
-                  <td style="text-align: right;">{{ b.total_count || 0 }}</td>
-                  <td style="text-align: right;">
+                  <td class="u-text-right">{{ b.total_count || 0 }}</td>
+                  <td class="u-text-right">
                     <button type="button" class="btn btn-sm btn-outline" style="margin-right: 4px;" @click="bereicheModal.form = { id: b.id, name: b.name, sort_order: b.sort_order }">✎</button>
                     <button type="button" class="btn btn-sm btn-danger" @click="deleteBereich(b.id)" :disabled="b.total_count > 0">✕</button>
                   </td>
@@ -2695,15 +2800,15 @@
         <div class="modal-body">
           <div style="background: var(--ff-surface-variant); padding: 14px; border-radius: 8px; margin-bottom: 16px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span style="color: var(--ff-text-muted);">Soll-Umsatz (Bar):</span>
+              <span class="u-muted">Soll-Umsatz (Bar):</span>
               <strong>{{ formatEur(kellnerSettleModal.waiter?.umsatz_soll) }}</strong>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span style="color: var(--ff-text-muted);">Zwischenentnahmen:</span>
-              <strong style="color: var(--ff-danger);">- {{ formatEur(kellnerSettleModal.waiter?.entnahmen) }}</strong>
+              <span class="u-muted">Zwischenentnahmen:</span>
+              <strong class="u-text-danger">- {{ formatEur(kellnerSettleModal.waiter?.entnahmen) }}</strong>
             </div>
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-              <span style="color: var(--ff-text-muted);">Zuzahlungen:</span>
+              <span class="u-muted">Zuzahlungen:</span>
               <strong style="color: var(--ff-success);">+ {{ formatEur(kellnerSettleModal.waiter?.zuzahlungen) }}</strong>
             </div>
             <div style="border-top: 1px solid var(--ff-border); padding-top: 8px; margin-top: 8px; display: flex; justify-content: space-between; font-weight: 700; font-size: 1.05rem;">
@@ -2722,7 +2827,7 @@
           </div>
 
           <div style="background: rgba(30, 144, 255, 0.08); border-left: 4px solid var(--ff-info); padding: 12px; border-radius: 4px; margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="u-row-between">
               <span style="font-weight: 600;">Ermitteltes Kellner-Trinkgeld / Differenz:</span>
               <span style="font-weight: 800; font-size: 1.15rem;" :style="{ color: calculatedTrinkgeld >= 0 ? 'var(--ff-success)' : 'var(--ff-danger)' }">
                 {{ formatEur(calculatedTrinkgeld) }}
@@ -2789,15 +2894,15 @@
             <div>Erfasst von: {{ settlementDetailModal.settlement?.settled_by }}</div>
           </div>
 
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div class="u-kv">
             <span>Soll-Umsatz:</span>
             <span>{{ formatEur(settlementDetailModal.settlement?.umsatz_soll) }}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div class="u-kv">
             <span>Zwischenentnahmen:</span>
             <span>- {{ formatEur(settlementDetailModal.settlement?.entnahmen) }}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div class="u-kv">
             <span>Zuzahlungen:</span>
             <span>+ {{ formatEur(settlementDetailModal.settlement?.zuzahlungen) }}</span>
           </div>
@@ -2809,7 +2914,7 @@
             <span>Abgegebenes Bargeld:</span>
             <span>{{ formatEur(settlementDetailModal.settlement?.betrag_abgegeben) }}</span>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+          <div class="u-kv">
             <span>Wechselgeld zurück:</span>
             <span>{{ formatEur(settlementDetailModal.settlement?.wechselgeld_zurueck) }}</span>
           </div>
@@ -2833,11 +2938,11 @@
     <div v-if="settlementVoidModal.open" class="modal-overlay">
       <div class="modal-content" style="max-width: 480px;">
         <div class="modal-header" style="border-bottom: 2px solid var(--ff-danger);">
-          <h4 style="color: var(--ff-danger);">Abrechnung #{{ settlementVoidModal.id }} zurücksetzen</h4>
+          <h4 class="u-text-danger">Abrechnung #{{ settlementVoidModal.id }} zurücksetzen</h4>
           <button type="button" class="btn-close" @click="settlementVoidModal.open = false">×</button>
         </div>
         <div class="modal-body">
-          <div class="alert alert-danger" style="margin-bottom: 16px;">
+          <div class="alert alert-danger u-mb-16">
             <strong>Achtung:</strong> Die Abrechnung wird rückgängig gemacht. Alle zugehörigen Bestellungen werden wieder für Abrechnungen freigegeben.
           </div>
           <div class="form-group">
@@ -2914,7 +3019,7 @@
             <input type="text" v-model="posModal.form.Positionsname" class="form-control" placeholder="z. B. Grillhuhn mit Pommes">
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Kurzbezeichnung</label>
               <input type="text" v-model="posModal.form.Kurzbezeichnung" class="form-control" placeholder="z. B. Grillhuhn">
@@ -2928,7 +3033,7 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Verkaufspreis (€) *</label>
               <input type="text" v-model="posModal.form.Betrag" class="form-control" placeholder="0.00">
@@ -2939,7 +3044,7 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Unterkategorie</label>
               <select v-model="posModal.form.subcategory_id" class="form-select">
@@ -2959,17 +3064,17 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Kachelfarbe (Hex)</label>
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="u-row-center">
                 <input type="color" v-model="posModal.form.tile_bg" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
                 <input type="text" v-model="posModal.form.tile_bg" class="form-control" placeholder="#ffffff">
               </div>
             </div>
             <div class="form-group">
               <label>Schriftfarbe</label>
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="u-row-center">
                 <input type="color" v-model="posModal.form.color" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
                 <input type="text" v-model="posModal.form.color" class="form-control" placeholder="#000000">
               </div>
@@ -3015,7 +3120,7 @@
             <input type="text" v-model="subcatModal.form.name" class="form-control" placeholder="z. B. Burger, Pfanne, Schnaps">
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Haupttyp *</label>
               <select v-model="subcatModal.form.type" class="form-select">
@@ -3031,7 +3136,7 @@
 
           <div class="form-group">
             <label>Kachel-Hintergrundfarbe (tile_bg)</label>
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="u-row-center">
               <input type="color" v-model="subcatModal.form.tile_bg" style="width: 44px; height: 38px; padding: 2px; border: 1px solid var(--ff-border); border-radius: 4px; cursor: pointer;">
               <input type="text" v-model="subcatModal.form.tile_bg" class="form-control" placeholder="#ffffff">
             </div>
@@ -3077,7 +3182,7 @@
           </div>
 
           <!-- Häufige Freitexte mit 1-Klick Vorschlag -->
-          <div v-if="beilagenModal.freetexts && beilagenModal.freetexts.length > 0" style="margin-bottom: 16px;">
+          <div class="u-mb-16" v-if="beilagenModal.freetexts && beilagenModal.freetexts.length > 0">
             <div style="font-size: 0.8rem; font-weight: 600; color: var(--ff-text-muted); margin-bottom: 6px;">
               Häufige Freitexte aus bisherigen Bestellungen (Klick zum Übernehmen):
             </div>
@@ -3106,7 +3211,7 @@
                 <tr v-for="b in beilagenModal.rows" :key="b.rowid">
                   <td style="font-weight: 500;">{{ b.name }}</td>
                   <td>{{ parseFloat(b.betrag || 0).toFixed(2) }} €</td>
-                  <td style="text-align: right;">
+                  <td class="u-text-right">
                     <button type="button" class="btn-icon btn-icon-danger" @click="deleteBeilage(b)">🗑️</button>
                   </td>
                 </tr>
@@ -3161,28 +3266,28 @@
               <tbody>
                 <tr v-for="(row, idx) in rezepturModal.rows" :key="idx">
                   <td>
-                    <select v-model="row.bestandteil_id" class="form-select" style="width: 100%;">
+                    <select v-model="row.bestandteil_id" class="form-select u-w-100">
                       <option v-for="b in rezepturModal.bestandteile" :key="b.id" :value="b.id">
                         {{ b.name }} ({{ b.einheit }})
                       </option>
                     </select>
                   </td>
                   <td>
-                    <input type="number" min="0.001" step="0.001" v-model.number="row.menge" class="form-control" style="width: 100%;">
+                    <input type="number" min="0.001" step="0.001" v-model.number="row.menge" class="form-control u-w-100">
                   </td>
-                  <td style="text-align: center;">
+                  <td class="u-text-center">
                     <input type="checkbox" v-model="row.optional_enabled" title="Bestandteil kann beim Bestellen abgewählt oder gewählt werden">
                   </td>
-                  <td style="text-align: center;">
+                  <td class="u-text-center">
                     <input type="checkbox" v-model="row.default_selected" title="Beim optionalen Bestandteil standardmäßig auswählen">
                   </td>
                   <td>
-                    <input type="text" maxlength="64" v-model="row.option_group" placeholder="z. B. brotwahl" class="form-control" style="width: 100%;">
+                    <input type="text" maxlength="64" v-model="row.option_group" placeholder="z. B. brotwahl" class="form-control u-w-100">
                   </td>
                   <td>
-                    <input type="number" step="1" v-model.number="row.reihenfolge" class="form-control" style="width: 100%;">
+                    <input type="number" step="1" v-model.number="row.reihenfolge" class="form-control u-w-100">
                   </td>
-                  <td style="text-align: right;">
+                  <td class="u-text-right">
                     <button type="button" class="btn-icon btn-icon-danger" @click="removeRezepturRow(idx)">✕</button>
                   </td>
                 </tr>
@@ -3215,7 +3320,7 @@
             <input type="text" maxlength="255" v-model="bestandteilModal.form.name" class="form-control" placeholder="z. B. Grillhuhn roh, Semmel, Pommes">
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Einheit *</label>
               <input type="text" maxlength="30" v-model="bestandteilModal.form.einheit" class="form-control" list="einheitenList" placeholder="z. B. Stk, Liter, kg">
@@ -3233,7 +3338,7 @@
               </datalist>
             </div>
             <div class="form-group">
-              <label style="display: flex; justify-content: space-between; align-items: center;">
+              <label class="u-row-between">
                 <span>Kapazität (-1 = unbegrenzt)</span>
                 <button type="button" class="btn btn-outline btn-sm" style="padding: 1px 6px; font-size: 0.75rem;" @click="openKapazitaetModal(bestandteilModal.form, bestandteilModal.form)" title="Kapazität mit Rechner ermitteln">
                   📐 Rechner
@@ -3243,7 +3348,7 @@
             </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="u-grid-2">
             <div class="form-group">
               <label>Sortierung</label>
               <input type="number" v-model.number="bestandteilModal.form.sort_order" class="form-control">
@@ -3278,22 +3383,22 @@
         <div class="modal-body">
           <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--ff-surface-2); border-radius: var(--ff-radius);">
             <div>
-              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Kapazität</div>
+              <div class="u-hint-xs">Kapazität</div>
               <strong>{{ kapazitaetModal.bestandteil?.kapazitaet > 0 ? kapazitaetModal.bestandteil.kapazitaet + ' ' + (kapazitaetModal.bestandteil.einheit || 'Stk') : 'Unbegrenzt' }}</strong>
             </div>
             <div>
-              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Bestellt</div>
+              <div class="u-hint-xs">Bestellt</div>
               <strong>{{ formatBestandteilMenge(kapazitaetModal.bestandteil?.bestellt || 0) }} {{ kapazitaetModal.bestandteil?.einheit || 'Stk' }}</strong>
             </div>
             <div>
-              <div style="font-size: 0.75rem; color: var(--ff-text-muted);">Rest</div>
+              <div class="u-hint-xs">Rest</div>
               <strong :style="(kapazitaetModal.bestandteil?.kapazitaet > 0 && (kapazitaetModal.bestandteil.kapazitaet - (kapazitaetModal.bestandteil.bestellt || 0)) <= 0) ? 'color: var(--ff-danger);' : ''">
                 {{ kapazitaetModal.bestandteil?.kapazitaet > 0 ? formatBestandteilMenge(kapazitaetModal.bestandteil.kapazitaet - (kapazitaetModal.bestandteil.bestellt || 0)) + ' ' + (kapazitaetModal.bestandteil.einheit || 'Stk') : '—' }}
               </strong>
             </div>
           </div>
 
-          <div style="margin-bottom: 16px;">
+          <div class="u-mb-16">
             <label style="font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; display: block;">Berechnungsmodus</label>
             <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer;">
               <input type="radio" value="plus" v-model="kapazitaetModal.mode">
@@ -3326,9 +3431,19 @@
     </div>
 
     <!-- 5. TOAST NOTIFICATIONS -->
-    <div v-if="toast" class="toast-container">
+    <!-- Ungespeicherte Einstellungen -->
+    <div v-if="settingsDirty" class="unsaved-bar" role="status">
+      <span>✏️ {{ settingsDirtyKeys.length }} ungespeicherte Änderung{{ settingsDirtyKeys.length === 1 ? '' : 'en' }}</span>
+      <span class="u-row">
+        <button type="button" class="btn btn-outline btn-sm" @click="discardSettings">Verwerfen</button>
+        <button type="button" class="btn btn-primary btn-sm" @click="saveSettings">Speichern</button>
+      </span>
+    </div>
+
+    <div v-if="toast" class="toast-container" :role="toast.type === 'error' ? 'alert' : 'status'" aria-live="polite">
       <div class="toast" :class="'toast-' + toast.type">
         <span>{{ toast.message }}</span>
+        <button v-if="toast.action" type="button" class="toast-action" @click="runToastAction">{{ toast.action.label }}</button>
       </div>
     </div>
 
@@ -3337,6 +3452,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261101_3"></script>
+  <script type="module" src="admin.js?v=20261115_6"></script>
 </body>
 </html>

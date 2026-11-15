@@ -23,6 +23,15 @@
  */
 declare(strict_types=1);
 
+// Nur über CLI ausführbar: Die Suite setzt eine Super-Admin-Session und
+// verändert Daten. Ein HTTP-Aufruf würde dem Aufrufer Admin-Rechte geben.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    echo 'Forbidden';
+    exit;
+}
+
 require_once dirname(__DIR__) . '/include/db.php';
 require_once dirname(__DIR__) . '/include/settings.php';
 require_once dirname(__DIR__) . '/include/ff_rechnung_seq.php';
@@ -56,6 +65,20 @@ $_SESSION['admin'] = 2;
 $_SESSION['user_id'] = 1;
 $_SESSION['auth_rev'] = 0;
 $_SESSION['csrf_token'] = ff_csrf_token();
+
+// Aktives Fest merken und am Ende IMMER wiederherstellen (auch bei Fehler/exit):
+// Die Suite aktiviert und löscht ein eigenes Testfest – ohne Wiederherstellung wäre
+// danach kein Fest mehr aktiv (Zahlungsmodus, Speisekarte, Bestellungen betroffen).
+require_once dirname(__DIR__) . '/include/ff_fest_scope.php';
+$ffSuiteOrigFest = (int)(ff_st_fetch_one($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id LIMIT 1')['id'] ?? 0);
+if ($ffSuiteOrigFest <= 0) {
+    $ffSuiteOrigFest = (int)setting_get($conn, 'current_fest_id', '0');
+}
+register_shutdown_function(static function () use ($conn, $ffSuiteOrigFest): void {
+    if ($ffSuiteOrigFest > 0 && ff_fest_set_current($conn, $ffSuiteOrigFest)) {
+        echo "Aktives Fest wiederhergestellt: #{$ffSuiteOrigFest}\n";
+    }
+});
 
 // Vorab-Bereinigung von Testdaten aus Vorläufen
 mysqli_query($conn, "DELETE FROM users WHERE username = 'e2e_pilot_user'");

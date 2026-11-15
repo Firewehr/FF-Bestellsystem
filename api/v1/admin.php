@@ -29,6 +29,8 @@ require_once dirname(__DIR__, 2) . '/include/ff_finance_undo.php';
 require_once dirname(__DIR__, 2) . '/include/ff_bestellung_storno.php';
 require_once dirname(__DIR__, 2) . '/include/ff_webauthn.php';
 require_once dirname(__DIR__, 2) . '/include/admin_statistik_body.php';
+require_once dirname(__DIR__, 2) . '/include/ff_printer_devices.php';
+require_once dirname(__DIR__, 2) . '/include/ff_fest_scope.php';
 
 // Authentifizierung & Admin-Prüfung
 $user = api_require_auth();
@@ -183,6 +185,7 @@ if ($action === 'overview') {
             'users' => $usersCount,
             'tables' => $tablesCount,
             'invoices_today' => $invoicesTodayCount,
+            'printer_devices_pending' => ff_printer_devices_pending_count($conn),
         ],
         'csrf_token' => ff_csrf_token(),
     ]);
@@ -296,7 +299,10 @@ if ($action === 'fest_set_current') {
     if ($festId <= 0) {
         api_error('Ungültige Fest-ID.');
     }
-    setting_set($conn, 'current_fest_id', (string)$festId);
+    // Setzt feste.aktiv (gelesen von Bestellung/Zahlung/Karte) UND current_fest_id gemeinsam
+    if (!ff_fest_set_current($conn, $festId)) {
+        api_error('Fest nicht gefunden oder konnte nicht aktiviert werden.');
+    }
     api_response(['ok' => true, 'message' => 'Aktives Fest gewechselt.']);
 }
 
@@ -306,7 +312,8 @@ if ($action === 'fest_save') {
     $code = trim((string)($data['code'] ?? ''));
     $datum = trim((string)($data['datum'] ?? ($data['fest_datum'] ?? '')));
     $paymentMode = (string)($data['payment_mode'] ?? 'after');
-    $aktiv = !empty($data['aktiv']) ? 1 : 0;
+    // `aktiv` wird hier bewusst NICHT übernommen: Das aktive Fest wechselt nur über
+    // fest_set_current, sonst entstehen mehrere aktive Feste bzw. ein Widerspruch zu current_fest_id.
     $prefix = trim((string)($data['rechnung_prefix'] ?? ''));
 
     if ($name === '' || $code === '') {
@@ -320,11 +327,11 @@ if ($action === 'fest_save') {
     $datumVal = ($datum !== '') ? $datum : null;
 
     if ($id > 0) {
-        $stmt = mysqli_prepare($conn, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, aktiv = ?, rechnung_prefix = ? WHERE id = ?');
+        $stmt = mysqli_prepare($conn, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, rechnung_prefix = ? WHERE id = ?');
         if (!$stmt) {
             api_error('Datenbankfehler beim Vorbereiten: ' . mysqli_error($conn));
         }
-        mysqli_stmt_bind_param($stmt, 'ssssisi', $name, $code, $datumVal, $paymentMode, $aktiv, $prefix, $id);
+        mysqli_stmt_bind_param($stmt, 'sssssi', $name, $code, $datumVal, $paymentMode, $prefix, $id);
         if (!mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
@@ -333,18 +340,23 @@ if ($action === 'fest_save') {
         mysqli_stmt_close($stmt);
         api_response(['ok' => true, 'message' => 'Fest erfolgreich aktualisiert.']);
     } else {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, ?, ?)');
+        $stmt = mysqli_prepare($conn, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, 0, ?)');
         if (!$stmt) {
             api_error('Datenbankfehler beim Vorbereiten: ' . mysqli_error($conn));
         }
-        mysqli_stmt_bind_param($stmt, 'ssssis', $name, $code, $datumVal, $paymentMode, $aktiv, $prefix);
+        mysqli_stmt_bind_param($stmt, 'sssss', $name, $code, $datumVal, $paymentMode, $prefix);
         if (!mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
             api_error('Fehler beim Anlegen des Festes: ' . $err);
         }
-        $newId = mysqli_insert_id($conn);
+        $newId = (int)mysqli_insert_id($conn);
         mysqli_stmt_close($stmt);
+        // Erstes Fest überhaupt: direkt aktivieren, damit Bestellungen einem Fest zugeordnet werden
+        $hasActive = mysqli_query($conn, 'SELECT 1 FROM feste WHERE aktiv = 1 LIMIT 1');
+        if (!$hasActive || mysqli_num_rows($hasActive) === 0) {
+            ff_fest_set_current($conn, $newId);
+        }
         api_response(['ok' => true, 'message' => 'Fest erfolgreich angelegt.', 'id' => $newId]);
     }
 }
@@ -519,6 +531,80 @@ if ($action === 'print_target_delete') {
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Druckziel entfernt.']);
+}
+
+// -----------------------------------------------------------------------------
+// AKTION: DRUCK-CLIENTS (Geräte-Freischaltung)
+// -----------------------------------------------------------------------------
+if ($action === 'printer_devices_list') {
+    api_response([
+        'ok' => true,
+        'devices' => ff_printer_devices_list($conn),
+        'master_token_set' => (string)setting_get($conn, 'printer_token', '') !== '',
+    ]);
+}
+
+if (in_array($action, ['printer_device_approve', 'printer_device_block'], true)) {
+    $id = (int)($data['id'] ?? 0);
+    $status = $action === 'printer_device_approve' ? 'approved' : 'blocked';
+    if (!ff_printer_device_set_status($conn, $id, $status, (string)($user['username'] ?? ''))) {
+        api_error('Druck-Client konnte nicht aktualisiert werden.');
+    }
+    api_response(['ok' => true, 'message' => $status === 'approved' ? 'Druck-Client freigeschaltet.' : 'Druck-Client gesperrt.']);
+}
+
+if ($action === 'printer_device_rename') {
+    if (!ff_printer_device_rename($conn, (int)($data['id'] ?? 0), (string)($data['name'] ?? ''))) {
+        api_error('Name ungültig oder Gerät nicht gefunden.');
+    }
+    api_response(['ok' => true, 'message' => 'Name gespeichert.']);
+}
+
+if ($action === 'printer_device_set_target') {
+    $id = (int)($data['id'] ?? 0);
+    $target = (int)($data['print_target'] ?? 0);
+    if ($target > 0) {
+        $chk = mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? LIMIT 1');
+        mysqli_stmt_bind_param($chk, 'i', $target);
+        mysqli_stmt_execute($chk);
+        mysqli_stmt_store_result($chk);
+        $exists = mysqli_stmt_num_rows($chk) > 0;
+        mysqli_stmt_close($chk);
+        if (!$exists) {
+            api_error('Druckziel existiert nicht.');
+        }
+    }
+    if (!ff_printer_device_set_target($conn, $id, $target)) {
+        api_error('Druckziel konnte nicht gespeichert werden.');
+    }
+    api_response(['ok' => true, 'message' => $target > 0 ? "Druckziel #{$target} zugewiesen – wirkt beim nächsten Abruf." : 'Druckziel-Zuweisung entfernt.']);
+}
+
+if ($action === 'printer_device_delete') {
+    if (!ff_printer_device_delete($conn, (int)($data['id'] ?? 0))) {
+        api_error('Druck-Client konnte nicht entfernt werden.');
+    }
+    api_response(['ok' => true, 'message' => 'Druck-Client entfernt.']);
+}
+
+if ($action === 'printer_device_create') {
+    // Manuell angelegtes, sofort freigeschaltetes Gerät (z. B. ESP8266 oder Alt-Client).
+    $res = ff_printer_device_register($conn, [
+        'name' => (string)($data['name'] ?? ''),
+        'service' => (string)($data['service'] ?? ''),
+        'print_target' => (int)($data['print_target'] ?? 0),
+        'client' => 'manuell (Admin)',
+    ], ff_printer_client_ip(), 'approved', (string)($user['username'] ?? ''));
+    if (!$res['ok']) {
+        api_error($res['error'] ?? 'Gerät konnte nicht angelegt werden.');
+    }
+    api_response([
+        'ok' => true,
+        'message' => 'Druck-Client angelegt. Token jetzt kopieren – er wird nicht erneut angezeigt.',
+        'id' => $res['id'],
+        'token' => $res['token'],
+        'pair_code' => $res['pair_code'],
+    ]);
 }
 
 // -----------------------------------------------------------------------------

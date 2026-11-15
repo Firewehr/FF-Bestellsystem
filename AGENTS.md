@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle 79 Selbsttests aus und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 97) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -253,13 +253,16 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
    - Jede API-Route bindet `api/v1/bootstrap.php` ein.
    - Antworten werden standardisiert über `api_response($data, $code)` oder `api_error($message, $code)` ausgeliefert.
    - Alle schreibenden Endpunkte (POST, PUT, DELETE) erfordern zwingend `api_require_csrf()`.
-5. **Transaktionssicherheit:**
+5. **Buchungsdaten nie verwaisen lassen:**
+   - Speisekarten-Positionen werden ausschließlich über `ff_position_delete_guarded()` (`include/ff_position_delete.php`) gelöscht. Positionen mit Bestellungen oder Verpflegungs-Buchungen sind gesperrt (HTTP 409), weil sonst Statistik, Abrechnung und Steuer-Export den Artikel verlieren.
+6. **Transaktionssicherheit:**
    - Kritische Abläufe (Bestellannahme, Rechnungsabschluss, Storno, Sammelrechnung) müssen in einer Transaktion mit Zeilensperren (`FOR UPDATE`) ausgeführt werden.
-6. **Frontend-Dualität wahren:**
+7. **Frontend-Dualität wahren:**
    - Klassische Seiten (`app.js`, PHP-Views): Reines Vanilla JS + Bootstrap 5. Keine frameworks-spezifischen Muster erzwingen.
    - Kellner-App (`pilot/`): Vue 3 als nativer ESM-Browser-Build – kein Webpack/Vite/Node-Buildschritt.
+   - Pilot-Admin (`pilot/admin.html`): Die UI-Anforderungen in `documentation/Pilot_Admin_UI_Richtlinien.md` sind verbindlich. Dazu gehören: In der Speisekarte bleibt der Tabellenkopf stehen und nur die Zeilen scrollen; keine doppelten Scrollleisten; keine waagrechte Seiten-Scrollleiste.
    - XSS-Schutz: Dynamische Ausgaben in HTML stets mit `htmlspecialchars($var, ENT_QUOTES, 'UTF-8')` escapen.
-7. **Schutz von Konfigurations- und Geheimdaten:**
+8. **Schutz von Konfigurations- und Geheimdaten:**
    - `include/db.local.php` und `deploy.config.json` dürfen **niemals überschrieben, gelöscht oder committet** werden.
    - Keine Passwörter, Tokens oder API-Keys im Quellcode ablegen.
 
@@ -273,7 +276,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 68 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 97 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Anpassung oder Erweiterung von Geschäftslogik (z. B. Storno, Rechnungsbeträge, Kapazitäten, Zahlungsmodi) sind entsprechende Testfälle in `include/ff_selftests.php` zu ergänzen.
 
 Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter https://pos.ballner.ipv64.de erreichbar. Login via username: ki passwort: ki12345

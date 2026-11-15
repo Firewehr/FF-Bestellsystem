@@ -16,6 +16,8 @@ require_once __DIR__ . '/ff_csrf.php';
 require_once __DIR__ . '/ff_rechnung_seq.php';
 require_once __DIR__ . '/ff_pilot_linked_articles.php';
 require_once __DIR__ . '/ff_pilot_orders.php';
+require_once __DIR__ . '/ff_printer_devices.php';
+require_once __DIR__ . '/ff_position_delete.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -1467,6 +1469,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     );
     ff_pilot_linked_articles_ensure_schema($conn);
+    ff_printer_devices_ensure_schema($conn);
+    // Settings-Cache vorab laden: Der erste Zugriff kann CREATE TABLE ausführen (implizites COMMIT).
+    setting_get($conn, 'printer_token', '');
 
     $needed = ['bestellungen', 'positionen', 'bestandteile', 'position_rezepturen', 'beilagen', 'pilot_position_links'];
     $hasMv = ff_position_mv_table_exists($conn);
@@ -1643,6 +1648,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Echte Artikelverknüpfung akzeptiert nur konfigurierte Kindpositionen', function (mysqli $c) {
             $parent = ff_st_position($c, 8.00);
             $child = ff_st_position($c, 3.50);
+            $unlinkedChild = ff_st_position($c, 2.00);
             ff_st_exec(
                 $c,
                 'INSERT INTO pilot_position_links (parent_position_id, child_position_id, sort_order) VALUES (?, ?, 10)',
@@ -1655,15 +1661,253 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 return 'Gespeicherte Artikelverknüpfung wurde nicht korrekt geladen.';
             }
             $valid = ff_pilot_validate_linked_order_items($c, [
-                ['position_id' => $parent, 'quantity' => 1],
-                ['position_id' => $child, 'quantity' => 1, 'linked_parent_id' => $parent],
-            ], $festId);
+                ['position_id' => $parent, 'menge' => 1],
+                ['position_id' => $child, 'menge' => 1, 'linked_parent_id' => $parent],
+            ], $festId, true);
             $invalid = ff_pilot_validate_linked_order_items($c, [
-                ['position_id' => $parent, 'quantity' => 1],
-                ['position_id' => $parent, 'quantity' => 1, 'linked_parent_id' => $parent],
-            ], $festId);
+                ['position_id' => $parent, 'menge' => 1],
+                ['position_id' => $parent, 'menge' => 1, 'linked_parent_id' => $parent],
+            ], $festId, true);
+            $notConfigured = ff_pilot_validate_linked_order_items($c, [
+                ['position_id' => $parent, 'menge' => 1],
+                ['position_id' => $unlinkedChild, 'menge' => 1, 'linked_parent_id' => $parent],
+            ], $festId, true);
             return ff_st_expect_same(null, $valid, 'gültige Verknüpfung')
-                ?? ($invalid !== null ? true : 'Selbstverknüpfung wurde nicht abgelehnt.');
+                ?? ($invalid === null ? 'Selbstverknüpfung wurde nicht abgelehnt.' : null)
+                ?? ($notConfigured !== null ? true : 'Nicht konfigurierte Kunden-Verknüpfung wurde nicht abgelehnt.');
+        });
+
+        $check($g, 'Positionen mit leerem oder null linked_parent_id werden als reguläre Artikel behandelt', function (mysqli $c) {
+            $parent = ff_st_position($c, 8.00);
+            $festId = ff_pilot_linked_articles_active_fest_id($c);
+            $validNull = ff_pilot_validate_linked_order_items($c, [
+                ['position_id' => $parent, 'menge' => 1, 'linked_parent_id' => null],
+            ], $festId, true);
+            $validZero = ff_pilot_validate_linked_order_items($c, [
+                ['position_id' => $parent, 'menge' => 1, 'linked_parent_id' => 0],
+            ], $festId, true);
+            return ff_st_expect_same(null, $validNull, 'linked_parent_id: null')
+                ?? ff_st_expect_same(null, $validZero, 'linked_parent_id: 0');
+        });
+
+        $check($g, 'Sichtbarkeit schließt Artikel mit Kassa-Only Unterkategorien aus', function (mysqli $c) {
+            $festId = ff_pilot_linked_articles_active_fest_id($c);
+            $pos = ff_st_position($c, 5.00);
+            $subId = ff_st_exec($c, "INSERT INTO position_subcategories (name, type, kassa_only) VALUES ('ZZ_KassaSub', 1, 1)", '', []);
+            ff_st_exec($c, "UPDATE positionen SET subcategory_id = ? WHERE rowid = ?", 'ii', [$subId, $pos]);
+
+            $visible = ff_pilot_linked_article_is_visible($c, $pos, $festId);
+            return ff_st_expect_same(false, $visible, 'Kassa-Only Unterkategorie');
+        });
+
+        $g = 'Druck-Client Freischaltung';
+
+        $check($g, 'Ohne oder mit unbekanntem Token kein Druckzugriff (auch ohne Master-Token)', function (mysqli $c) {
+            // Nur im Speicher-Cache überschreiben – setting_set() würde DDL/COMMIT auslösen.
+            $oldMaster = (string)setting_get($c, 'printer_token', '');
+            ff_settings_cache($c, ['v' => ''], 'printer_token');
+            try {
+                $empty = ff_printer_auth_check($c, '');
+                $unknown = ff_printer_auth_check($c, str_repeat('ab', 32));
+            } finally {
+                ff_settings_cache($c, ['v' => $oldMaster], 'printer_token');
+            }
+            return ff_st_expect_same(false, $empty['ok'], 'leerer Token')
+                ?? ff_st_expect_same(401, $empty['http'], 'HTTP leerer Token')
+                ?? ff_st_expect_same('printer_unauthorized', $unknown['code'], 'unbekannter Token');
+        });
+
+        $check($g, 'Registrierter Client druckt erst nach Freischaltung, Sperre entzieht Zugriff', function (mysqli $c) {
+            $reg = ff_printer_device_register($c, ['name' => 'ZZ_ST_Printer', 'print_target' => 11], '192.0.2.10');
+            if (!$reg['ok']) {
+                return 'Registrierung fehlgeschlagen: ' . ($reg['error'] ?? '');
+            }
+            $pending = ff_printer_auth_check($c, $reg['token']);
+            ff_printer_device_set_status($c, (int)$reg['id'], 'approved', 'selftest');
+            $approved = ff_printer_auth_check($c, $reg['token']);
+            ff_printer_device_set_status($c, (int)$reg['id'], 'blocked', 'selftest');
+            $blocked = ff_printer_auth_check($c, $reg['token']);
+            ff_printer_device_delete($c, (int)$reg['id']);
+            $deleted = ff_printer_auth_check($c, $reg['token']);
+            return ff_st_expect_same('printer_pending', $pending['code'], 'Status nach Registrierung')
+                ?? ff_st_expect_same(403, $pending['http'], 'HTTP wartend')
+                ?? ff_st_expect_same(true, $approved['ok'], 'nach Freischaltung')
+                ?? ff_st_expect_same('printer_blocked', $blocked['code'], 'nach Sperre')
+                ?? ff_st_expect_same('printer_unauthorized', $deleted['code'], 'nach Löschen');
+        });
+
+        $check($g, 'Geräte-Token wird nur als Hash gespeichert, Kopplungscode passt', function (mysqli $c) {
+            $reg = ff_printer_device_register($c, ['name' => 'ZZ_ST_Hash'], '192.0.2.11');
+            if (!$reg['ok']) {
+                return 'Registrierung fehlgeschlagen.';
+            }
+            $stmt = mysqli_prepare($c, 'SELECT token_hash, pair_code FROM printer_devices WHERE id = ?');
+            mysqli_stmt_bind_param($stmt, 'i', $reg['id']);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_bind_result($stmt, $hash, $pair);
+            mysqli_stmt_fetch($stmt);
+            mysqli_stmt_close($stmt);
+            return ff_st_expect_same(hash('sha256', $reg['token']), $hash, 'Token-Hash')
+                ?? ff_st_expect_same(64, strlen($reg['token']), 'Tokenlänge')
+                ?? ff_st_expect_same(strtoupper(substr(hash('sha256', $reg['token']), 0, 6)), $pair, 'Kopplungscode');
+        });
+
+        $check($g, 'Master-Token bleibt gültig', function (mysqli $c) {
+            $oldMaster = (string)setting_get($c, 'printer_token', '');
+            $master = 'zz-st-master-' . bin2hex(random_bytes(4));
+            ff_settings_cache($c, ['v' => $master], 'printer_token');
+            try {
+                $res = ff_printer_auth_check($c, $master);
+            } finally {
+                ff_settings_cache($c, ['v' => $oldMaster], 'printer_token');
+            }
+            return ff_st_expect_same(true, $res['ok'], 'Master-Token');
+        });
+
+        $check($g, 'Im Admin zugewiesenes Druckziel hat Vorrang vor dem Client-Parameter', function (mysqli $c) {
+            $reg = ff_printer_device_register($c, ['name' => 'ZZ_ST_Target', 'print_target' => 11], '192.0.2.12');
+            if (!$reg['ok']) {
+                return 'Registrierung fehlgeschlagen.';
+            }
+            ff_printer_device_set_status($c, (int)$reg['id'], 'approved', 'selftest');
+            $initial = ff_printer_effective_target(ff_printer_auth_check($c, $reg['token']), 99);
+            ff_printer_device_set_target($c, (int)$reg['id'], 12);
+            $switched = ff_printer_effective_target(ff_printer_auth_check($c, $reg['token']), 11);
+            ff_printer_device_set_target($c, (int)$reg['id'], 0);
+            $unassigned = ff_printer_effective_target(ff_printer_auth_check($c, $reg['token']), 13);
+            $none = ff_printer_effective_target(ff_printer_auth_check($c, $reg['token']), 0);
+            $master = ff_printer_effective_target(['ok' => true, 'device' => null], 14);
+            return ff_st_expect_same(11, $initial, 'Vorschlag aus Registrierung')
+                ?? ff_st_expect_same(12, $switched, 'nach Umstellung im Admin')
+                ?? ff_st_expect_same(13, $unassigned, 'ohne Zuweisung: Client-Wert')
+                ?? ff_st_expect_same(0, $none, 'weder Zuweisung noch Client-Wert')
+                ?? ff_st_expect_same(14, $master, 'Master-Token');
+        });
+
+        $check($g, 'Selbstregistrierung ist pro IP begrenzt', function (mysqli $c) {
+            $ip = '198.51.100.' . mt_rand(10, 250);
+            $last = null;
+            for ($i = 0; $i <= FF_PRINTER_DEVICE_MAX_REG_PER_IP; $i++) {
+                $last = ff_printer_device_register($c, ['name' => 'ZZ_ST_Rate'], $ip);
+            }
+            return ff_st_expect_same(false, $last['ok'], 'Registrierung über Limit')
+                ?? ff_st_expect_same(429, $last['http'], 'HTTP-Status');
+        });
+
+        $g = 'Aktives Fest';
+
+        $check($g, 'Fest aktivieren setzt feste.aktiv und current_fest_id übereinstimmend (Zahlungsmodus folgt)', function (mysqli $c) {
+            require_once __DIR__ . '/ff_fest_scope.php';
+            require_once __DIR__ . '/ff_schreibaus.php';
+            $oldCurrent = (string)setting_get($c, 'current_fest_id', '0');
+            $oldCode = (string)setting_get($c, 'current_fest_code', '');
+            $a = ff_st_exec($c, "INSERT INTO feste (name, code, payment_mode, aktiv) VALUES ('ZZ_ST_Fest_A', 'zz_st_a', 'instant', 1)");
+            $b = ff_st_exec($c, "INSERT INTO feste (name, code, payment_mode, aktiv) VALUES ('ZZ_ST_Fest_B', 'zz_st_b', 'after', 0)");
+            try {
+                $ok = ff_fest_set_current($c, $b);
+                $activeCount = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT COUNT(*) FROM feste WHERE aktiv = 1'))[0];
+                $activeId = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1'))[0];
+                $stillInTx = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT @@in_transaction'))[0];
+                $mode = ff_aktiver_payment_mode($c);
+                $current = (int)setting_get($c, 'current_fest_id', '0');
+                $unknown = ff_fest_set_current($c, 999999999);
+            } finally {
+                // Settings-Cache zurücksetzen (DB-Änderungen rollt die Test-Transaktion zurück)
+                ff_settings_cache($c, ['v' => $oldCurrent], 'current_fest_id');
+                ff_settings_cache($c, ['v' => $oldCode], 'current_fest_code');
+            }
+            return ff_st_expect_same(true, $ok, 'Aktivieren erfolgreich')
+                ?? ff_st_expect_same(1, $activeCount, 'genau ein aktives Fest')
+                ?? ff_st_expect_same($b, $activeId, 'aktives Fest')
+                ?? ff_st_expect_same($b, $current, 'current_fest_id')
+                ?? ff_st_expect_same('after', $mode, 'Zahlungsmodus des aktiven Fests')
+                ?? ff_st_expect_same(1, $stillInTx, 'äußere Transaktion bleibt offen')
+                ?? ff_st_expect_same(false, $unknown, 'unbekanntes Fest wird abgelehnt');
+        });
+
+        $g = 'Teillieferung';
+
+        $check($g, 'Angeforderte Teillieferung (print=3) umgeht den Sibling-Filter, normale Bons nicht', function (mysqli $c) {
+            require_once __DIR__ . '/ff_table_display.php';
+            // Offene Geschwister derselben Bestellung (gleiche bon_id) blockieren normale Bons
+            $blockedBon = [9811 => ['ZZ-BON-1' => true]];
+            $row = ['tischnummer' => 9811, 'bon_id' => 'ZZ-BON-1', 'timestampBestellung' => '', 'zeitstempel_unix' => 0, 'auto_print' => 0];
+            $normal = $row + ['print_flag' => 2];
+            $teil = $row + ['print_flag' => 3];
+            $normalPrints = ff_print_target_bypasses_sibling_filter($normal)
+                || ff_print_target_passes_sibling_filter($normal, $blockedBon, [], []);
+            $teilPrints = ff_print_target_bypasses_sibling_filter($teil)
+                || ff_print_target_passes_sibling_filter($teil, $blockedBon, [], []);
+            return ff_st_expect_same(false, $normalPrints, 'normaler Bon wartet auf offene Positionen')
+                ?? ff_st_expect_same(true, $teilPrints, 'Teillieferung wird sofort gedruckt')
+                ?? ff_st_expect_same(true, ff_print_target_bypasses_sibling_filter(['auto_print' => 1]), 'Sofortdruck');
+        });
+
+        $g = 'Bon-Nummern';
+
+        $check($g, 'Jeder Tisch-Bon erhält eine eigene, fortlaufende Bon-Nr.', function (mysqli $c) {
+            require_once __DIR__ . '/bon_nr_helper.php';
+            $payload = ['tische' => [
+                ['tischnummer' => 1, 'positionen' => []],
+                ['tischnummer' => 2, 'positionen' => []],
+                ['tischnummer' => 3, 'positionen' => []],
+            ]];
+            $first = ff_bon_nr_assign_tische($c, $payload);
+            $nrs = array_map(static fn(array $t): int => (int)($t['bon_nr'] ?? 0), $payload['tische']);
+            return ff_st_expect_same([$first, $first + 1, $first + 2], $nrs, 'Bon-Nummern pro Tisch')
+                ?? ff_st_expect_same($first, (int)$payload['bon_nr'], 'Kompatibilitätsfeld bon_nr');
+        });
+
+        $check($g, 'Bon-Kopfzeile kommt aus dem Admin, sonst Vereinsname, sonst App-Titel', function (mysqli $c) {
+            require_once __DIR__ . '/ff_bon_layout.php';
+            $keys = ['thermo_bon_header', 'seller_name', 'app_title'];
+            $old = [];
+            foreach ($keys as $k) {
+                $old[$k] = (string)setting_get($c, $k, '');
+            }
+            $set = static function (array $vals) use ($c): void {
+                foreach ($vals as $k => $v) {
+                    ff_settings_cache($c, ['v' => $v], $k);   // nur Speicher-Cache, keine DB-Änderung
+                }
+            };
+            try {
+                $set(['thermo_bon_header' => "FF Testdorf\nZeltfest", 'seller_name' => 'Verein X', 'app_title' => 'App Y']);
+                $explicit = ff_thermo_bon_header($c);
+                $set(['thermo_bon_header' => '   ']);
+                $seller = ff_thermo_bon_header($c);
+                $set(['seller_name' => '']);
+                $app = ff_thermo_bon_header($c);
+                $set(['app_title' => '']);
+                $default = ff_thermo_bon_header($c);
+            } finally {
+                $set($old);
+            }
+            return ff_st_expect_same("FF Testdorf\nZeltfest", $explicit, 'Admin-Kopfzeile')
+                ?? ff_st_expect_same('Verein X', $seller, 'Fallback Vereinsname')
+                ?? ff_st_expect_same('App Y', $app, 'Fallback App-Titel')
+                ?? ff_st_expect_same('Freiwillige Feuerwehr', $default, 'Standard');
+        });
+
+        $check($g, 'Netzwerkdrucker druckt pro Tisch einen Bon mit Positionen und eigener Bon-Nr.', function (mysqli $c) {
+            require_once __DIR__ . '/ff_socket_printer.php';
+            $esc = ff_escpos_build_kellner_payload([
+                'bon_nr' => 500,
+                'tische' => [
+                    ['tischnummer' => 7, 'tischname' => 'ZZ Tisch A', 'bon_nr' => 501,
+                     'positionen' => [['name' => 'ZZ Schnitzel', 'anzahl' => 2, 'betrag' => 9.5]]],
+                    ['tischnummer' => 8, 'tischname' => 'ZZ Tisch B',
+                     'positionen' => [['name' => 'ZZ Radler', 'anzahl' => 1, 'betrag' => 4.8, 'zusatzinfo' => 'mit Almdudler']]],
+                ],
+            ]);
+            foreach (['ZZ Tisch A', 'ZZ Tisch B', 'ZZ Schnitzel', 'ZZ Radler', 'Bon-Nr.: 501', 'Bon-Nr.: 500'] as $needle) {
+                if (strpos($esc, ff_escpos_encode_text($needle)) === false) {
+                    return 'Im ESC/POS-Bon fehlt: ' . $needle;
+                }
+            }
+            // Zusatzinfo muss fett (ESC E 1 … ESC E 0) auf dem Bon stehen
+            $boldInfo = "\x1B\x45\x01" . ff_escpos_encode_text('   -> mit Almdudler' . "\n") . "\x1B\x45\x00";
+            return ff_st_expect_same(2, substr_count($esc, "\x1D\x56\x01"), 'Anzahl Schnitte (ein Bon pro Tisch)')
+                ?? (strpos($esc, $boldInfo) !== false ? null : 'Zusatzinfo fehlt oder ist nicht hervorgehoben.');
         });
 
         $g = 'Preisberechnung';
@@ -2470,6 +2714,55 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
             return null;
         });
+
+        $g = 'Speisekarte: Positionen löschen';
+
+        $check($g, 'Position mit Bestellungen wird nicht gelöscht (Statistik/Steuer-Export bleiben vollständig)', function (mysqli $c) {
+            $pos = ff_st_position($c, 4.50);
+            ff_st_order($c, $pos, ['betrag' => 4.50, 'paid' => true]);
+            $res = ff_position_delete_guarded($c, $pos);
+            $still = ff_st_fetch_one($c, 'SELECT rowid FROM positionen WHERE rowid = ?', 'i', [$pos]);
+            return ff_st_expect_same(false, $res['ok'], 'ok')
+                ?? ff_st_expect_same(409, $res['http'], 'HTTP-Status')
+                ?? ff_st_expect_same('position_in_use', $res['code'], 'Fehlercode')
+                ?? ff_st_expect_same(1, $res['usage']['bestellungen'] ?? null, 'Anzahl Bestellungen')
+                ?? ($still !== null ? null : 'Position wurde trotz Bestellung gelöscht.');
+        });
+
+        $check($g, 'Position ohne Buchungen wird samt Beilagen, Sperre und Artikel-Verknüpfungen gelöscht', function (mysqli $c) {
+            $pos = ff_st_position($c, 3.00);
+            $other = ff_st_position($c, 1.00);
+            ff_st_exec($c, "INSERT INTO beilagen (name, position, betrag) VALUES ('ZZ_ST_Beilage', ?, 0)", 'i', [$pos]);
+            ff_st_exec($c, "INSERT INTO menu_locks (scope, position_id, reason, created_by) VALUES ('position', ?, 'ZZ_ST', 'selftest')", 'i', [$pos]);
+            ff_st_exec($c, 'INSERT INTO pilot_position_links (parent_position_id, child_position_id, sort_order) VALUES (?, ?, 10)', 'ii', [$pos, $other]);
+            ff_st_exec($c, 'INSERT INTO pilot_position_links (parent_position_id, child_position_id, sort_order) VALUES (?, ?, 10)', 'ii', [$other, $pos]);
+            $res = ff_position_delete_guarded($c, $pos);
+            if (!$res['ok']) {
+                return 'Löschen fehlgeschlagen: ' . $res['message'];
+            }
+            $left = ff_st_fetch_one(
+                $c,
+                'SELECT (SELECT COUNT(*) FROM positionen WHERE rowid = ?) AS p,
+                        (SELECT COUNT(*) FROM beilagen WHERE position = ?) AS b,
+                        (SELECT COUNT(*) FROM menu_locks WHERE position_id = ?) AS l,
+                        (SELECT COUNT(*) FROM pilot_position_links WHERE parent_position_id = ? OR child_position_id = ?) AS k,
+                        (SELECT COUNT(*) FROM positionen WHERE rowid = ?) AS o',
+                'iiiiii',
+                [$pos, $pos, $pos, $pos, $pos, $other]
+            );
+            return ff_st_expect_same(0, (int)$left['p'], 'Position')
+                ?? ff_st_expect_same(0, (int)$left['b'], 'Beilagen')
+                ?? ff_st_expect_same(0, (int)$left['l'], 'Sperren')
+                ?? ff_st_expect_same(0, (int)$left['k'], 'Artikel-Verknüpfungen')
+                ?? ff_st_expect_same(1, (int)$left['o'], 'andere Position unberührt');
+        });
+
+        $check($g, 'Unbekannte Position liefert 404 statt stillem Erfolg', function (mysqli $c) {
+            $res = ff_position_delete_guarded($c, 999999999);
+            return ff_st_expect_same('not_found', $res['code'], 'Fehlercode');
+        });
+
+        $g = 'Pre-Flight';
 
         $check($g, 'Pre-Flight Checkliste: 4 Fest-Start Kernkriterien (include/ff_preflight.php)', function (mysqli $c) {
             require_once __DIR__ . '/ff_preflight.php';

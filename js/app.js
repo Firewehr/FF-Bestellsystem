@@ -4166,7 +4166,16 @@
     window.ProduktLoeschen = function(rowid) {
         if (!confirm("Wirklich löschen?")) return;
         fetchPost('produkt_loeschen.php', 'rowid=' + rowid)
-            .then(function() { AdminAnsicht(); })
+            .then(function(r) {
+                return r.json().catch(function() { return { ok: r.ok }; });
+            })
+            .then(function(res) {
+                if (res && res.ok === false) {
+                    alert(res.error || 'Die Position konnte nicht gelöscht werden.');
+                    return;
+                }
+                AdminAnsicht();
+            })
             .catch(onError);
     };
 

@@ -41,13 +41,25 @@ createApp({
       }
     }
 
-    function showToast(message, type = 'success') {
-      toast.value = { message, type };
+    // Hinweis unten rechts. Optional mit Aktion (z. B. „Rückgängig“) – dann bleibt er länger stehen.
+    let toastSeq = 0;
+    function showToast(message, type = 'success', action = null) {
+      const id = ++toastSeq;
+      toast.value = { id, message, type, action };
+      const ms = action ? 8000 : (type === 'error' ? 9000 : 4000);
       setTimeout(() => {
-        if (toast.value && toast.value.message === message) {
+        if (toast.value && toast.value.id === id) {
           toast.value = null;
         }
-      }, 4000);
+      }, ms);
+    }
+
+    async function runToastAction() {
+      const action = toast.value?.action;
+      toast.value = null;
+      if (action && typeof action.handler === 'function') {
+        await action.handler();
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -82,6 +94,43 @@ createApp({
     const overview = ref(null);
     const broadcastInput = ref({ message: '', type: 'danger', active: false });
     const settingsEdit = ref({});
+    // Stand der Einstellungen laut Server – Grundlage für „ungespeicherte Änderungen“
+    const settingsBaseline = ref({});
+    const broadcastBaseline = ref(null);
+    const normSetting = (v) => (v === null || v === undefined ? '' : String(v));
+    const settingsDirtyKeys = computed(() => {
+      const keys = new Set([...Object.keys(settingsEdit.value || {}), ...Object.keys(settingsBaseline.value || {})]);
+      return [...keys].filter(k => normSetting(settingsEdit.value[k]) !== normSetting(settingsBaseline.value[k]));
+    });
+    const settingsDirty = computed(() => settingsDirtyKeys.value.length > 0);
+    const broadcastDirty = computed(() => broadcastBaseline.value !== null
+      && JSON.stringify(broadcastInput.value) !== JSON.stringify(broadcastBaseline.value));
+
+    function discardSettings() {
+      settingsEdit.value = { ...settingsBaseline.value };
+      showToast('Änderungen verworfen.', 'info');
+    }
+
+    // Dashboard: Heartbeats der Druck-Clients je Druckziel (Server liefert stats.printer_services)
+    const printerHeartbeatRows = computed(() => {
+      const services = overview.value?.stats?.printer_services || {};
+      return Object.values(services).map(svc => {
+        const age = svc.age_sec;
+        const level = svc.state === 'ok' ? 'ok' : (svc.state === 'stale' ? 'warn' : 'danger');
+        const label = svc.state === 'ok' ? 'Online' : (svc.state === 'stale' ? 'Keine Meldung' : 'Nie gesehen');
+        let ago = '';
+        if (age !== null && age !== undefined) {
+          ago = age < 90 ? `vor ${age} Sek.` : (age < 5400 ? `vor ${Math.round(age / 60)} Min.` : `vor ${Math.round(age / 3600)} Std.`);
+        }
+        return {
+          service: svc.display_name || `Druckziel ${svc.print_target}`,
+          level,
+          label,
+          last_seen: svc.last_seen ? `${svc.last_seen}${ago ? ' (' + ago + ')' : ''}` : '–',
+          host: svc.host || '',
+        };
+      });
+    });
 
     async function loadOverview() {
       try {
@@ -95,14 +144,23 @@ createApp({
         currentUser.value = data.user;
         csrfToken.value = data.csrf_token;
         if (data.broadcast) {
-          broadcastInput.value = {
+          const loaded = {
             message: data.broadcast.message || '',
             type: data.broadcast.type || 'danger',
             active: !!data.broadcast.active,
           };
+          // Laufende Eingabe nicht überschreiben (Übersicht lädt alle 10 s neu)
+          if (!broadcastDirty.value) {
+            broadcastInput.value = { ...loaded };
+          }
+          broadcastBaseline.value = loaded;
         }
         if (data.settings) {
-          settingsEdit.value = { ...data.settings };
+          // Ungespeicherte Änderungen behalten, nur den Server-Stand aktualisieren
+          if (!settingsDirty.value) {
+            settingsEdit.value = { ...data.settings };
+          }
+          settingsBaseline.value = { ...data.settings };
         }
       } catch (e) {
         console.error(e);
@@ -185,6 +243,7 @@ createApp({
           method: 'POST',
           body: { action: 'save_broadcast', ...broadcastInput.value },
         });
+        broadcastBaseline.value = { ...broadcastInput.value };
         showToast('Durchsage-Status erfolgreich aktualisiert.');
         loadOverview();
       } catch (e) {}
@@ -196,6 +255,7 @@ createApp({
           method: 'POST',
           body: { action: 'save_settings', settings: settingsEdit.value },
         });
+        settingsBaseline.value = { ...settingsEdit.value };
         showToast('Einstellungen erfolgreich gespeichert.');
         loadOverview();
       } catch (e) {}
@@ -733,6 +793,128 @@ createApp({
     const testingTargetId = ref(null);
     const testingTargetModal = ref(false);
 
+    // Druck-Clients (Geräte-Freischaltung / Pairing)
+    const printerDevices = ref([]);
+    const printerDevicesMasterToken = ref(false);
+    const printerDevicesLoading = ref(false);
+    const printerDeviceForm = ref({ name: '', print_target: '' });
+    const printerDeviceCreated = ref(null);
+    const printerDevicesPending = computed(() => Number(overview.value?.counts?.printer_devices_pending || 0));
+
+    async function loadPrinterDevices(silent = false) {
+      if (!silent) printerDevicesLoading.value = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php?action=printer_devices_list', { silent });
+        printerDevices.value = res.devices || [];
+        printerDevicesMasterToken.value = !!res.master_token_set;
+        if (overview.value?.counts) {
+          overview.value.counts.printer_devices_pending = printerDevices.value.filter((d) => d.status === 'pending').length;
+        }
+      } catch (e) {
+      } finally {
+        printerDevicesLoading.value = false;
+      }
+    }
+
+    async function printerDeviceAction(action, device, confirmText = '') {
+      if (confirmText && !confirm(confirmText)) return;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action, id: device.id },
+        });
+        showToast(res.message || 'Gespeichert.');
+        loadPrinterDevices(true);
+      } catch (e) {}
+    }
+
+    function printerTargetLabel(id) {
+      const pt = (overview.value?.print_targets || []).find((t) => Number(t.print_target) === Number(id));
+      return pt ? `#${pt.print_target} ${pt.name}` : (id ? `#${id}` : 'nicht zugewiesen');
+    }
+
+    function approvePrinterDevice(device) {
+      const targetHint = device.print_target
+        ? `Druckziel: ${printerTargetLabel(device.print_target)}`
+        : 'Achtung: Noch kein Druckziel zugewiesen – bitte danach in der Liste auswählen.';
+      printerDeviceAction(
+        'printer_device_approve',
+        device,
+        `Druck-Client "${device.name}" freischalten?\n\nKopplungscode: ${device.pair_code}\n${targetHint}\n\nBitte prüfen, dass der Code in der Konsole des Druck-PCs angezeigt wird.`
+      );
+    }
+
+    async function setPrinterDeviceTarget(device, value) {
+      const target = Number(value) || 0;
+      if (target === Number(device.print_target || 0)) return;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'printer_device_set_target', id: device.id, print_target: target },
+        });
+        showToast(res.message || 'Druckziel gespeichert.');
+      } catch (e) {}
+      loadPrinterDevices(true);
+    }
+
+    function blockPrinterDevice(device) {
+      printerDeviceAction('printer_device_block', device, `Druck-Client "${device.name}" sperren? Er kann danach nicht mehr drucken.`);
+    }
+
+    function deletePrinterDevice(device) {
+      printerDeviceAction('printer_device_delete', device, `Druck-Client "${device.name}" entfernen? Der Client muss sich danach neu registrieren.`);
+    }
+
+    async function renamePrinterDevice(device) {
+      const name = prompt('Neuer Name für den Druck-Client:', device.name || '');
+      if (name === null || name.trim() === '') return;
+      try {
+        await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'printer_device_rename', id: device.id, name: name.trim() },
+        });
+        showToast('Name gespeichert.');
+        loadPrinterDevices(true);
+      } catch (e) {}
+    }
+
+    async function createPrinterDevice() {
+      const form = printerDeviceForm.value;
+      if (!form.name.trim()) {
+        showToast('Bitte einen Namen für das Gerät angeben.', 'error');
+        return;
+      }
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'printer_device_create', name: form.name.trim(), print_target: Number(form.print_target) || 0 },
+        });
+        printerDeviceCreated.value = { name: form.name.trim(), token: res.token, pair_code: res.pair_code };
+        printerDeviceForm.value = { name: '', print_target: '' };
+        showToast(res.message || 'Gerät angelegt.');
+        loadPrinterDevices(true);
+      } catch (e) {}
+    }
+
+    async function copyPrinterDeviceToken() {
+      const token = printerDeviceCreated.value?.token;
+      if (!token) return;
+      try {
+        await navigator.clipboard.writeText(token);
+        showToast('Token in die Zwischenablage kopiert.');
+      } catch (e) {
+        showToast('Kopieren nicht möglich – Token bitte manuell markieren.', 'error');
+      }
+    }
+
+    function printerDeviceStatusLabel(status) {
+      return { pending: 'Wartet auf Freischaltung', approved: 'Freigeschaltet', blocked: 'Gesperrt' }[status] || status;
+    }
+
+    function printerDeviceStatusClass(status) {
+      return { pending: 'badge-warning', approved: 'badge-success', blocked: 'badge-danger' }[status] || 'badge-info';
+    }
+
     function openNewTargetModal() {
       const nextId = overview.value?.print_targets?.length ? Math.max(...overview.value.print_targets.map(t => t.print_target)) + 1 : 11;
       targetModal.value = {
@@ -1110,7 +1292,7 @@ createApp({
         showToast(`Position "${p.Positionsname}" gelöscht.`);
         await loadMenuData(true);
       } catch (err) {
-        showToast(err.message || 'Fehler beim Löschen', 'error');
+        // apiRequest zeigt die Server-Meldung (z. B. Löschsperre wegen Bestellungen) bereits an.
       }
     }
 
@@ -1148,7 +1330,7 @@ createApp({
       }
     }
 
-    async function togglePositionKassaOnly(p) {
+    async function togglePositionKassaOnly(p, isUndo = false) {
       const newVal = !p.kassa_only;
       try {
         await apiRequest('../manage/api.php', {
@@ -1170,13 +1352,17 @@ createApp({
           }
         });
         p.kassa_only = newVal;
-        showToast(`"${p.Positionsname}": Nur Kassa ${newVal ? 'aktiviert' : 'deaktiviert'}.`);
+        showToast(
+          `"${p.Positionsname}": Nur Kassa ${newVal ? 'aktiviert' : 'deaktiviert'}.`,
+          'success',
+          isUndo ? null : { label: 'Rückgängig', handler: () => togglePositionKassaOnly(p, true) }
+        );
       } catch (err) {
         showToast('Fehler: ' + err.message, 'error');
       }
     }
 
-    async function togglePositionLock(p) {
+    async function togglePositionLock(p, isUndo = false) {
       try {
         const res = await apiRequest('../manage/api.php', {
           method: 'POST',
@@ -1185,8 +1371,12 @@ createApp({
             position_id: p.rowid,
           }
         });
-        p.is_locked = res.is_locked;
-        showToast(`"${p.Positionsname}": ${p.is_locked ? '🔒 Ausverkauft markiert' : '🟢 Wieder verfügbar'}.`);
+        p.is_locked = !!res.is_locked;
+        showToast(
+          `"${p.Positionsname}": ${p.is_locked ? '🔒 Ausverkauft markiert' : '🟢 Wieder verfügbar'}.`,
+          'success',
+          isUndo ? null : { label: 'Rückgängig', handler: () => togglePositionLock(p, true) }
+        );
       } catch (err) {
         showToast('Fehler beim Ändern des Sperrstatus: ' + err.message, 'error');
       }
@@ -1533,6 +1723,7 @@ createApp({
       try {
         const res = await apiRequest(`../api/v1/pilot_links.php?action=list&parent_position_id=${encodeURIComponent(p.rowid)}`);
         linkedArticlesModal.value.links = res.links || [];
+        p.linked_count = linkedArticlesModal.value.links.length;
       } catch (err) {
         showToast(err.message || 'Verknüpfte Artikel konnten nicht geladen werden.', 'error');
       } finally {
@@ -1563,6 +1754,7 @@ createApp({
           },
         });
         modal.links = res.links || [];
+        modal.position.linked_count = modal.links.length;
         modal.childPositionId = 0;
       } catch (err) {
         showToast(err.message || 'Verknüpfung konnte nicht gespeichert werden.', 'error');
@@ -1585,6 +1777,7 @@ createApp({
           },
         });
         modal.links = res.links || [];
+        modal.position.linked_count = modal.links.length;
       } catch (err) {
         showToast(err.message || 'Verknüpfung konnte nicht entfernt werden.', 'error');
       } finally {
@@ -2747,6 +2940,7 @@ createApp({
         if (tab === 'preflight') loadPreflight();
         if (tab === 'tische' || tab === 'tischplan') loadTables();
         if (tab === 'mcp') loadMcpStatus();
+        if (tab === 'druckziele') loadPrinterDevices();
         if (tab === 'abrechnung') previewSchreibaus();
         if (tab === 'tests' && !testResults.value) runSelftests();
       }
@@ -2770,6 +2964,10 @@ createApp({
     }
 
     watch(activeTab, (newTab) => {
+      // Am Handy den aktiven Reiter in den sichtbaren Bereich der Navigation scrollen
+      window.requestAnimationFrame(() => {
+        document.querySelector('.nav-tab-btn.active')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+      });
       if (newTab === 'stammdaten') switchSubTab('stammdaten', activeSubTab.value.stammdaten);
       if (newTab === 'speisekarte') switchSubTab('speisekarte', activeSubTab.value.speisekarte);
       if (newTab === 'personal') switchSubTab('personal', activeSubTab.value.personal);
@@ -2778,18 +2976,55 @@ createApp({
       else stopOperationsPolling();
     });
 
+    // Warnung beim Verlassen der Seite mit ungespeicherten Einstellungen
+    function onBeforeUnload(event) {
+      if (!settingsDirty.value) return;
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    // Fixierte Listenansichten: Tabellenkopf bleibt stehen, nur die Zeilen scrollen
+    // (documentation/Pilot_Admin_UI_Richtlinien.md, A1)
+    const FILL_VIEWS = {
+      speisekarte: ['positions', 'speisen', 'getraenke', 'locks', 'bestandteile'],
+      stammdaten: ['tische'],
+      personal: ['benutzer', 'rechnungen'],
+    };
+    const isFillView = computed(() => !accessDenied.value
+      && (FILL_VIEWS[activeTab.value] || []).includes(activeSubTab.value[activeTab.value]));
+
+    // Höhe des fixierten Kopfbereichs für die Tabellenköpfe (sticky unterhalb)
+    let stickyObserver = null;
+    function observeStickyHeader() {
+      const el = document.querySelector('.admin-sticky');
+      if (!el) return;
+      const apply = () => document.documentElement.style.setProperty('--admin-sticky-h', el.offsetHeight + 'px');
+      apply();
+      if ('ResizeObserver' in window) {
+        stickyObserver = new ResizeObserver(apply);
+        stickyObserver.observe(el);
+      }
+    }
+
     onMounted(() => {
+      window.addEventListener('beforeunload', onBeforeUnload);
+      observeStickyHeader();
       applyTheme();
       loadOverview();
       overviewPollTimer = window.setInterval(() => {
         if (activeTab.value === 'uebersicht' && !document.hidden) {
           loadOverview();
         }
+        if (activeTab.value === 'stammdaten' && activeSubTab.value.stammdaten === 'druckziele' && !document.hidden) {
+          loadPrinterDevices(true);
+        }
       }, 10000);
       document.addEventListener('visibilitychange', onVisibilityChange);
     });
 
     onUnmounted(() => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      if (stickyObserver) stickyObserver.disconnect();
       stopOperationsPolling();
       if (overviewPollTimer !== null) {
         window.clearInterval(overviewPollTimer);
@@ -2798,6 +3033,10 @@ createApp({
     });
 
     return {
+      settingsDirty,
+      settingsDirtyKeys,
+      discardSettings,
+      printerHeartbeatRows,
       activeTab,
       activeSubTab,
       switchSubTab,
@@ -2806,6 +3045,8 @@ createApp({
       isLoading,
       accessDenied,
       toast,
+      runToastAction,
+      isFillView,
       currentUser,
       isSuperAdmin,
       overview,
@@ -2883,6 +3124,23 @@ createApp({
       testingTargetModal,
       testPrintTarget,
       testPrintModalTarget,
+      // Druck-Clients (Freischaltung)
+      printerDevices,
+      printerDevicesMasterToken,
+      printerDevicesLoading,
+      printerDevicesPending,
+      printerDeviceForm,
+      printerDeviceCreated,
+      loadPrinterDevices,
+      approvePrinterDevice,
+      setPrinterDeviceTarget,
+      blockPrinterDevice,
+      deletePrinterDevice,
+      renamePrinterDevice,
+      createPrinterDevice,
+      copyPrinterDeviceToken,
+      printerDeviceStatusLabel,
+      printerDeviceStatusClass,
       // Pre-Flight Checkliste
       preflightData,
       preflightLoading,

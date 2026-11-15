@@ -10,13 +10,14 @@ $rowid = (int)($_POST['rowid'] ?? $_GET['rowid'] ?? 0);
 
 if ($rowid > 0) {
     require_once __DIR__ . '/../include/db.php';
-    $sql = "DELETE FROM `positionen` WHERE rowid=" . $rowid . " LIMIT 1";
-
-    if (mysqli_query($conn, $sql)) {
-        echo json_encode(['ok' => true, 'message' => 'Record deleted successfully']);
+    require_once __DIR__ . '/../include/ff_position_delete.php';
+    // Geschützt: Positionen mit Bestellungen/Verpflegung bleiben erhalten (Statistik, Steuer-Export).
+    $del = ff_position_delete_guarded($conn, $rowid);
+    http_response_code($del['http']);
+    if ($del['ok']) {
+        echo json_encode(['ok' => true, 'message' => $del['message']]);
     } else {
-        http_response_code(500);
-        echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);
+        echo json_encode(['ok' => false, 'error' => $del['message'], 'code' => $del['code']]);
     }
     mysqli_close($conn);
 } else {

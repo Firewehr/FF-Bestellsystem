@@ -886,3 +886,818 @@ body.theme-dark .badge-kassa {
     width: 100% !important;
   }
 }
+
+/* ==========================================================================
+   Layout v2 (Usability): fixierter Kopf mit Haupt-/Unternavigation,
+   kein seitliches Überlaufen am Handy, Fokus-Rahmen, Speichern-Leiste
+   ========================================================================== */
+button, input, select, textarea {
+  font: inherit;
+}
+
+.admin-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--ff-surface);
+  box-shadow: var(--ff-shadow-sm);
+}
+
+.admin-header {
+  position: static;
+  display: block;
+  height: auto;
+  padding: 0 16px;
+  box-shadow: none;
+}
+
+.header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+}
+
+.brand-badge {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.brand-sub {
+  min-width: 0;
+  max-width: 34vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-left: 10px;
+  margin-left: 2px;
+  border-left: 1px solid var(--ff-border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--ff-text-muted);
+}
+
+.header-right {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.btn-square {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+/* Hauptnavigation: volle Breite, Reiter mit Unterstrich, am Handy wischbar */
+.nav-tabs {
+  max-width: none;
+  margin: 0 -16px;
+  padding: 0 10px;
+  gap: 2px;
+  background: transparent;
+  border-radius: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.nav-tab-btn {
+  border-radius: 0;
+  padding: 10px 14px 9px;
+  border-bottom: 3px solid transparent;
+  font-size: 0.9rem;
+}
+
+.nav-tab-btn:hover {
+  background: var(--ff-surface-2);
+}
+
+.nav-tab-btn.active {
+  background: transparent;
+  box-shadow: none;
+  border-bottom-color: var(--ff-primary);
+}
+
+/* Unternavigation: am Desktop umbrechen statt abschneiden */
+.sub-nav {
+  position: static;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--ff-surface-2);
+  box-shadow: none;
+}
+
+.sub-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+}
+
+/* Inhalte: breite Tabellen scrollen in ihrem Kasten, nicht die ganze Seite */
+.admin-main {
+  min-width: 0;
+}
+
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.card-header {
+  flex-wrap: wrap;
+}
+
+/* Sichtbarer Tastatur-Fokus */
+.btn:focus-visible,
+.nav-tab-btn:focus-visible,
+.sub-nav-btn:focus-visible,
+.form-check input:focus-visible {
+  outline: 2px solid var(--ff-info);
+  outline-offset: 2px;
+}
+
+.form-control:focus, .form-select:focus {
+  box-shadow: 0 0 0 3px var(--ff-primary-light);
+}
+
+body.theme-dark .form-control:focus, body.theme-dark .form-select:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
+}
+
+/* Leiste für ungespeicherte Einstellungen */
+.unsaved-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--ff-radius);
+  background: var(--ff-text);
+  color: var(--ff-surface);
+  box-shadow: var(--ff-shadow-lg);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.unsaved-bar .btn-outline {
+  background: transparent;
+  color: var(--ff-surface);
+  border-color: currentColor;
+}
+
+@media (max-width: 760px) {
+  .admin-main {
+    padding: 12px;
+  }
+
+  .sub-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 8px 12px;
+  }
+
+  .sub-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .brand-sub,
+  .user-chip-name,
+  .header-legacy {
+    display: none;
+  }
+
+  .card-header {
+    padding: 12px 14px;
+  }
+
+  .card-body {
+    padding: 14px;
+  }
+
+  .unsaved-bar {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+  }
+}
+
+/* Tabellenkopf: innerhalb des Tabellen-Kastens fixieren (statt geschätzter Kopfhöhe) */
+.table-responsive .data-table thead th {
+  top: 0;
+}
+
+@media (min-width: 761px) {
+  /* Lange Listen scrollen in ihrem Kasten, Spaltenköpfe bleiben sichtbar */
+  .table-responsive {
+    max-height: calc(100vh - 200px);
+    overflow: auto;
+  }
+  .modal-body .table-responsive {
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .data-table thead th {
+    position: static;
+  }
+}
+
+/* ==========================================================================
+   Stammdaten-Unternavigation: thematische Gruppen
+   ========================================================================== */
+.sub-nav-grouped {
+  align-items: stretch;
+  gap: 6px 0;
+}
+
+.sub-nav-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px;
+  border-left: 1px solid var(--ff-border);
+}
+
+.sub-nav-group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.sub-nav-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ff-text-muted);
+  white-space: nowrap;
+  margin-right: 2px;
+}
+
+@media (max-width: 760px) {
+  .sub-nav-group {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    padding: 0 10px;
+  }
+}
+
+/* ==========================================================================
+   Speisekarte: kompakte Positions-Tabelle
+   ========================================================================== */
+.pos-cell {
+  min-width: 220px;
+}
+
+.pos-cell-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pos-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.pos-name {
+  font-weight: 600;
+}
+
+.pos-subkat {
+  color: #0f172a;
+  border: 1px solid var(--ff-border);
+  font-weight: 500;
+}
+
+.pos-cell-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  padding-left: 30px;
+  font-size: 0.78rem;
+  color: var(--ff-text-muted);
+}
+
+.pos-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--ff-border);
+}
+
+.pos-fest {
+  color: var(--ff-warning-dark);
+  font-weight: 600;
+}
+
+.pos-target {
+  font-size: 0.85rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.pos-chips,
+.pos-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pos-chips {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pos-chip,
+.pos-extra-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+  padding: 2px 8px;
+  border: 1px solid var(--ff-border);
+  border-radius: 999px;
+  background: var(--ff-surface);
+  color: var(--ff-text);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pos-chip:hover,
+.pos-extra-btn:hover {
+  border-color: var(--ff-text-muted);
+}
+
+.pos-chip:focus-visible,
+.pos-extra-btn:focus-visible {
+  outline: 2px solid var(--ff-info);
+  outline-offset: 2px;
+}
+
+.pos-chip-ok {
+  color: var(--ff-success-dark);
+}
+
+.pos-chip-danger {
+  background: var(--ff-danger, #dc2626);
+  border-color: var(--ff-danger, #dc2626);
+  color: #fff;
+}
+
+.pos-chip-kassa {
+  color: #9333ea;
+  border-color: #c4b5fd;
+}
+
+.pos-chip-off {
+  color: var(--ff-text-muted);
+  font-weight: 500;
+  border-style: dashed;
+}
+
+.pos-extra-btn {
+  position: relative;
+  border-radius: 6px;
+}
+
+.pos-extras {
+  flex-wrap: nowrap;
+}
+
+.pos-extra-count {
+  padding: 1px 5px;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 1280px) {
+  /* Auf schmaleren Bildschirmen nur Icons + Zähler zeigen */
+  .pos-extra-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ==========================================================================
+   Tabellen: nur eine Scrollleiste (die der Seite)
+   Lange Listen scrollen mit der Seite; die Spaltenköpfe bleiben direkt
+   unter dem fixierten Kopfbereich stehen (--admin-sticky-h aus admin.js).
+   ========================================================================== */
+.table-responsive {
+  max-height: none;
+}
+
+@media (min-width: 1180px) {
+  .table-responsive {
+    overflow: visible;
+  }
+  .table-responsive .data-table thead th {
+    top: var(--admin-sticky-h, 150px);
+  }
+  .modal-body .table-responsive .data-table thead th {
+    top: 0;
+  }
+}
+
+@media (max-width: 1179px) {
+  /* Schmalere Bildschirme: breite Tabellen nur waagrecht scrollen */
+  .table-responsive {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .table-responsive .data-table thead th {
+    position: static;
+  }
+}
+
+.modal-body .table-responsive {
+  max-height: none;
+}
+
+/* Speisekarte: Status-Schalter nebeneinander -> niedrigere Zeilen */
+.pos-chips {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+/* ==========================================================================
+   Fixierte Listenansicht (Speisekarte-Positionen)
+   Anforderung: Tabellenkopf bleibt stehen, nur die Zeilen darunter scrollen.
+   Die Ansicht füllt exakt den Bildschirm unter dem fixierten Kopfbereich,
+   die Seite selbst scrollt nicht -> genau eine Scrollleiste (die der Liste).
+   Doku: documentation/Pilot_Admin_UI_Richtlinien.md
+   ========================================================================== */
+.admin-main.admin-main-fill {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--admin-sticky-h, 150px));
+  height: calc(100dvh - var(--admin-sticky-h, 150px));
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+
+.admin-main-fill > section {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.admin-main-fill .fill-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.admin-main-fill .fill-view > .toolbar {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+
+.admin-main-fill .fill-view-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.admin-main-fill .fill-view-card > .table-responsive {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Kopf klebt am oberen Rand des Listen-Kastens – auf allen Bildschirmgrößen */
+.admin-main-fill .fill-view-card .data-table thead th {
+  position: sticky;
+  top: 0;
+}
+
+/* Sehr niedrige Bildschirme (z. B. Handy quer): normal scrollen statt quetschen */
+@media (max-height: 520px) {
+  .admin-main.admin-main-fill {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+  .admin-main-fill .fill-view-card > .table-responsive {
+    overflow-y: hidden;
+  }
+  .admin-main-fill .fill-view-card .data-table thead th {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  /* Handy: Filterleiste der fixierten Liste kompakt (2 Spalten) */
+  .admin-main-fill .fill-view > .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .admin-main-fill .fill-view > .toolbar > .search-box {
+    grid-column: 1 / -1;
+  }
+  .admin-main-fill .fill-view > .toolbar > .form-select {
+    max-width: none !important;
+    min-width: 0;
+  }
+  .admin-main-fill .fill-view > .toolbar > div:last-child {
+    grid-column: 1 / -1;
+    margin-left: 0 !important;
+    justify-content: flex-end;
+  }
+  .admin-main-fill .fill-view > .toolbar > div:last-child > * {
+    white-space: nowrap;
+  }
+}
+
+/* Hinweis mit Aktion („Rückgängig“) */
+.toast {
+  max-width: min(520px, calc(100vw - 32px));
+}
+
+.toast-action {
+  flex-shrink: 0;
+  margin-left: 6px;
+  padding: 4px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.toast-action:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.toast-action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+  }
+}
+
+/* Fixierte Listenansicht – allgemein für alle Listen mit .fill-view */
+.admin-main-fill .fill-view > :not(.fill-view-card) {
+  flex-shrink: 0;
+}
+
+.admin-main-fill .fill-view-card > :not(.table-responsive) {
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Hilfsklassen (statt Inline-Stilen)
+   ========================================================================== */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+}
+
+.table-empty {
+  text-align: center;
+  padding: 40px !important;
+  color: var(--ff-text-muted);
+}
+
+/* Speisekarten-Tabelle: Spalten */
+.pos-table .pos-col-drag {
+  position: relative;
+  width: 36px;
+  text-align: center;
+}
+
+.pos-table .pos-col-price {
+  width: 110px;
+}
+
+.pos-table .pos-col-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pos-drag {
+  cursor: grab;
+  user-select: none;
+  color: var(--ff-text-muted);
+  font-size: 1.1rem;
+}
+
+.pos-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pos-price-cur {
+  color: var(--ff-text-muted);
+  font-size: 0.85rem;
+}
+
+.pos-table tr.pos-row-locked > td {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* ==========================================================================
+   Speisekarte am Handy: jede Zeile als kompakte Karte (kein seitliches Wischen)
+     Zeile 1: Griff | Name, Unterkategorie, Details | Preis
+     Zeile 2:       | Status-Schalter              | Druckziel
+     Zeile 3:       | Extras                       | Aktionen
+   Der Tabellenkopf bleibt (A1) und zeigt „Position | Preis“.
+   ========================================================================== */
+@media (max-width: 760px) {
+  .pos-table,
+  .pos-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .pos-table thead {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .pos-table thead th {
+    position: static !important;
+  }
+
+  .pos-table tr {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "drag pos    price"
+      "drag status target"
+      "drag extras actions";
+    column-gap: 8px;
+    row-gap: 6px;
+    padding: 10px 10px 10px 4px;
+    border-bottom: 1px solid var(--ff-border-light);
+  }
+
+  .pos-table thead tr {
+    grid-template-areas: "drag pos price";
+    padding-top: 0;
+    padding-bottom: 0;
+    background: var(--ff-surface-2);
+    border-bottom: 1px solid var(--ff-border);
+  }
+
+  .pos-table th,
+  .pos-table td {
+    display: block;
+    padding: 0;
+    border-bottom: 0;
+    width: auto;
+  }
+
+  .pos-table thead th {
+    padding: 10px 0;
+    box-shadow: none;
+  }
+
+  .pos-table .pos-col-drag    { grid-area: drag; align-self: center; }
+  .pos-table .pos-col-pos     { grid-area: pos; min-width: 0; }
+  .pos-table .pos-col-price   { grid-area: price; width: auto; }
+  .pos-table .pos-col-status  { grid-area: status; align-self: center; }
+  .pos-table .pos-col-target  { grid-area: target; align-self: center; text-align: right; color: var(--ff-text-muted); }
+  .pos-table .pos-col-extras  { grid-area: extras; align-self: center; }
+  .pos-table .pos-col-actions { grid-area: actions; align-self: center; }
+
+  .pos-table thead .pos-col-target,
+  .pos-table thead .pos-col-status,
+  .pos-table thead .pos-col-extras,
+  .pos-table thead .pos-col-actions {
+    display: none;
+  }
+
+  .pos-table tr.pos-row-locked {
+    background: rgba(239, 68, 68, 0.08);
+  }
+  .pos-table tr.pos-row-locked > td {
+    background: transparent;
+  }
+
+  .pos-table td.table-empty {
+    grid-column: 1 / -1;
+  }
+
+  .pos-cell {
+    min-width: 0;
+  }
+
+  .pos-cell-meta {
+    padding-left: 0;
+  }
+
+  .pos-table .inline-edit-input {
+    width: 72px;
+  }
+
+  .pos-chips {
+    flex-wrap: wrap;
+  }
+
+  .pos-table .pos-col-actions .btn-icon {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
+
+/* ==========================================================================
+   Utility-Klassen (ersetzen wiederholte Inline-Stile in admin.html).
+   !important, damit sie wie die früheren Inline-Stile Vorrang haben.
+   ========================================================================== */
+.u-text-right   { text-align: right !important; }
+.u-text-center  { text-align: center !important; }
+.u-text-danger  { color: var(--ff-danger) !important; }
+.u-muted        { color: var(--ff-text-muted) !important; }
+.u-muted-sm     { color: var(--ff-text-muted) !important; font-size: 0.85rem !important; }
+.u-hint         { font-size: 0.78rem !important; color: var(--ff-text-muted) !important; }
+.u-hint-xs      { font-size: 0.75rem !important; color: var(--ff-text-muted) !important; }
+.u-help         { color: var(--ff-text-muted) !important; font-size: 0.8rem !important; margin-top: 4px !important; display: block !important; }
+.u-fs-sm        { font-size: 0.88rem !important; }
+.u-fs-lg        { font-size: 1.2rem !important; }
+.u-title-sm     { margin: 0 !important; font-size: 1rem !important; font-weight: 700 !important; }
+.u-subtitle     { margin: 0 0 12px 0 !important; font-size: 0.9rem !important; }
+.u-mb-16        { margin-bottom: 16px !important; }
+.u-mb-24        { margin-bottom: 24px !important; }
+.u-p-16         { padding: 16px !important; }
+.u-w-auto       { width: auto !important; }
+.u-w-100        { width: 100% !important; }
+.u-row          { display: flex !important; gap: 8px !important; }
+.u-row-6        { display: flex !important; gap: 6px !important; }
+.u-row-wrap     { display: flex !important; gap: 6px !important; flex-wrap: wrap !important; }
+.u-row-center   { display: flex !important; align-items: center !important; gap: 8px !important; }
+.u-row-between  { display: flex !important; justify-content: space-between !important; align-items: center !important; }
+.u-inline-center { display: inline-flex !important; align-items: center !important; gap: 4px !important; }
+.u-kv           { display: flex !important; justify-content: space-between !important; margin-bottom: 4px !important; }
+.u-kv-head      { display: flex !important; justify-content: space-between !important; align-items: center !important; padding-bottom: 8px !important; border-bottom: 1px solid var(--ff-border-light) !important; }
+.u-grid-2       { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 12px !important; }
+.u-empty-cell   { text-align: center !important; color: var(--ff-text-muted) !important; padding: 16px !important; }
+
+@media (max-width: 600px) {
+  /* Zweispaltige Formulare am Handy untereinander */
+  .u-grid-2 { grid-template-columns: 1fr !important; }
+}
