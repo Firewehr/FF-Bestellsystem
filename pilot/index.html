@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261115_2">
+  <link rel="stylesheet" href="style.css?v=20261115_4">
 </head>
 <body>
   <div id="app" :class="{ 'has-cart': cart.length > 0 && currentTab === 'menu' }" v-cloak>
@@ -807,35 +807,49 @@
               </button>
             </div>
             <div v-if="optionsViewMode === 'same'" class="portion-mode-hint">
-              Die Angaben gelten für alle {{ optionQty }} Portionen. Für unterschiedliche Wünsche („2× ohne Zwiebel, 1× scharf“) auf <strong>Einzeln</strong> tippen.
+              Für unterschiedliche Wünsche („2× ohne Zwiebel, 1× scharf“) auf <strong>Einzeln</strong> tippen.
             </div>
+          </div>
 
-            <!-- Reiter: Portion wählen (✎ = hat Zusatzinfos) -->
-            <div v-if="optionsViewMode === 'tabs'" class="portions-tab-strip">
+          <!-- Portionen-Editor: Reiter und Formular bilden eine Einheit (gleiche Farbe je Portion) -->
+          <div class="portion-editor" :class="'mode-' + (optionQty > 1 ? optionsViewMode : 'single')">
+            <!-- Reiter: Portion wählen (bleibt beim Scrollen oben stehen; ✎ = hat Zusatzinfos) -->
+            <div v-if="optionQty > 1 && optionsViewMode === 'tabs'" class="portions-tab-strip" role="tablist" aria-label="Portion wählen">
               <button 
                 v-for="(p, pIdx) in portions" 
                 :key="pIdx"
                 type="button"
+                role="tab"
                 class="portion-tab"
+                :aria-selected="activePortionIndex === pIdx ? 'true' : 'false'"
                 :class="{ active: activePortionIndex === pIdx, customized: isPortionCustomized(p) }"
+                :style="portionColorVars(pIdx)"
                 @click="activePortionIndex = pIdx">
-                <span class="portion-tab-title">{{ isPortionCustomized(p) ? '✎ ' : '' }}Portion {{ pIdx + 1 }}</span>
-                <span class="portion-tab-summary">{{ getPortionSummary(p) }}</span>
+                <span class="portion-num">{{ pIdx + 1 }}</span>
+                <span class="portion-tab-text">
+                  <span class="portion-tab-title">Portion {{ pIdx + 1 }}<span v-if="isPortionCustomized(p)" class="portion-tab-edited" title="Hat Zusatzinfos"> ✎</span></span>
+                  <span class="portion-tab-summary">{{ getPortionSummary(p) }}</span>
+                </span>
               </button>
             </div>
-          </div>
 
-          <!-- Formular: eine Portion (Alle gleich / Einzeln) oder alle untereinander -->
+          <!-- Formular: eine Portion (Alle gleich / Einzeln) oder alle untereinander (Liste) -->
           <div 
             v-for="pIdx in visiblePortionIndexes" 
             :key="'portion-' + pIdx"
-            :class="optionsViewMode === 'list' && optionQty > 1 ? 'portion-card-block' : 'portion-form-container'">
-            <div v-if="optionQty > 1 && optionsViewMode !== 'same'" class="portion-form-header">
-              <span style="font-weight:800; font-size:0.95rem;">Portion {{ pIdx + 1 }} von {{ optionQty }}</span>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <button v-if="pIdx > 0" type="button" class="btn-text-action sm" @click="copyFromPortion1(pIdx)">↶ Wie Portion 1</button>
-                <span style="font-size:0.85rem; font-weight:700; color:var(--ff-primary);">{{ formatPrice(getPortionPrice(portions[pIdx])) }}</span>
-              </div>
+            class="portion-panel"
+            role="tabpanel"
+            :class="{ 'is-colored': optionQty > 1 && optionsViewMode !== 'same', 'is-same': optionQty > 1 && optionsViewMode === 'same' }"
+            :style="optionQty > 1 && optionsViewMode !== 'same' ? portionColorVars(pIdx) : null">
+            <div v-if="optionQty > 1 && optionsViewMode !== 'same'" class="portion-panel-header">
+              <span class="portion-num">{{ pIdx + 1 }}</span>
+              <span class="portion-panel-title">Portion {{ pIdx + 1 }} <span class="portion-panel-of">von {{ optionQty }}</span></span>
+              <button v-if="pIdx > 0" type="button" class="btn-text-action sm" @click="copyFromPortion1(pIdx)">↶ Wie Portion 1</button>
+              <span class="portion-panel-price">{{ formatPrice(getPortionPrice(portions[pIdx])) }}</span>
+            </div>
+            <div v-else-if="optionQty > 1" class="portion-panel-header">
+              <span class="portion-num portion-num-all">{{ optionQty }}×</span>
+              <span class="portion-panel-title">Gilt für alle {{ optionQty }} Portionen</span>
             </div>
 
             <template v-if="portions[pIdx]">
@@ -957,6 +971,7 @@
               </div>
             </template>
           </div>
+          </div><!-- /portion-editor -->
         </div>
         <div class="sheet-footer">
           <!-- Vorschau: so landet die Bestellung in Küche/Schank -->
@@ -1452,6 +1467,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261115_2"></script>
+  <script type="module" src="app.js?v=20261115_3"></script>
 </body>
 </html>

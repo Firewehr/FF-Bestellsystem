@@ -1967,3 +1967,206 @@ button:disabled {
   flex: 1 0 100%;
   width: 100%;
 }
+
+/* ===========================================================================
+   Portionen-Editor (Optionsdialog bei Menge > 1)
+   Reiter und Formular bilden eine Einheit: Der aktive Reiter geht nahtlos in
+   den gerahmten Kasten der Portion über. Jede Portion hat eine eigene Farbe
+   (--pc / --pc-bg aus portionColorVars() in app.js) und eine Nummer.
+   =========================================================================== */
+.portion-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.portion-editor.mode-tabs {
+  gap: 0;
+}
+
+/* Nummern-Kreis in Portionsfarbe */
+.portion-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 13px;
+  background: var(--pc, var(--ff-text));
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.portion-num-all {
+  background: var(--ff-text);
+}
+
+/* Reiterleiste: klebt beim Scrollen oben im Dialog */
+.portion-editor .portions-tab-strip {
+  position: sticky;
+  top: -14px; /* = padding-top von .sheet-body */
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 0 0;
+  background: var(--ff-surface);
+  overflow-x: auto;
+}
+
+.portion-editor .portion-tab {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px 10px 10px;
+  border: 2px solid var(--ff-border-light);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--ff-bg);
+  color: var(--ff-text-muted);
+  box-shadow: none;
+}
+
+.portion-editor .portion-tab .portion-num {
+  opacity: 0.55;
+}
+
+.portion-editor .portion-tab-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.portion-editor .portion-tab-title {
+  font-size: 0.88rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.portion-editor .portion-tab-summary {
+  max-width: 120px;
+  color: var(--ff-text-muted);
+}
+
+.portion-editor .portion-tab-edited {
+  color: var(--ff-warning-dark);
+}
+
+/* Aktiver Reiter: Portionsfarbe, überdeckt die obere Rahmenlinie des Kastens */
+.portion-editor .portion-tab.active {
+  z-index: 2;
+  margin-bottom: -2px;
+  padding-bottom: 12px;
+  border-color: var(--pc);
+  background: var(--pc-bg);
+  color: var(--ff-text);
+  box-shadow: none;
+}
+
+.portion-editor .portion-tab.active .portion-num {
+  opacity: 1;
+}
+
+.portion-editor .portion-tab.active .portion-tab-title {
+  color: var(--pc);
+}
+
+.portion-editor .portion-tab.active .portion-tab-summary {
+  color: var(--ff-text);
+}
+
+/* „angepasst“ nur noch über ✎ – der Rahmen gehört der Portionsfarbe */
+.portion-editor .portion-tab.customized {
+  border-color: var(--ff-border-light);
+}
+
+.portion-editor .portion-tab.customized.active {
+  border-color: var(--pc);
+}
+
+.portion-editor .portion-tab.customized .portion-tab-title {
+  color: inherit;
+}
+
+.portion-editor .portion-tab.customized.active .portion-tab-title {
+  color: var(--pc);
+}
+
+/* Kasten einer Portion */
+.portion-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.portion-panel .options-group:last-child {
+  margin-bottom: 0;
+}
+
+.portion-panel.is-colored,
+.portion-panel.is-same {
+  padding: 0 12px 14px;
+  border: 2px solid var(--pc, var(--ff-border));
+  border-radius: 14px;
+  background: var(--ff-surface);
+}
+
+.portion-panel.is-same {
+  border-style: dashed;
+  border-color: var(--ff-border);
+}
+
+.mode-tabs .portion-panel.is-colored {
+  border-top-left-radius: 0;
+}
+
+.portion-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -12px 10px;
+  padding: 10px 12px;
+  border-radius: 12px 12px 0 0;
+  background: var(--pc-bg, var(--ff-bg));
+  border-bottom: 1px solid var(--ff-border-light);
+}
+
+.mode-tabs .portion-panel-header {
+  border-top-left-radius: 0;
+}
+
+.portion-panel-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--pc, var(--ff-text));
+}
+
+.portion-panel-of {
+  font-weight: 600;
+  color: var(--ff-text-muted);
+}
+
+.portion-panel-price {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ff-text);
+  white-space: nowrap;
+}
+
+/* Ausgewählte Chips in der Farbe ihrer Portion */
+.portion-panel.is-colored .quick-note-pill.active,
+.portion-panel.is-colored .chip-btn.active {
+  background: var(--pc);
+  border-color: var(--pc);
+  color: #fff;
+}

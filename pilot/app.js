@@ -1037,6 +1037,22 @@ createApp({
     });
 
     const isPortionCustomized = (p) => getPortionSummary(p, 0) !== 'Standard';
+
+    // Jede Portion hat eine eigene Farbe + Nummer: Reiter, Rahmen und Kopf des
+    // Formulars nutzen dieselbe Farbe, damit klar ist, wozu Info/Rezeptur gehören.
+    // Bewusst ohne Rot (Primär/Löschen) und Orange (Markierung „angepasst“).
+    const PORTION_COLORS = [
+      { c: '#2563eb', bg: '#eff6ff' },
+      { c: '#7c3aed', bg: '#f5f3ff' },
+      { c: '#0d9488', bg: '#f0fdfa' },
+      { c: '#db2777', bg: '#fdf2f8' },
+      { c: '#4d7c0f', bg: '#f7fee7' },
+      { c: '#0369a1', bg: '#f0f9ff' },
+    ];
+    const portionColorVars = (idx) => {
+      const col = PORTION_COLORS[Math.abs(Number(idx) || 0) % PORTION_COLORS.length];
+      return { '--pc': col.c, '--pc-bg': col.bg };
+    };
     const previewLabel = (p) => getPortionSummary(p, 0).replace(/"/g, '');
 
     // Vorschau „2× Ohne Zwiebel · 2× Standard“ – so landet es in Küche/Bon
@@ -2535,6 +2551,7 @@ createApp({
       setOptionsMode,
       visiblePortionIndexes,
       isPortionCustomized,
+      portionColorVars,
       optionGroupsPreview,
       optionsEditItemId,
       recentNotes,
