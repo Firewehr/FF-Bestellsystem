@@ -338,6 +338,10 @@ function festio_settings_set_current_fest(PDO $pdo, int $festId, string $festCod
     $st = $pdo->prepare('REPLACE INTO settings (`k`,`v`) VALUES (?,?)');
     $st->execute(['current_fest_id', (string) $festId]);
     $st->execute(['current_fest_code', $festCode]);
+    // Genau ein aktives Fest (feste.aktiv wird von Bestellung/Zahlung/Karte gelesen)
+    if (festio_table_exists($pdo, 'feste')) {
+        $pdo->prepare('UPDATE feste SET aktiv = IF(id = ?, 1, 0)')->execute([$festId]);
+    }
 }
 
 /** Stammdaten-Tabellen komplett exportieren (global, nicht festgebunden) */

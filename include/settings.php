@@ -9,9 +9,19 @@ if (!function_exists('settings_ensure_table')) {
 
     function settings_ensure_table(mysqli $conn): void
     {
-        if (ff_schema_session_ok()) {
+        // CREATE TABLE beendet offene Transaktionen (implizites COMMIT) – daher nur
+        // einmal pro Request und nur, wenn die Tabelle wirklich fehlt.
+        static $ready = false;
+        if ($ready || ff_schema_session_ok()) {
             return;
         }
+        $chk = @$conn->query("SHOW TABLES LIKE 'settings'");
+        if ($chk && $chk->num_rows > 0) {
+            $chk->free();
+            $ready = true;
+            return;
+        }
+        $ready = true;
         $conn->query(
             "CREATE TABLE IF NOT EXISTS settings (
           k VARCHAR(64) NOT NULL PRIMARY KEY,

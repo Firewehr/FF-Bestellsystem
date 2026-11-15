@@ -43,16 +43,12 @@ if (!$res || mysqli_num_rows($res) === 0) {
 $row = mysqli_fetch_assoc($res);
 $code = (string)($row['code'] ?? '');
 
-// VARIANTE A: Genau EIN aktives Fest
-mysqli_query($conn, "UPDATE feste SET aktiv = 0");
-mysqli_query($conn, "UPDATE feste SET aktiv = 1 WHERE id = ".$id." LIMIT 1");
-
-// Persist settings
-$ok1 = setting_set($conn, 'current_fest_id', (string)$id);
-$ok2 = setting_set($conn, 'current_fest_code', $code);
+// Genau EIN aktives Fest + Einstellungen – zentral und transaktional
+require_once __DIR__ . '/include/ff_fest_scope.php';
+$ok = ff_fest_set_current($conn, $id);
 
 echo json_encode([
-    'ok' => ((bool)$ok1 && (bool)$ok2),
+    'ok' => $ok,
     'id' => $id,
     'code' => $code
 ]);

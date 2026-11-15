@@ -9,6 +9,7 @@ require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
 require_once __DIR__ . '/include/ff_fest_scope.php';
 require_once __DIR__ . '/include/ff_schreibaus.php';
+require_once __DIR__ . '/include/ff_pilot_linked_articles.php';
 ff_fest_scope_ensure_columns($conn);
 
 
@@ -442,6 +443,52 @@ if ($mitarbeiterVerbrauchResult) {
             ($verbrauchtePositionen[$positionId] ?? 0) +
             (int)$row['verbraucht'];
     }
+}
+
+/*
+|--------------------------------------------------------------------------
+| Verknüpfte echte Artikel für die Kundenkarte
+|--------------------------------------------------------------------------
+*/
+
+$linkedArticlesByParent = [];
+
+ff_pilot_linked_articles_ensure_schema($conn);
+
+$positionenNachId = [];
+foreach ($positionen as $position) {
+    $positionenNachId[(int)$position['rowid']] = $position;
+}
+
+$activeFestId = ff_pilot_linked_articles_active_fest_id($conn);
+foreach (ff_customer_linked_articles_for_parents(
+    $conn,
+    array_keys($positionenNachId),
+    $activeFestId
+) as $link) {
+    $childId = (int)$link['child_position_id'];
+    $child = $positionenNachId[$childId] ?? null;
+    if ($child === null) {
+        continue;
+    }
+
+    $capacity = ff_position_display_capacity(
+        $conn,
+        $childId,
+        (int)($child['maxBestellbar'] ?? 0),
+        $verbrauchtePositionen[$childId] ?? 0
+    );
+    if ((int)$capacity['rest'] === 0) {
+        continue;
+    }
+
+    $parentId = (int)$link['parent_position_id'];
+    $linkedArticlesByParent[$parentId][] = [
+        'id' => $childId,
+        'name' => (string)$link['name'],
+        'price' => (float)$link['price'],
+        'type' => (int)$link['type']
+    ];
 }
 
 /*
@@ -1445,6 +1492,71 @@ body {
     cursor: pointer;
 }
 
+.linked-items-modal .modal-content {
+    padding: 0;
+    overflow: hidden;
+}
+
+.linked-items-header {
+    padding: 20px 20px 14px;
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    color: white;
+}
+
+.linked-items-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.linked-items-header p {
+    margin: 7px 0 0;
+    font-size: 14px;
+    line-height: 1.4;
+    opacity: .96;
+}
+
+.linked-items-body {
+    padding: 14px 20px 20px;
+}
+
+.linked-items-explanation {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: 9px;
+    background: #fff8e1;
+    color: #5d4a00;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.linked-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 2px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+}
+
+.linked-option input {
+    width: 22px;
+    height: 22px;
+    accent-color: #c0392b;
+    flex-shrink: 0;
+}
+
+.linked-option-name {
+    flex: 1;
+    font-weight: 700;
+    line-height: 1.3;
+}
+
+.linked-option-price {
+    font-size: 14px;
+    color: #555;
+    white-space: nowrap;
+}
+
 .cancel-button {
     background: #eee;
     color: #444;
@@ -2258,6 +2370,32 @@ body {
 
 </div>
 
+<div
+    id="linkedItemsModal"
+    class="modal linked-items-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="linkedItemsTitle"
+    aria-hidden="true"
+>
+    <div class="modal-content">
+        <div class="linked-items-header">
+            <h2 id="linkedItemsTitle">Passende Artikel wählen</h2>
+            <p id="linkedItemsParentName"></p>
+        </div>
+        <div class="linked-items-body">
+            <p class="linked-items-explanation">
+                Optional: Diese Artikel werden separat zubereitet und zum jeweiligen Kartenpreis verrechnet.
+            </p>
+            <div id="linkedItemsOptions"></div>
+            <div class="modal-buttons">
+                <button type="button" class="cancel-button" id="cancelLinkedItems">Abbrechen</button>
+                <button type="button" class="confirm-button" id="continueLinkedItems">Weiter</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
 
@@ -2271,9 +2409,12 @@ const cart = {};
 const MAX_ORDER_QUANTITY = 10;
 const TISCHNUMMER = <?= (int)$tischnummer ?>;
 const TOKEN = <?= json_encode($token, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+const LINKED_ARTICLES = <?= json_encode($linkedArticlesByParent, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
 let activeTabType = 1;
 let scrollspyTicking = false;
 let previousCartCount = 0;
+let pendingLinkedParent = null;
+let linkedModalOpener = null;
 
 /*
 |--------------------------------------------------------------------------
@@ -2333,11 +2474,13 @@ function showQuantityWarning(message) {
 |--------------------------------------------------------------------------
 */
 function getItemRestCapacity(element) {
+    if (!element) return -1;
     const restCapacity = parseInt(element.dataset.rest || '-1', 10);
     return Number.isNaN(restCapacity) ? -1 : restCapacity;
 }
 
 function getItemMaxSelectable(element) {
+    if (!element) return MAX_ORDER_QUANTITY;
     if (element.dataset.unlimited === '1') {
         return MAX_ORDER_QUANTITY;
     }
@@ -2352,8 +2495,8 @@ function getItemMaxSelectable(element) {
 | Artikel hinzufügen / entfernen
 |--------------------------------------------------------------------------
 */
-function addItem(id) {
-    const item = cart[id];
+function addItem(key) {
+    const item = cart[key];
     if (!item) return;
 
     const restCapacity = getItemRestCapacity(item.element);
@@ -2381,8 +2524,8 @@ function addItem(id) {
     updateCart();
 }
 
-function removeItem(id) {
-    const item = cart[id];
+function removeItem(key) {
+    const item = cart[key];
     if (!item) return;
 
     if (item.quantity > 0) {
@@ -2393,6 +2536,19 @@ function removeItem(id) {
     }
 
     updateItem(item);
+
+    if (!item.linkedParentId) {
+        Object.values(cart).forEach(function(linkedItem) {
+            if (
+                linkedItem.linkedParentId === item.id &&
+                linkedItem.quantity > item.quantity
+            ) {
+                linkedItem.quantity = item.quantity;
+                updateItem(linkedItem);
+            }
+        });
+    }
+
     updateCart();
 }
 
@@ -2401,7 +2557,106 @@ function removeItem(id) {
 | Artikelanzeige aktualisieren
 |--------------------------------------------------------------------------
 */
+function openLinkedItems(parentKey, opener) {
+    const parent = cart[parentKey];
+    const links = parent ? (LINKED_ARTICLES[parent.id] || []) : [];
+    if (!parent || links.length === 0) {
+        addItem(parentKey);
+        return;
+    }
+
+    pendingLinkedParent = parentKey;
+    linkedModalOpener = opener || document.activeElement;
+    document.getElementById('linkedItemsTitle').textContent = 'Passend zu ' + parent.name;
+    document.getElementById('linkedItemsParentName').textContent = 'Möchten Sie noch etwas dazu auswählen?';
+
+    const options = document.getElementById('linkedItemsOptions');
+    options.innerHTML = '';
+    links.forEach(function(link) {
+        const label = document.createElement('label');
+        label.className = 'linked-option';
+        label.innerHTML =
+            '<input type="checkbox" value="' + link.id + '">' +
+            '<span class="linked-option-name">' + escapeHtml(link.name) + '</span>' +
+            '<span class="linked-option-price">' + formatEuro(link.price) + '</span>';
+        options.appendChild(label);
+    });
+
+    const modal = document.getElementById('linkedItemsModal');
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    window.setTimeout(function() {
+        const firstChoice = options.querySelector('input');
+        (firstChoice || document.getElementById('continueLinkedItems')).focus();
+    }, 0);
+}
+
+function closeLinkedItemsModal() {
+    const modal = document.getElementById('linkedItemsModal');
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    pendingLinkedParent = null;
+    if (linkedModalOpener && typeof linkedModalOpener.focus === 'function') {
+        linkedModalOpener.focus();
+    }
+    linkedModalOpener = null;
+}
+
+function continueLinkedItems() {
+    const parentKey = pendingLinkedParent;
+    const parent = parentKey ? cart[parentKey] : null;
+    if (!parent) {
+        closeLinkedItemsModal();
+        return;
+    }
+
+    const selectedIds = Array.from(
+        document.querySelectorAll('#linkedItemsOptions input:checked')
+    ).map(function(input) {
+        return parseInt(input.value, 10);
+    });
+    const links = LINKED_ARTICLES[parent.id] || [];
+
+    const prevParentQty = parent.quantity;
+    addItem(parentKey);
+    if (parent.quantity > prevParentQty) {
+        selectedIds.forEach(function(childId) {
+            const child = links.find(function(link) { return link.id === childId; });
+            if (!child) return;
+            const key = 'linked:' + parent.id + ':' + child.id;
+            if (!cart[key]) {
+                cart[key] = {
+                    key: key,
+                    id: child.id,
+                    name: child.name,
+                    price: child.price,
+                    max: MAX_ORDER_QUANTITY,
+                    quantity: 0,
+                    element: null,
+                    type: child.type,
+                    linkedParentId: parent.id
+                };
+            }
+            addItem(key);
+        });
+    }
+
+    closeLinkedItemsModal();
+    renderCart();
+}
+
+function addConfiguredItem(key, opener) {
+    const item = cart[key];
+    if (!item) return;
+    if ((LINKED_ARTICLES[item.id] || []).length > 0) {
+        openLinkedItems(key, opener);
+        return;
+    }
+    addItem(key);
+}
+
 function updateItem(item) {
+    if (!item.element) return;
     const minusButton = item.element.querySelector('[data-action="minus"]');
     const plusButton = item.element.querySelector('[data-action="plus"]');
     const maxSelectable = getItemMaxSelectable(item.element);
@@ -2439,8 +2694,10 @@ function updateItem(item) {
 document.querySelectorAll('.item').forEach(function(item) {
     const id = parseInt(item.dataset.id, 10);
     const itemType = parseInt(item.dataset.type || '1', 10);
+    const key = 'normal:' + id;
 
-    cart[id] = {
+    cart[key] = {
+        key: key,
         id: id,
         name: item.dataset.name,
         price: parseFloat(item.dataset.price),
@@ -2454,7 +2711,7 @@ document.querySelectorAll('.item').forEach(function(item) {
     if (plusBtn) {
         plusBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            addItem(id);
+            addConfiguredItem(key, plusBtn);
         });
     }
 
@@ -2462,7 +2719,7 @@ document.querySelectorAll('.item').forEach(function(item) {
     if (minusBtn) {
         minusBtn.addEventListener('click', function(e) {
             e.stopPropagation();
-            removeItem(id);
+            removeItem(key);
         });
     }
 
@@ -2470,13 +2727,13 @@ document.querySelectorAll('.item').forEach(function(item) {
     const infoArea = item.querySelector('.item-info');
     if (infoArea) {
         infoArea.addEventListener('click', function() {
-            if (cart[id].quantity === 0) {
-                addItem(id);
+            if (cart[key].quantity === 0) {
+                addConfiguredItem(key, infoArea);
             }
         });
     }
 
-    updateItem(cart[id]);
+    updateItem(cart[key]);
 });
 
 /*
@@ -2809,7 +3066,17 @@ function renderCart() {
         line.className = 'cart-line';
 
         const maxSelectable = getItemMaxSelectable(item.element);
-        const disablePlus = maxSelectable === 0 || (maxSelectable > 0 && item.quantity >= maxSelectable);
+        const disablePlus = item.linkedParentId
+            ? true
+            : (maxSelectable === 0 || (maxSelectable > 0 && item.quantity >= maxSelectable));
+        const quantityControls =
+            '<button type="button" class="minus" data-cart-minus="' + escapeHtml(item.key) + '" aria-label="Menge verringern">−</button>' +
+            '<span style="min-width:24px; text-align:center; font-weight:bold; font-size:16px;">' +
+                item.quantity +
+            '</span>' +
+            (item.linkedParentId
+                ? ''
+                : '<button type="button" class="plus' + (disablePlus ? ' disabled' : '') + '" data-cart-plus="' + escapeHtml(item.key) + '" ' + (disablePlus ? 'disabled' : '') + ' aria-label="Menge erhöhen">+</button>');
 
         line.innerHTML =
             '<div style="flex:1; min-width:0; padding-right:8px;">' +
@@ -2821,11 +3088,7 @@ function renderCart() {
                 '</span>' +
             '</div>' +
             '<div class="cart-line-quantity">' +
-                '<button type="button" class="minus" data-cart-minus="' + item.id + '" aria-label="Menge verringern">−</button>' +
-                '<span style="min-width:24px; text-align:center; font-weight:bold; font-size:16px;">' +
-                    item.quantity +
-                '</span>' +
-                '<button type="button" class="plus' + (disablePlus ? ' disabled' : '') + '" data-cart-plus="' + item.id + '" ' + (disablePlus ? 'disabled' : '') + ' aria-label="Menge erhöhen">+</button>' +
+                quantityControls +
             '</div>' +
             '<strong style="min-width:65px; text-align:right; font-size:15px;">' +
                 formatEuro(item.quantity * item.price) +
@@ -2834,7 +3097,7 @@ function renderCart() {
         const minusBtn = line.querySelector('[data-cart-minus]');
         if (minusBtn) {
             minusBtn.addEventListener('click', function() {
-                removeItem(item.id);
+                removeItem(item.key);
                 renderCart();
             });
         }
@@ -2842,7 +3105,7 @@ function renderCart() {
         const plusBtn = line.querySelector('[data-cart-plus]');
         if (plusBtn) {
             plusBtn.addEventListener('click', function() {
-                addItem(item.id);
+                addConfiguredItem(item.key, plusBtn);
                 renderCart();
             });
         }
@@ -2892,6 +3155,38 @@ document.getElementById('cartModal').addEventListener('click', function(e) {
     }
 });
 
+document.getElementById('cancelLinkedItems').addEventListener('click', closeLinkedItemsModal);
+document.getElementById('continueLinkedItems').addEventListener('click', continueLinkedItems);
+document.getElementById('linkedItemsModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeLinkedItemsModal();
+    }
+});
+document.addEventListener('keydown', function(e) {
+    const modal = document.getElementById('linkedItemsModal');
+    if (!modal.classList.contains('open')) return;
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        closeLinkedItemsModal();
+        return;
+    }
+    if (e.key !== 'Tab') return;
+
+    const focusable = Array.from(modal.querySelectorAll(
+        'input:not([disabled]), button:not([disabled])'
+    ));
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+    }
+});
+
 /*
 |--------------------------------------------------------------------------
 | Bestellung absenden
@@ -2918,10 +3213,14 @@ async function submitCurrentOrder() {
     }
 
     const items = getCartItems().map(function(item) {
-        return {
+        const payloadItem = {
             position_id: item.id,
             menge: item.quantity
         };
+        if (item.linkedParentId) {
+            payloadItem.linked_parent_id = item.linkedParentId;
+        }
+        return payloadItem;
     });
 
     if (items.length === 0) {

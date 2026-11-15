@@ -7,6 +7,26 @@ declare(strict_types=1);
 
 function menu_lock_ensure_tables(mysqli $conn): void
 {
+    // CREATE TABLE beendet in MySQL/MariaDB jede offene Transaktion (implizites COMMIT).
+    // Deshalb zuerst ohne DDL prüfen und nur bei fehlenden Tabellen anlegen – einmal pro Request.
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    $res = @mysqli_query(
+        $conn,
+        "SELECT COUNT(*) FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('menu_locks', 'menu_lock_exceptions')"
+    );
+    $row = $res ? mysqli_fetch_row($res) : null;
+    if ($res) {
+        mysqli_free_result($res);
+    }
+    if ($row && (int)$row[0] === 2) {
+        $ready = true;
+        return;
+    }
+
     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `menu_locks` (
       `id` INT(11) NOT NULL AUTO_INCREMENT,
       `scope` ENUM('position','type_all') NOT NULL DEFAULT 'position',
@@ -30,6 +50,7 @@ function menu_lock_ensure_tables(mysqli $conn): void
       UNIQUE KEY `ux_lock_pos` (`lock_id`, `position_id`),
       KEY `idx_lock` (`lock_id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $ready = true;
 }
 
 function menu_lock_cleanup_expired(mysqli $conn): void

@@ -26,3 +26,37 @@ function ff_next_bon_nr(mysqli $conn): int
 
     return $nr;
 }
+
+
+/**
+ * Vergibt jedem Tisch-Bon im Payload eine eigene, fortlaufende Bon-Nr.
+ *
+ * Ein Payload kann mehrere Tische enthalten; der Druck-Client druckt pro Tisch
+ * einen eigenen Bon. Früher teilten sich alle Tische einer Antwort dieselbe Nummer.
+ * `$payload['bon_nr']` bleibt für ältere Clients erhalten (= Nummer des ersten Bons).
+ *
+ * @param array<string,mixed> $payload wird um tische[i]['bon_nr'] und bon_nr ergänzt
+ * @return int erste vergebene Bon-Nr.
+ */
+function ff_bon_nr_assign_tische(mysqli $conn, array &$payload): int
+{
+    $first = 0;
+    if (!empty($payload['tische']) && is_array($payload['tische'])) {
+        foreach ($payload['tische'] as $k => $tisch) {
+            if (!is_array($tisch)) {
+                continue;
+            }
+            $nr = ff_next_bon_nr($conn);
+            $payload['tische'][$k]['bon_nr'] = $nr;
+            if ($first === 0) {
+                $first = $nr;
+            }
+        }
+    }
+    if ($first === 0) {
+        $first = ff_next_bon_nr($conn);
+    }
+    $payload['bon_nr'] = $first;
+    return $first;
+}
+

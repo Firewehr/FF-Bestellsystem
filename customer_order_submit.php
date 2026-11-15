@@ -76,6 +76,7 @@ require_once __DIR__ . '/include/beilage_helpers.php';
 require_once __DIR__ . '/include/ff_position_kassa_helpers.php';
 require_once __DIR__ . '/include/ff_position_stock_summary.php';
 require_once __DIR__ . '/include/ff_schema_helpers.php';
+require_once __DIR__ . '/include/ff_pilot_linked_articles.php';
 
 
 /*
@@ -310,6 +311,7 @@ if (count($items) > 50) {
 */
 
 $normalizedItems = [];
+$linkedItems = [];
 
 
 foreach ($items as $item) {
@@ -339,7 +341,6 @@ foreach ($items as $item) {
         );
     }
 
-
     if ($menge < 1) {
         $menge = 1;
     }
@@ -355,6 +356,14 @@ foreach ($items as $item) {
             'too_many_items',
             'Maximal 10 Stück einer Position sind möglich.'
         );
+    }
+
+    if (!empty($item['linked_parent_id'])) {
+        $linkedItems[] = [
+            'position_id' => $positionId,
+            'menge' => $menge,
+            'linked_parent_id' => (int)$item['linked_parent_id']
+        ];
     }
 
 
@@ -417,6 +426,29 @@ if (!mysqli_begin_transaction($conn)) {
 
 
 try {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Verknüpfte Kundenartikel serverseitig prüfen
+    |--------------------------------------------------------------------------
+    |
+    | Preis und Zielgerät stammen weiterhin ausschließlich aus der
+    | Positionsprüfung darunter. Die Metadaten dienen nur dazu, eine
+    | konfigurierte Eltern-Kind-Beziehung abzusichern.
+    */
+
+    if ($linkedItems !== []) {
+        $linkError = ff_pilot_validate_linked_order_items(
+            $conn,
+            $items,
+            $festId,
+            true
+        );
+
+        if ($linkError !== null) {
+            throw new RuntimeException($linkError);
+        }
+    }
 
 
     /*

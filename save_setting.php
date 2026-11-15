@@ -127,5 +127,11 @@ if ($k === 'current_fest_id' && (int)$_SESSION['admin'] < 2) {
     exit;
 }
 
-$ok = setting_set($conn, $k, $v);
+if ($k === 'current_fest_id' && (int)$v > 0) {
+    // feste.aktiv und current_fest_id müssen übereinstimmen (Zahlungsmodus, Karte, Bestellungen)
+    require_once __DIR__ . '/include/ff_fest_scope.php';
+    $ok = ff_fest_set_current($conn, (int)$v);
+} else {
+    $ok = setting_set($conn, $k, $v);
+}
 echo json_encode(['ok' => (bool)$ok]);

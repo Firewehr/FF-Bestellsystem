@@ -127,3 +127,65 @@ if (!function_exists('ff_fest_scope_delete_for_fest')) {
         }
     }
 }
+
+if (!function_exists('ff_fest_set_current')) {
+    /**
+     * Setzt das aktive Fest – einzige Quelle für beide Kennzeichen:
+     * `feste.aktiv` (genau ein Fest = 1, von Bestellung/Zahlung/Karte gelesen) und
+     * die Einstellungen `current_fest_id` / `current_fest_code` (Admin, Fest-Scope).
+     */
+    function ff_fest_set_current(mysqli $conn, int $festId): bool
+    {
+        require_once __DIR__ . '/settings.php';
+        if ($festId <= 0) {
+            return false;
+        }
+        $stmt = mysqli_prepare($conn, 'SELECT code FROM feste WHERE id = ? LIMIT 1');
+        if (!$stmt) {
+            return false;
+        }
+        mysqli_stmt_bind_param($stmt, 'i', $festId);
+        mysqli_stmt_execute($stmt);
+        $code = null;
+        mysqli_stmt_bind_result($stmt, $code);
+        $found = mysqli_stmt_fetch($stmt) === true;
+        mysqli_stmt_close($stmt);
+        if (!$found) {
+            return false;
+        }
+
+        // Settings-Tabelle vor der Transaktion sicherstellen (DDL = implizites COMMIT)
+        settings_ensure_table($conn);
+        // Läuft bereits eine Transaktion (MariaDB: @@in_transaction), wird sie mitbenutzt –
+        // ein erneutes BEGIN würde sie sonst stillschweigend committen.
+        $outerTx = false;
+        $txRes = @mysqli_query($conn, 'SELECT @@in_transaction');
+        if ($txRes) {
+            $outerTx = (int) (mysqli_fetch_row($txRes)[0] ?? 0) === 1;
+            mysqli_free_result($txRes);
+        }
+        if (!$outerTx) {
+            mysqli_begin_transaction($conn);
+        }
+        try {
+            $upd = mysqli_prepare($conn, 'UPDATE feste SET aktiv = IF(id = ?, 1, 0)');
+            mysqli_stmt_bind_param($upd, 'i', $festId);
+            mysqli_stmt_execute($upd);
+            mysqli_stmt_close($upd);
+            if (!setting_set($conn, 'current_fest_id', (string) $festId)
+                || !setting_set($conn, 'current_fest_code', (string) $code)) {
+                throw new RuntimeException('settings');
+            }
+            if (!$outerTx) {
+                mysqli_commit($conn);
+            }
+            return true;
+        } catch (Throwable $e) {
+            if (!$outerTx) {
+                mysqli_rollback($conn);
+            }
+            error_log('ff_fest_set_current: ' . $e->getMessage());
+            return false;
+        }
+    }
+}

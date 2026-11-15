@@ -6,6 +6,7 @@ declare(strict_types=1);
  * from legacy "beilagen", which remain text/price annotations.
  */
 require_once __DIR__ . '/ff_schema_helpers.php';
+require_once __DIR__ . '/menu_lock_helpers.php';
 
 function ff_pilot_linked_articles_ensure_schema(mysqli $conn): void
 {
@@ -45,8 +46,13 @@ function ff_pilot_linked_article_is_visible(mysqli $conn, int $positionId, int $
     if ($positionId <= 0) {
         return false;
     }
-    $sql = 'SELECT rowid FROM positionen WHERE rowid = ? AND COALESCE(kassa_only, 0) = 0'
-        . ($festId > 0 ? ' AND (fest_id IS NULL OR fest_id = ?)' : '')
+    $sql = 'SELECT p.rowid FROM positionen p
+            LEFT JOIN position_subcategories s ON s.id = p.subcategory_id
+            WHERE p.rowid = ?
+              AND p.type IN (1, 2)
+              AND COALESCE(p.kassa_only, 0) = 0
+              AND COALESCE(s.kassa_only, 0) = 0'
+        . ($festId > 0 ? ' AND (p.fest_id IS NULL OR p.fest_id = ?)' : '')
         . ' LIMIT 1';
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
@@ -69,7 +75,7 @@ function ff_pilot_linked_article_is_visible(mysqli $conn, int $positionId, int $
 }
 
 /**
- * @return list<array{id:int,child_position_id:int,name:string,price:float,sort_order:int}>
+ * @return list<array{id:int,parent_position_id:int,child_position_id:int,name:string,price:float,type:int,sort_order:int}>
  */
 function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, int $festId): array
 {
@@ -82,11 +88,17 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
     if ($festId > 0) {
         $festFilter = ' AND (parent.fest_id IS NULL OR parent.fest_id = ?) AND (child.fest_id IS NULL OR child.fest_id = ?)';
     }
-    $sql = 'SELECT l.id, l.parent_position_id, l.child_position_id, l.sort_order, child.Positionsname, child.Betrag
+    $sql = 'SELECT l.id, l.parent_position_id, l.child_position_id, l.sort_order, child.Positionsname, child.Betrag, child.type
             FROM pilot_position_links l
-            INNER JOIN positionen parent ON parent.rowid = l.parent_position_id AND COALESCE(parent.kassa_only, 0) = 0
-            INNER JOIN positionen child ON child.rowid = l.child_position_id AND COALESCE(child.kassa_only, 0) = 0
-            WHERE l.parent_position_id IN (' . $parentList . ')' . $festFilter . '
+            INNER JOIN positionen parent ON parent.rowid = l.parent_position_id
+                AND parent.type IN (1, 2) AND COALESCE(parent.kassa_only, 0) = 0
+            LEFT JOIN position_subcategories parent_sub ON parent_sub.id = parent.subcategory_id
+            INNER JOIN positionen child ON child.rowid = l.child_position_id
+                AND child.type IN (1, 2) AND COALESCE(child.kassa_only, 0) = 0
+            LEFT JOIN position_subcategories child_sub ON child_sub.id = child.subcategory_id
+            WHERE COALESCE(parent_sub.kassa_only, 0) = 0
+              AND COALESCE(child_sub.kassa_only, 0) = 0
+              AND l.parent_position_id IN (' . $parentList . ')' . $festFilter . '
             ORDER BY l.parent_position_id ASC, l.sort_order ASC, l.id ASC';
     $stmt = mysqli_prepare($conn, $sql);
     if (!$stmt) {
@@ -105,6 +117,7 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
             'child_position_id' => (int)$row['child_position_id'],
             'name' => (string)$row['Positionsname'],
             'price' => (float)$row['Betrag'],
+            'type' => (int)$row['type'],
             'sort_order' => (int)$row['sort_order'],
         ];
     }
@@ -117,10 +130,33 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
 }
 
 /**
+ * Customer QR menus additionally hide temporarily locked linked articles.
+ *
+ * @return list<array{id:int,parent_position_id:int,child_position_id:int,name:string,price:float,type:int,sort_order:int}>
+ */
+function ff_customer_linked_articles_for_parents(mysqli $conn, array $parentIds, int $festId): array
+{
+    $links = ff_pilot_linked_articles_for_parents($conn, $parentIds, $festId);
+
+    return array_values(array_filter($links, static function (array $link) use ($conn): bool {
+        return !menu_lock_is_blocked(
+            $conn,
+            (int)$link['child_position_id'],
+            (int)$link['type']
+        );
+    }));
+}
+
+/**
  * Validates only explicit linked-child metadata. Ordinary cart lines stay
  * unrestricted and are handled by the normal order validation.
  */
-function ff_pilot_validate_linked_order_items(mysqli $conn, array $items, int $festId): ?string
+function ff_pilot_validate_linked_order_items(
+    mysqli $conn,
+    array $items,
+    int $festId,
+    bool $customerMenuOnly = false
+): ?string
 {
     $parentCounts = [];
     foreach ($items as $item) {
@@ -128,7 +164,7 @@ function ff_pilot_validate_linked_order_items(mysqli $conn, array $items, int $f
             continue;
         }
         $positionId = (int)($item['position_id'] ?? $item['id'] ?? 0);
-        $qty = max(0, min(50, (int)($item['quantity'] ?? $item['qty'] ?? 1)));
+        $qty = max(0, min(50, (int)($item['quantity'] ?? $item['qty'] ?? $item['menge'] ?? 1)));
         if ($positionId > 0 && $qty > 0) {
             $parentCounts[$positionId] = ($parentCounts[$positionId] ?? 0) + $qty;
         }
@@ -136,19 +172,21 @@ function ff_pilot_validate_linked_order_items(mysqli $conn, array $items, int $f
 
     $linkedCounts = [];
     foreach ($items as $item) {
-        if (!is_array($item) || !array_key_exists('linked_parent_id', $item)) {
+        if (!is_array($item) || empty($item['linked_parent_id'])) {
             continue;
         }
         $parentId = (int)$item['linked_parent_id'];
         $childId = (int)($item['position_id'] ?? $item['id'] ?? 0);
-        $qty = (int)($item['quantity'] ?? $item['qty'] ?? 1);
+        $qty = (int)($item['quantity'] ?? $item['qty'] ?? $item['menge'] ?? 1);
         if ($parentId <= 0 || $childId <= 0 || $qty < 1 || $parentId === $childId) {
             return 'Ungültige Verknüpfung eines Artikels.';
         }
         if (($parentCounts[$parentId] ?? 0) < $qty) {
             return 'Verknüpfte Artikel benötigen die zugehörige Hauptposition.';
         }
-        $linkRows = ff_pilot_linked_articles_for_parents($conn, [$parentId], $festId);
+        $linkRows = $customerMenuOnly
+            ? ff_customer_linked_articles_for_parents($conn, [$parentId], $festId)
+            : ff_pilot_linked_articles_for_parents($conn, [$parentId], $festId);
         $allowed = false;
         foreach ($linkRows as $link) {
             if ((int)$link['child_position_id'] === $childId) {
