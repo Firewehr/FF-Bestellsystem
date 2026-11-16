@@ -140,7 +140,37 @@ Siehe `tools/fest_offline_backup.ini.example` und die Kommentare im Skript.
 
 ---
 
+## Datenbank-Backup (`tools/db_backup.php`)
+
+Die Offline-Sicherung oben ist nur eine lesbare Momentaufnahme. Das **eigentliche Backup** der Datenbank macht `tools/db_backup.php` (PHP-CLI, `mysqldump`/`mariadb-dump`):
+
+- Schreibt `backups/db_<datenbank>_JJJJMMTT_HHMMSS.sql.gz` (Rechte 0600). `--single-transaction`: konsistenter Stand, ohne den Festbetrieb zu sperren.
+- Aufbewahrung: alle Stände der letzten 48 Stunden, danach der letzte Stand pro Tag für 60 Tage.
+- `--copy-to=/media/usb/ff-backups` (oder Umgebungsvariable `FF_BACKUP_COPY_DIR`): zusätzlich auf ein zweites Laufwerk kopieren. Fehlt das Laufwerk, bleibt das lokale Backup bestehen (Exit-Code 2, Warnung im Syslog).
+- Zugangsdaten wie die Anwendung (`include/db.local.php` bzw. `FF_DB_*`); das Passwort steht nie auf der Kommandozeile.
+- Die Pre-Flight-Checkliste warnt, wenn das jüngste Backup älter als **30 Minuten** ist oder keines existiert.
+
+**Einrichten (Linux-Server, einmalig):**
+
+```bash
+sudo chown www-data:www-data backups && sudo chmod 750 backups
+sudo -u www-data php tools/db_backup.php          # Test, schreibt ein Backup
+sudo cp tools/cron/ff-db-backup.cron /etc/cron.d/ff-db-backup   # alle 15 Minuten
+journalctl -t ff-db-backup                        # Fehler ansehen
+```
+
+**Zurückspielen** (in eine neue, leere Datenbank, dann `include/db.local.php` umstellen):
+
+```bash
+mysql -e "CREATE DATABASE ff_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+zcat backups/db_<datenbank>_<zeitstempel>.sql.gz | mysql ff_restore
+```
+
+---
+
 ## Kurz-Checkliste vor dem Fest
+
+0. **Datenbank-Backup** läuft (Pre-Flight zeigt „Letztes Datenbank-Backup vor … Minuten“).
 
 1. **Offline-Backup-Token** setzen und speichern (wenn Python genutzt wird).
 2. **Offline-Sicherung**-Seite testen: einmal manuell Download, Automatik kurz beobachten.

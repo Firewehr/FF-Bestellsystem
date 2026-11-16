@@ -2834,6 +2834,35 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return null;
         });
 
+        $check($g, 'Pre-Flight: Datenbank-Backup fehlt / veraltet / aktuell (Grenze 30 Minuten)', function (mysqli $c) {
+            require_once __DIR__ . '/ff_preflight.php';
+            $dir = sys_get_temp_dir() . '/ff_st_backup_' . bin2hex(random_bytes(4));
+            if (!@mkdir($dir, 0700)) {
+                return 'Temp-Ordner nicht anlegbar';
+            }
+            $now = time();
+            try {
+                $none = ff_preflight_db_backup_status($dir, $now);
+                // Nur db_*.sql.gz zählt, andere Dateien (z. B. Bereinigungs-JSON) nicht.
+                touch($dir . '/testdaten_bereinigung_x.json', $now);
+                $onlyOther = ff_preflight_db_backup_status($dir, $now);
+                touch($dir . '/db_x_20260101_000000.sql.gz', $now - 31 * 60);
+                $old = ff_preflight_db_backup_status($dir, $now);
+                touch($dir . '/db_x_20260101_001500.sql.gz', $now - 30 * 60);
+                $edge = ff_preflight_db_backup_status($dir, $now);
+                return ff_st_expect_same('warning', $none['status'], 'ohne Backup')
+                    ?? ff_st_expect_same(null, $none['age_min'], 'Alter ohne Backup')
+                    ?? ff_st_expect_same('warning', $onlyOther['status'], 'nur fremde Datei')
+                    ?? ff_st_expect_same('warning', $old['status'], '31 Minuten alt')
+                    ?? ff_st_expect_same(31, $old['age_min'], 'Alter 31')
+                    ?? ff_st_expect_same('ok', $edge['status'], '30 Minuten alt (jüngste Datei zählt)')
+                    ?? ff_st_expect_same('db_x_20260101_001500.sql.gz', $edge['file'], 'jüngste Datei');
+            } finally {
+                array_map('unlink', glob($dir . '/*') ?: []);
+                @rmdir($dir);
+            }
+        });
+
         $g = 'Code-Hygiene';
 
         $check($g, 'Keine CDN-Skripte/-Stylesheets im Live-Betrieb (Fremdbibliotheken liegen unter assets/)', function (mysqli $c) {

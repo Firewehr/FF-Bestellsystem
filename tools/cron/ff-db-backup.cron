@@ -1,0 +1,9 @@
+# Datenbank-Backup alle 15 Minuten (FeuerwehrBestellsystem)
+# Installieren:  sudo cp tools/cron/ff-db-backup.cron /etc/cron.d/ff-db-backup
+#                (Dateiname in /etc/cron.d ohne Punkt, Pfad unten an den Server anpassen)
+# Voraussetzung: backups/ gehört www-data (sudo chown www-data:www-data backups)
+# Zweites Laufwerk: --copy-to=/media/usb/ff-backups anhängen (Ordner muss www-data gehören).
+# Fehler landen im Syslog:  journalctl -t ff-db-backup
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+*/15 * * * * www-data php /var/www/bestellsystem/tools/db_backup.php --quiet 2>&1 | logger -t ff-db-backup

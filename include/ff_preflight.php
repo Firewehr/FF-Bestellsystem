@@ -7,13 +7,58 @@
  * 1. Test-Bestellungen und Queues gelöscht
  * 2. Alle Drucker online & Testbon erfolgreich gedruckt
  * 3. Rechnungsnummernkreis korrekt gesetzt
- * 4. Offline-Backup eingerichtet
+ * 4. Offline-Backup eingerichtet (Token + Datenbank-Backup höchstens 30 Minuten alt)
  */
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/ff_socket_printer.php';
+
+/**
+ * Alter des jüngsten Datenbank-Backups (backups/db_*.sql.gz aus tools/db_backup.php).
+ *
+ * @return array{status: string, badge: string, details: string, age_min: ?int, file: ?string}
+ */
+function ff_preflight_db_backup_status(string $backupDir, int $now, int $maxAgeMin = 30): array
+{
+    $newest = null;
+    $newestTs = 0;
+    foreach (glob(rtrim($backupDir, '/') . '/db_*.sql.gz') ?: [] as $f) {
+        $ts = (int) @filemtime($f);
+        if ($ts > $newestTs) {
+            $newestTs = $ts;
+            $newest = $f;
+        }
+    }
+    if ($newest === null) {
+        return [
+            'status' => 'warning',
+            'badge' => 'Kein DB-Backup',
+            'details' => 'Kein Datenbank-Backup gefunden. Cronjob für tools/db_backup.php einrichten (Vorlage: tools/cron/ff-db-backup.cron).',
+            'age_min' => null,
+            'file' => null,
+        ];
+    }
+    $ageMin = (int) floor(max(0, $now - $newestTs) / 60);
+    $file = basename($newest);
+    if ($ageMin > $maxAgeMin) {
+        return [
+            'status' => 'warning',
+            'badge' => 'DB-Backup veraltet',
+            'details' => "Letztes Datenbank-Backup ist {$ageMin} Minuten alt ({$file}). Läuft der Cronjob für tools/db_backup.php?",
+            'age_min' => $ageMin,
+            'file' => $file,
+        ];
+    }
+    return [
+        'status' => 'ok',
+        'badge' => 'Aktiv',
+        'details' => "Letztes Datenbank-Backup vor {$ageMin} Minuten ({$file}).",
+        'age_min' => $ageMin,
+        'file' => $file,
+    ];
+}
 
 function ff_preflight_check(mysqli $conn): array
 {
@@ -198,6 +243,19 @@ function ff_preflight_check(mysqli $conn): array
         $overall = 'warning';
     }
 
+    // Datenbank-Backup (tools/db_backup.php per Cron): jüngster Stand darf höchstens 30 Minuten alt sein.
+    $dbBackup = ff_preflight_db_backup_status($backupDir, time());
+    if ($dbBackup['status'] !== 'ok') {
+        $checkBackupDetails = $dbBackup['details'] . ($offlineToken === '' ? ' ' . $checkBackupDetails : '');
+        if ($checkBackupStatus === 'ok') {
+            $checkBackupStatus = 'warning';
+            $checkBackupBadge = $dbBackup['badge'];
+        }
+        $overall = 'warning';
+    } else {
+        $checkBackupDetails .= ' ' . $dbBackup['details'];
+    }
+
     return [
         'ok' => true,
         'overall' => $overall,
@@ -245,6 +303,8 @@ function ff_preflight_check(mysqli $conn): array
                 'details' => $checkBackupDetails,
                 'token_configured' => ($offlineToken !== ''),
                 'snapshot_count' => $backupCount,
+                'db_backup_age_min' => $dbBackup['age_min'],
+                'db_backup_file' => $dbBackup['file'],
                 'action_page' => 'stammdaten-rechnungsdaten',
                 'action_label' => 'Backup-Token hinterlegen',
             ],
