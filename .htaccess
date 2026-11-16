@@ -19,6 +19,20 @@ Options -Indexes
   </FilesMatch>
 </IfModule>
 
+# Doku-, Beispiel- und Projektdateien nie per HTTP ausliefern
+# (AGENTS.md, README.md, CHANGELOG.md, *.example.json, *.code-workspace, *.ini …)
+<IfModule mod_authz_core.c>
+  <FilesMatch "(?i)(\.(md|markdown|code-workspace|ini|example|dist)|\.example\.[a-z]+)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "(?i)(\.(md|markdown|code-workspace|ini|example|dist)|\.example\.[a-z]+)$">
+    Order deny,allow
+    Deny from all
+  </FilesMatch>
+</IfModule>
+
 # Interne Verzeichnisse und Konfigurationen nie per HTTP ausliefern
 <IfModule mod_rewrite.c>
   RewriteEngine On
