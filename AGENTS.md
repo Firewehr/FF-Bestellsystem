@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 124) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 129) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -258,6 +258,8 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
    - Jede API-Route bindet `api/v1/bootstrap.php` ein.
    - Antworten werden standardisiert über `api_response($data, $code)` oder `api_error($message, $code)` ausgeliefert.
    - Alle schreibenden Endpunkte (POST, PUT, DELETE) erfordern zwingend `api_require_csrf()`.
+   - Klassische Endpunkte: `auth.php` prüft jede schreibende Anfrage zentral (`ff_csrf_guard()` in `include/ff_csrf.php`). Gültig ist ein Token (Header `X-CSRF-Token` oder Feld `csrf_token`) oder eine Herkunft (`Origin`, ersatzweise `Referer`) vom eigenen Host. Einstellung `csrf_mode`: `log` (Standard, nur zählen in `ff_csrf_log`) oder `enforce` (abweisen, nur Super-Admin unter *Abrechnung & Sicherheit*). Neue Seiten schicken trotzdem immer das Token mit. Ausnahme für eine Datei nur begründet über `define('FF_CSRF_EXEMPT', true)` vor `auth.php`.
+   - Login: `include/ff_login_throttle.php` sperrt Benutzer + IP nach 5 Fehlversuchen in 15 Minuten für 5 Minuten (bewusst nicht die ganze IP: im Festzelt teilen sich viele Handys eine IP). Neue Login-Wege müssen `ff_login_throttle_status/fail/success` aufrufen.
 5. **Buchungsdaten nie verwaisen lassen:**
    - Speisekarten-Positionen werden ausschließlich über `ff_position_delete_guarded()` (`include/ff_position_delete.php`) gelöscht. Positionen mit Bestellungen oder Verpflegungs-Buchungen sind gesperrt (HTTP 409), weil sonst Statistik, Abrechnung und Steuer-Export den Artikel verlieren.
 6. **Transaktionssicherheit:**
@@ -281,7 +283,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 124 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 129 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Änderungen an Kellner-App, Station oder Pilot-Admin zusätzlich den Browser-Smoke-Test ausführen (speichert nichts, alle POSTs werden abgefangen; Zugangsdaten nur per Umgebungsvariable):
   ```bash
   FF_UI_USER=... FF_UI_PASS=... python3 tools/ui_smoke_test.py [--shots /pfad/zu/screenshots]

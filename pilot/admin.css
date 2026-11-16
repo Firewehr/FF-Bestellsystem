@@ -1775,3 +1775,24 @@ body.theme-dark .form-control:focus, body.theme-dark .form-select:focus {
   .print-problems-table .pp-actions .btn { flex: 1; justify-content: center; }
   .print-problems-actions .btn + .btn { margin-left: 0; }
 }
+
+/* Dashboard-Hinweis (z. B. gesperrte Logins) */
+.admin-alert-warning {
+  border-left: 4px solid var(--ff-warning, #f59e0b);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+/* Abrechnung & Sicherheit: Login-Sperren und CSRF-Protokoll unter den beiden Karten */
+.sec-card {
+  margin-top: 20px;
+}
+
+.sec-row-problem td {
+  background: color-mix(in srgb, var(--ff-warning, #f59e0b) 12%, transparent);
+}

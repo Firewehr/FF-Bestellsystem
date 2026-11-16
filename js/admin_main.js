@@ -151,6 +151,95 @@ function abrechnungAusfuehren() {
         .catch(function() { alert('Fehler beim Ausführen.'); });
 }
 
+/* Sicherheit: Login-Sperren und CSRF-Protokoll (admin_security_api.php) */
+function ffSecurityEsc(v) {
+    return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function(c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+
+function ffSecurityLoad() {
+    var loginBody = ffById('secLoginBody');
+    var csrfBody = ffById('secCsrfBody');
+    if (!loginBody || !csrfBody) return;
+    fetchGet('admin_security_api.php?action=overview')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) throw new Error((d && d.error) || 'Fehler');
+            var modeEl = ffById('secCsrfMode');
+            if (modeEl) {
+                modeEl.textContent = d.csrf_mode === 'enforce' ? 'Abweisen (scharf)' : 'Nur protokollieren';
+                modeEl.className = d.csrf_mode === 'enforce' ? 'text-danger' : '';
+            }
+            var lim = ffById('secLimitsText');
+            if (lim && d.limits) {
+                lim.textContent = d.limits.max_fails + ' falsche Passwörter innerhalb von ' + d.limits.window_min
+                    + ' Minuten sperren die Kombination Benutzer + Geräte-IP für ' + d.limits.lock_min
+                    + ' Minuten. Andere Geräte und Passkey-Login sind nicht betroffen.';
+            }
+            var rows = d.login_failures || [];
+            loginBody.innerHTML = rows.length ? rows.map(function(r) {
+                var mins = Math.max(1, Math.ceil((r.retry_after || 0) / 60));
+                var status = r.locked
+                    ? '<span class="badge bg-danger">gesperrt, noch ' + mins + ' min</span>'
+                    : '<span class="badge bg-secondary">Fehlversuche</span>';
+                return '<tr><td>' + ffSecurityEsc(r.username) + '</td><td><code>' + ffSecurityEsc(r.ip) + '</code></td>'
+                    + '<td class="text-end">' + r.fails + '</td><td class="small">' + ffSecurityEsc(r.last_fail_at) + '</td>'
+                    + '<td>' + status + '</td>'
+                    + '<td class="text-end"><button type="button" class="btn btn-outline-primary btn-sm py-0" data-user="' + ffSecurityEsc(r.username)
+                    + '" data-ip="' + ffSecurityEsc(r.ip) + '" onclick="ffSecurityUnlock(this.dataset.user, this.dataset.ip);">'
+                    + (r.locked ? 'Entsperren' : 'Zurücksetzen') + '</button></td></tr>';
+            }).join('') : '<tr><td colspan="6" class="text-muted small">Keine Fehlversuche in den letzten 24 Stunden.</td></tr>';
+
+            var labels = { origin: 'Herkunft geprüft', referer: 'Herkunft geprüft (Referer)', foreign: 'fremd', unknown: 'unbekannt' };
+            var log = d.csrf_log || [];
+            csrfBody.innerHTML = log.length ? log.map(function(r) {
+                var bad = r.via === 'foreign' || r.via === 'unknown';
+                return '<tr class="' + (bad ? 'table-warning' : '') + '"><td><code>' + ffSecurityEsc(r.path) + '</code></td>'
+                    + '<td>' + ffSecurityEsc(labels[r.via] || r.via) + '</td><td class="text-end">' + r.cnt + '</td>'
+                    + '<td class="text-end">' + (r.blocked || 0) + '</td><td class="small">' + ffSecurityEsc(r.last_at) + '</td>'
+                    + '<td>' + ffSecurityEsc(r.last_user) + '</td></tr>';
+            }).join('') : '<tr><td colspan="6" class="text-muted small">Keine Anfragen ohne Token in den letzten 7 Tagen.</td></tr>';
+        })
+        .catch(function() {
+            loginBody.innerHTML = '<tr><td colspan="6" class="text-danger small">Laden fehlgeschlagen.</td></tr>';
+        });
+}
+
+function ffSecurityUnlock(username, ip) {
+    if (!confirm('Login-Sperre für „' + username + '“ (' + ip + ') aufheben?')) return;
+    fetchPost('admin_security_api.php', { action: 'unlock', username: username, ip: ip })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert((d && d.error) || 'Fehler'); return; }
+            ffSecurityLoad();
+        })
+        .catch(function() { alert('Entsperren fehlgeschlagen.'); });
+}
+
+function ffSecuritySetMode(mode) {
+    var msg = mode === 'enforce'
+        ? 'CSRF-Schutz scharf schalten? Anfragen fremder oder unbekannter Herkunft werden dann abgewiesen. Vorher im Protokoll prüfen, dass dort keine eigenen Seiten als „fremd“/„unbekannt“ stehen.'
+        : 'CSRF-Schutz auf „nur protokollieren“ zurückstellen?';
+    if (!confirm(msg)) return;
+    fetchPost('admin_security_api.php', { action: 'set_csrf_mode', mode: mode })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert((d && d.error) || 'Fehler'); return; }
+            ffSecurityLoad();
+        })
+        .catch(function() { alert('Speichern fehlgeschlagen.'); });
+}
+
+(function() {
+    var el = ffById('SicherheitZugriff');
+    if (el) el.addEventListener('show.bs.collapse', ffSecurityLoad);
+})();
+
+window.ffSecurityLoad = ffSecurityLoad;
+window.ffSecurityUnlock = ffSecurityUnlock;
+window.ffSecuritySetMode = ffSecuritySetMode;
+
 var posStatChartInstance = null;
 var posStatWaitChartInstance = null;
 var posStatWaitTimelineChartInstance = null;
@@ -2342,6 +2431,13 @@ function adminDashboardApplyPayload(d) {
     }
     if (typeof ffRenderBestandteilStockList === 'function') {
         ffRenderBestandteilStockList(d.bestandteil_stock, 'dashBestandteilStock', 'dashBestandteilStockWrap');
+    }
+    var lockBox = ffById('dashLoginLocks');
+    if (lockBox) {
+        var locks = d.login_locks || [];
+        var lockNames = ffById('dashLoginLocksNames');
+        if (lockNames) lockNames.textContent = locks.join(', ');
+        lockBox.classList.toggle('d-none', locks.length === 0);
     }
     adminDashboardApplyPrintAlerts(d);
     adminMaybeNotifyPrintIssues(d);

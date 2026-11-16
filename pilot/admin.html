@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="admin.css?v=20261115_16">
+  <link rel="stylesheet" href="admin.css?v=20261116_1">
 </head>
 <body>
   <div id="app" v-cloak>
@@ -167,6 +167,10 @@
         <div v-if="printerDevicesPending > 0" class="admin-card" style="border-left: 4px solid var(--ff-warning, #f59e0b); padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
           <span>🖨️ <strong>{{ printerDevicesPending }} neue(r) Druck-Client(s)</strong> warten auf Freischaltung. Bis dahin wird auf diesen Geräten nichts gedruckt.</span>
           <button type="button" class="btn btn-primary btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'druckziele')">Jetzt prüfen</button>
+        </div>
+        <div v-if="(overview?.stats?.login_locks || []).length" class="admin-card admin-alert-warning">
+          <span>🔒 <strong>Login gesperrt:</strong> {{ overview.stats.login_locks.join(', ') }} – zu viele falsche Passwörter.</span>
+          <button type="button" class="btn btn-outline btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'abrechnung')">Ansehen / entsperren</button>
         </div>
         <!-- KPI Kacheln -->
         <div class="kpi-grid">
@@ -1330,6 +1334,88 @@
                   Bereinigt alle Test-Bestellungen, Queues, Kassenabschlüsse und setzt Zähler vor Festbeginn zurück. Stammdaten (Tische, Speisekarte, Benutzer) bleiben erhalten.
                 </p>
                 <button type="button" class="btn btn-danger" @click="executeFestStart">Fest-Start ausführen (FEST-START)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Login-Sperren -->
+          <div class="admin-card sec-card">
+            <div class="card-header">
+              <h3><span>🔒</span> Login-Sperren</h3>
+              <button type="button" class="btn btn-outline btn-sm" :disabled="security.loading" @click="loadSecurity">Aktualisieren</button>
+            </div>
+            <div class="card-body">
+              <p class="u-muted-sm u-mb-16">
+                {{ security.limits.max_fails || 5 }} falsche Passwörter innerhalb von {{ security.limits.window_min || 15 }} Minuten sperren die Kombination
+                Benutzer + Geräte-IP für {{ security.limits.lock_min || 5 }} Minuten. Andere Geräte und der Passkey-Login sind nicht betroffen.
+              </p>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>Benutzer</th><th>IP</th><th class="u-text-right">Fehlversuche</th><th>Zuletzt</th><th>Status</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in security.login_failures" :key="r.username + '|' + r.ip">
+                      <td>{{ r.username }}</td>
+                      <td><code>{{ r.ip }}</code></td>
+                      <td class="u-text-right">{{ r.fails }}</td>
+                      <td class="u-hint">{{ r.last_fail_at }}</td>
+                      <td>
+                        <span v-if="r.locked" class="badge badge-danger">gesperrt, noch {{ Math.max(1, Math.ceil(r.retry_after / 60)) }} Min.</span>
+                        <span v-else class="badge badge-warning">Fehlversuche</span>
+                      </td>
+                      <td class="u-text-right">
+                        <button type="button" class="btn btn-outline btn-sm" @click="unlockLogin(r)">{{ r.locked ? 'Entsperren' : 'Zurücksetzen' }}</button>
+                      </td>
+                    </tr>
+                    <tr v-if="!security.login_failures.length">
+                      <td colspan="6" class="u-empty-cell">{{ security.loaded ? 'Keine Fehlversuche in den letzten 24 Stunden.' : 'Wird geladen …' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- CSRF -->
+          <div class="admin-card sec-card">
+            <div class="card-header">
+              <h3><span>🛡️</span> Schutz vor fremden Anfragen (CSRF)</h3>
+              <span class="badge" :class="security.csrf_mode === 'enforce' ? 'badge-danger' : 'badge-info'">
+                {{ security.csrf_mode === 'enforce' ? 'Abweisen (scharf)' : 'Nur protokollieren' }}
+              </span>
+            </div>
+            <div class="card-body">
+              <p class="u-muted-sm u-mb-16">
+                Jede schreibende Anfrage braucht das Sicherheits-Token der Sitzung oder muss von dieser Seite selbst kommen (Browser-Herkunft).
+                Im Modus <strong>Nur protokollieren</strong> wird gezählt, im Modus <strong>Abweisen</strong> werden Anfragen fremder oder unbekannter Herkunft blockiert.
+                Die Tabelle zeigt Anfragen ohne gültiges Token der letzten 7 Tage.
+              </p>
+              <div v-if="security.can_change_mode" class="u-row-wrap u-mb-16">
+                <button type="button" class="btn btn-outline" :disabled="security.csrf_mode === 'log'" @click="setCsrfMode('log')">Nur protokollieren</button>
+                <button type="button" class="btn btn-danger" :disabled="security.csrf_mode === 'enforce'" @click="setCsrfMode('enforce')">Abweisen (scharf schalten)</button>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>Datei</th><th>Ergebnis</th><th class="u-text-right">Anzahl</th><th class="u-text-right">Blockiert</th><th>Zuletzt</th><th>Benutzer</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="r in security.csrf_log" :key="r.path + '|' + r.via" :class="{ 'sec-row-problem': isCsrfProblem(r.via) }">
+                      <td><code>{{ r.path }}</code></td>
+                      <td>
+                        <span class="badge" :class="isCsrfProblem(r.via) ? 'badge-warning' : 'badge-info'">{{ csrfViaLabel(r.via) }}</span>
+                      </td>
+                      <td class="u-text-right">{{ r.cnt }}</td>
+                      <td class="u-text-right">{{ r.blocked }}</td>
+                      <td class="u-hint">{{ r.last_at }}</td>
+                      <td>{{ r.last_user }}</td>
+                    </tr>
+                    <tr v-if="!security.csrf_log.length">
+                      <td colspan="6" class="u-empty-cell">{{ security.loaded ? 'Keine Anfragen ohne Token in den letzten 7 Tagen.' : 'Wird geladen …' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -3487,6 +3573,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261115_7"></script>
+  <script type="module" src="admin.js?v=20261116_1"></script>
 </body>
 </html>

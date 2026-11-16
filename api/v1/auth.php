@@ -13,6 +13,7 @@ require_once dirname(__DIR__, 2) . '/include/ff_user_permissions.php';
 require_once dirname(__DIR__, 2) . '/include/ff_direktverkauf_auth.php';
 require_once dirname(__DIR__, 2) . '/include/ff_schema_login.php';
 require_once dirname(__DIR__, 2) . '/include/user_landing.php';
+require_once dirname(__DIR__, 2) . '/include/ff_login_throttle.php';
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $data = api_get_request_data();
@@ -40,6 +41,14 @@ if ($method === 'POST') {
         ff_users_ensure_menu_permissions_column($conn);
         ff_users_ensure_status_columns($conn);
         ff_users_ensure_auth_rev_column($conn);
+        ff_login_throttle_ensure_schema($conn);
+
+        $loginIp = ff_login_throttle_ip();
+        $lock = ff_login_throttle_status($conn, $username, $loginIp);
+        if ($lock['locked']) {
+            header('Retry-After: ' . $lock['retry_after']);
+            api_error(ff_login_throttle_message($lock['retry_after']), 'too_many_attempts', 429);
+        }
 
         $stmt = mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
         if (!$stmt) {
@@ -52,6 +61,11 @@ if ($method === 'POST') {
         mysqli_stmt_close($stmt);
 
         if (!$user || !password_verify($password, $user['password'])) {
+            $after = ff_login_throttle_fail($conn, $username, $loginIp);
+            if ($after['locked']) {
+                header('Retry-After: ' . $after['retry_after']);
+                api_error(ff_login_throttle_message($after['retry_after']), 'too_many_attempts', 429);
+            }
             api_error('Benutzername oder Passwort falsch.', 'invalid_credentials', 401);
         }
 
@@ -70,6 +84,7 @@ if ($method === 'POST') {
             }
         }
 
+        ff_login_throttle_success($conn, $username, $loginIp);
         $_SESSION = [];
         session_regenerate_id(true);
         $_SESSION['login'] = true;

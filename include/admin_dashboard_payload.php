@@ -15,6 +15,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     require_once __DIR__ . '/ff_print_target_labels.php';
     require_once __DIR__ . '/ff_rezepturen_schema.php';
     require_once __DIR__ . '/ff_position_stock_summary.php';
+    require_once __DIR__ . '/ff_login_throttle.php';
 
     static $memo = null;
     static $memoExpires = 0;
@@ -203,8 +204,18 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     $positionStock = ff_position_stock_limited_list($conn);
     $bestandteilStock = ff_bestandteil_stock_limited_list($conn);
 
+    // Aktive Login-Sperren (Passwort-Raten)
+    ff_login_throttle_ensure_schema($conn);
+    $loginLocks = [];
+    foreach (ff_login_throttle_list($conn) as $lf) {
+        if ($lf['locked']) {
+            $loginLocks[] = $lf['username'];
+        }
+    }
+
     $payload = [
         'ok' => true,
+        'login_locks' => array_values(array_unique($loginLocks)),
         'fest_id' => $festId,
         'fest_name' => $festName,
         'datum_heute' => $today,

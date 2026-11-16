@@ -567,6 +567,11 @@ function BenutzerNeu() {
                         </div>
                     </div>
                     <p class="small text-warning mb-3 d-none" id="dashHinweisApi"></p>
+                    <div class="alert alert-warning d-none mb-3 py-2 small" id="dashLoginLocks" role="alert">
+                        <strong>Login gesperrt:</strong> <span id="dashLoginLocksNames"></span>
+                        (zu viele falsche Passwörter)
+                        <button type="button" class="btn btn-sm btn-outline-dark py-0 ms-2 ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Ansehen / entsperren</button>
+                    </div>
                     <div class="alert alert-danger d-none mb-3" id="dashPrintAlertCritical" role="alert">
                         <strong>Druck / Print-Client – Auffälligkeiten</strong>
                         <ul class="small mb-0 mt-2" id="dashPrintAlertList"></ul>
@@ -1335,6 +1340,46 @@ function BenutzerNeu() {
                         <button type="button" class="btn btn-danger btn-sm" onclick="resetBestellungen();">Alle Bestellungen löschen (Notfall)</button>
                     </div>
                     <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header collapsed" data-bs-toggle="collapse" data-bs-target="#SicherheitZugriff" aria-expanded="false">
+                Sicherheit: Anmeldung &amp; fremde Anfragen
+            </div>
+            <div id="SicherheitZugriff" class="collapse">
+                <div class="card-body">
+                    <div class="border rounded-3 p-3 mb-4 bg-light">
+                        <h5 class="mb-2">Login-Sperren</h5>
+                        <p class="small text-muted mb-2" id="secLimitsText">Nach mehreren falschen Passwörtern wird die Kombination Benutzer + Gerät-IP kurz gesperrt. Andere Geräte und Passkey-Login sind nicht betroffen.</p>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-2">
+                                <thead><tr><th>Benutzer</th><th>IP</th><th class="text-end">Fehlversuche</th><th>Zuletzt</th><th>Status</th><th></th></tr></thead>
+                                <tbody id="secLoginBody"><tr><td colspan="6" class="text-muted small">Wird geladen …</td></tr></tbody>
+                            </table>
+                        </div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="ffSecurityLoad();">Aktualisieren</button>
+                    </div>
+
+                    <div class="border rounded-3 p-3 bg-light">
+                        <h5 class="mb-2">Schutz vor fremden Anfragen (CSRF)</h5>
+                        <p class="small text-muted mb-2">Jede schreibende Anfrage braucht das Sicherheits-Token der Sitzung oder muss von dieser Seite selbst kommen (Browser-Herkunft). Im Modus <strong>Protokollieren</strong> wird nur gezählt, im Modus <strong>Abweisen</strong> werden Anfragen fremder Herkunft blockiert.</p>
+                        <p class="small mb-2">Aktueller Modus: <strong id="secCsrfMode">…</strong></p>
+                        <?php if ($isSuperAdmin): ?>
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-secondary btn-sm me-1" onclick="ffSecuritySetMode('log');">Nur protokollieren</button>
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="ffSecuritySetMode('enforce');">Abweisen (scharf)</button>
+                        </div>
+                        <?php endif; ?>
+                        <p class="small text-muted mb-1">Anfragen ohne gültiges Token, letzte 7 Tage. <em>Herkunft geprüft</em> = erlaubt (eigene Seite, Token fehlte); <em>fremd</em>/<em>unbekannt</em> = würde im Modus „Abweisen“ blockiert.</p>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead><tr><th>Datei</th><th>Ergebnis</th><th class="text-end">Anzahl</th><th class="text-end">Blockiert</th><th>Zuletzt</th><th>Benutzer</th></tr></thead>
+                                <tbody id="secCsrfBody"><tr><td colspan="6" class="text-muted small">Wird geladen …</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

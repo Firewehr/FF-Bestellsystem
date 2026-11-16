@@ -199,8 +199,15 @@ if (!empty($_POST)) {
             ff_users_ensure_menu_permissions_column($conn);
             ff_users_ensure_status_columns($conn);
             ff_users_ensure_auth_rev_column($conn);
-            $stmt = mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
-            if (!$stmt) {
+            require_once __DIR__ . '/include/ff_login_throttle.php';
+            ff_login_throttle_ensure_schema($conn);
+            $ffLoginIp = ff_login_throttle_ip();
+            $ffLoginLock = ff_login_throttle_status($conn, $user, $ffLoginIp);
+            $stmt = $ffLoginLock['locked'] ? null : mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
+            if ($ffLoginLock['locked']) {
+                // Gesperrt: Passwort gar nicht erst prüfen (auch ein richtiges nicht)
+                $message['error'] = ff_login_throttle_message($ffLoginLock['retry_after']);
+            } elseif (!$stmt) {
                 $message['error'] = 'Datenbankfehler: ' . mysqli_error($conn);
             } else {
                 mysqli_stmt_bind_param($stmt, 's', $user);
@@ -227,6 +234,7 @@ if (!empty($_POST)) {
                             }
                         }
 
+                        ff_login_throttle_success($conn, $user, $ffLoginIp);
                         $_SESSION = [];
                         session_regenerate_id(true);
                         $_SESSION['login'] = true;
@@ -272,10 +280,12 @@ if (!empty($_POST)) {
                         header('Location: index.php#' . $land);
                         exit;
                     } else {
-                        $message['error'] = 'Das Kennwort ist nicht korrekt.';
+                        $ffAfter = ff_login_throttle_fail($conn, $user, $ffLoginIp);
+                        $message['error'] = $ffAfter['locked'] ? ff_login_throttle_message($ffAfter['retry_after']) : 'Das Kennwort ist nicht korrekt.';
                     }
                 } else {
-                    $message['error'] = 'Der Benutzer wurde nicht gefunden.';
+                    $ffAfter = ff_login_throttle_fail($conn, $user, $ffLoginIp);
+                    $message['error'] = $ffAfter['locked'] ? ff_login_throttle_message($ffAfter['retry_after']) : 'Der Benutzer wurde nicht gefunden.';
                 }
             }
         }

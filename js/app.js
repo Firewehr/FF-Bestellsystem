@@ -1022,6 +1022,20 @@
                     ffMenuCacheClear();
                 }
             } catch (err) { /* ignorieren */ }
+            try {
+                // CSRF-Token bei jeder schreibenden Anfrage an diesen Server mitschicken
+                var m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+                var target = typeof input === 'string' ? input : (input && input.url) || '';
+                var sameOrigin = new URL(target, window.location.href).origin === window.location.origin;
+                var tok = typeof window.ffGetCsrfToken === 'function' ? window.ffGetCsrfToken() : '';
+                if (m !== 'GET' && m !== 'HEAD' && sameOrigin && tok && typeof input === 'string') {
+                    init = Object.assign({}, init || {});
+                    var h = new Headers(init.headers || {});
+                    if (!h.has('X-CSRF-Token')) h.set('X-CSRF-Token', tok);
+                    init.headers = h;
+                    return origFetch.call(this, input, init);
+                }
+            } catch (err) { /* ohne Token weiter (Server prüft dann die Herkunft) */ }
             return origFetch.apply(this, arguments);
         };
         wrapped.__ffMenuWrapped = true;

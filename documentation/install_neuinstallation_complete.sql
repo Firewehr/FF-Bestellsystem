@@ -547,6 +547,33 @@ CREATE TABLE IF NOT EXISTS `printer_jobs` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ------------------------------------------
+-- Tabelle: ff_login_failures (Login-Sperre gegen Passwort-Raten, include/ff_login_throttle.php)
+-- ------------------------------------------
+CREATE TABLE IF NOT EXISTS `ff_login_failures` (
+  `username` VARCHAR(100) NOT NULL,
+  `ip` VARCHAR(45) NOT NULL,
+  `fails` INT NOT NULL DEFAULT 0,
+  `last_fail_at` DATETIME NOT NULL,
+  `locked_until` DATETIME NULL DEFAULT NULL,
+  PRIMARY KEY (`username`, `ip`),
+  KEY `idx_last_fail` (`last_fail_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ------------------------------------------
+-- Tabelle: ff_csrf_log (schreibende Anfragen ohne gültiges Token, include/ff_csrf.php)
+-- ------------------------------------------
+CREATE TABLE IF NOT EXISTS `ff_csrf_log` (
+  `tag` DATE NOT NULL,
+  `path` VARCHAR(190) NOT NULL,
+  `via` VARCHAR(16) NOT NULL,
+  `cnt` INT NOT NULL DEFAULT 0,
+  `blocked` INT NOT NULL DEFAULT 0,
+  `last_at` DATETIME NOT NULL,
+  `last_user` VARCHAR(100) NOT NULL DEFAULT '',
+  PRIMARY KEY (`tag`, `path`, `via`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ============================================================================
 -- Ende Neuinstallation. Danach: Login (admin / admin123), Admin konfigurieren, Passwort ändern.
 -- Quelle: include/sql.sql (inkl. Finanzmodul, Buchungen, Mitarbeiter-Verpflegung).

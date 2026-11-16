@@ -42,6 +42,9 @@ if ($ffAuthInvalid !== null) {
     ff_auth_terminate_session($ffAuthInvalid);
 }
 
+// CSRF zentral für alle schreibenden Anfragen (Modus „log“ oder „enforce“, siehe include/ff_csrf.php)
+ff_csrf_guard($conn);
+
 if (!empty($_SESSION['login'])) {
     $login_status = '
 			<div style="border: 1px solid black">

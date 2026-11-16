@@ -2947,6 +2947,60 @@ createApp({
       } catch (e) {}
     }
 
+    // Sicherheit: Login-Sperren und CSRF-Protokoll (../admin_security_api.php)
+    const security = ref({ loaded: false, loading: false, csrf_mode: 'log', can_change_mode: false, csrf_log: [], login_failures: [], limits: {} });
+    const csrfViaLabels = { origin: 'Herkunft geprüft', referer: 'Herkunft geprüft (Referer)', foreign: 'fremd', unknown: 'unbekannt' };
+
+    function csrfViaLabel(via) {
+      return csrfViaLabels[via] || via;
+    }
+
+    function isCsrfProblem(via) {
+      return via === 'foreign' || via === 'unknown';
+    }
+
+    async function loadSecurity() {
+      security.value.loading = true;
+      try {
+        const res = await apiRequest('../admin_security_api.php?action=overview', { silent: true });
+        security.value = { ...res, loaded: true, loading: false };
+      } catch (e) {
+        security.value.loading = false;
+        showToast('Sicherheits-Übersicht konnte nicht geladen werden.', 'error');
+      }
+    }
+
+    async function postSecurity(params) {
+      return apiRequest('../admin_security_api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(params).toString(),
+      });
+    }
+
+    async function unlockLogin(row) {
+      const what = row.locked ? 'Sperre aufheben' : 'Fehlversuche zurücksetzen';
+      if (!confirm(`${what} für „${row.username}“ (${row.ip})?`)) return;
+      try {
+        await postSecurity({ action: 'unlock', username: row.username, ip: row.ip });
+        showToast(`Login für „${row.username}“ wieder frei.`);
+        loadSecurity();
+        loadOverview();
+      } catch (e) {}
+    }
+
+    async function setCsrfMode(mode) {
+      const msg = mode === 'enforce'
+        ? 'CSRF-Schutz scharf schalten? Anfragen fremder oder unbekannter Herkunft werden dann abgewiesen.\n\nVorher im Protokoll prüfen, dass dort keine eigenen Seiten als „fremd“ oder „unbekannt“ stehen.'
+        : 'CSRF-Schutz auf „nur protokollieren“ zurückstellen?';
+      if (!confirm(msg)) return;
+      try {
+        await postSecurity({ action: 'set_csrf_mode', mode });
+        showToast(mode === 'enforce' ? 'CSRF-Schutz ist scharf geschaltet.' : 'CSRF-Schutz protokolliert nur noch.');
+        loadSecurity();
+      } catch (e) {}
+    }
+
     // -------------------------------------------------------------------------
     // 12. Hilfsfunktionen
     // -------------------------------------------------------------------------
@@ -2980,7 +3034,7 @@ createApp({
         if (tab === 'tische' || tab === 'tischplan') loadTables();
         if (tab === 'mcp') loadMcpStatus();
         if (tab === 'druckziele') loadPrinterDevices();
-        if (tab === 'abrechnung') previewSchreibaus();
+        if (tab === 'abrechnung') { previewSchreibaus(); loadSecurity(); }
         if (tab === 'tests' && !testResults.value) runSelftests();
       }
       if (group === 'speisekarte') {
@@ -3355,6 +3409,12 @@ createApp({
       previewSchreibaus,
       executeSchreibaus,
       executeFestStart,
+      security,
+      loadSecurity,
+      unlockLogin,
+      setCsrfMode,
+      csrfViaLabel,
+      isCsrfProblem,
       formatEur,
     };
   },

@@ -26,6 +26,7 @@ require_once __DIR__ . '/ff_rechnungen_ensure_columns.php';
 require_once __DIR__ . '/ff_bestellung_verschieben.php';
 require_once __DIR__ . '/ff_schema_helpers.php';
 require_once __DIR__ . '/ff_sammelrechnung.php';
+require_once __DIR__ . '/ff_login_throttle.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -1597,6 +1598,8 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
     ff_bestellungen_ensure_rechnung_id_column($conn);
     ff_feste_ensure_rechnung_prefix_column($conn);
     ff_sammelrechnung_ensure_schema($conn);
+    ff_login_throttle_ensure_schema($conn);
+    ff_csrf_log_ensure_schema($conn);
     settings_ensure_table($conn);
     setting_get($conn, FF_RECHNUNG_NEXT_KEY, '');
 
@@ -1679,6 +1682,35 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return 'Ungültiges Token wurde fälschlicherweise akzeptiert.';
         }
         return true;
+    });
+
+    $check($gCsrf, 'Zentrale Prüfung: Token oder eigene Herkunft erlaubt, fremde/unbekannte Herkunft nicht', function () {
+        $tok = str_repeat('ab', 32);
+        $host = ['HTTP_HOST' => 'pos.example.org'];
+        $cases = [
+            'Token im Header' => [$host + ['HTTP_X_CSRF_TOKEN' => $tok], [], 'token', true],
+            'Token im Formular' => [$host, ['csrf_token' => $tok], 'token', true],
+            'ohne Token, Origin gleich' => [$host + ['HTTP_ORIGIN' => 'https://pos.example.org'], [], 'origin', true],
+            'Origin mit Port, Host mit Port' => [['HTTP_HOST' => 'pos.example.org:8080', 'HTTP_ORIGIN' => 'http://POS.example.org:8080'], [], 'origin', true],
+            'veraltetes Token, Origin gleich' => [$host + ['HTTP_ORIGIN' => 'https://pos.example.org', 'HTTP_X_CSRF_TOKEN' => 'alt'], [], 'origin', true],
+            'hinter Proxy (X-Forwarded-Host)' => [['HTTP_HOST' => '10.0.0.5', 'HTTP_X_FORWARDED_HOST' => 'pos.example.org', 'HTTP_ORIGIN' => 'https://pos.example.org'], [], 'origin', true],
+            'ohne Origin, Referer gleich' => [$host + ['HTTP_REFERER' => 'https://pos.example.org/admin.php'], [], 'referer', true],
+            'Origin fremd' => [$host + ['HTTP_ORIGIN' => 'https://evil.example.com'], [], 'foreign', false],
+            'Origin ähnlicher Host' => [$host + ['HTTP_ORIGIN' => 'https://pos.example.org.evil.com'], [], 'foreign', false],
+            'Origin fremd trotz eigenem Referer' => [$host + ['HTTP_ORIGIN' => 'https://evil.example.com', 'HTTP_REFERER' => 'https://pos.example.org/'], [], 'foreign', false],
+            'Referer fremd' => [$host + ['HTTP_REFERER' => 'https://evil.example.com/x'], [], 'foreign', false],
+            'Origin null' => [$host + ['HTTP_ORIGIN' => 'null'], [], 'unknown', false],
+            'nichts' => [$host, [], 'unknown', false],
+        ];
+        foreach ($cases as $name => [$server, $post, $via, $ok]) {
+            $r = ff_csrf_request_check($server, $post, $tok);
+            if ($r['via'] !== $via || $r['ok'] !== $ok) {
+                return $name . ': erwartet ' . $via . '/' . var_export($ok, true) . ', erhalten ' . $r['via'] . '/' . var_export($r['ok'], true);
+            }
+        }
+        // Ohne Session-Token zählt auch ein leeres Token nie als gültig
+        $r = ff_csrf_request_check($host + ['HTTP_X_CSRF_TOKEN' => ''], [], '');
+        return $r['via'] === 'unknown' ? null : 'leeres Token: ' . $r['via'];
     });
 
     $check($gCsrf, 'CSRF Validierung via HTTP Header (X-CSRF-Token)', function () {
@@ -3300,6 +3332,78 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return ff_st_expect_same(['position_tisch_mismatch', 'position_tisch_mismatch', 'not_sammelrechnung_tisch', 'missing_zustaendig'], $errors, 'Abbruchgründe')
                 ?? ff_st_expect_same('leer', ff_st_flow_state($c, $own)['bezahlt'], 'eigene Position bleibt offen')
                 ?? ff_st_expect_same(1, (int) (ff_st_fetch_one($c, 'SELECT is_sammelrechnung AS s FROM tische WHERE tischnummer = ?', 'i', [$t])['s'] ?? 0), 'Tisch bleibt Sammelrechnung');
+        });
+
+        $g = 'Login-Sperre';
+
+        $check($g, 'Fünf Fehlversuche sperren Benutzer + IP; andere IP und anderer Benutzer bleiben frei', function (mysqli $c) {
+            $u = 'zz_selftest_login';
+            $ip = '203.0.113.7';
+            for ($i = 1; $i <= FF_LOGIN_MAX_FAILS - 1; $i++) {
+                if (ff_login_throttle_fail($c, $u, $ip)['locked']) {
+                    return 'nach ' . $i . ' Fehlversuch(en) schon gesperrt';
+                }
+            }
+            $after = ff_login_throttle_fail($c, ' ZZ_Selftest_Login ', $ip); // gleiche Person, anders geschrieben
+            $status = ff_login_throttle_status($c, $u, $ip);
+            return ff_st_expect_same(true, $after['locked'], 'gesperrt nach ' . FF_LOGIN_MAX_FAILS)
+                ?? ff_st_expect_same(true, $status['retry_after'] > (FF_LOGIN_LOCK_MIN - 1) * 60 && $status['retry_after'] <= FF_LOGIN_LOCK_MIN * 60, 'Restzeit ' . $status['retry_after'] . ' s')
+                ?? ff_st_expect_same(false, ff_login_throttle_status($c, $u, '203.0.113.8')['locked'], 'andere IP')
+                ?? ff_st_expect_same(false, ff_login_throttle_status($c, 'zz_selftest_other', $ip)['locked'], 'anderer Benutzer');
+        });
+
+        $check($g, 'Erfolgreicher Login und Admin-Entsperren löschen den Zähler', function (mysqli $c) {
+            $u = 'zz_selftest_login2';
+            $ip = '203.0.113.9';
+            for ($i = 0; $i < FF_LOGIN_MAX_FAILS - 1; $i++) {
+                ff_login_throttle_fail($c, $u, $ip);
+            }
+            ff_login_throttle_success($c, $u, $ip);
+            $afterSuccess = ff_login_throttle_fail($c, $u, $ip); // zählt wieder ab 1
+            $fails = (int) (ff_st_fetch_one($c, 'SELECT fails FROM ff_login_failures WHERE username = ? AND ip = ?', 'ss', [$u, $ip])['fails'] ?? -1);
+            for ($i = 0; $i < FF_LOGIN_MAX_FAILS; $i++) {
+                ff_login_throttle_fail($c, $u, $ip);
+            }
+            $locked = ff_login_throttle_status($c, $u, $ip)['locked'];
+            $removed = ff_login_throttle_unlock($c, $u);
+            return ff_st_expect_same(false, $afterSuccess['locked'], 'nach Erfolg frei')
+                ?? ff_st_expect_same(1, $fails, 'Zähler nach Erfolg')
+                ?? ff_st_expect_same(true, $locked, 'wieder gesperrt')
+                ?? ff_st_expect_same(1, $removed, 'Entsperren entfernt Eintrag')
+                ?? ff_st_expect_same(false, ff_login_throttle_status($c, $u, $ip)['locked'], 'nach Entsperren frei');
+        });
+
+        $check($g, 'Alte Fehlversuche (außerhalb des Fensters) und abgelaufene Sperren zählen nicht weiter', function (mysqli $c) {
+            $u = 'zz_selftest_login3';
+            $ip = '203.0.113.10';
+            ff_login_throttle_fail($c, $u, $ip);
+            ff_st_exec($c, 'UPDATE ff_login_failures SET fails = ?, last_fail_at = NOW() - INTERVAL ? MINUTE WHERE username = ? AND ip = ?', 'iiss', [FF_LOGIN_MAX_FAILS - 1, FF_LOGIN_WINDOW_MIN + 1, $u, $ip]);
+            $old = ff_login_throttle_fail($c, $u, $ip);
+            $failsOld = (int) (ff_st_fetch_one($c, 'SELECT fails FROM ff_login_failures WHERE username = ? AND ip = ?', 'ss', [$u, $ip])['fails'] ?? -1);
+            // Sperre abgelaufen: Status frei, nächster Fehlversuch beginnt bei 1 ohne Sperre
+            ff_st_exec($c, 'UPDATE ff_login_failures SET fails = ?, last_fail_at = NOW(), locked_until = NOW() - INTERVAL 1 SECOND WHERE username = ? AND ip = ?', 'iss', [FF_LOGIN_MAX_FAILS, $u, $ip]);
+            $expiredStatus = ff_login_throttle_status($c, $u, $ip);
+            $next = ff_login_throttle_fail($c, $u, $ip);
+            $row = ff_st_fetch_one($c, 'SELECT fails, locked_until FROM ff_login_failures WHERE username = ? AND ip = ?', 'ss', [$u, $ip]);
+            return ff_st_expect_same(false, $old['locked'], 'altes Fenster sperrt nicht')
+                ?? ff_st_expect_same(1, $failsOld, 'Zähler neu begonnen')
+                ?? ff_st_expect_same(false, $expiredStatus['locked'], 'abgelaufene Sperre')
+                ?? ff_st_expect_same(false, $next['locked'], 'nach Ablauf nicht sofort wieder gesperrt')
+                ?? ff_st_expect_same(1, (int) ($row['fails'] ?? -1), 'Zähler nach Ablauf')
+                ?? ff_st_expect_same(null, is_array($row) && array_key_exists('locked_until', $row) ? $row['locked_until'] : 'fehlt', 'Sperrzeit gelöscht');
+        });
+
+        $check($g, 'CSRF-Protokoll zählt pro Tag, Datei und Ergebnis', function (mysqli $c) {
+            $path = '/zz_selftest_csrf.php';
+            ff_csrf_log_request($c, $path, 'origin', false, 'zz_a');
+            ff_csrf_log_request($c, $path, 'origin', false, 'zz_b');
+            ff_csrf_log_request($c, $path, 'foreign', true, 'zz_c');
+            $o = ff_st_fetch_one($c, 'SELECT cnt, blocked, last_user FROM ff_csrf_log WHERE tag = CURDATE() AND path = ? AND via = ?', 'ss', [$path, 'origin']);
+            $f = ff_st_fetch_one($c, 'SELECT cnt, blocked FROM ff_csrf_log WHERE tag = CURDATE() AND path = ? AND via = ?', 'ss', [$path, 'foreign']);
+            return ff_st_expect_same(2, (int) ($o['cnt'] ?? 0), 'Anzahl Herkunft geprüft')
+                ?? ff_st_expect_same(0, (int) ($o['blocked'] ?? -1), 'nicht blockiert')
+                ?? ff_st_expect_same('zz_b', (string) ($o['last_user'] ?? ''), 'letzter Benutzer')
+                ?? ff_st_expect_same(1, (int) ($f['blocked'] ?? 0), 'fremd blockiert');
         });
 
         $g = 'Abläufe: Tisch verschieben';
