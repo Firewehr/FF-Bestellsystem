@@ -85,6 +85,33 @@ function ff_print_target_tisch_bucket_key(int $tischnummer, string $bonId): stri
 }
 
 /**
+ * Abruf-Limit in print_target.php: Wurde genau $limit Zeilen geholt, kann die letzte Bestellung
+ * angeschnitten sein (Rest kommt erst beim nächsten Abruf). Deren Zeilen am Listenende werden dann
+ * zurückgestellt, damit sie beim nächsten Abruf als ein vollständiger Bon kommen. Besteht die ganze
+ * Liste aus einer Bestellung, bleibt sie unverändert (sonst käme nie etwas heraus).
+ *
+ * @param list<array<string, mixed>> $rows nach Druckreihenfolge sortiert
+ * @return list<array<string, mixed>>
+ */
+function ff_print_target_hold_cut_order(array $rows, int $limit): array
+{
+    $n = count($rows);
+    if ($n === 0 || $n < $limit) {
+        return $rows;
+    }
+    $key = static function (array $r): string {
+        return (int) ($r['tischnummer'] ?? 0) . '|' . (int) ($r['order_nr'] ?? 0) . '|' . trim((string) ($r['bon_id'] ?? ''));
+    };
+    $last = $key($rows[$n - 1]);
+    $keep = $n;
+    while ($keep > 0 && $key($rows[$keep - 1]) === $last) {
+        $keep--;
+    }
+
+    return $keep === 0 ? $rows : array_slice($rows, 0, $keep);
+}
+
+/**
  * Zeilen, die unabhängig vom Sibling-Filter sofort gedruckt werden:
  *  - auto_print = 1 (Sofortdruck bei geringer Stationslast)
  *  - print = 3 (Teillieferung in der Station explizit angefordert)

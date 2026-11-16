@@ -2002,6 +2002,47 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 ?? ff_st_expect_same(true, ff_print_target_bypasses_sibling_filter(['auto_print' => 1]), 'Sofortdruck');
         });
 
+        $g = 'Druckabruf';
+
+        $check($g, 'Bons kommen in der Reihenfolge, in der sie druckbereit wurden, nicht nach Tischnummer', function (mysqli $c) {
+            require_once __DIR__ . '/ff_auto_print.php';
+            $pt = ff_st_print_target($c, 7791);
+            $pos = ff_st_position($c, 2.00);
+            $ready = ['pt' => $pt, 'ready_at' => '2000-01-01 00:00:00', 'print' => 2];
+            // Tisch 7781: früh bestellt, aber erst eben fertig
+            $lowLate = ff_st_flow_row($c, $pos, $ready + ['tisch' => 7781, 'order_nr' => 1]);
+            // Tisch 7789: später bestellt, aber schon vor 10 Minuten fertig
+            $highEarly = ff_st_flow_row($c, $pos, $ready + ['tisch' => 7789, 'order_nr' => 2]);
+            // Tisch 7785: Sofortdruck vor 5 Minuten (nicht fertig gemeldet)
+            $auto = ff_st_flow_row($c, $pos, ['pt' => $pt, 'tisch' => 7785, 'order_nr' => 3, 'auto_print' => 1]);
+            ff_st_exec($c, 'UPDATE bestellungen SET zeitstempel = NOW() - INTERVAL 30 MINUTE, zeitKueche = NOW() - INTERVAL 1 MINUTE WHERE rowid = ?', 'i', [$lowLate]);
+            ff_st_exec($c, 'UPDATE bestellungen SET zeitstempel = NOW() - INTERVAL 20 MINUTE, zeitKueche = NOW() - INTERVAL 10 MINUTE WHERE rowid = ?', 'i', [$highEarly]);
+            ff_st_exec($c, 'UPDATE bestellungen SET zeitstempel = NOW() - INTERVAL 5 MINUTE WHERE rowid = ?', 'i', [$auto]);
+            $res = ff_db_query(
+                $c,
+                'SELECT b.rowid FROM bestellungen b WHERE ' . ff_print_pending_cond_sql(ff_auto_print_ensure_schema($c))
+                    . ' AND b.print_target = ? ORDER BY ' . ff_print_fetch_order_sql(),
+                'i',
+                [$pt]
+            );
+            $order = [];
+            while ($res && ($row = mysqli_fetch_row($res))) {
+                $order[] = (int) $row[0];
+            }
+            return ff_st_expect_same([$highEarly, $auto, $lowLate], $order, 'Druckreihenfolge');
+        });
+
+        $check($g, 'Vom Abruf-Limit angeschnittene Bestellung wird zurückgestellt und kommt vollständig', function () {
+            require_once __DIR__ . '/ff_table_display.php';
+            $r = static fn (int $tisch, int $onr): array => ['tischnummer' => $tisch, 'order_nr' => $onr, 'bon_id' => ''];
+            $rows = [$r(5, 1), $r(5, 1), $r(3, 7), $r(9, 2), $r(9, 2)];
+            $single = [$r(4, 1), $r(4, 1), $r(4, 1)];
+            return ff_st_expect_same(3, count(ff_print_target_hold_cut_order($rows, 5)), 'Limit erreicht: letzte Bestellung zurück')
+                ?? ff_st_expect_same(5, count(ff_print_target_hold_cut_order($rows, 6)), 'Limit nicht erreicht: alles')
+                ?? ff_st_expect_same(3, count(ff_print_target_hold_cut_order($single, 3)), 'nur eine Bestellung: trotzdem drucken')
+                ?? ff_st_expect_same([], ff_print_target_hold_cut_order([], 5), 'leer');
+        });
+
         $g = 'Bon-Nummern';
 
         $check($g, 'Jeder Tisch-Bon erhält eine eigene, fortlaufende Bon-Nr.', function (mysqli $c) {
@@ -3029,7 +3070,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
         $check($g, 'Pre-Flight: alte ungedruckte Bons werden erkannt und verworfen, frische bleiben', function (mysqli $c) {
             require_once __DIR__ . '/ff_preflight.php';
-            $pt = ff_st_print_target($c, 7791);
+            $pt = ff_st_print_target($c, 7792); // eigenes Ziel: andere Tests legen auf 7791 druckbereite Zeilen an
             $pos = ff_st_position($c, 4.00);
             // Zeitpunkte über die DB setzen (PHP- und DB-Zeitzone können abweichen)
             $setTimes = static function (mysqli $c, int $id, int $orderedMinAgo, ?int $readyMinAgo): void {

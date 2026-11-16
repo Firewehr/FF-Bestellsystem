@@ -63,6 +63,9 @@ mysqli_set_charset($conn, 'utf8mb4');
 
 // Schritt 1: Kandidaten holen (ohne NOT EXISTS) – nutzt idx_print_pipeline voll aus.
 //            Mit allen Feldern, die wir für Anzeige UND Sibling-Filter brauchen.
+//            Reihenfolge: zuerst druckbereit, zuerst gedruckt (nicht nach Tischnummer – sonst warten
+//            hohe Tischnummern bei mehr als FF_PRINT_TARGET_FETCH_LIMIT offenen Zeilen).
+const FF_PRINT_TARGET_FETCH_LIMIT = 200;
 $sql = "
     SELECT 
         b.rowid AS bestellung_id,
@@ -91,8 +94,8 @@ $sql = "
     LEFT JOIN rechnungen r ON r.id = b.rechnung_id
     WHERE " . ff_print_pending_cond_sql($ffAutoPrintCol) . "
       AND COALESCE(b.print_target, p.print_target, 11) = ?
-    ORDER BY b.tischnummer ASC, b.zeitstempel ASC
-    LIMIT 200
+    ORDER BY " . ff_print_fetch_order_sql() . "
+    LIMIT " . FF_PRINT_TARGET_FETCH_LIMIT . "
 ";
 
 $ffT2 = microtime(true);
@@ -119,9 +122,13 @@ $rows = [];
 $tischNummern = [];
 while ($r = ff_db_row_text(mysqli_fetch_assoc($result))) {
     $rows[] = $r;
-    $tischNummern[(int)$r['tischnummer']] = true;
 }
 mysqli_free_result($result);
+// Vom Limit angeschnittene letzte Bestellung zurückstellen (kommt beim nächsten Abruf vollständig)
+$rows = ff_print_target_hold_cut_order($rows, FF_PRINT_TARGET_FETCH_LIMIT);
+foreach ($rows as $r) {
+    $tischNummern[(int)$r['tischnummer']] = true;
+}
 
 $blockedByTisch_BonId       = [];     // [tisch][bon_id] => true
 $blockedByTisch_Timestamp   = [];     // [tisch][timestampBestellung] => true

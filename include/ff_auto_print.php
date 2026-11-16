@@ -53,6 +53,28 @@ if (!function_exists('ff_print_pending_cond_sql')) {
     }
 }
 
+if (!function_exists('ff_print_ready_at_expr')) {
+    /**
+     * Zeitpunkt, ab dem eine Zeile (Alias b) druckbereit ist: fertig gemeldet (zeitKueche) oder
+     * bestellt (Sofortdruck). Der spätere von beiden zählt.
+     */
+    function ff_print_ready_at_expr(): string
+    {
+        return "GREATEST(b.zeitstempel, COALESCE(NULLIF(b.zeitKueche, '0000-00-00 00:00:00'), b.zeitstempel))";
+    }
+}
+
+if (!function_exists('ff_print_fetch_order_sql')) {
+    /**
+     * Reihenfolge für print_target.php: zuerst druckbereit, zuerst gedruckt; innerhalb gleicher
+     * Zeit nach Tisch und Bestellung, damit eine Bestellung zusammenhängend bleibt.
+     */
+    function ff_print_fetch_order_sql(): string
+    {
+        return ff_print_ready_at_expr() . ' ASC, b.tischnummer ASC, b.order_nr ASC, b.rowid ASC';
+    }
+}
+
 if (!function_exists('ff_auto_print_for_order')) {
     /**
      * Markiert die Zeilen einer frisch abgeschickten Bestellung pro Druckziel zum Sofortdruck,

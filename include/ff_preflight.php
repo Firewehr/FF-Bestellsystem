@@ -66,15 +66,6 @@ function ff_preflight_db_backup_status(string $backupDir, int $now, int $maxAgeM
 const FF_PREFLIGHT_PRINT_STALE_MIN = 30;
 
 /**
- * Zeitpunkt, ab dem eine Zeile druckbereit ist: fertig gemeldet (zeitKueche) oder bestellt
- * (Sofortdruck). Der spätere von beiden zählt.
- */
-function ff_preflight_print_ready_expr(): string
-{
-    return "GREATEST(b.zeitstempel, COALESCE(NULLIF(b.zeitKueche, '0000-00-00 00:00:00'), b.zeitstempel))";
-}
-
-/**
  * Druckbereite, noch nicht gedruckte Zeilen je Druckziel (genau die, die print_target.php
  * beim nächsten Abruf drucken würde). Liegen sie länger als $staleMin Minuten, läuft für das
  * Ziel offenbar kein Druck-Client – beim nächsten Start kämen sie als alte Bons heraus.
@@ -84,7 +75,7 @@ function ff_preflight_print_ready_expr(): string
 function ff_preflight_print_backlog(mysqli $conn, int $staleMin = FF_PREFLIGHT_PRINT_STALE_MIN): array
 {
     $pendingCond = ff_print_pending_cond_sql(ff_auto_print_ensure_schema($conn));
-    $readyExpr = ff_preflight_print_ready_expr();
+    $readyExpr = ff_print_ready_at_expr();
     $out = ['total_rows' => 0, 'stale_rows' => 0, 'stale_orders' => 0, 'oldest' => null, 'targets' => []];
     $res = ff_db_query(
         $conn,
@@ -141,7 +132,7 @@ function ff_preflight_print_backlog(mysqli $conn, int $staleMin = FF_PREFLIGHT_P
 function ff_preflight_print_backlog_clear(mysqli $conn, int $staleMin = FF_PREFLIGHT_PRINT_STALE_MIN): array
 {
     $pendingCond = ff_print_pending_cond_sql(ff_auto_print_ensure_schema($conn));
-    $readyExpr = ff_preflight_print_ready_expr();
+    $readyExpr = ff_print_ready_at_expr();
     $ids = [];
     $targets = [];
     $res = ff_db_query(
