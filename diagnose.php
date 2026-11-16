@@ -28,6 +28,12 @@ if($pdo){
     else $rows[] = warn("Tabelle fehlt: $t (Patch/Migration ausführen)");
   }
 }
+
+// Server-Umgebung (nur Admins): Wie viele gleichzeitige Live-Verbindungen (SSE) trägt der Server?
+// Gleiche Daten wie im Pilot-Admin (Stammdaten → Diagnose), siehe include/ff_server_env.php.
+require_once __DIR__ . '/include/ff_server_env.php';
+$isAdmin = (int) ($_SESSION['admin'] ?? 0) >= 1;
+$env = $isAdmin ? ff_server_env($conn) : [];
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -42,13 +48,15 @@ if($pdo){
         .app-navbar { background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important; }
         .app-navbar .navbar-brand, .app-navbar .btn { color: #fff !important; font-weight: 500; }
         .app-content { max-width: 600px; margin: 0 auto; padding: 1rem; }
+        .w-40 { width: 40%; }
+        .text-break { overflow-wrap: anywhere; }
     </style>
 </head>
 <body>
 
 <nav class="navbar app-navbar sticky-top">
     <div class="container-fluid">
-        <a href="admin.php" class="btn btn-outline-light btn-sm">← Admin</a>
+        <a href="pilot/admin.html" class="btn btn-outline-light btn-sm">← Admin</a>
         <span class="navbar-brand mb-0">System-Diagnose</span>
         <span></span>
     </div>
@@ -65,11 +73,57 @@ if($pdo){
         </ul>
     </div>
     
+    <?php if ($isAdmin): ?>
+    <div class="card mb-3">
+        <div class="card-header fw-bold">Server-Umgebung (Live-Verbindungen)</div>
+        <div class="card-body small">
+            <p class="text-muted mb-2">Wichtig für die Frage, wie viele Stationen, Kellner-Geräte und Druck-Clients gleichzeitig live verbunden sein können.</p>
+            <table class="table table-sm mb-3">
+                <tbody>
+                <?php foreach ($env as $r): ?>
+                    <tr<?php echo $r['level'] === 'warn' ? ' class="table-warning"' : ''; ?>><th class="pe-3 w-40"><?php echo htmlspecialchars($r['label'], ENT_QUOTES, 'UTF-8'); ?></th><td class="text-break"><?php echo htmlspecialchars($r['value'], ENT_QUOTES, 'UTF-8'); ?></td></tr>
+                <?php endforeach; ?>
+                    <tr><th class="pe-3 w-40">Live-Test (SSE)</th><td id="sseResult">wird geprüft …</td></tr>
+                </tbody>
+            </table>
+            <label class="form-label mb-1" for="envCopy">Zum Weitergeben (alles markieren und kopieren):</label>
+            <textarea id="envCopy" class="form-control form-control-sm font-monospace" rows="8" readonly><?php echo htmlspecialchars(ff_server_env_text($env) . "\n", ENT_QUOTES, 'UTF-8'); ?></textarea>
+        </div>
+    </div>
+    <script>
+    (function () {
+        var out = document.getElementById('sseResult');
+        var copy = document.getElementById('envCopy');
+        function done(text) {
+            out.textContent = text;
+            copy.value += 'Live-Test (SSE): ' + text + '\n';
+        }
+        if (!window.EventSource) { done('Browser ohne EventSource'); return; }
+        var t0 = performance.now(), arrivals = [], finished = false;
+        var es = new EventSource('diagnose_sse_test.php');
+        es.addEventListener('tick', function () { arrivals.push(Math.round(performance.now() - t0)); });
+        es.addEventListener('done', function () {
+            finished = true; es.close();
+            if (arrivals.length < 6) { done('nur ' + arrivals.length + ' von 6 Ereignissen angekommen'); return; }
+            var spread = arrivals[arrivals.length - 1] - arrivals[0];
+            var ms = arrivals.join(', ') + ' ms';
+            // Ohne Puffer kommen die Ereignisse im Abstand von ~500 ms an (Spanne ~2500 ms)
+            done(spread >= 2000 ? 'OK – Ereignisse kommen sofort an (' + ms + ')'
+                : 'PUFFER – Ereignisse kommen gesammelt an (' + ms + '); Live-Updates wären verzögert');
+        });
+        es.onerror = function () {
+            if (!finished) { es.close(); done('Verbindung fehlgeschlagen (HTTP-Fehler oder vom Server blockiert)'); }
+        };
+        setTimeout(function () { if (!finished) { es.close(); done('Zeitüberschreitung nach 10 s (' + arrivals.length + ' Ereignisse)'); } }, 10000);
+    })();
+    </script>
+    <?php endif; ?>
+
     <div class="alert alert-info">
         <small><strong>Hinweis:</strong> Fehlende Tabellen per phpMyAdmin mit den Patch-SQLs im Ordner <code>documentation/</code> erstellen.</small>
     </div>
     
-    <a href="admin.php" class="btn btn-primary">Zurück zum Admin</a>
+    <a href="pilot/admin.html" class="btn btn-primary">Zurück zum Admin</a>
 </div>
 
 <script src="<?php echo ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js'); ?>"></script>

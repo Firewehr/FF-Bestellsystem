@@ -313,7 +313,7 @@ Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter
   ```
   Details und Zurückspielen: `documentation/OFFLINE_SICHERUNG.md`.
 * **System-Diagnose aufrufen:**
-  Die Seite `diagnose.php` prüft Datenbankverbindung, Tabellenintegrität und Dateiberechtigungen.
+  Pilot-Admin → Stammdaten → *Diagnose* oder `diagnose.php`: Datenbankverbindung, Pflichttabellen und (nur Admins) Server-Umgebung für Live-Verbindungen (PHP-Betriebsart, Prozess-/DB-Verbindungsgrenzen, Live-Test über `diagnose_sse_test.php`). Beide nutzen `include/ff_server_env.php`; der Text „Zum Weitergeben“ eignet sich für Rückfragen zum Hoster.
 
 ---
 

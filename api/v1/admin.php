@@ -32,6 +32,7 @@ require_once dirname(__DIR__, 2) . '/include/admin_statistik_body.php';
 require_once dirname(__DIR__, 2) . '/include/ff_printer_devices.php';
 require_once dirname(__DIR__, 2) . '/include/ff_printer_jobs.php';
 require_once dirname(__DIR__, 2) . '/include/ff_fest_scope.php';
+require_once dirname(__DIR__, 2) . '/include/ff_server_env.php';
 
 // Authentifizierung & Admin-Prüfung
 $user = api_require_auth();
@@ -1425,6 +1426,17 @@ if ($action === 'mitarbeiter_bereich_delete') {
     ff_db_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE bereich_id = ?', 'i', [$id]);
     ff_db_query($conn, 'DELETE FROM mitarbeiter_bereiche WHERE id = ?', 'i', [$id]);
     api_response(['ok' => true, 'message' => 'Bereich gelöscht.']);
+}
+
+// -----------------------------------------------------------------------------
+// AKTION: DIAGNOSE (DB, Tabellen, Server-Umgebung für Live-Verbindungen)
+// -----------------------------------------------------------------------------
+if ($action === 'server_env') {
+    api_response([
+        'ok' => true,
+        'checks' => ff_server_checks($conn),
+        'env' => ff_server_env($conn),
+    ]);
 }
 
 // -----------------------------------------------------------------------------

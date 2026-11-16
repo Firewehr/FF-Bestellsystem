@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="admin.css?v=20261116_1">
+  <link rel="stylesheet" href="admin.css?v=20261116_2">
 </head>
 <body>
   <div id="app" v-cloak>
@@ -115,6 +115,7 @@
         <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'abrechnung' }" @click="switchSubTab('stammdaten', 'abrechnung')">Abrechnung &amp; Sicherheit</button>
         <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'mcp' }" @click="switchSubTab('stammdaten', 'mcp')">MCP</button>
         <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'tests' }" @click="switchSubTab('stammdaten', 'tests')">Automatisierte Tests</button>
+        <button type="button" class="sub-nav-btn" :class="{ active: activeSubTab.stammdaten === 'diagnose' }" @click="switchSubTab('stammdaten', 'diagnose')">Diagnose</button>
       </div>
     </nav>
 
@@ -1417,6 +1418,67 @@
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB: Diagnose (gleiche Daten wie ../diagnose.php, include/ff_server_env.php) -->
+        <div v-if="activeSubTab.stammdaten === 'diagnose'">
+          <div class="toolbar">
+            <h3 class="u-title-sm">System-Diagnose</h3>
+            <div class="u-row-wrap">
+              <button type="button" class="btn btn-outline" :disabled="diagnose.loading" @click="loadDiagnose">{{ diagnose.loading ? 'Prüfe …' : 'Erneut prüfen' }}</button>
+              <button type="button" class="btn btn-primary" :disabled="!diagnose.loaded" @click="copyDiagnose">Kopieren</button>
+            </div>
+          </div>
+
+          <div class="diag-grid">
+            <div class="admin-card">
+              <div class="card-header"><h3><span>🗄️</span> Datenbank &amp; Tabellen</h3></div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="data-table">
+                    <tbody>
+                      <tr v-for="r in diagnose.checks" :key="r.label" :class="'diag-' + r.level">
+                        <th>{{ r.label }}</th>
+                        <td><span class="badge" :class="r.level === 'warn' ? 'badge-danger' : 'badge-success'">{{ r.value }}</span></td>
+                      </tr>
+                      <tr v-if="!diagnose.checks.length"><td colspan="2" class="u-empty-cell">{{ diagnose.loading ? 'Wird geladen …' : 'Keine Daten.' }}</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <div class="card-header"><h3><span>🖥️</span> Server-Umgebung (Live-Verbindungen)</h3></div>
+              <div class="card-body">
+                <p class="u-muted-sm u-mb-16">
+                  Stationsansichten und Druck-Clients halten eine Live-Verbindung offen. Jede belegt einen PHP-Prozess und eine
+                  Datenbankverbindung. Gelb markierte Werte können im Festbetrieb zum Engpass werden.
+                </p>
+                <div class="table-responsive">
+                  <table class="data-table diag-table">
+                    <tbody>
+                      <tr v-for="r in diagnose.env" :key="r.label" :class="'diag-' + r.level">
+                        <th>{{ r.label }}</th>
+                        <td>{{ r.value }}</td>
+                      </tr>
+                      <tr :class="'diag-' + diagnose.sseLevel">
+                        <th>Live-Test (SSE)</th>
+                        <td>{{ diagnose.sse }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-header"><h3><span>📋</span> Zum Weitergeben</h3></div>
+            <div class="card-body">
+              <textarea class="form-control diag-copy" rows="10" readonly :value="diagnoseText"></textarea>
             </div>
           </div>
         </div>
@@ -3573,6 +3635,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261116_2"></script>
+  <script type="module" src="admin.js?v=20261116_3"></script>
 </body>
 </html>

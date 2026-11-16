@@ -684,6 +684,64 @@ createApp({
     const mcpTokenInput = ref('');
     const mcpTokenShow = ref(false);
 
+    // Diagnose: DB, Tabellen, Server-Umgebung und Live-Test (wie ../diagnose.php)
+    const diagnose = ref({ loaded: false, loading: false, checks: [], env: [], sse: 'wird geprüft …', sseLevel: 'info' });
+    let diagnoseSse = null;
+
+    function runSseTest() {
+      if (diagnoseSse) { diagnoseSse.close(); diagnoseSse = null; }
+      if (!window.EventSource) {
+        diagnose.value.sse = 'Browser ohne EventSource'; diagnose.value.sseLevel = 'warn';
+        return;
+      }
+      diagnose.value.sse = 'wird geprüft …'; diagnose.value.sseLevel = 'info';
+      const t0 = performance.now();
+      const arrivals = [];
+      let finished = false;
+      const es = new EventSource('../diagnose_sse_test.php');
+      diagnoseSse = es;
+      const finish = (text, level) => {
+        finished = true; es.close();
+        if (diagnoseSse === es) diagnoseSse = null;
+        diagnose.value.sse = text; diagnose.value.sseLevel = level;
+      };
+      es.addEventListener('tick', () => arrivals.push(Math.round(performance.now() - t0)));
+      es.addEventListener('done', () => {
+        if (arrivals.length < 6) { finish(`nur ${arrivals.length} von 6 Ereignissen angekommen`, 'warn'); return; }
+        const ms = arrivals.join(', ') + ' ms';
+        // Ohne Puffer kommen die Ereignisse im Abstand von ~500 ms an (Spanne ~2500 ms)
+        if (arrivals[arrivals.length - 1] - arrivals[0] >= 2000) finish(`OK – Ereignisse kommen sofort an (${ms})`, 'ok');
+        else finish(`PUFFER – Ereignisse kommen gesammelt an (${ms}); Live-Updates wären verzögert`, 'warn');
+      });
+      es.onerror = () => { if (!finished) finish('Verbindung fehlgeschlagen (HTTP-Fehler oder vom Server blockiert)', 'warn'); };
+      window.setTimeout(() => { if (!finished) finish(`Zeitüberschreitung nach 10 s (${arrivals.length} Ereignisse)`, 'warn'); }, 10000);
+    }
+
+    async function loadDiagnose() {
+      diagnose.value.loading = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php?action=server_env');
+        diagnose.value = { ...diagnose.value, checks: res.checks || [], env: res.env || [], loaded: true, loading: false };
+      } catch (e) {
+        diagnose.value.loading = false;
+      }
+      runSseTest();
+    }
+
+    const diagnoseText = computed(() => [...diagnose.value.checks, ...diagnose.value.env]
+      .map(r => `${r.label}: ${r.value}`)
+      .concat([`Live-Test (SSE): ${diagnose.value.sse}`])
+      .join('\n'));
+
+    async function copyDiagnose() {
+      try {
+        await navigator.clipboard.writeText(diagnoseText.value);
+        showToast('Diagnose in die Zwischenablage kopiert.');
+      } catch (e) {
+        showToast('Kopieren nicht möglich – bitte den Text unten markieren und kopieren.', 'warning');
+      }
+    }
+
     async function loadMcpStatus() {
       try {
         const res = await apiRequest('../api/v1/admin.php?action=mcp_status');
@@ -3033,6 +3091,7 @@ createApp({
         if (tab === 'preflight') loadPreflight();
         if (tab === 'tische' || tab === 'tischplan') loadTables();
         if (tab === 'mcp') loadMcpStatus();
+        if (tab === 'diagnose') loadDiagnose();
         if (tab === 'druckziele') loadPrinterDevices();
         if (tab === 'abrechnung') { previewSchreibaus(); loadSecurity(); }
         if (tab === 'tests' && !testResults.value) runSelftests();
@@ -3409,6 +3468,10 @@ createApp({
       previewSchreibaus,
       executeSchreibaus,
       executeFestStart,
+      diagnose,
+      diagnoseText,
+      loadDiagnose,
+      copyDiagnose,
       security,
       loadSecurity,
       unlockLogin,
