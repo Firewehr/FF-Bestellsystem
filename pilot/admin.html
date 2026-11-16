@@ -878,6 +878,14 @@
                   </select>
                 </div>
                 <div class="form-group">
+                  <label>Stationen: Live-Verbindung</label>
+                  <select v-model="settingsEdit.station_live_events" class="form-select">
+                    <option value="1">Aktiv (neue Bestellungen sofort, belegt je Station einen PHP-Prozess)</option>
+                    <option value="0">Aus – nur Abfrage alle 3–4 s (für Hosting mit wenigen PHP-Prozessen)</option>
+                  </select>
+                  <span class="u-help">Ausschalten, wenn der Server bei vielen offenen Stationen langsam wird. Ausschalten wirkt spätestens nach 20 s, Einschalten erst nach Neuladen der Stationsseiten.</span>
+                </div>
+                <div class="form-group">
                   <label>One-Click Abschließen in Stationen</label>
                   <select v-model="settingsEdit.station_one_click_abschliessen" class="form-select">
                     <option value="1">Aktiv</option>

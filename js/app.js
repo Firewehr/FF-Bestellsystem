@@ -841,6 +841,8 @@
     var OPERATIONS_POLL_INTERVAL_MS = 30000;
     var OPERATIONS_POLL_FALLBACK_MS = 4000;
     var stationEventsFailed = false;
+    /* Admin-Schalter „Stationen: Live-Verbindung“ aus → nicht neu verbinden, nur Polling (bis Seite neu geladen) */
+    var stationEventsDisabled = false;
     var operationsPollTimer = null;
     var stationEventsSource = null;
     var stationEventsPrintTarget = 0;
@@ -2263,6 +2265,7 @@
     function ffConnectStationEvents(printTargetId) {
         var pt = parseInt(printTargetId, 10) || 0;
         if (pt <= 0 || typeof window.EventSource !== 'function') return;
+        if (stationEventsDisabled) { stationEventsFailed = true; return; }
         if (stationEventsSource && stationEventsPrintTarget === pt) return;
         ffCloseStationEvents();
         stationEventsPrintTarget = pt;
@@ -2276,9 +2279,21 @@
                 stationEventsPrintTarget = 0;
             }
         };
-        stationEventsSource.addEventListener('station-unavailable', function() {
-            stationEventsFailed = true;
-            ffCloseStationEvents();
+        // Ohne Live-Verbindung auf das kurze Poll-Intervall umstellen. Der laufende Timer wurde evtl. schon mit
+        // 30 s geplant (Seite geladen, bevor diese Antwort kam) – deshalb neu planen.
+        function ffStationFallbackToPolling() {
+            ffCloseStationEvents();          // setzt stationEventsPrintTarget zurück
+            stationEventsFailed = true;      // OPERATIONS_POLL_FALLBACK_MS
+            if (operationsPollTimer) {
+                clearTimeout(operationsPollTimer);
+                operationsPollTimer = null;
+            }
+            ffScheduleOperationsPoll(pt);
+        }
+        stationEventsSource.addEventListener('station-unavailable', ffStationFallbackToPolling);
+        stationEventsSource.addEventListener('station-disabled', function() {
+            stationEventsDisabled = true;
+            ffStationFallbackToPolling();
         });
         stationEventsSource.addEventListener('station-change', function(event) {
             var payload;

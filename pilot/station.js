@@ -1043,8 +1043,11 @@ createApp({
       }
     };
 
+    // Admin-Schalter „Stationen: Live-Verbindung“ aus → nur Polling, nicht neu verbinden (bis Seite neu geladen)
+    let sseDisabled = false;
+
     const scheduleSseReconnect = () => {
-      if (isUnmounted || !isOnline.value || sseReconnectTimer) return;
+      if (isUnmounted || !isOnline.value || sseReconnectTimer || sseDisabled) return;
       liveConnectionStatus.value = 'polling';
       const jitter = Math.round(sseRetryDelay * (Math.random() * 0.4 - 0.2));
       const delay = Math.max(500, sseRetryDelay + jitter);
@@ -1064,6 +1067,10 @@ createApp({
         liveConnectionStatus.value = 'offline';
         return;
       }
+      if (sseDisabled) {
+        liveConnectionStatus.value = 'polling';
+        return;
+      }
 
       // Bei "Alle Stationen" (0) hören wir primär auf 11 (Küche) oder nutzen intelligentes Polling
       const sseTarget = selectedTarget.value > 0 ? selectedTarget.value : 11;
@@ -1076,6 +1083,12 @@ createApp({
           sseRetryDelay = 1000;
           liveConnectionStatus.value = 'connected';
         };
+        source.addEventListener('station-disabled', () => {
+          if (sseSource !== source) return;
+          sseDisabled = true;
+          closeSse();
+          liveConnectionStatus.value = 'polling';
+        });
         source.addEventListener('station-change', (event) => {
           if (sseSource !== source) return;
           const eventKey = sseEventKey(event);

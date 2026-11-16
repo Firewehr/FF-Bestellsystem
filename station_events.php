@@ -13,6 +13,25 @@ $ffEventName = $ffPrintChannel ? 'print-ready' : 'station-change';
 require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/ff_station_events.php';
 
+// Schalter „Stationen: Live-Verbindung“ (station_live_events, Standard an). Aus: sofort antworten statt einen
+// PHP-Prozess und eine DB-Verbindung bis zu 20 s zu halten – die Stationen fragen dann nur noch regelmäßig
+// nach (Shared Hosting mit wenigen PHP-Prozessen). Der Druck-Kanal hat seinen eigenen Schalter (print_event_mode).
+if (!$ffPrintChannel) {
+    require_once __DIR__ . '/include/settings.php';
+    if ((string) setting_get($conn, 'station_live_events', '1') === '0') {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        header('Content-Type: text/event-stream; charset=utf-8');
+        header('Cache-Control: no-cache, no-store, must-revalidate');
+        echo "retry: 600000\n";
+        echo "event: station-disabled\n";
+        echo "data: {}\n\n";
+        flush();
+        exit;
+    }
+}
+
 $printTarget = isset($_GET['print_target']) ? (int) $_GET['print_target'] : 0;
 if ($printTarget <= 0) {
     http_response_code(400);

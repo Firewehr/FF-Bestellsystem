@@ -70,7 +70,7 @@ Coding-Agenten müssen den bestehenden Funktionsumfang kennen, um redundante Imp
    * Schnelle Mengeneingabe, Minus-Korrektur und Zeilen-Storno vor Kassenabschluss.
 4. **Stationsansichten (Küche, Schank, Grill, Bar):**
    * Touch-optimierte Ansichten (`ff_kueche_station_view.php`, `substation.php`) mit konfigurierbarem Raster.
-   * Echtzeit-Aktualisierung über Server-Sent Events (SSE, `ff_station_events.php`).
+   * Echtzeit-Aktualisierung über Server-Sent Events (SSE, `station_events.php`). Jede offene Station hält dabei einen PHP-Prozess und eine DB-Verbindung. Schalter `station_live_events` (Pilot-Admin → Allgemeine Einstellungen → „Stationen: Live-Verbindung“, Standard an): aus → `station_events.php` antwortet sofort mit `station-disabled`, beide Stationsansichten fragen nur noch alle 3–4 s nach (für Shared Hosting mit wenigen PHP-Prozessen).
    * Akustische Signale bei neuen Bestellungen.
    * Küchenprognose und Auslastungsanzeige (`station_prognose_api.php`, `station_forecast.js`).
    * Menü-Locks: Artikel direkt in der Station als „ausverkauft“ markieren (`menu_lock_api.php`).
@@ -312,6 +312,11 @@ Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter
   sudo -u www-data php tools/db_backup.php [--copy-to=/media/usb/ff-backups]
   ```
   Details und Zurückspielen: `documentation/OFFLINE_SICHERUNG.md`.
+* **Kapazität für Live-Verbindungen messen** (nur lesend, nicht während eines Fests; Admin-Benutzer):
+  ```bash
+  FF_UI_USER=... FF_UI_PASS=... python3 tools/sse_capacity_test.py --url https://example.at/pos/bestellsystem [--step 5 --max 60]
+  ```
+  Öffnet stufenweise Verbindungen wie Stationen (`diagnose_sse_test.php?hold=1`) und meldet, ab wie vielen die Antwortzeit springt.
 * **System-Diagnose aufrufen:**
   Pilot-Admin → Stammdaten → *Diagnose* oder `diagnose.php`: Datenbankverbindung, Pflichttabellen und (nur Admins) Server-Umgebung für Live-Verbindungen (PHP-Betriebsart, Prozess-/DB-Verbindungsgrenzen, Live-Test über `diagnose_sse_test.php`). Beide nutzen `include/ff_server_env.php`; der Text „Zum Weitergeben“ eignet sich für Rückfragen zum Hoster.
 
