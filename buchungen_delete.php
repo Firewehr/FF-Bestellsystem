@@ -15,5 +15,5 @@ if ($id <= 0) {
     exit;
 }
 
-mysqli_query($conn, "DELETE FROM buchungen WHERE id = " . $id);
+ff_db_query($conn, 'DELETE FROM buchungen WHERE id = ?', 'i', [$id]);
 echo json_encode(['ok' => true]);

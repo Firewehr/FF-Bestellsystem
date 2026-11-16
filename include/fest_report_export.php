@@ -58,18 +58,21 @@ function ff_fest_kassen_closed_sessions(mysqli $conn, ?string $festDatumYmd = nu
     while ($res && ($s = mysqli_fetch_assoc($res))) {
         $sid = (int) ($s['id'] ?? 0);
         $mov = ff_kassen_session_movements_sum($conn, $sid);
-        $rows[] = ['session' => $s, 'entnahmen' => $mov['entnahmen'], 'zuzahlungen' => $mov['zuzahlungen']];
+        $rows[] = ['session' => ff_db_row_text($s), 'entnahmen' => $mov['entnahmen'], 'zuzahlungen' => $mov['zuzahlungen']];
     }
 
     return $rows;
 }
 
-function ff_fest_paid_lines_where_sql(int $festId): string
+/** @return array{0:string,1:string,2:list<int>} Baustein [sql, types, params] */
+function ff_fest_paid_lines_where_sql(int $festId): array
 {
-    $fid = (int) $festId;
-
-    return "b.`delete`=0
+    return ff_db_frag(
+        "b.`delete`=0
         AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'' AND b.timestampBezahlung<>'0000-00-00 00:00:00'
         AND COALESCE(b.is_gratis,0)=0 AND COALESCE(b.schreibaus,0)=0
-        AND b.fest_id = {$fid}";
+        AND b.fest_id = ?",
+        'i',
+        [(int) $festId]
+    );
 }

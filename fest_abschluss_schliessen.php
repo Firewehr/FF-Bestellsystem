@@ -31,14 +31,14 @@ if ($fest_id <= 0 || $csrf === '' || !hash_equals($expected, $csrf)) {
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-$chk = mysqli_query($conn, 'SELECT id, aktiv FROM feste WHERE id=' . $fest_id . ' LIMIT 1');
+$chk = ff_db_query($conn, 'SELECT id, aktiv FROM feste WHERE id=? LIMIT 1', 'i', [$fest_id]);
 if (!$chk || !($row = mysqli_fetch_assoc($chk))) {
     http_response_code(404);
     echo 'Fest nicht gefunden';
     exit;
 }
 
-mysqli_query($conn, 'UPDATE feste SET aktiv=0 WHERE id=' . $fest_id . ' LIMIT 1');
+ff_db_query($conn, 'UPDATE feste SET aktiv=0 WHERE id=? LIMIT 1', 'i', [$fest_id]);
 
 $cur = (int) setting_get($conn, 'current_fest_id', '0');
 if ($cur === $fest_id) {

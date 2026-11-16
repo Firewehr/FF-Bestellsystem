@@ -86,7 +86,7 @@ if ($action === 'open') {
         echo json_encode(['ok' => false, 'error' => 'bad_bereich']);
         exit;
     }
-    $chk = mysqli_query($conn, 'SELECT id FROM kassen_sessions WHERE bereich_id = ' . $bereichId . " AND status = 'open' LIMIT 1");
+    $chk = ff_db_query($conn, "SELECT id FROM kassen_sessions WHERE bereich_id = ? AND status = 'open' LIMIT 1", 'i', [(int) $bereichId]);
     if ($chk && mysqli_num_rows($chk) > 0) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'already_open']);
@@ -133,8 +133,8 @@ if ($action === 'close') {
         echo json_encode(['ok' => false, 'error' => 'bad_session']);
         exit;
     }
-    $res = mysqli_query($conn, 'SELECT * FROM kassen_sessions WHERE id = ' . $sessionId . " AND status = 'open' LIMIT 1");
-    $sess = $res ? mysqli_fetch_assoc($res) : null;
+    $res = ff_db_query($conn, "SELECT * FROM kassen_sessions WHERE id = ? AND status = 'open' LIMIT 1", 'i', [(int) $sessionId]);
+    $sess = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
     if (!$sess) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'session_not_open']);
@@ -200,9 +200,9 @@ if ($action === 'list_closed') {
         $sid = (int) ($s['id'] ?? 0);
         $mov = ff_kassen_session_movements_sum($conn, $sid);
         $moves = [];
-        $mr = mysqli_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ' . $sid . ' ORDER BY created_at ASC');
+        $mr = ff_db_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ? ORDER BY created_at ASC', 'i', [$sid]);
         while ($mr && ($m = mysqli_fetch_assoc($mr))) {
-            $moves[] = $m;
+            $moves[] = ff_db_row_text($m);
         }
         $rows[] = [
             'session' => $s,
@@ -225,9 +225,9 @@ if ($r1) {
             $sid = (int) $row['session_id'];
             $mov = ff_kassen_session_movements_sum($conn, $sid);
             $moves = [];
-            $mr = mysqli_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ' . $sid . ' ORDER BY created_at ASC');
+            $mr = ff_db_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ? ORDER BY created_at ASC', 'i', [$sid]);
             while ($mr && ($m = mysqli_fetch_assoc($mr))) {
-                $moves[] = $m;
+                $moves[] = ff_db_row_text($m);
             }
             $out['open_sessions'][] = [
                 'session' => $row,

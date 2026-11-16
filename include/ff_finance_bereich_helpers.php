@@ -41,10 +41,15 @@ function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
         }
     }
     if ($festId > 0) {
+        // Fest-ID als Sitzungsvariable (per Prepared Statement gesetzt): der Baustein enthält keinen Wert
+        // und lässt die Platzhalter-Reihenfolge der aufrufenden Abfragen unverändert.
+        $lastDb = $GLOBALS['__ff_db_last'] ?? null;
+        ff_db_query($conn, 'SET @ff_fest_id = ?', 'i', [$festId]);
+        $GLOBALS['__ff_db_last'] = $lastDb; // affected_rows/insert_id des Aufrufers nicht überschreiben
         if (ff_finance_fest_count($conn) <= 1) {
-            $cached = ' AND (__ALIAS__.fest_id = ' . $festId . ' OR __ALIAS__.fest_id IS NULL)';
+            $cached = ' AND (__ALIAS__.fest_id = @ff_fest_id OR __ALIAS__.fest_id IS NULL)';
         } else {
-            $cached = ' AND __ALIAS__.fest_id = ' . $festId;
+            $cached = ' AND __ALIAS__.fest_id = @ff_fest_id';
         }
     } else {
         $cached = '';
@@ -230,9 +235,11 @@ function ff_kassen_session_movements_sum(mysqli $conn, int $sessionId): array
 {
     $ent = 0.0;
     $zuz = 0.0;
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
-        'SELECT typ, COALESCE(SUM(betrag), 0) AS s FROM kassen_bewegungen WHERE session_id = ' . (int) $sessionId . ' GROUP BY typ'
+        'SELECT typ, COALESCE(SUM(betrag), 0) AS s FROM kassen_bewegungen WHERE session_id = ? GROUP BY typ',
+        'i',
+        [(int) $sessionId]
     );
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         if (($r['typ'] ?? '') === 'entnahme') {
@@ -354,7 +361,7 @@ function ff_finance_ensure_kellner_direkt_print_targets(mysqli $conn): void
         }
         if (!empty($r['finance_bereich_id'])) {
             $pt = (int) $r['print_target'];
-            mysqli_query($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE print_target = ' . $pt . ' LIMIT 1');
+            ff_db_query($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE print_target = ? LIMIT 1', 'i', [$pt]);
         }
     }
 }
@@ -457,11 +464,13 @@ function ff_finance_kellner_protokoll_abgleich(mysqli $conn, ?array $range): arr
         }
         $soll = (float) ($row['umsatz_soll'] ?? 0);
         $protokollSoll += $soll;
-        $r2 = mysqli_query(
+        $r2 = ff_db_query(
             $conn,
             "SELECT COALESCE(SUM({$amt}), 0) AS s FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
-            WHERE b.settlement_id = {$sid} AND {$paidKel}"
+            WHERE b.settlement_id = ? AND {$paidKel}",
+            'i',
+            [$sid]
         );
         $aktiv = ($r2 && ($x = mysqli_fetch_assoc($r2))) ? (float) ($x['s'] ?? 0) : 0.0;
         $zeilenGueltig += $aktiv;
@@ -808,9 +817,11 @@ function ff_finance_delete_bereich(mysqli $conn, int $bereichId): array
         return ['ok' => false, 'error' => 'not_found', 'message' => 'Finanzbereich nicht gefunden.'];
     }
 
-    $chkOpen = mysqli_query(
+    $chkOpen = ff_db_query(
         $conn,
-        "SELECT id FROM kassen_sessions WHERE bereich_id = {$bereichId} AND status = 'open' LIMIT 1"
+        "SELECT id FROM kassen_sessions WHERE bereich_id = ? AND status = 'open' LIMIT 1",
+        'i',
+        [$bereichId]
     );
     if ($chkOpen && mysqli_num_rows($chkOpen) > 0) {
         return [
@@ -820,7 +831,7 @@ function ff_finance_delete_bereich(mysqli $conn, int $bereichId): array
         ];
     }
 
-    $chkHist = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM kassen_sessions WHERE bereich_id = ' . $bereichId);
+    $chkHist = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM kassen_sessions WHERE bereich_id = ?', 'i', [$bereichId]);
     $histCnt = 0;
     if ($chkHist && ($rh = mysqli_fetch_assoc($chkHist))) {
         $histCnt = (int) ($rh['c'] ?? 0);
@@ -844,7 +855,7 @@ function ff_finance_delete_bereich(mysqli $conn, int $bereichId): array
     if ($tbB && mysqli_num_rows($tbB) > 0) {
         $cB = @mysqli_query($conn, "SHOW COLUMNS FROM buchungen LIKE 'bereich_id'");
         if ($cB && mysqli_num_rows($cB) > 0) {
-            mysqli_query($conn, 'UPDATE buchungen SET bereich_id = NULL WHERE bereich_id = ' . $bereichId);
+            ff_db_query($conn, 'UPDATE buchungen SET bereich_id = NULL WHERE bereich_id = ?', 'i', [$bereichId]);
         }
         if ($cB) {
             mysqli_free_result($cB);
@@ -897,12 +908,16 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     $kassenUmsatz = 0.0;
     $kasseSql = "SELECT COALESCE(SUM(s.revenue_amount), 0) AS s FROM kassen_sessions s
         WHERE s.status = 'closed' {$whereKasse}";
+    $kasseTypes = $rangeTypes;
+    $kasseParams = $rangeParams;
     if ($bereichId > 0) {
-        $kasseSql .= ' AND s.bereich_id = ' . $bereichId;
+        $kasseSql .= ' AND s.bereich_id = ?';
+        $kasseTypes .= 'i';
+        $kasseParams[] = $bereichId;
     } elseif ($bereichId === 0 || $bereichId === ff_finance_bereich_id_kellner_direkt()) {
         $kasseSql .= ' AND 1=0';
     }
-    $resK = ff_db_query($conn, $kasseSql, $rangeTypes, $rangeParams);
+    $resK = ff_db_query($conn, $kasseSql, $kasseTypes, $kasseParams);
     if ($resK && ($rk = mysqli_fetch_assoc($resK))) {
         $kassenUmsatz = (float) $rk['s'];
     }
@@ -913,8 +928,10 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     $ptTypes = '';
     $ptParams = [];
     if ($bereichId > 0) {
-        [$exSql, $ptTypes, $ptParams] = ff_finance_sql_exclude_fixed_print_targets($conn, 'pt');
-        $wherePt = ' AND pt.finance_bereich_id = ' . $bereichId . $exSql;
+        [$exSql, $exTypes, $exParams] = ff_finance_sql_exclude_fixed_print_targets($conn, 'pt');
+        $wherePt = ' AND pt.finance_bereich_id = ?' . $exSql;
+        $ptTypes = 'i' . $exTypes;
+        $ptParams = array_merge([$bereichId], $exParams);
     } elseif ($bereichId === ff_finance_bereich_id_kellner_direkt()) {
         $wherePt = ff_finance_verkauf_unzugeordnet_where() . ff_finance_verkauf_kellner_direkt_where();
     } elseif ($bereichId === 0) {
@@ -950,8 +967,12 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     }
 
     $whereBuchBereich = '';
+    $buchTypes = $rangeTypes;
+    $buchParams = $rangeParams;
     if ($bereichId > 0) {
-        $whereBuchBereich = ' AND bu.bereich_id = ' . $bereichId;
+        $whereBuchBereich = ' AND bu.bereich_id = ?';
+        $buchTypes .= 'i';
+        $buchParams[] = $bereichId;
     } elseif ($bereichId === 0) {
         $whereBuchBereich = ' AND (bu.bereich_id IS NULL OR bu.bereich_id = 0)';
     } elseif ($bereichId === ff_finance_bereich_id_kellner_direkt()) {
@@ -961,8 +982,8 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
 
     $fixEinnahmen = 0.0;
     $fixAusgaben = 0.0;
-    $resE = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch} {$whereBuchBereich}", $rangeTypes, $rangeParams);
-    $resA = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch} {$whereBuchBereich}", $rangeTypes, $rangeParams);
+    $resE = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch} {$whereBuchBereich}", $buchTypes, $buchParams);
+    $resA = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch} {$whereBuchBereich}", $buchTypes, $buchParams);
     if ($resE && ($re = mysqli_fetch_assoc($resE))) {
         $fixEinnahmen = (float) $re['s'];
     }
@@ -1026,9 +1047,9 @@ function ff_finance_kassen_sessions_detail(mysqli $conn, int $bereichId, ?array 
     $out = [];
     $sql = "SELECT s.*, b.name AS bereich_name FROM kassen_sessions s
         JOIN kassen_bereiche b ON b.id = s.bereich_id
-        WHERE s.status = 'closed' AND s.bereich_id = " . (int) $bereichId . " {$whereKasse}
+        WHERE s.status = 'closed' AND s.bereich_id = ? {$whereKasse}
         ORDER BY s.closed_at DESC";
-    $res = ff_db_query($conn, $sql, $kasseTypes, $kasseParams);
+    $res = ff_db_query($conn, $sql, 'i' . $kasseTypes, array_merge([(int) $bereichId], $kasseParams));
     while ($res && ($s = mysqli_fetch_assoc($res))) {
         $sid = (int) ($s['id'] ?? 0);
         $entCnt = 0;
@@ -1037,8 +1058,9 @@ function ff_finance_kassen_sessions_detail(mysqli $conn, int $bereichId, ?array 
         $zuzSum = 0.0;
         $moves = [];
         if ($sid > 0) {
-            $mr = mysqli_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ' . $sid . ' ORDER BY created_at ASC');
+            $mr = ff_db_query($conn, 'SELECT * FROM kassen_bewegungen WHERE session_id = ? ORDER BY created_at ASC', 'i', [$sid]);
             while ($mr && ($m = mysqli_fetch_assoc($mr))) {
+                $m = ff_db_row_text($m);
                 $moves[] = $m;
                 $bet = (float) ($m['betrag'] ?? 0);
                 if (($m['typ'] ?? '') === 'entnahme') {

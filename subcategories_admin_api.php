@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['ok' => false, 'error' => 'bad_id'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        mysqli_query($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ' . $id);
+        ff_db_query($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ?', 'i', [$id]);
         $stmt = mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $id);
         mysqli_stmt_execute($stmt);
@@ -113,7 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         if ($kassaOnly === 1) {
-            mysqli_query($conn, 'UPDATE positionen SET kassa_only = 1 WHERE subcategory_id = ' . (int)$id);
+            ff_db_query($conn, 'UPDATE positionen SET kassa_only = 1 WHERE subcategory_id = ?', 'i', [(int)$id]);
         }
         echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
         exit;

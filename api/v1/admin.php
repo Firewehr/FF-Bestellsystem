@@ -372,10 +372,10 @@ if ($action === 'fest_delete') {
     }
 
     // Prüfen, ob Bestellungen, Rechnungen oder Buchungen vorliegen
-    $checkQ = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen WHERE fest_id = ' . $id);
+    $checkQ = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen WHERE fest_id = ?', 'i', [$id]);
     $hasOrders = $checkQ && (int)(mysqli_fetch_assoc($checkQ)['c'] ?? 0) > 0;
 
-    $checkR = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM rechnungen WHERE fest_id = ' . $id);
+    $checkR = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM rechnungen WHERE fest_id = ?', 'i', [$id]);
     $hasInvoices = $checkR && (int)(mysqli_fetch_assoc($checkR)['c'] ?? 0) > 0;
 
     if ($hasOrders || $hasInvoices) {
@@ -756,7 +756,7 @@ if ($action === 'table_delete') {
         api_error('Ungültige Tischnummer.');
     }
 
-    $check = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen WHERE tischnummer = ' . $nr . ' AND `delete` = 0 AND (timestampBezahlung IS NULL OR timestampBezahlung = "0000-00-00 00:00:00")');
+    $check = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen WHERE tischnummer = ? AND `delete` = 0 AND (timestampBezahlung IS NULL OR timestampBezahlung = "0000-00-00 00:00:00")', 'i', [$nr]);
     if ($check && (int)(mysqli_fetch_assoc($check)['c'] ?? 0) > 0) {
         api_error('Tisch kann nicht gelöscht werden: Es sind noch unbezahlte Bestellungen offen.');
     }
@@ -900,8 +900,8 @@ if ($action === 'user_save') {
 
     if ($id > 0) {
         // Bestehenden Benutzer aktualisieren
-        $chk = mysqli_query($conn, 'SELECT id, username, admin FROM users WHERE id = ' . $id);
-        $curr = $chk ? mysqli_fetch_assoc($chk) : null;
+        $chk = ff_db_query($conn, 'SELECT id, username, admin FROM users WHERE id = ?', 'i', [$id]);
+        $curr = $chk ? ff_db_row_text(mysqli_fetch_assoc($chk)) : null;
         if (!$curr) {
             api_error('Benutzer nicht gefunden.');
         }
@@ -951,8 +951,8 @@ if ($action === 'user_delete') {
         api_error('Das eigene Konto kann nicht gelöscht werden.');
     }
 
-    $chk = mysqli_query($conn, 'SELECT id, username, admin FROM users WHERE id = ' . $id);
-    $curr = $chk ? mysqli_fetch_assoc($chk) : null;
+    $chk = ff_db_query($conn, 'SELECT id, username, admin FROM users WHERE id = ?', 'i', [$id]);
+    $curr = $chk ? ff_db_row_text(mysqli_fetch_assoc($chk)) : null;
     if (!$curr) {
         api_error('Benutzer nicht gefunden.');
     }
@@ -975,8 +975,8 @@ if ($action === 'user_reset_password') {
         api_error('Benutzer-ID und neues Passwort erforderlich.');
     }
 
-    $chk = mysqli_query($conn, 'SELECT id, username, admin FROM users WHERE id = ' . $id);
-    $curr = $chk ? mysqli_fetch_assoc($chk) : null;
+    $chk = ff_db_query($conn, 'SELECT id, username, admin FROM users WHERE id = ?', 'i', [$id]);
+    $curr = $chk ? ff_db_row_text(mysqli_fetch_assoc($chk)) : null;
     if (!$curr) {
         api_error('Benutzer nicht gefunden.');
     }
@@ -1033,8 +1033,8 @@ if ($action === 'passkey_register_remote_start') {
     if ($userId <= 0) {
         api_error('Benutzer-ID erforderlich.');
     }
-    $chk = mysqli_query($conn, 'SELECT id, admin FROM users WHERE id = ' . $userId);
-    $targetUser = $chk ? mysqli_fetch_assoc($chk) : null;
+    $chk = ff_db_query($conn, 'SELECT id, admin FROM users WHERE id = ?', 'i', [$userId]);
+    $targetUser = $chk ? ff_db_row_text(mysqli_fetch_assoc($chk)) : null;
     if (!$targetUser) {
         api_error('Benutzer nicht gefunden.');
     }
@@ -1152,8 +1152,8 @@ if ($action === 'invoice_detail') {
     if ($id <= 0) {
         api_error('Ungültige Rechnungs-ID.');
     }
-    $res = mysqli_query($conn, 'SELECT * FROM rechnungen WHERE id = ' . $id . ' LIMIT 1');
-    $invoice = $res ? mysqli_fetch_assoc($res) : null;
+    $res = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id = ? LIMIT 1', 'i', [$id]);
+    $invoice = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
     if (!$invoice) {
         api_error('Rechnung nicht gefunden.');
     }
@@ -1173,8 +1173,8 @@ if ($action === 'invoice_reprint') {
         api_error('Ungültige Rechnungs-ID.');
     }
 
-    $res = mysqli_query($conn, 'SELECT * FROM rechnungen WHERE id = ' . $id . ' LIMIT 1');
-    $row = $res ? mysqli_fetch_assoc($res) : null;
+    $res = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id = ? LIMIT 1', 'i', [$id]);
+    $row = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
     if (!$row) {
         api_error('Rechnung nicht gefunden.');
     }
@@ -1408,7 +1408,7 @@ if ($action === 'mitarbeiter_bereich_save') {
     $savedId = $id > 0 ? $id : (int)mysqli_insert_id($conn);
     if ($savedId <= 0) {
         $checkQ = ff_db_query($conn, 'SELECT id FROM mitarbeiter_bereiche WHERE name = ? LIMIT 1', 's', [$name]);
-        if ($checkQ && ($rowQ = mysqli_fetch_assoc($checkQ))) {
+        if ($checkQ && ($rowQ = ff_db_row_text(mysqli_fetch_assoc($checkQ)))) {
             $savedId = (int)$rowQ['id'];
         }
     }
@@ -1422,8 +1422,8 @@ if ($action === 'mitarbeiter_bereich_delete') {
     if ($id <= 0) {
         api_error('Ungültige Bereichs-ID.');
     }
-    mysqli_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE bereich_id = ' . $id);
-    mysqli_query($conn, 'DELETE FROM mitarbeiter_bereiche WHERE id = ' . $id);
+    ff_db_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE bereich_id = ?', 'i', [$id]);
+    ff_db_query($conn, 'DELETE FROM mitarbeiter_bereiche WHERE id = ?', 'i', [$id]);
     api_response(['ok' => true, 'message' => 'Bereich gelöscht.']);
 }
 
@@ -1527,7 +1527,9 @@ if ($action === 'kellner_sales_report') {
     $whereTypes = '';
     $whereParams = [];
     if ($festId !== null) {
-        $where[] = 'b.fest_id = ' . $festId;
+        $where[] = 'b.fest_id = ?';
+        $whereTypes .= 'i';
+        $whereParams[] = $festId;
     } else {
         $festSql = trim(ff_finance_fest_filter_sql($conn, 'b'));
         if ($festSql !== '') {
@@ -1594,7 +1596,7 @@ if ($action === 'kellner_sales_report') {
             // Zwischenentnahmen / Zuzahlungen
             $mov = ['entnahmen' => 0.0, 'zuzahlungen' => 0.0];
             $mr = ff_db_query($conn, 'SELECT typ, COALESCE(SUM(betrag), 0) AS s FROM kellner_bewegungen WHERE kellner_login = ? AND settlement_id IS NULL GROUP BY typ', 's', [$login]);
-            while ($mr && ($m = mysqli_fetch_assoc($mr))) {
+            while ($mr && ($m = ff_db_row_text(mysqli_fetch_assoc($mr)))) {
                 if ($m['typ'] === 'entnahme') {
                     $mov['entnahmen'] = (float)$m['s'];
                 } else {
@@ -1741,7 +1743,7 @@ if ($action === 'kellner_settle') {
 
     $mov = ['entnahmen' => 0.0, 'zuzahlungen' => 0.0];
     $mr = ff_db_query($conn, 'SELECT typ, COALESCE(SUM(betrag),0) AS s FROM kellner_bewegungen WHERE kellner_login = ? AND settlement_id IS NULL GROUP BY typ', 's', [$kellner]);
-    while ($mr && ($m = mysqli_fetch_assoc($mr))) {
+    while ($mr && ($m = ff_db_row_text(mysqli_fetch_assoc($mr)))) {
         if ($m['typ'] === 'entnahme') {
             $mov['entnahmen'] = (float)$m['s'];
         } else {
@@ -1800,8 +1802,8 @@ if ($action === 'kellner_settlement_detail') {
     if ($id <= 0) {
         api_error('Ungültige Abrechnungs-ID.');
     }
-    $res = mysqli_query($conn, 'SELECT * FROM kellner_settlements WHERE id = ' . $id . ' LIMIT 1');
-    $settlement = $res ? mysqli_fetch_assoc($res) : null;
+    $res = ff_db_query($conn, 'SELECT * FROM kellner_settlements WHERE id = ? LIMIT 1', 'i', [$id]);
+    $settlement = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
     if (!$settlement) {
         api_error('Abrechnung nicht gefunden.');
     }
@@ -1811,10 +1813,10 @@ if ($action === 'kellner_settlement_detail') {
     $sqlLines = "SELECT b.rowid, b.tischnummer, b.order_nr, b.timestampBezahlung, p.Positionsname AS Bezeichnung, {$amtExpr} AS betrag, b.zahlungsart
                  FROM bestellungen b
                  JOIN positionen p ON p.rowid = b.position
-                 WHERE b.settlement_id = {$id}
+                 WHERE b.settlement_id = ?
                  ORDER BY b.timestampBezahlung ASC";
     $lines = [];
-    $resL = mysqli_query($conn, $sqlLines);
+    $resL = ff_db_query($conn, $sqlLines, 'i', [$id]);
     while ($resL && ($lr = mysqli_fetch_assoc($resL))) {
         $lines[] = [
             'rowid' => (int)$lr['rowid'],
@@ -1987,7 +1989,7 @@ if ($action === 'finance_booking_delete') {
     if ($id <= 0) {
         api_error('Ungültige Buchungs-ID.');
     }
-    mysqli_query($conn, 'DELETE FROM buchungen WHERE id = ' . $id);
+    ff_db_query($conn, 'DELETE FROM buchungen WHERE id = ?', 'i', [$id]);
     api_response(['ok' => true, 'message' => 'Buchung gelöscht.']);
 }
 

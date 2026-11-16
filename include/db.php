@@ -151,6 +151,7 @@ if (!function_exists('ff_db_query')) {
             'affected' => (int) mysqli_stmt_affected_rows($stmt),
             'insert_id' => (int) mysqli_stmt_insert_id($stmt),
         ];
+        // Hinweis: nach mysqli_stmt_close() liefert mysqli_affected_rows($conn) -1 – daher ff_db_affected_rows().
         $res = mysqli_stmt_get_result($stmt);
         mysqli_stmt_close($stmt);
 
@@ -227,12 +228,12 @@ if (!function_exists('ff_db_query')) {
      * Wo ganze Zeilen weitergereicht werden (JSON, Vergleiche mit === '1'), hält diese
      * Funktion das bisherige Verhalten. Bei einzeln gecasteten Feldern ist sie unnötig.
      *
-     * @param array<string,mixed>|null $row
+     * @param array<string,mixed>|null|false $row Ergebnis von mysqli_fetch_assoc()
      * @return array<string,mixed>|null
      */
-    function ff_db_row_text(?array $row): ?array
+    function ff_db_row_text($row): ?array
     {
-        if ($row === null) {
+        if (!is_array($row)) {
             return null;
         }
         foreach ($row as $k => $v) {

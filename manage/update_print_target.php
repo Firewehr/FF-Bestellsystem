@@ -12,7 +12,6 @@ if ($rowid <= 0 || $print_target <= 0) {
     exit;
 }
 
-$sql = "UPDATE positionen SET print_target = $print_target WHERE rowid = $rowid";
-$ok = mysqli_query($conn, $sql);
+$ok = ff_db_query($conn, 'UPDATE positionen SET print_target = ? WHERE rowid = ?', 'ii', [$print_target, $rowid]);
 
 echo json_encode(["ok" => (bool)$ok]);

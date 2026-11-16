@@ -8,11 +8,7 @@ $kapazitaet = (int)($_REQUEST['kapazitaet'] ?? 0);
 if ($rowid > 0) {
 
     require_once 'include/db.php';
-    $sql = "UPDATE `positionen` SET `maxBestellbar`='" . $kapazitaet . "' WHERE rowid=" . $rowid;
-
-    //echo $sql;
-
-    if (mysqli_query($conn, $sql)) {
+    if (ff_db_query($conn, 'UPDATE `positionen` SET `maxBestellbar`=? WHERE rowid=?', 'ii', [$kapazitaet, $rowid])) {
         echo "Record updated successfully";
     } else {
         echo "Error updating record: " . mysqli_error($conn);

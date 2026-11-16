@@ -22,13 +22,10 @@ if ($id <= 0) {
 $isAdmin = isset($_SESSION['admin']) && (int) $_SESSION['admin'] >= 1;
 $user = (string) ($_SESSION['user']['username'] ?? '');
 
-$res = mysqli_query(
-    $conn,
-    'SELECT v.id, v.position_id, v.menge, v.created_by, COALESCE(p.maxBestellbar, 0) AS maxBestellbar
+$res = ff_db_query($conn, 'SELECT v.id, v.position_id, v.menge, v.created_by, COALESCE(p.maxBestellbar, 0) AS maxBestellbar
      FROM mitarbeiter_verpflegung v
      JOIN positionen p ON p.rowid = v.position_id
-     WHERE v.id = ' . $id . ' LIMIT 1'
-);
+     WHERE v.id = ? LIMIT 1', 'i', [$id]);
 if (!$res || !($row = mysqli_fetch_assoc($res))) {
     echo json_encode(['ok' => false, 'error' => 'Eintrag nicht gefunden'], JSON_UNESCAPED_UNICODE);
     exit;
@@ -40,7 +37,7 @@ if (!$isAdmin && $createdBy !== '' && $createdBy !== $user) {
     exit;
 }
 
-if (!mysqli_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ' . $id . ' LIMIT 1')) {
+if (!ff_db_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ? LIMIT 1', 'i', [$id])) {
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
     exit;
 }

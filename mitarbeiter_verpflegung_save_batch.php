@@ -52,11 +52,8 @@ if ($agg === []) {
 
 foreach ($agg as $positionId => $menge) {
     $maxBestellbar = 0;
-    $resPos = mysqli_query(
-        $conn,
-        'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=' . (int) $positionId . ' LIMIT 1'
-    );
-    if ($resPos && ($rowPos = mysqli_fetch_assoc($resPos))) {
+    $resPos = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [(int) $positionId]);
+    if ($resPos && ($rowPos = ff_db_row_text(mysqli_fetch_assoc($resPos)))) {
         $maxBestellbar = (int) ($rowPos['maxBestellbar'] ?? 0);
     }
     $capCheck = ff_position_check_capacity($conn, (int) $positionId, $maxBestellbar, $menge);
@@ -106,11 +103,8 @@ mysqli_stmt_close($stmt);
 $restMap = [];
 foreach (array_keys($agg) as $positionId) {
     $max = 0;
-    $resPos = mysqli_query(
-        $conn,
-        'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=' . (int) $positionId . ' LIMIT 1'
-    );
-    if ($resPos && ($rowPos = mysqli_fetch_assoc($resPos))) {
+    $resPos = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [(int) $positionId]);
+    if ($resPos && ($rowPos = ff_db_row_text(mysqli_fetch_assoc($resPos)))) {
         $max = (int) ($rowPos['maxBestellbar'] ?? -1);
     }
     if ($max > 0) {

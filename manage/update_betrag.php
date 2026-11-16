@@ -9,11 +9,7 @@ if ($BetragRaw !== '' && $rowid > 0) {
     require_once '../include/db.php';
     $BetragRaw = str_replace(',', '.', $BetragRaw);
     $betrag = (float) $BetragRaw;
-    $sql = "UPDATE `positionen` SET `Betrag`=" . $betrag . " WHERE rowid=" . $rowid;
-
-    //echo $sql;
-
-    if (mysqli_query($conn, $sql)) {
+    if (ff_db_query($conn, 'UPDATE `positionen` SET `Betrag`=? WHERE rowid=?', 'di', [$betrag, $rowid])) {
         echo "Record updated successfully";
     } else {
         echo "Error updating record: " . mysqli_error($conn);

@@ -31,7 +31,7 @@ if ($fest_id <= 0 || $csrf === '' || $expected === '' || !hash_equals($expected,
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-$chk = mysqli_query($conn, 'SELECT id FROM feste WHERE id=' . $fest_id . ' LIMIT 1');
+$chk = ff_db_query($conn, 'SELECT id FROM feste WHERE id=? LIMIT 1', 'i', [$fest_id]);
 if (!$chk || !mysqli_fetch_assoc($chk)) {
     header('Location: admin.php?fest_del=err&reason=notfound#feste');
     exit;
@@ -54,7 +54,8 @@ function ff_delete_fest_table_has_rows(mysqli $conn, string $table, int $fest_id
     if (!$c || mysqli_num_rows($c) === 0) {
         return false;
     }
-    $r = mysqli_query($conn, 'SELECT 1 FROM `' . $table . '` WHERE fest_id=' . (int) $fest_id . ' LIMIT 1');
+    // Tabellenname aus fester Liste (Schema-Ausnahme), Wert als Parameter
+    $r = ff_db_query($conn, 'SELECT 1 FROM `' . $table . '` WHERE fest_id=? LIMIT 1', 'i', [(int) $fest_id]);
     return $r && mysqli_fetch_row($r);
 }
 
@@ -73,7 +74,7 @@ if ($cur === $fest_id) {
 
 $tc = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'fest_id'");
 if ($tc && mysqli_num_rows($tc) > 0) {
-    if (!mysqli_query($conn, 'DELETE FROM tische WHERE fest_id=' . (int) $fest_id)) {
+    if (!ff_db_query($conn, 'DELETE FROM tische WHERE fest_id=?', 'i', [(int) $fest_id])) {
         header('Location: admin.php?fest_del=err&reason=server#feste');
         exit;
     }
@@ -84,11 +85,11 @@ if ($tc && mysqli_num_rows($tc) > 0) {
 ff_fest_scope_ensure_columns($conn);
 ff_fest_scope_delete_for_fest($conn, $fest_id);
 
-if (!mysqli_query($conn, 'DELETE FROM feste WHERE id=' . (int) $fest_id . ' LIMIT 1')) {
+if (!ff_db_query($conn, 'DELETE FROM feste WHERE id=? LIMIT 1', 'i', [(int) $fest_id])) {
     header('Location: admin.php?fest_del=err&reason=server#feste');
     exit;
 }
-if (mysqli_affected_rows($conn) < 1) {
+if (ff_db_affected_rows() < 1) {
     header('Location: admin.php?fest_del=err&reason=notfound#feste');
     exit;
 }

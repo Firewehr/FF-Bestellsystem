@@ -61,7 +61,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
 
     $festName = '';
     if ($festId > 0) {
-        $fr = @mysqli_query($conn, 'SELECT name FROM feste WHERE id=' . (int) $festId . ' LIMIT 1');
+        $fr = ff_db_query($conn, 'SELECT name FROM feste WHERE id=? LIMIT 1', 'i', [(int) $festId]);
         if ($fr && ($frow = mysqli_fetch_assoc($fr))) {
             $festName = (string) ($frow['name'] ?? '');
         }
@@ -176,8 +176,8 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
             }
             $sqStuck = 'SELECT COUNT(*) AS c FROM printer_jobs WHERE status = \'reserved\'
     AND reserved_at IS NOT NULL
-    AND reserved_at < DATE_SUB(NOW(), INTERVAL ' . (int) $stuckMinutes . ' MINUTE)';
-            $rsStuck = mysqli_query($conn, $sqStuck);
+    AND reserved_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)';
+            $rsStuck = ff_db_query($conn, $sqStuck, 'i', [(int) $stuckMinutes]);
             if ($rsStuck && ($stRow = mysqli_fetch_assoc($rsStuck))) {
                 $stuckReserved = (int) ($stRow['c'] ?? 0);
             }

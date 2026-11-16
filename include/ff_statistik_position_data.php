@@ -125,15 +125,17 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
 
     $position_name = 'Alle Positionen';
     if ($position_id > 0) {
-        $resP = mysqli_query($conn, 'SELECT Positionsname FROM positionen WHERE rowid = ' . $position_id);
+        $resP = ff_db_query($conn, 'SELECT Positionsname FROM positionen WHERE rowid = ?', 'i', [(int) $position_id]);
         if (!$resP || !($rowP = mysqli_fetch_assoc($resP))) {
             return ['error' => 'Position nicht gefunden'];
         }
         $position_name = (string) ($rowP['Positionsname'] ?? '');
     }
 
-    $posCondB = $position_id > 0 ? ' AND b.position = ' . (int) $position_id : '';
-    $posCondMv = $position_id > 0 ? ' AND v.position_id = ' . (int) $position_id : '';
+    $posCondB = $position_id > 0 ? ' AND b.position = ? ' : '';
+    $posCondMv = $position_id > 0 ? ' AND v.position_id = ? ' : '';
+    $posTypes = $position_id > 0 ? 'i' : '';
+    $posParams = $position_id > 0 ? [(int) $position_id] : [];
 
     $timeCondB = '';
     $timeCondMv = '';
@@ -151,10 +153,11 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
         $timeTypes .= 's';
         $timeParams[] = $uhrzeit_bis;
     }
-    $condTypesB = $dateTypes . $timeTypes . $kellnerTypesB;
-    $condParamsB = array_merge($dateParams, $timeParams, $kellnerParamsB);
-    $condTypesMv = $dateTypes . $timeTypes . $kellnerTypesMv;
-    $condParamsMv = array_merge($dateParams, $timeParams, $kellnerParamsMv);
+    // Reihenfolge wie im SQL: Datum, Position, Uhrzeit, Kellner
+    $condTypesB = $dateTypes . $posTypes . $timeTypes . $kellnerTypesB;
+    $condParamsB = array_merge($dateParams, $posParams, $timeParams, $kellnerParamsB);
+    $condTypesMv = $dateTypes . $posTypes . $timeTypes . $kellnerTypesMv;
+    $condParamsMv = array_merge($dateParams, $posParams, $timeParams, $kellnerParamsMv);
 
     $gast = [];
     if ($inkl_gast) {

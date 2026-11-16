@@ -28,8 +28,8 @@ if ($fest_id <= 0) {
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-$chk = mysqli_query($conn, 'SELECT id, name, code, fest_datum, aktiv FROM feste WHERE id=' . $fest_id . ' LIMIT 1');
-if (!$chk || !($fest = mysqli_fetch_assoc($chk))) {
+$chk = ff_db_query($conn, 'SELECT id, name, code, fest_datum, aktiv FROM feste WHERE id=? LIMIT 1', 'i', [(int) $fest_id]);
+if (!$chk || !($fest = ff_db_row_text(mysqli_fetch_assoc($chk)))) {
     http_response_code(404);
     echo 'Fest nicht gefunden';
     exit;
@@ -45,14 +45,13 @@ if ($format === 'html' && $festIstAktiv) {
 
 $where = ff_fest_paid_lines_where_sql($fest_id);
 
-$sqlSum = "SELECT COALESCE(SUM(b.betrag),0) AS g FROM bestellungen b WHERE {$where}";
-$gRes = mysqli_query($conn, $sqlSum);
+$gRes = ff_db_query_parts($conn, 'SELECT COALESCE(SUM(b.betrag),0) AS g FROM bestellungen b WHERE ', $where);
 $gesamt = 0.0;
 if ($gRes && ($gr = mysqli_fetch_assoc($gRes))) {
     $gesamt = (float) ($gr['g'] ?? 0);
 }
 
-$sqlPos = "SELECT b.position AS position_id,
+$sqlPos = ["SELECT b.position AS position_id,
     MAX(p.Positionsname) AS positionsname,
     COALESCE(NULLIF(TRIM(b.Zusatzinfo), ''), '') AS zusatzinfo,
     b.betrag AS einzelpreis_gezahlt,
@@ -60,15 +59,15 @@ $sqlPos = "SELECT b.position AS position_id,
     SUM(b.betrag) AS umsatz_zeile
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
-    WHERE {$where}
+    WHERE ", $where, "
     GROUP BY b.position, COALESCE(NULLIF(TRIM(b.Zusatzinfo), ''), ''), b.betrag
-    ORDER BY positionsname, einzelpreis_gezahlt, zusatzinfo";
+    ORDER BY positionsname, einzelpreis_gezahlt, zusatzinfo"];
 
-$res = mysqli_query($conn, $sqlPos);
+$res = ff_db_query_parts($conn, ...$sqlPos);
 $zeilen = [];
 if ($res) {
     while ($r = mysqli_fetch_assoc($res)) {
-        $zeilen[] = $r;
+        $zeilen[] = ff_db_row_text($r);
     }
 }
 

@@ -111,13 +111,13 @@ function ff_kassen_reopen(mysqli $conn, int $sessionId, string $by, string $reas
     if ($sessionId <= 0) {
         return ['ok' => false, 'error' => 'bad_session'];
     }
-    $res = mysqli_query($conn, 'SELECT * FROM kassen_sessions WHERE id = ' . $sessionId . " AND status = 'closed' LIMIT 1");
-    $sess = $res ? mysqli_fetch_assoc($res) : null;
+    $res = ff_db_query($conn, "SELECT * FROM kassen_sessions WHERE id = ? AND status = 'closed' LIMIT 1", 'i', [(int) $sessionId]);
+    $sess = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
     if (!$sess) {
         return ['ok' => false, 'error' => 'session_not_closed'];
     }
     $bereichId = (int) ($sess['bereich_id'] ?? 0);
-    $chk = mysqli_query($conn, 'SELECT id FROM kassen_sessions WHERE bereich_id = ' . $bereichId . " AND status = 'open' LIMIT 1");
+    $chk = ff_db_query($conn, "SELECT id FROM kassen_sessions WHERE bereich_id = ? AND status = 'open' LIMIT 1", 'i', [$bereichId]);
     if ($chk && mysqli_num_rows($chk) > 0) {
         return ['ok' => false, 'error' => 'bereich_has_open_session'];
     }

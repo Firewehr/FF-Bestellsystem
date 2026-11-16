@@ -35,11 +35,11 @@ try {
         $open[$id] = false;
     }
     if (count($ids) > 0) {
-        $in = implode(',', $ids);
+        [$in, $inTypes, $inIds] = ff_db_in_ints($ids);
         $q = 'SELECT b.tischnummer, COUNT(*) AS cnt FROM bestellungen b
             INNER JOIN positionen p ON p.rowid = b.position
             WHERE b.tischnummer IN (' . $in . ') AND ' . $openCond . ' GROUP BY b.tischnummer';
-        $r2 = mysqli_query($conn, $q);
+        $r2 = ff_db_query($conn, $q, $inTypes, $inIds);
         if ($r2) {
             while ($o = mysqli_fetch_assoc($r2)) {
                 $open[(int)$o['tischnummer']] = ((int)$o['cnt'] > 0);

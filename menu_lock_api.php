@@ -85,11 +85,11 @@ switch ($action) {
         if ($positionId <= 0) {
             json_out(['ok' => false, 'error' => 'position_id fehlt'], 400);
         }
-        $chk = mysqli_query($conn, "SELECT rowid, type FROM positionen WHERE rowid=" . $positionId . " LIMIT 1");
+        $chk = ff_db_query($conn, 'SELECT rowid, type FROM positionen WHERE rowid=? LIMIT 1', 'i', [$positionId]);
         if (!$chk || !mysqli_fetch_assoc($chk)) {
             json_out(['ok' => false, 'error' => 'Position unbekannt'], 400);
         }
-        mysqli_query($conn, "DELETE FROM menu_locks WHERE scope='position' AND position_id=" . $positionId);
+        ff_db_query($conn, 'DELETE FROM menu_locks WHERE scope=\'position\' AND position_id=?', 'i', [$positionId]);
         $until = compute_until($minutes >= 0 ? $minutes : null);
         if (!ff_menu_lock_insert($conn, 'position', (int)$positionId, null, $until, $reason, (string)$user)) {
             json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
@@ -112,11 +112,11 @@ switch ($action) {
         $done = 0;
         foreach ($positionIds as $positionId) {
             $positionId = (int)$positionId;
-            $chk = mysqli_query($conn, "SELECT rowid FROM positionen WHERE rowid=" . $positionId . " LIMIT 1");
+            $chk = ff_db_query($conn, 'SELECT rowid FROM positionen WHERE rowid=? LIMIT 1', 'i', [$positionId]);
             if (!$chk || !mysqli_fetch_assoc($chk)) {
                 continue;
             }
-            mysqli_query($conn, "DELETE FROM menu_locks WHERE scope='position' AND position_id=" . $positionId);
+            ff_db_query($conn, 'DELETE FROM menu_locks WHERE scope=\'position\' AND position_id=?', 'i', [$positionId]);
             if (ff_menu_lock_insert($conn, 'position', $positionId, null, $until, $reason, (string)$user)) {
                 $done++;
             }
@@ -141,12 +141,12 @@ switch ($action) {
         $exceptions = array_map('intval', $exceptions);
         $exceptions = array_values(array_filter($exceptions, function ($x) { return $x > 0; }));
 
-        $old = mysqli_query($conn, "SELECT id FROM menu_locks WHERE scope='type_all' AND menu_type=" . $menuType);
+        $old = ff_db_query($conn, 'SELECT id FROM menu_locks WHERE scope=\'type_all\' AND menu_type=?', 'i', [$menuType]);
         if ($old) {
-            while ($row = mysqli_fetch_assoc($old)) {
+            while ($row = ff_db_row_text(mysqli_fetch_assoc($old))) {
                 $lid = (int)$row['id'];
-                mysqli_query($conn, "DELETE FROM menu_lock_exceptions WHERE lock_id=" . $lid);
-                mysqli_query($conn, "DELETE FROM menu_locks WHERE id=" . $lid);
+                ff_db_query($conn, 'DELETE FROM menu_lock_exceptions WHERE lock_id=?', 'i', [$lid]);
+                ff_db_query($conn, 'DELETE FROM menu_locks WHERE id=?', 'i', [$lid]);
             }
         }
 
@@ -170,8 +170,8 @@ switch ($action) {
         if ($lockId <= 0) {
             json_out(['ok' => false, 'error' => 'lock_id fehlt'], 400);
         }
-        mysqli_query($conn, "DELETE FROM menu_lock_exceptions WHERE lock_id=" . $lockId);
-        mysqli_query($conn, "DELETE FROM menu_locks WHERE id=" . $lockId);
+        ff_db_query($conn, 'DELETE FROM menu_lock_exceptions WHERE lock_id=?', 'i', [$lockId]);
+        ff_db_query($conn, 'DELETE FROM menu_locks WHERE id=?', 'i', [$lockId]);
         json_out(['ok' => true]);
     }
 

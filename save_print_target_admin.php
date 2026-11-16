@@ -36,7 +36,7 @@ if (!empty($_POST['delete'])) {
     }
     try {
         @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-        $cntR = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE print_target = ' . $print_target);
+        $cntR = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE print_target = ?', 'i', [$print_target]);
         if (!$cntR) {
             echo json_encode(['ok' => false, 'error' => 'db_error', 'message' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
             exit;
@@ -58,19 +58,16 @@ if (!empty($_POST['delete'])) {
         $colChk = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'start_print_target'");
         if ($colChk && mysqli_num_rows($colChk) > 0) {
             mysqli_free_result($colChk);
-            mysqli_query(
-                $conn,
-                "UPDATE users SET start_page = CASE WHEN start_page = 'print_target' THEN 'menu' ELSE start_page END, start_print_target = NULL WHERE start_print_target = " . $print_target
-            );
+            ff_db_query($conn, 'UPDATE users SET start_page = CASE WHEN start_page = \'print_target\' THEN \'menu\' ELSE start_page END, start_print_target = NULL WHERE start_print_target = ?', 'i', [$print_target]);
         } elseif ($colChk) {
             mysqli_free_result($colChk);
         }
-        $del = mysqli_query($conn, 'DELETE FROM print_targets WHERE print_target = ' . $print_target . ' LIMIT 1');
+        $del = ff_db_query($conn, 'DELETE FROM print_targets WHERE print_target = ? LIMIT 1', 'i', [$print_target]);
         if (!$del) {
             echo json_encode(['ok' => false, 'error' => 'db_error', 'message' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        if (mysqli_affected_rows($conn) < 1) {
+        if (ff_db_affected_rows() < 1) {
             echo json_encode(['ok' => false, 'error' => 'not_found']);
             exit;
         }
@@ -117,6 +114,6 @@ if ($isNew) {
 
 if ($ok && isset($_POST['auto_print_limit']) && ff_auto_print_ensure_schema($conn)) {
     $autoLimit = max(0, min(50, (int) $_POST['auto_print_limit']));
-    $ok = mysqli_query($conn, 'UPDATE print_targets SET auto_print_limit = ' . $autoLimit . ' WHERE print_target = ' . $print_target);
+    $ok = ff_db_query($conn, 'UPDATE print_targets SET auto_print_limit = ? WHERE print_target = ?', 'ii', [$autoLimit, $print_target]);
 }
 echo json_encode(['ok' => (bool)$ok, 'error' => $ok ? null : mysqli_error($conn)]);

@@ -36,9 +36,9 @@ if ($Positionsname === '') {
     exit;
 }
 
-$rMax = mysqli_query($conn, 'SELECT COALESCE(MAX(reihenfolge),0)+1 AS n FROM positionen WHERE type=' . (int)$type);
+$rMax = ff_db_query($conn, 'SELECT COALESCE(MAX(reihenfolge),0)+1 AS n FROM positionen WHERE type=?', 'i', [(int)$type]);
 $reihenfolge = 1;
-if ($rMax && ($rm = mysqli_fetch_assoc($rMax))) {
+if ($rMax && ($rm = ff_db_row_text(mysqli_fetch_assoc($rMax)))) {
     $reihenfolge = (int)$rm['n'];
 }
 

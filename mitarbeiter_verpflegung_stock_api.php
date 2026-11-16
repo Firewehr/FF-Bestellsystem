@@ -15,11 +15,8 @@ if ($positionId <= 0) {
 }
 
 $max = 0;
-$res = mysqli_query(
-    $conn,
-    'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=' . $positionId . ' LIMIT 1'
-);
-if ($res && ($row = mysqli_fetch_assoc($res))) {
+$res = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [$positionId]);
+if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
     $max = (int) ($row['maxBestellbar'] ?? -1);
 }
 

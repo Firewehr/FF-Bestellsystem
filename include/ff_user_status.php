@@ -55,7 +55,7 @@ function ff_user_bump_auth_rev(mysqli $conn, int $userId): void
         return;
     }
     ff_users_ensure_auth_rev_column($conn);
-    @mysqli_query($conn, 'UPDATE `users` SET `auth_rev` = `auth_rev` + 1 WHERE `id` = ' . (int) $userId . ' LIMIT 1');
+    ff_db_query($conn, 'UPDATE `users` SET `auth_rev` = `auth_rev` + 1 WHERE `id` = ? LIMIT 1', 'i', [(int) $userId]);
 }
 
 /** Lesbares Einmalpasswort (ohne verwechselbare Zeichen). */

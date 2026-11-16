@@ -44,19 +44,16 @@ $rowId = (int) ($row['id'] ?? 0);
 $menge = (int) ($row['menge'] ?? 1);
 $removed = 0;
 if ($menge > 1) {
-    mysqli_query($conn, 'UPDATE mitarbeiter_verpflegung SET menge = menge - 1 WHERE id = ' . $rowId . ' LIMIT 1');
+    ff_db_query($conn, 'UPDATE mitarbeiter_verpflegung SET menge = menge - 1 WHERE id = ? LIMIT 1', 'i', [$rowId]);
     $removed = 1;
 } else {
-    mysqli_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ' . $rowId . ' LIMIT 1');
+    ff_db_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ? LIMIT 1', 'i', [$rowId]);
     $removed = 1;
 }
 
 $max = 0;
-$resPos = mysqli_query(
-    $conn,
-    'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=' . $positionId . ' LIMIT 1'
-);
-if ($resPos && ($rowPos = mysqli_fetch_assoc($resPos))) {
+$resPos = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, -1) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [$positionId]);
+if ($resPos && ($rowPos = ff_db_row_text(mysqli_fetch_assoc($resPos)))) {
     $max = (int) ($rowPos['maxBestellbar'] ?? -1);
 }
 

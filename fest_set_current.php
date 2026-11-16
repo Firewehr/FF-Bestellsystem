@@ -34,7 +34,7 @@ if ($id <= 0) {
 
 // Check if fest exists and read code
 $code = '';
-$res = mysqli_query($conn, "SELECT id, code FROM feste WHERE id = ".$id." LIMIT 1");
+$res = ff_db_query($conn, 'SELECT id, code FROM feste WHERE id = ? LIMIT 1', 'i', [$id]);
 if (!$res || mysqli_num_rows($res) === 0) {
     http_response_code(404);
     echo json_encode(['ok' => false, 'error' => 'not_found']);

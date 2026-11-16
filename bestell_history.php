@@ -623,19 +623,19 @@ if ($hasOrderSearch) {
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
             JOIN tische t ON t.tischnummer = b.tischnummer
-            WHERE (b.order_nr = {$orderNr} OR b.bestellung = {$orderNr})
+            WHERE (b.order_nr = ? OR b.bestellung = ?)
               {$deleteCond}{$extraCond}{$kellnerCond}{$typeCond}
             ORDER BY b.`delete` ASC, p.type ASC, p.Positionsname ASC, b.rowid ASC";
-    $res = ff_db_query($conn, $sql, $kellnerTypes, $kellnerParams);
+    $res = ff_db_query($conn, $sql, 'ii' . $kellnerTypes, array_merge([$orderNr, $orderNr], $kellnerParams));
     if ($res) { while ($r = mysqli_fetch_assoc($res)) { $resultsOrder[] = ff_db_row_text($r); } }
 
     $sqlAll = "SELECT b.ausgeliefert, b.timestampAuslieferung, b.`delete`
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
-            WHERE (b.order_nr = {$orderNr} OR b.bestellung = {$orderNr})
+            WHERE (b.order_nr = ? OR b.bestellung = ?)
               {$deleteCond}{$kellnerCond}{$typeCond}
             ORDER BY b.rowid ASC";
-    $resAll = ff_db_query($conn, $sqlAll, $kellnerTypes, $kellnerParams);
+    $resAll = ff_db_query($conn, $sqlAll, 'ii' . $kellnerTypes, array_merge([$orderNr, $orderNr], $kellnerParams));
     if ($resAll) {
         while ($r = mysqli_fetch_assoc($resAll)) {
             $resultsOrderAll[] = ff_db_row_text($r);
@@ -713,8 +713,8 @@ if (!$hasOrderSearch && !$hasBonSearch && $hasFilter) {
         $condTypes .= 's';
         $condParams[] = $dt . ' ' . $tt . ':59';
     }
-    if ($tableNo > 0) { $conds[] = "b.tischnummer = {$tableNo}"; }
-    if ($posId > 0) { $conds[] = "p.rowid = {$posId}"; }
+    if ($tableNo > 0) { $conds[] = 'b.tischnummer = ?'; $condTypes .= 'i'; $condParams[] = (int) $tableNo; }
+    if ($posId > 0) { $conds[] = 'p.rowid = ?'; $condTypes .= 'i'; $condParams[] = (int) $posId; }
     $typeSql = ff_hist_type_sql($typeFilter);
     if ($typeSql !== '') {
         $conds[] = $typeSql;

@@ -112,8 +112,8 @@
                     }
                     $tischnummerabfrage = $row['tischnummer'];
 
-                    $result2 = mysqli_query($conn, "SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `timestampBezahlung`=\"0000-00-00 00:00:00\"  AND tischnummer=" . $tischnummerabfrage);
-                    while ($roww = mysqli_fetch_assoc($result2)) {
+                    $result2 = ff_db_query($conn, 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `timestampBezahlung`="0000-00-00 00:00:00"  AND tischnummer=?', 'i', [$tischnummerabfrage]);
+                    while ($roww = ff_db_row_text(mysqli_fetch_assoc($result2))) {
 
                         if ($roww['cnt'] > 0) {
                             $Colour = "#F5F599";

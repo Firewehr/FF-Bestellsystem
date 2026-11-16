@@ -23,7 +23,7 @@ if ($fest_id <= 0) {
 mysqli_set_charset($conn, 'utf8mb4');
 ff_schreibaus_ensure_column($conn);
 
-$chk = mysqli_query($conn, 'SELECT id, name, code, fest_datum FROM feste WHERE id=' . $fest_id . ' LIMIT 1');
+$chk = ff_db_query($conn, 'SELECT id, name, code, fest_datum FROM feste WHERE id=? LIMIT 1', 'i', [(int) $fest_id]);
 if (!$chk || !($festRow = mysqli_fetch_assoc($chk))) {
     http_response_code(404);
     echo 'Fest nicht gefunden';
@@ -57,14 +57,18 @@ try {
     exit;
 }
 
-function ff_fest_bestellungen_join_csv(mysqli $conn, string $whereSql): string
+/** @param array{0:string,1:string,2:list<mixed>} $where Baustein [sql, types, params] */
+function ff_fest_bestellungen_join_csv(mysqli $conn, array $where): string
 {
     $fh = ff_fest_csv_open_stream();
-    $sql = 'SELECT b.*, p.Positionsname AS _stam_positionsname, p.Betrag AS _stam_listenpreis_position
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT b.*, p.Positionsname AS _stam_positionsname, p.Betrag AS _stam_listenpreis_position
         FROM bestellungen b
         LEFT JOIN positionen p ON p.rowid = b.position
-        WHERE ' . $whereSql;
-    $res = mysqli_query($conn, $sql);
+        WHERE ',
+        $where
+    );
     if (!$res) {
         return ff_fest_stream_to_string($fh);
     }
@@ -80,13 +84,14 @@ function ff_fest_bestellungen_join_csv(mysqli $conn, string $whereSql): string
     return ff_fest_stream_to_string($fh);
 }
 
-$csvBestellungenAlle = ff_fest_bestellungen_join_csv($conn, 'b.`delete`=0 AND b.fest_id=' . (int) $fest_id);
+$csvBestellungenAlle = ff_fest_bestellungen_join_csv($conn, ff_db_frag('b.`delete`=0 AND b.fest_id=?', 'i', [(int) $fest_id]));
 $csvBezahlt = ff_fest_bestellungen_join_csv($conn, ff_fest_paid_lines_where_sql($fest_id));
 
-function ff_fest_table_to_csv(mysqli $conn, string $sql, array $headerFromFirstRow = null): string
+/** @param string|array{0:string,1:string,2:list<mixed>} $sql SQL ohne Werte oder Baustein [sql, types, params] */
+function ff_fest_table_to_csv(mysqli $conn, $sql, array $headerFromFirstRow = null): string
 {
     $fh = ff_fest_csv_open_stream();
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query_parts($conn, $sql);
     if (!$res) {
         return ff_fest_stream_to_string($fh);
     }
@@ -102,7 +107,7 @@ function ff_fest_table_to_csv(mysqli $conn, string $sql, array $headerFromFirstR
     return ff_fest_stream_to_string($fh);
 }
 
-$csvRechnungen = ff_fest_table_to_csv($conn, 'SELECT * FROM rechnungen WHERE fest_id=' . (int) $fest_id . ' ORDER BY id');
+$csvRechnungen = ff_fest_table_to_csv($conn, ff_db_frag('SELECT * FROM rechnungen WHERE fest_id=? ORDER BY id', 'i', [(int) $fest_id]));
 
 $hasFestSr = false;
 $csr = @mysqli_query($conn, "SHOW COLUMNS FROM sammelrechnungen LIKE 'fest_id'");
@@ -110,9 +115,9 @@ if ($csr && mysqli_num_rows($csr) > 0) {
     $hasFestSr = true;
 }
 if ($hasFestSr) {
-    $csvSammel = ff_fest_table_to_csv($conn, 'SELECT * FROM sammelrechnungen WHERE fest_id=' . (int) $fest_id . ' OR id IN (SELECT DISTINCT sammelrechnung_id FROM bestellungen WHERE fest_id=' . (int) $fest_id . ' AND sammelrechnung_id IS NOT NULL) ORDER BY id');
+    $csvSammel = ff_fest_table_to_csv($conn, ff_db_frag('SELECT * FROM sammelrechnungen WHERE fest_id=? OR id IN (SELECT DISTINCT sammelrechnung_id FROM bestellungen WHERE fest_id=? AND sammelrechnung_id IS NOT NULL) ORDER BY id', 'ii', [(int) $fest_id, (int) $fest_id]));
 } else {
-    $csvSammel = ff_fest_table_to_csv($conn, 'SELECT * FROM sammelrechnungen WHERE id IN (SELECT DISTINCT sammelrechnung_id FROM bestellungen WHERE fest_id=' . (int) $fest_id . ' AND sammelrechnung_id IS NOT NULL) ORDER BY id');
+    $csvSammel = ff_fest_table_to_csv($conn, ff_db_frag('SELECT * FROM sammelrechnungen WHERE id IN (SELECT DISTINCT sammelrechnung_id FROM bestellungen WHERE fest_id=? AND sammelrechnung_id IS NOT NULL) ORDER BY id', 'i', [(int) $fest_id]));
 }
 
 $festDatumRaw = (string) ($festRow['fest_datum'] ?? '');

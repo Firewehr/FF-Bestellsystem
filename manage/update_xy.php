@@ -13,7 +13,7 @@ if ($tischnummer <= 0 || $x < 1 || $y < 1) {
 
 require_once '../include/db.php';
 
-$res = mysqli_query($conn, 'SELECT x, y FROM tische WHERE tischnummer=' . $tischnummer . ' LIMIT 1');
+$res = ff_db_query($conn, 'SELECT x, y FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$tischnummer]);
 if (!$res || mysqli_num_rows($res) === 0) {
     http_response_code(404);
     echo 'not found';
@@ -30,27 +30,18 @@ if ($oldX === $x && $oldY === $y) {
     exit;
 }
 
-$otherRes = mysqli_query(
-    $conn,
-    'SELECT tischnummer FROM tische WHERE x=' . $x . ' AND y=' . $y . ' AND tischnummer<>' . $tischnummer . ' LIMIT 1'
-);
+$otherRes = ff_db_query($conn, 'SELECT tischnummer FROM tische WHERE x=? AND y=? AND tischnummer<>? LIMIT 1', 'iii', [$x, $y, $tischnummer]);
 $otherTn = 0;
-if ($otherRes && ($orow = mysqli_fetch_assoc($otherRes))) {
+if ($otherRes && ($orow = ff_db_row_text(mysqli_fetch_assoc($otherRes)))) {
     $otherTn = (int)$orow['tischnummer'];
 }
 
 mysqli_begin_transaction($conn);
 $ok = true;
 if ($otherTn > 0) {
-    $ok = $ok && mysqli_query(
-        $conn,
-        'UPDATE tische SET x=' . $oldX . ', y=' . $oldY . ' WHERE tischnummer=' . $otherTn
-    );
+    $ok = $ok && ff_db_query($conn, 'UPDATE tische SET x=?, y=? WHERE tischnummer=?', 'iii', [$oldX, $oldY, $otherTn]);
 }
-$ok = $ok && mysqli_query(
-    $conn,
-    'UPDATE tische SET x=' . $x . ', y=' . $y . ' WHERE tischnummer=' . $tischnummer
-);
+$ok = $ok && ff_db_query($conn, 'UPDATE tische SET x=?, y=? WHERE tischnummer=?', 'iii', [$x, $y, $tischnummer]);
 
 if ($ok) {
     mysqli_commit($conn);

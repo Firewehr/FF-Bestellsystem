@@ -13,7 +13,6 @@ if ($rowid <= 0 || ($type !== 1 && $type !== 2)) {
     exit;
 }
 
-$sql = "UPDATE positionen SET type = $type WHERE rowid = $rowid";
-$ok = mysqli_query($conn, $sql);
+$ok = ff_db_query($conn, 'UPDATE positionen SET type = ? WHERE rowid = ?', 'ii', [$type, $rowid]);
 
 echo json_encode(["ok" => (bool)$ok]);

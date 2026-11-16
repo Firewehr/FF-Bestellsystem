@@ -18,6 +18,6 @@ if ($id <= 0) {
     exit;
 }
 
-mysqli_query($conn, "DELETE FROM mitarbeiter_verpflegung WHERE bereich_id = " . $id);
-mysqli_query($conn, "DELETE FROM mitarbeiter_bereiche WHERE id = " . $id);
+ff_db_query($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE bereich_id = ?', 'i', [$id]);
+ff_db_query($conn, 'DELETE FROM mitarbeiter_bereiche WHERE id = ?', 'i', [$id]);
 echo json_encode(['ok' => true]);

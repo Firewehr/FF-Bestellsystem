@@ -48,8 +48,8 @@ if (is_readable($helpersPath)) {
 }
 
 $reihenfolge = 1;
-$rMax = mysqli_query($conn, 'SELECT COALESCE(MAX(reihenfolge), 0) + 1 AS n FROM positionen WHERE type=' . (int)$type);
-if ($rMax && ($rm = mysqli_fetch_assoc($rMax))) {
+$rMax = ff_db_query($conn, 'SELECT COALESCE(MAX(reihenfolge), 0) + 1 AS n FROM positionen WHERE type=?', 'i', [(int)$type]);
+if ($rMax && ($rm = ff_db_row_text(mysqli_fetch_assoc($rMax)))) {
     $reihenfolge = (int)$rm['n'];
 }
 

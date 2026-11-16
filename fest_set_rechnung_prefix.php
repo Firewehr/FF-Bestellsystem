@@ -34,8 +34,8 @@ if (!$ok) {
     exit;
 }
 
-if (mysqli_affected_rows($conn) < 1) {
-    $chk = mysqli_query($conn, 'SELECT id FROM feste WHERE id=' . $fest_id . ' LIMIT 1');
+if (ff_db_affected_rows() < 1) {
+    $chk = ff_db_query($conn, 'SELECT id FROM feste WHERE id=? LIMIT 1', 'i', [$fest_id]);
     if (!$chk || !mysqli_fetch_assoc($chk)) {
         http_response_code(404);
         echo json_encode(['ok' => false, 'error' => 'not_found'], JSON_UNESCAPED_UNICODE);

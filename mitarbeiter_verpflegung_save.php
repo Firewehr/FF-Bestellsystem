@@ -30,11 +30,8 @@ if (!$datum || $bereich_id <= 0 || $position_id <= 0) {
 }
 
 $maxBestellbar = 0;
-$resPos = mysqli_query(
-    $conn,
-    'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=' . $position_id . ' LIMIT 1'
-);
-if ($resPos && ($rowPos = mysqli_fetch_assoc($resPos))) {
+$resPos = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [$position_id]);
+if ($resPos && ($rowPos = ff_db_row_text(mysqli_fetch_assoc($resPos)))) {
     $maxBestellbar = (int) ($rowPos['maxBestellbar'] ?? 0);
 }
 

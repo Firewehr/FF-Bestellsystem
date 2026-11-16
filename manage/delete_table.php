@@ -10,9 +10,7 @@ $tischnummer = (int)($_POST['tischnummer'] ?? $_GET['tischnummer'] ?? 0);
 
 if ($tischnummer > 0) {
     require_once __DIR__ . '/../include/db.php';
-    $sql = "DELETE FROM `tische` WHERE tischnummer=" . $tischnummer . " LIMIT 1";
-
-    if (mysqli_query($conn, $sql)) {
+    if (ff_db_query($conn, 'DELETE FROM `tische` WHERE tischnummer=? LIMIT 1', 'i', [$tischnummer])) {
         echo json_encode(['ok' => true, 'message' => 'Record deleted successfully']);
     } else {
         http_response_code(500);

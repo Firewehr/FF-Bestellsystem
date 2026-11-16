@@ -97,7 +97,7 @@ while ($res && ($s = mysqli_fetch_assoc($res))) {
     $sid = (int) ($s['id'] ?? 0);
     $mov = ff_kassen_session_movements_sum($conn, $sid);
     $movLines = [];
-    $mr = mysqli_query($conn, 'SELECT typ, betrag, notiz, created_at FROM kassen_bewegungen WHERE session_id = ' . $sid . ' ORDER BY created_at ASC');
+    $mr = ff_db_query($conn, 'SELECT typ, betrag, notiz, created_at FROM kassen_bewegungen WHERE session_id = ? ORDER BY created_at ASC', 'i', [$sid]);
     while ($mr && ($m = mysqli_fetch_assoc($mr))) {
         $lbl = ($m['typ'] ?? '') === 'entnahme' ? 'Entnahme' : 'Zuzahlung';
         $movLines[] = $lbl . ' ' . number_format((float) ($m['betrag'] ?? 0), 2, ',', '.') . ($m['notiz'] ? ' (' . $m['notiz'] . ')' : '');

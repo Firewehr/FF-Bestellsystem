@@ -19,5 +19,5 @@ $chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'"
 if ($chkSk && mysqli_num_rows($chkSk) === 0) {
     @mysqli_query($conn, "ALTER TABLE positionen ADD COLUMN selbstkosten DECIMAL(10,2) NOT NULL DEFAULT 0.00");
 }
-mysqli_query($conn, "UPDATE positionen SET selbstkosten = " . $selbstkosten . " WHERE rowid = " . $rowid);
+ff_db_query($conn, 'UPDATE positionen SET selbstkosten = ? WHERE rowid = ?', 'di', [$selbstkosten, $rowid]);
 echo 'ok';
