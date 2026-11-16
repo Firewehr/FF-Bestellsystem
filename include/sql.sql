@@ -370,7 +370,7 @@ CREATE TABLE IF NOT EXISTS `rechnungen` (
   `is_proforma` TINYINT(1) NOT NULL DEFAULT 0,
   `lines_json` MEDIUMTEXT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_rechnungsnummer` (`rechnungsnummer`),
+  UNIQUE KEY `uq_rechnungsnummer` (`rechnungsnummer`),
   KEY `idx_fest_id` (`fest_id`),
   KEY `idx_sammelrechnung_id` (`sammelrechnung_id`),
   KEY `idx_created_at` (`created_at`),

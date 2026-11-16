@@ -1128,6 +1128,41 @@ function ff_sanitize_and_repair_tables(mysqli $conn, array &$log): void {
 
     // 9. Übergreifende Spaltenpatches für alle Tabellen anwenden
     ff_apply_schema_patches($conn, $log);
+
+    // 10. Doppelter Index auf rechnungen.rechnungsnummer: ältere Installationen haben neben
+    //     uq_rechnungsnummer (UNIQUE) noch idx_rechnungsnummer (gleiche Spalte). Der UNIQUE-Index
+    //     deckt alle Abfragen ab; der zweite kostet nur Schreibzeit. Nur hier im Update-Lauf,
+    //     nicht zur Laufzeit (DDL würde z. B. die Zahlungs-Transaktion vorzeitig festschreiben).
+    ff_dbu_drop_duplicate_rechnungsnummer_index($conn, $log);
+}
+
+/**
+ * Entfernt idx_rechnungsnummer, wenn ein einspaltiger UNIQUE-Index auf rechnungsnummer existiert.
+ */
+function ff_dbu_drop_duplicate_rechnungsnummer_index(mysqli $conn, array &$log): void {
+    $res = @mysqli_query($conn, "SHOW INDEX FROM `rechnungen`");
+    if (!$res) {
+        return;
+    }
+    $idx = [];
+    while ($r = mysqli_fetch_assoc($res)) {
+        $idx[(string) $r['Key_name']][] = ['col' => strtolower((string) $r['Column_name']), 'unique' => (int) $r['Non_unique'] === 0];
+    }
+    mysqli_free_result($res);
+    $isSingleOnNr = static fn (array $cols): bool => count($cols) === 1 && $cols[0]['col'] === 'rechnungsnummer';
+    $hasUnique = false;
+    foreach ($idx as $name => $cols) {
+        if ($name !== 'PRIMARY' && $isSingleOnNr($cols) && $cols[0]['unique']) {
+            $hasUnique = true;
+        }
+    }
+    if ($hasUnique && isset($idx['idx_rechnungsnummer']) && $isSingleOnNr($idx['idx_rechnungsnummer']) && !$idx['idx_rechnungsnummer'][0]['unique']) {
+        if (@mysqli_query($conn, "ALTER TABLE `rechnungen` DROP INDEX `idx_rechnungsnummer`")) {
+            $log[] = ['type' => 'success', 'msg' => "Reparatur: Doppelten Index 'idx_rechnungsnummer' auf 'rechnungen' entfernt (UNIQUE-Index bleibt)."];
+        } else {
+            $log[] = ['type' => 'warning', 'msg' => "Index 'idx_rechnungsnummer' konnte nicht entfernt werden: " . mysqli_error($conn)];
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
