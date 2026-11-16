@@ -1,8 +1,8 @@
 <?php
 /**
  * Leert das Schema-Migrations-Cache-Verzeichnis (include/.cache/schema_*).
- * Beim nächsten Request laufen die SHOW COLUMNS / ALTER-Migrationen wieder einmal,
- * sodass z. B. manuelle DB-Änderungen wieder mit dem Code abgeglichen werden.
+ * Setzt den Schema-Merker zurück und startet den Migrationslauf (include/ff_schema_migrate.php)
+ * sofort, sodass z. B. manuelle DB-Änderungen wieder mit dem Code abgeglichen werden.
  *
  * Nutzung:
  *   - Admin in der Browser-Session aufrufen: /admin_schema_cache_clear.php
@@ -53,9 +53,15 @@ if (is_dir($cacheDir)) {
     }
 }
 
+// Merker verwerfen und alle Schema-Prüfungen sofort gebündelt ausführen
+require_once __DIR__ . '/include/ff_schema_migrate.php';
+ff_schema_reset_marker($conn);
+$migration = ff_schema_migrate($conn);
+
 echo json_encode([
     'ok' => true,
     'deleted' => $deleted,
     'skipped' => $skipped,
-    'message' => 'Schema-Cache geleert. Beim nächsten Request laufen die Migrationen einmalig wieder.',
+    'schema' => $migration,
+    'message' => 'Schema-Cache geleert. ' . $migration['message'],
 ], JSON_UNESCAPED_UNICODE);

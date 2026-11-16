@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/user_landing.php';
+require_once __DIR__ . '/ff_schema_gate.php';
 
 /**
  * Alle aktiven Druckziele (unabhängig von positionen — für Benutzereinstellung).
@@ -12,7 +13,9 @@ require_once __DIR__ . '/user_landing.php';
  */
 function ff_dv_abholbon_list_active_targets(mysqli $conn): array
 {
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!ff_schema_is_current($conn)) {
+        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
     $out = [];
     $q = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
     if ($q) {
@@ -37,7 +40,9 @@ function ff_dv_abholbon_target_is_valid(mysqli $conn, int $id): bool
     if ($id <= 0) {
         return false;
     }
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    if (!ff_schema_is_current($conn)) {
+        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    }
     $st = mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
     if (!$st) {
         return false;

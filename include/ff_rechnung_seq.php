@@ -4,6 +4,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 require_once __DIR__ . '/settings.php';
 
 /** Einheitlicher Settings-Schlüssel für den nächsten Zählerstand (unabhängig vom Jahr). */
@@ -11,6 +13,9 @@ const FF_RECHNUNG_NEXT_KEY = 'rechnung_next';
 
 function ff_feste_ensure_rechnung_prefix_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     $chk = @mysqli_query($conn, "SHOW COLUMNS FROM feste LIKE 'rechnung_prefix'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         return;

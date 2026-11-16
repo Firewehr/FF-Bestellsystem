@@ -163,9 +163,11 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
         $stuckMinutes = 10;
     }
     try {
-        $pjChk = mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
-        if ($pjChk && mysqli_num_rows($pjChk) > 0) {
-            mysqli_free_result($pjChk);
+        $pjChk = ff_schema_is_current($conn) ? true : mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
+        if ($pjChk === true || ($pjChk && mysqli_num_rows($pjChk) > 0)) {
+            if ($pjChk !== true) {
+                mysqli_free_result($pjChk);
+            }
             $rj = mysqli_query($conn, 'SELECT status, COUNT(*) AS c FROM printer_jobs GROUP BY status');
             if ($rj) {
                 while ($jr = mysqli_fetch_assoc($rj)) {

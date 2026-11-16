@@ -4,11 +4,16 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 require_once __DIR__ . '/user_landing.php';
 
 /** @return void */
 function ff_users_ensure_menu_permissions_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;

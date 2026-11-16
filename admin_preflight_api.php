@@ -6,6 +6,7 @@
  *
  * GET                            → Ergebnis aller Prüfungen
  * POST action=print_backlog_clear → liegengebliebene Bons als gedruckt markieren (Admin, Token)
+ * POST action=schema_migrate      → Schema-Prüfungen sofort gebündelt ausführen (Admin, Token)
  */
 header('Content-Type: application/json; charset=utf-8');
 
@@ -24,6 +25,12 @@ mysqli_set_charset($conn, 'utf8mb4');
 // POST action=print_backlog_clear: liegengebliebene Bons als gedruckt markieren
 if (strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET')) === 'POST') {
     ff_csrf_require();
+    if ((string) ($_POST['action'] ?? '') === 'schema_migrate') {
+        ff_schema_reset_marker($conn);
+        $migration = ff_schema_migrate($conn);
+        echo json_encode(['ok' => true, 'schema' => $migration], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
     if ((string) ($_POST['action'] ?? '') !== 'print_backlog_clear') {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Unbekannte Aktion.']);

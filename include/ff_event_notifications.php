@@ -1,5 +1,6 @@
 <?php
 
+require_once __DIR__ . '/ff_schema_gate.php';
 require_once __DIR__ . '/ff_rezepturen_schema.php';
 require_once __DIR__ . '/ff_schema_helpers.php';
 require_once __DIR__ . '/ff_fest_scope.php';
@@ -21,6 +22,9 @@ function ff_admin_messages_table_sql(): string
 
 function ff_event_notifications_bootstrap(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $initialized = [];
     $connectionId = spl_object_id($conn);
     if (isset($initialized[$connectionId])) {

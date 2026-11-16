@@ -4,10 +4,15 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 require_once __DIR__ . '/ff_schema_login.php';
 
 function ff_position_ensure_kassa_only_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'kassa_only'");
     if ($chk && mysqli_num_rows($chk) === 0) {
         @mysqli_query(
@@ -19,6 +24,9 @@ function ff_position_ensure_kassa_only_column(mysqli $conn): void
 
 function ff_subcategory_ensure_kassa_only_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'kassa_only'");
     if ($chk && mysqli_num_rows($chk) === 0) {
         @mysqli_query(

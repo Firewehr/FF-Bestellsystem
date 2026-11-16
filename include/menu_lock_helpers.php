@@ -5,8 +5,13 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 function menu_lock_ensure_tables(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     // CREATE TABLE beendet in MySQL/MariaDB jede offene Transaktion (implizites COMMIT).
     // Deshalb zuerst ohne DDL prüfen und nur bei fehlenden Tabellen anlegen – einmal pro Request.
     static $ready = false;
@@ -55,6 +60,13 @@ function menu_lock_ensure_tables(mysqli $conn): void
 
 function menu_lock_cleanup_expired(mysqli $conn): void
 {
+    // Abgelaufene Sperren zählen in allen Abfragen ohnehin nicht (locked_until > NOW()) –
+    // Aufräumen reicht einmal pro Request.
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
     menu_lock_ensure_tables($conn);
     @mysqli_query($conn, "DELETE e FROM `menu_lock_exceptions` e
         INNER JOIN `menu_locks` l ON l.id = e.lock_id

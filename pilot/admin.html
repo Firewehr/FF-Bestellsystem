@@ -521,7 +521,7 @@
             <div>
               <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0;">✈️ Fest-Vorbereitungsassistent („Pre-Flight Checklist“)</h3>
               <p style="margin: 0; font-size: 0.85rem; color: var(--ff-text-muted);">
-                Sicherheitsüberprüfung vor Festbeginn: Testdaten bereinigt, Netzwerk-Bondrucker &amp; Stationen online, Rechnungsnummernkreis, Datensicherung und keine alten, ungedruckten Bons.
+                Sicherheitsüberprüfung vor Festbeginn: Testdaten bereinigt, Netzwerk-Bondrucker &amp; Stationen online, Rechnungsnummernkreis, Datensicherung , keine alten, ungedruckten Bons und aktuelles Datenbank-Schema.
               </p>
             </div>
             <button type="button" class="btn btn-primary btn-sm" :disabled="preflightLoading" @click="loadPreflight">
@@ -546,7 +546,7 @@
             </div>
           </div>
 
-          <!-- 5 Checks -->
+          <!-- 6 Checks -->
           <div v-if="preflightData" style="display: flex; flex-direction: column; gap: 16px;">
             
             <!-- Check 1: Testdaten -->
@@ -691,6 +691,27 @@
                     {{ printBacklogClearing ? 'Verwirft…' : '🗑️ Alte Bons verwerfen' }}
                   </button>
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check 6: Datenbank-Schema -->
+            <div class="admin-card">
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.schema?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">6. Datenbank-Schema aktuell</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.schema?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.schema?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p class="u-subtitle">{{ preflightData.checks?.schema?.details }}</p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-sm" :class="preflightData.checks?.schema?.status === 'ok' ? 'btn-outline' : 'btn-warning'" :disabled="schemaMigrating" @click="migrateSchema">
+                    {{ schemaMigrating ? 'Prüft…' : '🔧 Jetzt aktualisieren' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -3665,6 +3686,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261116_4"></script>
+  <script type="module" src="admin.js?v=20261116_5"></script>
 </body>
 </html>

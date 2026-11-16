@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 if (function_exists('mysqli_report')) {
     @mysqli_report(MYSQLI_REPORT_OFF);
 }
@@ -12,6 +14,12 @@ if (!function_exists('ff_rezepturen_table_exists')) {
         $key = strtolower($tableName);
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
+        }
+        // Tabellen, die der Migrationslauf anlegt und die Soll-Struktur verlangt
+        $migrated = ['bestandteile', 'position_rezepturen', 'allergene', 'bestandteil_allergene',
+            'bestellung_rezeptur_snapshots', 'bestellung_rezeptur_komponenten', 'mitarbeiter_verpflegung'];
+        if (in_array($key, $migrated, true) && ff_schema_is_current($conn)) {
+            return $cache[$key] = true;
         }
 
         $safeTable = str_replace("'", "''", $tableName);
@@ -34,6 +42,9 @@ if (!function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
      */
     function ff_mitarbeiter_verpflegung_ensure_schema(mysqli $conn): void
     {
+        if (ff_schema_is_current($conn)) {
+            return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $mvChecked = [];
         $cid = spl_object_id($conn);
         if (isset($mvChecked[$cid])) {
@@ -176,6 +187,9 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
      */
     function ff_rezepturen_ensure_schema(mysqli $conn): void
     {
+        if (ff_schema_is_current($conn)) {
+            return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $schemaChecked = [];
         $connectionId = spl_object_id($conn);
         if (isset($schemaChecked[$connectionId])) {

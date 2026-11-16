@@ -4,9 +4,14 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /** Spalten is_active, active_from, active_until, force_password_change sicherstellen. */
 function ff_users_ensure_status_columns(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -33,6 +38,9 @@ function ff_users_ensure_status_columns(mysqli $conn): void
 /** Spalte auth_rev: erhoehen = alle bestehenden Sessions ungueltig. */
 function ff_users_ensure_auth_rev_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;

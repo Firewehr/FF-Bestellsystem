@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/ff_schema_gate.php';
 /**
  * Anzeigenamen für Druckziele (print_targets) und Heartbeat-Service-Keys.
  */
@@ -15,13 +16,15 @@ if (!function_exists('ff_print_targets_name_map')) {
             return $cache;
         }
         $cache = [];
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (
-            print_target INT(11) NOT NULL,
-            name VARCHAR(64) NOT NULL,
-            active TINYINT(1) NOT NULL DEFAULT 1,
-            sort_order INT(11) NOT NULL DEFAULT 0,
-            PRIMARY KEY (print_target)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        if (!ff_schema_is_current($conn)) {
+            @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (
+                print_target INT(11) NOT NULL,
+                name VARCHAR(64) NOT NULL,
+                active TINYINT(1) NOT NULL DEFAULT 1,
+                sort_order INT(11) NOT NULL DEFAULT 0,
+                PRIMARY KEY (print_target)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
         $res = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets ORDER BY sort_order, name, print_target');
         if ($res) {
             while ($row = mysqli_fetch_assoc($res)) {

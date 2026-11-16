@@ -2002,6 +2002,113 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 ?? ff_st_expect_same(true, ff_print_target_bypasses_sibling_filter(['auto_print' => 1]), 'Sofortdruck');
         });
 
+        $g = 'Schema-Migration';
+
+        $check($g, 'Jede Schema-Funktion ist im Migrationslauf eingetragen oder folgt dem Merker', function () {
+            require_once __DIR__ . '/ff_schema_migrate.php';
+            $steps = [];
+            foreach (ff_schema_migrate_steps() as [$file, $fn]) {
+                $steps[$fn] = $file;
+                if (!in_array($file, FF_SCHEMA_GATE_FILES, true)) {
+                    return 'Datei ' . $file . ' fehlt in FF_SCHEMA_GATE_FILES (Fingerabdruck)';
+                }
+            }
+            // Funktionen mit DDL, die bewusst nicht im Lauf stehen
+            $allowed = array_merge(FF_SCHEMA_MIGRATE_NOT_STEPS, [
+                'ff_admin_messages_table_sql',  // liefert nur SQL-Text für ff_event_notifications_bootstrap
+                'festio_import_menu_bundle',    // Fest-Import (Admin-Aktion, legt Import-Tabellen an)
+                'ff_selftests_repair_database', // „Datenbank reparieren“ (Admin-Aktion)
+                'ff_selftests_expected_schema', // Soll-Struktur als Text, führt nichts aus
+            ]);
+            $problems = [];
+            foreach (glob(__DIR__ . '/*.php') ?: [] as $path) {
+                $src = (string) file_get_contents($path);
+                if (!preg_match_all('/function\s+(\w+)\s*\(/', $src, $m, PREG_OFFSET_CAPTURE)) {
+                    continue;
+                }
+                $n = count($m[1]);
+                for ($i = 0; $i < $n; $i++) {
+                    $fn = $m[1][$i][0];
+                    $start = $m[1][$i][1];
+                    $body = substr($src, $start, ($i + 1 < $n ? $m[1][$i + 1][1] : strlen($src)) - $start);
+                    $isEnsure = stripos($fn, 'ensure') !== false;
+                    $hasDdl = (bool) preg_match('/\b(CREATE|ALTER|DROP)\s+TABLE\b/i', $body);
+                    if (!$isEnsure && !$hasDdl) {
+                        continue;
+                    }
+                    if (isset($steps[$fn]) || in_array($fn, $allowed, true)) {
+                        continue;
+                    }
+                    if (!$isEnsure && strpos($body, 'ff_schema_is_current(') !== false) {
+                        continue; // DDL nur ohne aktuellen Merker
+                    }
+                    $problems[] = basename($path) . ': ' . $fn;
+                }
+            }
+            return $problems === [] ? null
+                : 'Nicht im Migrationslauf (ff_schema_migrate_steps) und ohne Merker: ' . implode(', ', $problems);
+        });
+
+        $check($g, 'Merker: passender Fingerabdruck = aktuell, anderer oder laufende Migration = nicht aktuell', function (mysqli $c) {
+            require_once __DIR__ . '/ff_schema_migrate.php';
+            $orig = (string) setting_get($c, 'schema_fingerprint', '');
+            $set = static function (string $v) use ($c): void {
+                ff_settings_cache($c, ['v' => $v], 'schema_fingerprint'); // nur Request-Cache, keine DB-Schreibung
+                ff_schema_is_current($c, true);
+            };
+            try {
+                $set(ff_schema_fingerprint());
+                $matching = ff_schema_is_current($c);
+                ff_schema_migrating(true);
+                $whileMigrating = ff_schema_is_current($c);
+                ff_schema_migrating(false);
+                $set('0000000000000000');
+                $other = ff_schema_is_current($c);
+                $set('');
+                $empty = ff_schema_is_current($c);
+            } finally {
+                ff_schema_migrating(false);
+                $set($orig);
+            }
+            return ff_st_expect_same(true, $matching, 'passender Fingerabdruck')
+                ?? ff_st_expect_same(false, $whileMigrating, 'während der Migration')
+                ?? ff_st_expect_same(false, $other, 'anderer Fingerabdruck (Deploy / altes Backup)')
+                ?? ff_st_expect_same(false, $empty, 'kein Fingerabdruck (Cache geleert)');
+        });
+
+        $check($g, 'Bei aktuellem Merker machen alle Schema-Funktionen keine einzige DB-Abfrage', function (mysqli $c) {
+            require_once __DIR__ . '/ff_schema_migrate.php';
+            $orig = (string) setting_get($c, 'schema_fingerprint', '');
+            ff_settings_cache($c, ['v' => ff_schema_fingerprint()], 'schema_fingerprint');
+            ff_schema_is_current($c, true);
+            $questions = static function () use ($c): int {
+                $r = mysqli_query($c, "SHOW SESSION STATUS LIKE 'Questions'");
+                $row = $r ? mysqli_fetch_row($r) : null;
+                return (int) ($row[1] ?? 0);
+            };
+            // Datenzeilen-Prüfungen laufen absichtlich weiter
+            $dataRows = ['ff_ensure_direktverkauf_tisch_row', 'ff_finance_ensure_kellner_direkt_print_targets'];
+            $noisy = [];
+            try {
+                foreach (ff_schema_migrate_steps() as [$file, $fn]) {
+                    if (in_array($fn, $dataRows, true)) {
+                        continue;
+                    }
+                    require_once __DIR__ . '/' . $file;
+                    $before = $questions();
+                    $fn($c);
+                    $used = $questions() - $before - 1; // die Status-Abfrage selbst
+                    if ($used > 0) {
+                        $noisy[] = $fn . ' (' . $used . ')';
+                    }
+                }
+            } finally {
+                ff_settings_cache($c, ['v' => $orig], 'schema_fingerprint');
+                ff_schema_is_current($c, true);
+            }
+            return $noisy === [] ? null : 'Abfragen trotz aktuellem Merker: ' . implode(', ', $noisy);
+        });
+
         $g = 'Druckabruf';
 
         $check($g, 'Bons kommen in der Reihenfolge, in der sie druckbereit wurden, nicht nach Tischnummer', function (mysqli $c) {

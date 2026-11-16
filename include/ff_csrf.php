@@ -7,6 +7,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 if (defined('FF_CSRF_LOADED')) {
     return;
 }
@@ -193,6 +195,9 @@ function ff_csrf_mode(mysqli $conn): string
 
 function ff_csrf_log_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     if (!function_exists('ff_ensure_table')) {
         require_once __DIR__ . '/ff_schema_helpers.php';
     }

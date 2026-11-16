@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Sammelrechnung bezahlen (SammelrechnungBezahlt.php): Positionen mehrerer Sammelrechnungs-Tische
  * einer neuen Sammelrechnung zuordnen, als bezahlt markieren und die Tische freigeben.
@@ -35,6 +37,9 @@ if (!function_exists('ff_sammelrechnung_pay')) {
     /** Spalten von `sammelrechnungen` nachziehen (war seit Commit 3c55c6c teils entfernt). */
     function ff_sammelrechnung_ensure_schema(mysqli $conn): void
     {
+        if (ff_schema_is_current($conn)) {
+            return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         ff_ensure_table($conn, 'sammelrechnungen', 'CREATE TABLE IF NOT EXISTS sammelrechnungen (id INT AUTO_INCREMENT PRIMARY KEY)');
         ff_ensure_column($conn, 'sammelrechnungen', 'created_at', 'ALTER TABLE sammelrechnungen ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
         ff_ensure_column($conn, 'sammelrechnungen', 'created_by', 'ALTER TABLE sammelrechnungen ADD COLUMN created_by VARCHAR(255) NULL DEFAULT NULL');

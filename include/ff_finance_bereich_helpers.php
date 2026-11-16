@@ -33,12 +33,14 @@ function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
         }
         return str_replace('__ALIAS__', $alias, $cached);
     }
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
-    if (!$chk || mysqli_num_rows($chk) === 0) {
-        $cached = '';
-        return '';
+    if (!ff_schema_is_current($conn)) {
+        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
+        if (!$chk || mysqli_num_rows($chk) === 0) {
+            $cached = '';
+            return '';
+        }
+        mysqli_free_result($chk);
     }
-    mysqli_free_result($chk);
     require_once __DIR__ . '/settings.php';
     $festId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($festId <= 0) {
@@ -87,11 +89,13 @@ function ff_finance_order_amount_expr(string $b = 'b', string $p = 'p'): string
 
 function ff_finance_current_fest_id(mysqli $conn): int
 {
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
-    if (!$chk || mysqli_num_rows($chk) === 0) {
-        return 0;
+    if (!ff_schema_is_current($conn)) {
+        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
+        if (!$chk || mysqli_num_rows($chk) === 0) {
+            return 0;
+        }
+        mysqli_free_result($chk);
     }
-    mysqli_free_result($chk);
     require_once __DIR__ . '/settings.php';
     $festId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($festId <= 0) {

@@ -26,16 +26,18 @@ $data = api_get_request_data();
 
 ff_rezepturen_ensure_schema($conn);
 ff_position_kassa_ensure_schema($conn);
-@mysqli_query(
-    $conn,
-    "CREATE TABLE IF NOT EXISTS print_targets (
-        print_target INT(11) NOT NULL,
-        name VARCHAR(64) NOT NULL,
-        active TINYINT(1) NOT NULL DEFAULT 1,
-        sort_order INT(11) NOT NULL DEFAULT 0,
-        PRIMARY KEY (print_target)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-);
+if (!ff_schema_is_current($conn)) {
+    @mysqli_query(
+        $conn,
+        "CREATE TABLE IF NOT EXISTS print_targets (
+            print_target INT(11) NOT NULL,
+            name VARCHAR(64) NOT NULL,
+            active TINYINT(1) NOT NULL DEFAULT 1,
+            sort_order INT(11) NOT NULL DEFAULT 0,
+            PRIMARY KEY (print_target)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    );
+}
 
 // -----------------------------------------------------------------------------
 // POST: Aktionen

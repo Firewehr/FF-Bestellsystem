@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Druck-Client-Geräte mit Freischaltung (Pairing).
  *
@@ -25,6 +27,9 @@ const FF_PRINTER_DEVICE_PENDING_TTL_DAYS = 7;
 if (!function_exists('ff_printer_devices_ensure_schema')) {
     function ff_printer_devices_ensure_schema(mysqli $conn): bool
     {
+        if (ff_schema_is_current($conn)) {
+            return true; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $ready = null;
         if ($ready !== null) {
             return $ready;

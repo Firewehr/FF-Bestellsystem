@@ -2,9 +2,13 @@
 /**
  * Startseite nach Login: DB-Spalten + Hash für index.php#…
  */
+require_once __DIR__ . '/ff_schema_gate.php';
 
 /** @return void */
 function ff_users_ensure_landing_columns(mysqli $conn) {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     // Pro Request maximal ein Durchlauf, plus Tagesflag (siehe ff_schema_helpers.php),
     // damit dieser Pfad an folgenden Requests komplett ohne SHOW COLUMNS auskommt.
     static $done = false;

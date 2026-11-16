@@ -11,6 +11,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/ff_schema_helpers.php';
@@ -20,6 +22,9 @@ require_once __DIR__ . '/ff_schema_helpers.php';
  */
 function ff_socket_printer_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $ensured = false;
     if ($ensured) {
         return;

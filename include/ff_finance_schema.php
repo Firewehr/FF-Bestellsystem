@@ -4,6 +4,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 require_once __DIR__ . '/user_landing.php';
 
 function ff_finance_table_exists(mysqli $conn, string $table): bool
@@ -45,6 +47,9 @@ if (function_exists('mysqli_report')) {
 
 function ff_finance_ensure_undo_columns(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $undoDone = false;
     if ($undoDone) {
         return;
@@ -96,6 +101,9 @@ function ff_finance_ensure_undo_columns(mysqli $conn): void
 /** settlement_scope auf kellner_settlements (kellner | direktverkauf). */
 function ff_finance_ensure_settlement_scope_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $colDone = false;
     if ($colDone) {
         return;
@@ -170,6 +178,9 @@ function ff_finance_ensure_settlement_scope_column(mysqli $conn): void
 
 function ff_finance_ensure_kontrolle_only_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $colDone = false;
     if ($colDone) {
         return;
@@ -205,6 +216,9 @@ function ff_finance_ensure_kontrolle_only_column(mysqli $conn): void
 
 function ff_finance_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;

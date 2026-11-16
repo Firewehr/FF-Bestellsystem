@@ -7,6 +7,8 @@
  */
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 if (defined('FF_SCHEMA_HELPERS_LOADED')) {
     return;
 }
@@ -35,6 +37,10 @@ if (!function_exists('ff_schema_today_flag')) {
 if (!function_exists('ff_schema_flag_is_set')) {
     function ff_schema_flag_is_set(string $key): bool
     {
+        // Im Migrationslauf immer wirklich prüfen (z. B. nach Rückspielen eines älteren Backups)
+        if (function_exists('ff_schema_migrating') && ff_schema_migrating()) {
+            return false;
+        }
         return is_file(ff_schema_today_flag($key));
     }
 }
@@ -144,6 +150,9 @@ if (!function_exists('ff_ensure_index')) {
 if (!function_exists('ff_schema_ensure_hot_paths')) {
     function ff_schema_ensure_hot_paths(mysqli $conn): void
     {
+        if (ff_schema_is_current($conn)) {
+            return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $done = false;
         if ($done) {
             return;

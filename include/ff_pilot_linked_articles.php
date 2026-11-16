@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Real article links for the Pilot waiter app. These are deliberately separate
  * from legacy "beilagen", which remain text/price annotations.
@@ -10,6 +12,9 @@ require_once __DIR__ . '/menu_lock_helpers.php';
 
 function ff_pilot_linked_articles_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     ff_ensure_table(
         $conn,
         'pilot_position_links',

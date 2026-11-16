@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Schema and small helpers for Pilot order retries and SumUp return flows.
  * The keys are generated on the device and make an interrupted HTTP response
@@ -10,6 +12,9 @@ require_once __DIR__ . '/ff_schema_helpers.php';
 
 function ff_pilot_orders_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     ff_ensure_table(
         $conn,
         'pilot_order_requests',

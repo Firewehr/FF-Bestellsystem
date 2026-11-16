@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Passkeys (WebAuthn) – ohne externe Bibliothek (kein composer/vendor im Projekt).
  * Deckt genau das ab, was Browser/Betriebssysteme heute für Passkeys senden:
@@ -13,6 +15,9 @@ declare(strict_types=1);
 /** Tabelle für gespeicherte Passkeys sicherstellen. */
 function ff_webauthn_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -394,6 +399,9 @@ function ff_webauthn_register_options(mysqli $conn, int $userId, string $usernam
 /** Tabelle für Remote-Registrierungs-Anfragen (QR-Code-Flow) sicherstellen. */
 function ff_webauthn_remote_ensure_schema(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;

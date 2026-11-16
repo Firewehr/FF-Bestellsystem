@@ -2,8 +2,12 @@
 /**
  * Fehlende Spalten an rechnungen anlegen (ohne Duplicate-Column-Fehler bei mysqli strict mode).
  */
+require_once __DIR__ . '/ff_schema_gate.php';
 function ff_bestellungen_ensure_rechnung_id_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -17,6 +21,9 @@ function ff_bestellungen_ensure_rechnung_id_column(mysqli $conn): void
 
 function ff_rechnungen_ensure_extra_columns(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -65,6 +72,9 @@ function ff_rechnungen_ensure_extra_columns(mysqli $conn): void
 
 function ff_rechnungen_ensure_unique_rechnungsnummer(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -86,6 +96,9 @@ function ff_rechnungen_ensure_unique_rechnungsnummer(mysqli $conn): void
 
 function ff_bestellungen_ensure_is_gratis_column(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;
@@ -99,6 +112,9 @@ function ff_bestellungen_ensure_is_gratis_column(mysqli $conn): void
 
 function ff_rechnungen_ensure_print_columns(mysqli $conn): void
 {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $done = false;
     if ($done) {
         return;

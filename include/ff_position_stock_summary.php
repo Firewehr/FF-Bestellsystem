@@ -15,6 +15,10 @@ if (!function_exists('ff_position_mv_table_exists')) {
         if (isset($cache[$cid])) {
             return $cache[$cid];
         }
+        // Migrationslauf legt Tabelle samt position_id/menge an (Soll-Struktur geprüft)
+        if (ff_schema_is_current($conn)) {
+            return $cache[$cid] = true;
+        }
 
         if (function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
             ff_mitarbeiter_verpflegung_ensure_schema($conn);
@@ -540,6 +544,9 @@ function ff_position_check_capacity(mysqli $conn, int $positionId, int $maxBeste
 function ff_position_stock_limited_list(mysqli $conn): array
 {
     static $hasMaxCol = null;
+    if ($hasMaxCol === null && ff_schema_is_current($conn)) {
+        $hasMaxCol = true; // Soll-Struktur laut Migrationslauf vollständig
+    }
     if ($hasMaxCol === null) {
         $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
         $hasMaxCol = ($chk && mysqli_num_rows($chk) > 0);
@@ -851,13 +858,15 @@ function ff_mv_list_positions(mysqli $conn): array
     ff_menu_ensure_schema($conn);
     ff_position_kassa_ensure_schema($conn);
 
-    $hasMaxCol = false;
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
-    if ($chk && mysqli_num_rows($chk) > 0) {
-        $hasMaxCol = true;
-    }
-    if ($chk) {
-        mysqli_free_result($chk);
+    $hasMaxCol = ff_schema_is_current($conn);
+    if (!$hasMaxCol) {
+        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
+        if ($chk && mysqli_num_rows($chk) > 0) {
+            $hasMaxCol = true;
+        }
+        if ($chk) {
+            mysqli_free_result($chk);
+        }
     }
 
     $maxExpr = $hasMaxCol ? 'COALESCE(p.maxBestellbar, -1)' : '-1';

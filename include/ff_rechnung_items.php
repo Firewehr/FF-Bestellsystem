@@ -2,6 +2,7 @@
 /**
  * Rechnungspositionen: aus DB-Zeilen (rechnung_id) oder aus Snapshot lines_json.
  */
+require_once __DIR__ . '/ff_schema_gate.php';
 require_once __DIR__ . '/print_templates.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/user_landing.php';
@@ -273,6 +274,9 @@ function ff_rechnung_footer_lines(mysqli $conn): array
  * Ohne diese Tabelle schlägt das INSERT still fehl → kein Thermodruck.
  */
 function ff_printer_jobs_ensure_table(mysqli $conn): void {
+    if (ff_schema_is_current($conn)) {
+        return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+    }
     static $ensured = false;
     if ($ensured) {
         return;

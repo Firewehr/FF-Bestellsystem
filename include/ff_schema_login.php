@@ -4,10 +4,16 @@
  * Danach ist $_SESSION['ff_schema_ok'] gesetzt und die Prüfungen pro Request entfallen.
  * Sessions ohne Flag (z. B. vor dem Update angemeldet) prüfen weiterhin pro Request.
  */
+require_once __DIR__ . '/ff_schema_gate.php';
+
 if (!function_exists('ff_schema_session_ok')) {
+    /** true = Schema-Prüfungen dürfen entfallen (Login-Prüfung dieser Sitzung oder Merker aktuell). */
     function ff_schema_session_ok(): bool
     {
-        return !empty($_SESSION['ff_schema_ok']);
+        if (ff_schema_migrating()) {
+            return false;
+        }
+        return !empty($_SESSION['ff_schema_ok']) || ff_schema_is_current();
     }
 }
 

@@ -383,7 +383,8 @@ createApp({
           method: 'POST',
           body: { action: 'clear_cache' },
         });
-        showToast(`Schema-Cache geleert (${res.cleared?.length || 0} Dateien entfernt).`);
+        const schemaMsg = res.schema?.message ? ` ${res.schema.message}` : '';
+        showToast(`Schema-Cache geleert (${res.cleared?.length || 0} Dateien entfernt).${schemaMsg}`, res.schema && !res.schema.ok ? 'warning' : 'success');
       } catch (e) {}
     }
 
@@ -1136,6 +1137,24 @@ createApp({
     }
 
     const printBacklogClearing = ref(false);
+    const schemaMigrating = ref(false);
+
+    async function migrateSchema() {
+      schemaMigrating.value = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'preflight_schema_migrate' },
+        });
+        if (res.preflight) preflightData.value = res.preflight;
+        const s = res.schema || {};
+        showToast(`${s.message || 'Schema geprüft.'} (${s.duration_ms ?? '?'} ms)`, s.ok ? 'success' : 'warning');
+      } catch (e) {
+        // Fehlermeldung zeigt apiRequest bereits an
+      } finally {
+        schemaMigrating.value = false;
+      }
+    }
 
     async function clearPrintBacklog() {
       const c = preflightData.value?.checks?.print_backlog;
@@ -3323,6 +3342,8 @@ createApp({
       loadPreflight,
       printBacklogClearing,
       clearPrintBacklog,
+      schemaMigrating,
+      migrateSchema,
       // Speisekarte & Rezepturen
       menuPositions,
       menuSubcategories,

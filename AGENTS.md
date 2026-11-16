@@ -140,7 +140,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * *Bezahlen & SumUp:* Globaler Zahlungsmodus (Modi 1–4, nur Super-Admin), Option „Kellner sieht nur eigene Bestellungen“, SumUp-Zahlungsterminal-Konfiguration.
   * *Stationsbetrieb:* Konfiguration der Spaltenanzahl für Desktop und Mobilgeräte, Gesamtübersicht oben/rechts, One-Click-Abschließen, Teillieferungs-Druck.
   * *Layout & Sitzung:* Raster- und Karten-Spalten, Session-Timeouts.
-  * *Schema-Cache:* Schema-Prüfung und Cache-Leerung (`admin_schema_cache_clear.php`).
+  * *Schema-Cache:* Cache-Leerung (`admin_schema_cache_clear.php`): setzt den Schema-Merker zurück und startet den Migrationslauf sofort.
 * **Feste / Veranstaltungen (`stammdaten-feste`):**
   * Aktives Fest wechseln (`fest_set_current.php`), Feste anlegen, editieren, löschen (`fest_save.php`, `fest_delete.php`).
   * Fest-Export und -Import (JSON/SQL).
@@ -158,10 +158,10 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
 * **Model Context Protocol (MCP) (`stammdaten-mcp`):**
   * MCP-Token generieren, Berechtigungen (Lesen/Schreiben) verwalten und sperren (`mcp_token_admin_api.php`, `mcp.php`).
 * **Pre-Flight Checkliste (`stammdaten-preflight` / Dashboard):**
-  * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 5 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup, keine liegengebliebenen Bons – alte ungedruckte Bons per Klick als gedruckt markieren).
+  * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 6 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup, keine liegengebliebenen Bons – alte ungedruckte Bons per Klick als gedruckt markieren, Datenbank-Schema aktuell – Migrationslauf per Klick).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 134) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 137) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -252,9 +252,11 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
    - SQL-Bausteine, die über Funktionen oder Dateien weitergereicht werden (Filter für Kellner, Zeitraum, Bon), sind Arrays `[sql, types, params]` aus `ff_db_frag()`, nie fertige SQL-Strings mit Werten. Zusammensetzen mit `ff_db_frag_concat()`, ausführen mit `ff_db_query_parts($conn, 'SELECT …', $baustein, ' GROUP BY …')` (Teile in SQL-Reihenfolge).
    - Einzige Ausnahme: **Tabellen- und Spaltennamen** in Schema-Befehlen (`SHOW COLUMNS FROM`, `ALTER TABLE`, `SHOW TABLES LIKE`). MySQL erlaubt dort keine Parameter. Diese Namen dürfen nur aus fest codierten Listen im Code stammen, nie aus Request-Daten.
    - Der Selbsttest „Keine Werte direkt im SQL“ (`include/ff_sql_lint.php`) meldet Variablen an Werte-Positionen (`= ' . $x`, `'{$x}'`, `LIMIT ' . $n`, `VALUES (` / `IN (` mit Variablen). Platzhalterlisten und SQL-Bausteine benennen: `$in…`/`$ph`/`…List` für `?,?,?`, `…Sql`/`…Expr`/`…Cond`/`…Filter`/`…Where` für feste Ausdrücke. Bewusste Ausnahmen in derselben Anweisung mit `// sql-lint: ok (Grund)` markieren.
-3. **Idempotente Schema-Updates & Schema-Cache:**
+3. **Idempotente Schema-Updates & Migrationslauf:**
    - Schema-Erweiterungen müssen abwärtskompatibel sein (z. B. via `ff_table_has_column()` oder `ff_schema_helpers.php`).
-   - Bei Spalten-/Tabellenanpassungen muss der Cache geleert werden (`admin_schema_cache_clear.php` bzw. `include/.cache/schema_columns.json`).
+   - Alle Schema-Prüfungen (`…_ensure_…`-Funktionen) laufen gebündelt im Migrationslauf `include/ff_schema_migrate.php`. Danach steht in `settings.schema_fingerprint` der Fingerabdruck der Schema-Dateien (`include/ff_schema_gate.php`); passt er, kehrt jede ensure-Funktion sofort ohne DB-Abfrage zurück (`if (ff_schema_is_current($conn)) return;` als erste Zeile).
+   - Der Lauf startet automatisch beim ersten Admin-Aufruf nach einer Code-Änderung (Pilot-Admin, klassischer Admin), per Pre-Flight „Jetzt aktualisieren“ oder „Schema-Cache leeren“ – nie durch Kellner, Stationen oder Druck-Clients. Bis dahin prüfen die Funktionen wie früher selbst.
+   - **Neue ensure-Funktion oder neues `CREATE`/`ALTER TABLE` in `include/`:** in `ff_schema_migrate_steps()` eintragen (neue Datei zusätzlich in `FF_SCHEMA_GATE_FILES`) und den Merker als erste Zeile einbauen. Neue Tabellen/Spalten auch in `ff_selftests_expected_schema()` ergänzen – der Lauf setzt den Merker nur, wenn die Soll-Struktur vollständig ist. Der Selbsttest „Schema-Migration“ meldet Vergessenes.
 4. **API-Standards (`api/v1/`):**
    - Jede API-Route bindet `api/v1/bootstrap.php` ein.
    - Antworten werden standardisiert über `api_response($data, $code)` oder `api_error($message, $code)` ausgeliefert.
@@ -284,7 +286,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 134 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 137 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Änderungen an Kellner-App, Station oder Pilot-Admin zusätzlich den Browser-Smoke-Test ausführen (speichert nichts, alle POSTs werden abgefangen; Zugangsdaten nur per Umgebungsvariable):
   ```bash
   FF_UI_USER=... FF_UI_PASS=... python3 tools/ui_smoke_test.py [--shots /pfad/zu/screenshots]

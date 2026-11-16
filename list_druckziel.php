@@ -19,14 +19,9 @@ if ($print_target <= 0) {
     exit;
 }
 
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'print_target'");
-if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, 'ALTER TABLE positionen ADD COLUMN print_target INT(11) NOT NULL DEFAULT 11');
-}
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_target'");
-if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN print_target INT(11) NULL DEFAULT NULL');
-}
+// print_target-Spalten (positionen/bestellungen); entfällt bei aktuellem Schema-Merker
+require_once __DIR__ . '/include/ff_schema_helpers.php';
+ff_schema_ensure_hot_paths($conn);
 
 $targetName = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
 if ($targetName === '') {

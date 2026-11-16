@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Auto-Druck pro Druckziel: Wird eine Bestellung abgeschickt und sind in der Station weniger als
  * print_targets.auto_print_limit Bestellungen offen (nicht ausgeliefert), wird sie sofort gedruckt.
@@ -12,6 +14,9 @@ require_once __DIR__ . '/ff_station_events.php';
 if (!function_exists('ff_auto_print_ensure_schema')) {
     function ff_auto_print_ensure_schema(mysqli $conn): bool
     {
+        if (ff_schema_is_current($conn)) {
+            return true; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $ready = null;
         if ($ready !== null) {
             return $ready;

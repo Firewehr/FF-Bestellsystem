@@ -44,6 +44,9 @@ $isSuperAdmin = ($adminLevel === 2);
 
 global $conn;
 mysqli_set_charset($conn, 'utf8mb4');
+// Nach einem Deploy: alle Schema-Prüfungen einmal gebündelt ausführen (Kellner/Stationen tun das nie)
+require_once dirname(__DIR__, 2) . '/include/ff_schema_migrate.php';
+$ffSchemaMigration = ff_schema_migrate_if_needed($conn);
 ff_users_ensure_landing_columns($conn);
 ff_users_ensure_direktverkauf_column($conn);
 ff_users_ensure_menu_permissions_column($conn);
@@ -252,7 +255,9 @@ if ($action === 'clear_cache') {
             }
         }
     }
-    api_response(['ok' => true, 'cleared' => $cleared]);
+    ff_schema_reset_marker($conn);
+    $migration = ff_schema_migrate($conn);
+    api_response(['ok' => true, 'cleared' => $cleared, 'schema' => $migration]);
 }
 
 // -----------------------------------------------------------------------------
@@ -507,6 +512,16 @@ if ($action === 'preflight_check') {
     require_once __DIR__ . '/../../include/ff_preflight.php';
     $res = ff_preflight_check($conn);
     api_response(['ok' => true, 'preflight' => $res]);
+}
+
+if ($action === 'preflight_schema_migrate') {
+    if ($method !== 'POST') {
+        api_error('Nur per POST.', 'method_not_allowed', 405);
+    }
+    require_once __DIR__ . '/../../include/ff_preflight.php';
+    ff_schema_reset_marker($conn);
+    $migration = ff_schema_migrate($conn);
+    api_response(['ok' => true, 'schema' => $migration, 'preflight' => ff_preflight_check($conn)]);
 }
 
 if ($action === 'preflight_print_backlog_clear') {

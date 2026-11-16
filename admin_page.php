@@ -133,6 +133,9 @@ if (!isset($_SESSION['admin']) || (int)$_SESSION['admin'] < 1) {
     exit;
 }
 
+// Nach einem Deploy: alle Schema-Prüfungen einmal gebündelt ausführen (Kellner/Stationen tun das nie)
+require_once __DIR__ . '/include/ff_schema_migrate.php';
+ff_schema_migrate_if_needed($conn);
 ff_schreibaus_ensure_column($conn);
 $adminLevel = (int)($_SESSION['admin'] ?? 0);
 $isSuperAdmin = ($adminLevel === 2);
@@ -695,6 +698,18 @@ function BenutzerNeu() {
                                         </div>
                                     </div>
                                 </div>
+                                <div class="col-md-6 col-lg">
+                                    <div class="card h-100 border" id="pfCardSchema">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">6. DB-Schema</span>
+                                                <span class="badge bg-secondary" id="pfBadgeSchema">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsSchema">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-primary mt-auto" onclick="ffPreflightMigrateSchema(this);">Jetzt aktualisieren</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -755,7 +770,7 @@ function BenutzerNeu() {
                 <button type="button" class="btn btn-sm btn-outline-light py-0" onclick="ffLoadPreflightCheck();">🔄 Neu prüfen</button>
             </div>
             <div class="card-body">
-                <p class="text-muted small mb-3">Prüft vor dem Festbeginn alle fünf kritischen Betriebsfaktoren. Erst wenn alle Punkte grün sind, ist das System optimal für den Festbetrieb vorbereitet.</p>
+                <p class="text-muted small mb-3">Prüft vor dem Festbeginn alle sechs kritischen Betriebsfaktoren. Erst wenn alle Punkte grün sind, ist das System optimal für den Festbetrieb vorbereitet.</p>
                 <div id="ffPreflightDetailBanner" class="alert alert-secondary py-2 mb-3">Prüfe Systemzustand…</div>
 
                 <div class="list-group mb-4" id="ffPreflightDetailList">
@@ -808,6 +823,15 @@ function BenutzerNeu() {
                         </div>
                         <p class="mb-2 text-muted small" id="pfTextBacklog2">Prüft, ob druckbereite Bons seit über 30 Minuten nicht gedruckt wurden. Ein Druck-Client würde sie beim nächsten Start alle ausdrucken.</p>
                         <button type="button" class="btn btn-sm btn-outline-warning d-none" id="pfBacklogClearBtn2" onclick="ffPreflightClearPrintBacklog();">Alte Bons verwerfen</button>
+                    </div>
+
+                    <div class="list-group-item p-3" id="pfDetailRowSchema">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">6. Datenbank-Schema aktuell</h6>
+                            <span class="badge bg-secondary" id="pfBadgeSchema2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextSchema2">Prüft, ob alle Tabellen und Spalten nach dem letzten Deploy geprüft wurden. Dann entfallen die Schema-Prüfungen im laufenden Betrieb.</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="ffPreflightMigrateSchema(this);">Jetzt aktualisieren</button>
                     </div>
                 </div>
 

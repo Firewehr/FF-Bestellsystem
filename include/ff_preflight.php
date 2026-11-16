@@ -9,6 +9,7 @@
  * 3. Rechnungsnummernkreis korrekt gesetzt
  * 4. Offline-Backup eingerichtet (Token + Datenbank-Backup höchstens 30 Minuten alt)
  * 5. Keine liegengebliebenen Bons (druckbereit, aber seit über 30 Minuten nicht gedruckt)
+ * 6. Datenbank-Schema aktuell (Migrationslauf nach dem letzten Deploy erfolgreich)
  */
 declare(strict_types=1);
 
@@ -16,6 +17,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/ff_socket_printer.php';
 require_once __DIR__ . '/ff_auto_print.php';
+require_once __DIR__ . '/ff_schema_migrate.php';
 
 /**
  * Alter des jüngsten Datenbank-Backups (backups/db_*.sql.gz aus tools/db_backup.php).
@@ -387,6 +389,28 @@ function ff_preflight_check(mysqli $conn): array
         $overall = $overall === 'error' ? 'error' : 'warning';
     }
 
+    // -------------------------------------------------------------
+    // Check 6: Datenbank-Schema aktuell
+    // -------------------------------------------------------------
+    $schema = ff_schema_migrate_status($conn);
+    $checkSchemaStatus = 'ok';
+    $checkSchemaBadge = 'Aktuell';
+    $checkSchemaDetails = 'Alle Tabellen und Spalten sind geprüft'
+        . ($schema['migrated_at'] !== '' ? ' (Migrationslauf vom ' . date('d.m.Y H:i', (int) strtotime($schema['migrated_at'])) . ' Uhr)' : '')
+        . '. Im laufenden Betrieb entfallen alle Schema-Prüfungen.';
+    if (!$schema['current']) {
+        $checkSchemaStatus = 'warning';
+        $checkSchemaBadge = 'Nicht aktuell';
+        $checkSchemaDetails = 'Das Datenbank-Schema wurde seit der letzten Code-Änderung noch nicht geprüft. Bis dahin prüft jede Anfrage selbst (langsamer). „Jetzt aktualisieren“ führt alle Prüfungen einmal aus.';
+        if ($schema['last_result'] === 'fehler') {
+            $checkSchemaBadge = 'Unvollständig';
+            $checkSchemaDetails = 'Letzter Migrationslauf (' . $schema['last_try'] . ') unvollständig: '
+                . ($schema['last_detail'] !== '' ? $schema['last_detail'] : 'unbekannter Fehler')
+                . '. Bitte unter Diagnose / Selbsttests prüfen oder „Datenbank reparieren“.';
+        }
+        $overall = $overall === 'error' ? 'error' : 'warning';
+    }
+
     return [
         'ok' => true,
         'overall' => $overall,
@@ -450,6 +474,15 @@ function ff_preflight_check(mysqli $conn): array
                 'stale_orders' => $backlog['stale_orders'],
                 'pending_rows' => $backlog['total_rows'],
                 'targets' => $backlog['targets'],
+            ],
+            'schema' => [
+                'id' => 'schema',
+                'title' => 'Datenbank-Schema aktuell',
+                'status' => $checkSchemaStatus,
+                'badge' => $checkSchemaBadge,
+                'details' => $checkSchemaDetails,
+                'current' => $schema['current'],
+                'migrated_at' => $schema['migrated_at'],
             ],
         ],
     ];

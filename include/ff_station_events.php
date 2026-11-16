@@ -1,9 +1,14 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 if (!function_exists('ff_station_events_ensure_schema')) {
     function ff_station_events_ensure_schema(mysqli $conn): bool
     {
+        if (ff_schema_is_current($conn)) {
+            return true; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         static $ready = null;
         if ($ready !== null) {
             return $ready;

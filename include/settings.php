@@ -48,8 +48,13 @@ if (!function_exists('settings_ensure_table')) {
             return $cache;
         }
         if ($cache === null) {
-            settings_ensure_table($conn);
-            $res = $conn->query('SELECT k, v FROM settings');
+            // Erst lesen; nur wenn das scheitert (Tabelle fehlt), anlegen und erneut lesen.
+            // Spart das SHOW TABLES pro Request und verhindert eine Schleife mit dem Schema-Merker.
+            $res = @$conn->query('SELECT k, v FROM settings');
+            if (!$res) {
+                settings_ensure_table($conn);
+                $res = $conn->query('SELECT k, v FROM settings');
+            }
             if (!$res) {
                 return null;
             }

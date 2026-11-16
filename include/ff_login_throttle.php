@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/ff_schema_gate.php';
+
 /**
  * Schutz gegen Passwort-Raten beim Login (login.php, api/v1/auth.php).
  *
@@ -21,6 +23,9 @@ if (!defined('FF_LOGIN_MAX_FAILS')) {
 if (!function_exists('ff_login_throttle_ensure_schema')) {
     function ff_login_throttle_ensure_schema(mysqli $conn): void
     {
+        if (ff_schema_is_current($conn)) {
+            return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
+        }
         if (!function_exists('ff_ensure_table')) {
             require_once __DIR__ . '/ff_schema_helpers.php';
         }

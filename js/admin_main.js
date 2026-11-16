@@ -2549,7 +2549,7 @@ function ffLoadPreflightCheck() {
             if (overall === 'ok') {
                 bannerClass = 'alert alert-success py-2 mb-3';
                 badgeClass = 'badge bg-success';
-                overallText = '✔ Alle 5 Kriterien erfüllt! Das System ist bereit für den Festbetrieb.';
+                overallText = '✔ Alle 6 Kriterien erfüllt! Das System ist bereit für den Festbetrieb.';
             } else if (overall === 'warning') {
                 bannerClass = 'alert alert-warning py-2 mb-3';
                 badgeClass = 'badge bg-warning text-dark';
@@ -2599,6 +2599,7 @@ function ffLoadPreflightCheck() {
             updateCard('invoice_seq', 'pfBadgeSeq', 'pfBadgeSeq2', 'pfDetailsSeq', 'pfTextSeq2', 'pfCardSeq');
             updateCard('offline_backup', 'pfBadgeBackup', 'pfBadgeBackup2', 'pfDetailsBackup', 'pfTextBackup2', 'pfCardBackup');
             updateCard('print_backlog', 'pfBadgeBacklog', 'pfBadgeBacklog2', 'pfDetailsBacklog', 'pfTextBacklog2', 'pfCardBacklog');
+            updateCard('schema', 'pfBadgeSchema', 'pfBadgeSchema2', 'pfDetailsSchema', 'pfTextSchema2', 'pfCardSchema');
             var backlog = checks['print_backlog'];
             window.ffPreflightBacklog = backlog || null;
             ['pfBacklogClearBtn', 'pfBacklogClearBtn2'].forEach(function(id) {
@@ -2652,6 +2653,20 @@ function ffPreflightClearPrintBacklog() {
         .catch(function() { alert('Alte Bons konnten nicht verworfen werden.'); });
 }
 window.ffPreflightClearPrintBacklog = ffPreflightClearPrintBacklog;
+
+function ffPreflightMigrateSchema(btn) {
+    if (btn) { btn.disabled = true; }
+    fetchPost('admin_preflight_api.php', { action: 'schema_migrate' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert((d && d.error) || 'Fehler'); return; }
+            if (d.schema && !d.schema.ok) { alert(d.schema.message); }
+            ffLoadPreflightCheck();
+        })
+        .catch(function() { alert('Schema-Prüfung fehlgeschlagen.'); })
+        .then(function() { if (btn) { btn.disabled = false; } });
+}
+window.ffPreflightMigrateSchema = ffPreflightMigrateSchema;
 
 function adminDashboardPrintPollSetup() {
     var cb = ffById('dashPrintNotifyEnable');
