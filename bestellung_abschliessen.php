@@ -12,6 +12,7 @@ require_once('include/db.php');
 require_once __DIR__ . '/include/ff_station_events.php';
 require_once __DIR__ . '/include/ff_auto_print.php';
 require_once __DIR__ . '/include/ff_event_notifications.php';
+require_once __DIR__ . '/include/ff_order_flow.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -30,78 +31,19 @@ if ($tischnummer <= 0 || !is_array($PositionsListe) || empty($PositionsListe)) {
     exit;
 }
 
-$timestamp = date('Y-m-d H:i:s');
-$printed = 0;
-$printedRowIds = [];
-$closed = 0;
+$rowids = ff_order_rowids($PositionsListe);
+$res = ff_order_close_rows($conn, $rowids, $mitDruck, false);
+$closed = $res['closed'];
+$printed = count($res['printed_rowids']);
 
-foreach ($PositionsListe as $row) {
-    $rowid = intval($row);
-    if ($rowid <= 0) {
-        continue;
-    }
-
-    // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren
-    ff_db_query($conn, 'UPDATE bestellungen SET kueche=1, zeitKueche=IF(zeitKueche IS NULL OR zeitKueche IN (\'0000-00-00 00:00:00\',\'1970-01-01 00:00:00\'), current_timestamp, zeitKueche) WHERE rowid=?', 'i', [$rowid]);
-
-    if ($mitDruck) {
-        // Bereits als Teillieferung gedruckt? → nur ausliefern, nicht erneut in die Druck-Queue
-        $chk = ff_db_query($conn, 'SELECT COALESCE(print_status,0) AS ps FROM bestellungen WHERE rowid=? LIMIT 1', 'i', [$rowid]);
-        $alreadyPrinted = false;
-        if ($chk && ($cr = ff_db_row_text(mysqli_fetch_assoc($chk)))) {
-            $alreadyPrinted = ((int) ($cr['ps'] ?? 0) === 1);
-        }
-
-        if ($alreadyPrinted) {
-            $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp, bestellt=1, kueche=1 WHERE rowid=?';
-            ff_db_query($conn, $sql, 'i', [$rowid]);
-        } else {
-            // bestellt=1 + kueche=1 + print=2 + print_status=0 → Thermo-Client (print_target.php).
-            $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp, bestellt=1, kueche=1, print=2, print_status=0 WHERE rowid=?';
-            ff_db_query($conn, $sql, 'i', [$rowid]);
-            ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
-            $printed++;
-            $printedRowIds[] = $rowid;
-        }
-    } else {
-        $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp WHERE rowid=?';
-        ff_db_query($conn, $sql, 'i', [$rowid]);
-    }
-    $closed++;
-}
-
-if ($printedRowIds !== []) {
-    $printTargets = [];
-    [$ptIn, $ptInT, $ptInV] = ff_db_in_ints($printedRowIds);
-    $ptRes = ff_db_query(
-        $conn,
-        'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
-        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . $ptIn . ')', $ptInT, $ptInV);
-    if ($ptRes) {
-        while ($ptRow = mysqli_fetch_assoc($ptRes)) {
-            $printTargets[] = (int) $ptRow['pt'];
-        }
-    }
-    ff_print_events_publish($conn, $printTargets);
+if ($res['printed_rowids'] !== []) {
+    ff_print_events_publish($conn, ff_order_rows_print_targets($conn, $res['printed_rowids']));
 }
 
 // Auto-Druck "bis N": nächste wartende Bestellung der betroffenen Stationen nachrücken lassen
-$validIds = array_filter(array_map('intval', $PositionsListe), static fn($v) => $v > 0);
-if ($validIds !== []) {
-    ff_event_notifications_evaluate_rows($conn, $validIds, 'bestellung_abschliessen.php');
-
-    $refillTargets = [];
-    [$rtIn, $rtInT, $rtInV] = ff_db_in_ints($validIds);
-    $rtRes = ff_db_query(
-        $conn,
-        'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
-        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . $rtIn . ')', $rtInT, $rtInV);
-    if ($rtRes) {
-        while ($rt = mysqli_fetch_assoc($rtRes)) {
-            $refillTargets[] = (int) $rt['pt'];
-        }
-    }
-    ff_auto_print_refill($conn, $refillTargets);
+if ($rowids !== []) {
+    ff_event_notifications_evaluate_rows($conn, $rowids, 'bestellung_abschliessen.php');
+    ff_auto_print_refill($conn, ff_order_rows_print_targets($conn, $rowids));
 }
 
 echo json_encode([

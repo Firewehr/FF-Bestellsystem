@@ -19,6 +19,11 @@ require_once __DIR__ . '/ff_pilot_orders.php';
 require_once __DIR__ . '/ff_printer_devices.php';
 require_once __DIR__ . '/ff_position_delete.php';
 require_once __DIR__ . '/ff_printer_jobs.php';
+require_once __DIR__ . '/ff_order_flow.php';
+require_once __DIR__ . '/ff_auto_print.php';
+require_once __DIR__ . '/ff_payment.php';
+require_once __DIR__ . '/ff_rechnungen_ensure_columns.php';
+require_once __DIR__ . '/ff_bestellung_verschieben.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -100,6 +105,102 @@ function ff_st_order_row(mysqli $conn, int $id): array
     }
 
     return $row;
+}
+
+/** Eigenes Druckziel für Ablauf-Tests: keine echte Station und kein Drucker betroffen. */
+function ff_st_print_target(mysqli $conn, int $pt, int $autoLimit = 0): int
+{
+    ff_st_exec(
+        $conn,
+        "INSERT INTO print_targets (print_target, name, active, sort_order, auto_print_limit) VALUES (?, 'ZZ_SELFTEST', 1, 9999, ?)
+         ON DUPLICATE KEY UPDATE name = VALUES(name), active = 1, auto_print_limit = VALUES(auto_print_limit)",
+        'ii',
+        [$pt, $autoLimit]
+    );
+
+    return $pt;
+}
+
+/**
+ * Bestellzeile für Ablauf-Tests. Ohne Fest (fest_id NULL) → keine Push-Auswertung.
+ *
+ * @param array{tisch?:int,order_nr?:int,pt?:int,bestellt?:int,kueche?:int,ready_at?:string,delivered?:bool,
+ *              print?:int,print_status?:int,auto_print?:int,paid?:bool,deleted?:bool,kellner?:string,
+ *              betrag?:float,zusatz?:string,minutes_ago?:int} $o
+ */
+function ff_st_flow_row(mysqli $conn, int $positionId, array $o = []): int
+{
+    $readyAt = (string) ($o['ready_at'] ?? '');
+    $id = ff_st_exec(
+        $conn,
+        "INSERT INTO bestellungen (tischnummer, position, order_nr, print_target, bestellt, kueche, zeitKueche, ausgeliefert,
+                                   print, print_status, auto_print, `delete`, kellner, kellnerZahlung, betrag, Zusatzinfo,
+                                   bestellung, zeitstempel, fest_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, 0, NOW() - INTERVAL ? MINUTE, NULL)",
+        'iiiiiisiiiiisdsi',
+        [
+            (int) ($o['tisch'] ?? 7781),
+            $positionId,
+            (int) ($o['order_nr'] ?? 1),
+            (int) ($o['pt'] ?? 7791),
+            (int) ($o['bestellt'] ?? 1),
+            $readyAt !== '' ? 1 : (int) ($o['kueche'] ?? 0),
+            $readyAt !== '' ? $readyAt : '0000-00-00 00:00:00',
+            !empty($o['delivered']) ? 1 : 0,
+            (int) ($o['print'] ?? 0),
+            (int) ($o['print_status'] ?? 0),
+            (int) ($o['auto_print'] ?? 0),
+            !empty($o['deleted']) ? 1 : 0,
+            (string) ($o['kellner'] ?? 'selftest'),
+            (float) ($o['betrag'] ?? 5.0),
+            (string) ($o['zusatz'] ?? ''),
+            (int) ($o['minutes_ago'] ?? 0),
+        ]
+    );
+    if (!empty($o['paid'])) {
+        ff_st_exec($conn, 'UPDATE bestellungen SET timestampBezahlung = NOW() WHERE rowid = ?', 'i', [$id]);
+    }
+
+    return $id;
+}
+
+/** Ausgewählte Felder einer Bestellzeile als int (Zeitfelder als 'leer'/'gesetzt'). */
+function ff_st_flow_state(mysqli $conn, int $id): array
+{
+    $r = ff_st_order_row($conn, $id);
+    $isSet = static fn ($v): string => ($v === null || (string) $v === '' || strpos((string) $v, '0000-00-00') === 0) ? 'leer' : 'gesetzt';
+
+    return [
+        'tisch' => (int) $r['tischnummer'],
+        'bestellt' => (int) $r['bestellt'],
+        'kueche' => (int) $r['kueche'],
+        'zeitKueche' => $isSet($r['zeitKueche']),
+        'ausgeliefert' => (int) $r['ausgeliefert'],
+        'timestampAuslieferung' => $isSet($r['timestampAuslieferung']),
+        'print' => (int) $r['print'],
+        'print_status' => (int) $r['print_status'],
+        'auto_print' => (int) $r['auto_print'],
+        'delete' => (int) $r['delete'],
+        'bezahlt' => $isSet($r['timestampBezahlung']),
+    ];
+}
+
+/** Anzahl Einträge in der Druck-Queue-Tabelle `print` für eine Zeile. */
+function ff_st_print_rows(mysqli $conn, int $id): int
+{
+    return (int) (ff_st_fetch_one($conn, 'SELECT COUNT(*) AS c FROM print WHERE bestellungID = ?', 'i', [$id])['c'] ?? 0);
+}
+
+/** Vergleicht nur die angegebenen Felder; liefert die erste Abweichung. */
+function ff_st_expect_fields(array $expected, array $actual, string $what): ?string
+{
+    foreach ($expected as $k => $v) {
+        if (!array_key_exists($k, $actual) || $actual[$k] !== $v) {
+            return $what . ' – ' . $k . ': erwartet ' . var_export($v, true) . ', erhalten ' . var_export($actual[$k] ?? null, true);
+        }
+    }
+
+    return null;
 }
 
 function ff_st_expect_same($expected, $actual, string $what): ?string
@@ -1473,6 +1574,14 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
     ff_printer_devices_ensure_schema($conn);
     // Settings-Cache vorab laden: Der erste Zugriff kann CREATE TABLE ausführen (implizites COMMIT).
     setting_get($conn, 'printer_token', '');
+    // Schreibende Abläufe: Schema-Prüfungen vorab (ALTER/CREATE würden die Test-Transaktion festschreiben)
+    ff_auto_print_ensure_schema($conn);
+    ff_station_events_ensure_schema($conn);
+    ff_rechnungen_ensure_extra_columns($conn);
+    ff_bestellungen_ensure_rechnung_id_column($conn);
+    ff_feste_ensure_rechnung_prefix_column($conn);
+    settings_ensure_table($conn);
+    setting_get($conn, FF_RECHNUNG_NEXT_KEY, '');
 
     $needed = ['bestellungen', 'positionen', 'bestandteile', 'position_rezepturen', 'beilagen', 'pilot_position_links'];
     $hasMv = ff_position_mv_table_exists($conn);
@@ -2258,31 +2367,31 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $rowDrink = (int)mysqli_insert_id($c);
             mysqli_stmt_close($insDrink);
 
+            // Echte Abläufe der Station-API (include/ff_order_flow.php), nicht nachgebautes SQL
             // 1. Fertig markieren (item_done)
-            ff_db_query($c, 'UPDATE bestellungen SET zeitKueche = CURRENT_TIMESTAMP, kueche = 1, print = 0 WHERE rowid = ?', 'i', [$rowFood]);
-            $chkFood = ff_st_fetch_one($c, 'SELECT kueche, zeitKueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
-            if ((int)($chkFood['kueche'] ?? 0) !== 1) {
-                return 'Position Food sollte nach Fertigstellung kueche=1 sein';
+            ff_order_mark_ready($c, [$rowFood], true);
+            $chkFood = ff_st_flow_state($c, $rowFood);
+            if ($chkFood['kueche'] !== 1 || $chkFood['zeitKueche'] !== 'gesetzt') {
+                return 'Position Food sollte nach Fertigstellung kueche=1 mit Fertig-Zeit sein';
             }
 
             // 2. Undo (undo_done)
-            ff_db_query($c, "UPDATE bestellungen SET zeitKueche = '0000-00-00 00:00:00', kueche = 0, print = 0 WHERE rowid = ?", 'i', [$rowFood]);
-            $chkFoodUndo = ff_st_fetch_one($c, 'SELECT kueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
-            if ((int)($chkFoodUndo['kueche'] ?? 0) !== 0) {
+            ff_order_undo_ready($c, [$rowFood]);
+            if (ff_st_flow_state($c, $rowFood)['kueche'] !== 0) {
                 return 'Position Food sollte nach Undo wieder kueche=0 sein';
             }
 
             // 3. Bestellung abschließen (complete_order mit Druck)
-            ff_db_query($c, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid IN (?, ?)', 'ii', [$rowFood, $rowDrink]);
-            $closedRows = ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM bestellungen WHERE rowid IN (?, ?) AND ausgeliefert = 1', 'ii', [$rowFood, $rowDrink]);
-            if ((int)($closedRows['c'] ?? 0) !== 2) {
-                return 'Erwartet genau 2 ausgelieferte Positionen nach complete_order';
+            $close = ff_order_close_rows($c, [$rowFood, $rowDrink], true, true);
+            $closedRows = ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM bestellungen WHERE rowid IN (?, ?) AND ausgeliefert = 1 AND print = 2', 'ii', [$rowFood, $rowDrink]);
+            if ((int)($closedRows['c'] ?? 0) !== 2 || count($close['printed_rowids']) !== 2) {
+                return 'Erwartet genau 2 ausgelieferte, druckbereite Positionen nach complete_order';
             }
 
             // 4. Reopen (Undo Complete aus Historie)
-            ff_db_query($c, "UPDATE bestellungen SET ausgeliefert = 0, timestampAuslieferung = '0000-00-00 00:00:00', kueche = 1, zeitKueche = CURRENT_TIMESTAMP WHERE rowid = ?", 'i', [$rowFood]);
-            $reopenRow = ff_st_fetch_one($c, 'SELECT ausgeliefert, kueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
-            $isReopened = ((int)($reopenRow['ausgeliefert'] ?? 1) === 0 && (int)($reopenRow['kueche'] ?? 0) === 1);
+            ff_order_reopen_rows($c, [$rowFood]);
+            $reopen = ff_st_flow_state($c, $rowFood);
+            $isReopened = ($reopen['ausgeliefert'] === 0 && $reopen['kueche'] === 1);
 
             return ff_st_expect_same(true, $isReopened, 'Stations-Pilot Workflow (Fertig, Undo, Abschließen, Reopen) erfolgreich');
         });
@@ -2861,6 +2970,290 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 array_map('unlink', glob($dir . '/*') ?: []);
                 @rmdir($dir);
             }
+        });
+
+        // ---------------------------------------------------------------------------------
+        // Schreibende Abläufe (include/ff_order_flow.php, ff_auto_print.php, ff_payment.php,
+        // ff_bestellung_verschieben.php, ff_bestellung_storno.php). Eigene Testzeilen auf
+        // Testtischen 7781–7789 und Druckziel 7791+, Zustand vorher/nachher je Zeile.
+        // ---------------------------------------------------------------------------------
+        $g = 'Abläufe: Küche/Schank';
+
+        $check($g, 'Fertig melden: Station-API nur offene Zeilen, kueche_fertig.php ohne Filter', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $open = ff_st_flow_row($c, $p, ['pt' => $pt]);
+            $delivered = ff_st_flow_row($c, $p, ['pt' => $pt, 'delivered' => true, 'print' => 2]);
+            $deleted = ff_st_flow_row($c, $p, ['pt' => $pt, 'deleted' => true]);
+            ff_order_mark_ready($c, [$open, $delivered, $deleted], true);
+            $err = ff_st_expect_fields(['kueche' => 1, 'zeitKueche' => 'gesetzt', 'print' => 0, 'ausgeliefert' => 0], ff_st_flow_state($c, $open), 'offene Zeile')
+                ?? ff_st_expect_fields(['kueche' => 0, 'print' => 2], ff_st_flow_state($c, $delivered), 'ausgelieferte Zeile bleibt (Bon nicht abbrechen)')
+                ?? ff_st_expect_fields(['kueche' => 0], ff_st_flow_state($c, $deleted), 'stornierte Zeile bleibt');
+            if ($err !== null) {
+                return $err;
+            }
+            $legacy = ff_st_flow_row($c, $p, ['pt' => $pt, 'delivered' => true, 'print' => 2]);
+            ff_order_mark_ready($c, [$legacy], false);
+            return ff_st_expect_fields(['kueche' => 1, 'print' => 0], ff_st_flow_state($c, $legacy), 'kueche_fertig.php (ohne Filter)');
+        });
+
+        $check($g, 'Fertig-Meldung zurücknehmen setzt Zeile wieder offen, stornierte bleiben', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $ready = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00', 'print_status' => 1]);
+            $deleted = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00', 'deleted' => true]);
+            ff_order_undo_ready($c, [$ready, $deleted]);
+            return ff_st_expect_fields(['kueche' => 0, 'zeitKueche' => 'leer', 'print' => 0, 'print_status' => 0], ff_st_flow_state($c, $ready), 'zurückgenommen')
+                ?? ff_st_expect_fields(['kueche' => 1, 'zeitKueche' => 'gesetzt'], ff_st_flow_state($c, $deleted), 'storniert');
+        });
+
+        $check($g, 'Abschließen mit Druck: Queue-Eintrag nur für ungedruckte Zeilen, Fertig-Zeit bleibt', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $notReady = ff_st_flow_row($c, $p, ['pt' => $pt]);
+            $ready = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00']);
+            $partialPrinted = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00', 'print' => 3, 'print_status' => 1]);
+            $res = ff_order_close_rows($c, [$notReady, $ready, $partialPrinted], true);
+            $readyRow = ff_st_order_row($c, $ready);
+            $printedIds = $res['printed_rowids'];
+            sort($printedIds);
+            $expectIds = [$notReady, $ready];
+            sort($expectIds);
+            $closed = ['ausgeliefert' => 1, 'timestampAuslieferung' => 'gesetzt', 'bestellt' => 1, 'kueche' => 1, 'zeitKueche' => 'gesetzt'];
+            return ff_st_expect_same(3, $res['closed'], 'closed')
+                ?? ff_st_expect_same($expectIds, $printedIds, 'printed_rowids')
+                ?? ff_st_expect_fields($closed + ['print' => 2, 'print_status' => 0], ff_st_flow_state($c, $notReady), 'nicht fertige Zeile')
+                ?? ff_st_expect_fields($closed + ['print' => 2, 'print_status' => 0], ff_st_flow_state($c, $ready), 'fertige Zeile')
+                ?? ff_st_expect_same('2026-01-01 10:00:00', (string) $readyRow['zeitKueche'], 'vorhandene Fertig-Zeit')
+                ?? ff_st_expect_fields($closed + ['print' => 3, 'print_status' => 1], ff_st_flow_state($c, $partialPrinted), 'Teillieferung bereits gedruckt')
+                ?? ff_st_expect_same(1, ff_st_print_rows($c, $notReady), 'print-Eintrag nicht fertige Zeile')
+                ?? ff_st_expect_same(1, ff_st_print_rows($c, $ready), 'print-Eintrag fertige Zeile')
+                ?? ff_st_expect_same(0, ff_st_print_rows($c, $partialPrinted), 'kein erneuter Druck der Teillieferung');
+        });
+
+        $check($g, 'Abschließen ohne Druck: kein Bon; bestellt=1 nur über die Station-API', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $legacy = ff_st_flow_row($c, $p, ['pt' => $pt, 'bestellt' => 0]);
+            $api = ff_st_flow_row($c, $p, ['pt' => $pt, 'bestellt' => 0]);
+            $resLegacy = ff_order_close_rows($c, [$legacy], false, false);
+            $resApi = ff_order_close_rows($c, [$api], false, true);
+            $base = ['ausgeliefert' => 1, 'timestampAuslieferung' => 'gesetzt', 'kueche' => 1, 'print' => 0];
+            return ff_st_expect_same([], $resLegacy['printed_rowids'], 'bestellung_abschliessen.php: Druck')
+                ?? ff_st_expect_same([], $resApi['printed_rowids'], 'API: Druck')
+                ?? ff_st_expect_fields($base + ['bestellt' => 0], ff_st_flow_state($c, $legacy), 'bestellung_abschliessen.php')
+                ?? ff_st_expect_fields($base + ['bestellt' => 1], ff_st_flow_state($c, $api), 'Station-API')
+                ?? ff_st_expect_same(0, ff_st_print_rows($c, $legacy) + ff_st_print_rows($c, $api), 'print-Einträge');
+        });
+
+        $check($g, 'Teillieferung: nur fertige, ungedruckte, offene Zeilen; Tischfilter des alten Endpunkts', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $ready = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'ready_at' => '2026-01-01 10:00:00']);
+            $notReady = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782]);
+            $printed = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'ready_at' => '2026-01-01 10:00:00', 'print_status' => 1]);
+            $delivered = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'ready_at' => '2026-01-01 10:00:00', 'delivered' => true]);
+            $otherTable = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7783, 'ready_at' => '2026-01-01 10:00:00']);
+            $n = ff_order_print_partial($c, [$ready, $notReady, $printed, $delivered, $otherTable], 7782);
+            $err = ff_st_expect_same(1, $n, 'markierte Zeilen (mit Tisch)')
+                ?? ff_st_expect_fields(['print' => 3, 'print_status' => 0, 'kueche' => 1, 'ausgeliefert' => 0], ff_st_flow_state($c, $ready), 'fertige Zeile')
+                ?? ff_st_expect_fields(['print' => 0, 'kueche' => 0], ff_st_flow_state($c, $notReady), 'nicht fertig')
+                ?? ff_st_expect_fields(['print' => 0, 'print_status' => 1], ff_st_flow_state($c, $printed), 'schon gedruckt')
+                ?? ff_st_expect_fields(['print' => 0], ff_st_flow_state($c, $delivered), 'ausgeliefert')
+                ?? ff_st_expect_fields(['print' => 0], ff_st_flow_state($c, $otherTable), 'anderer Tisch');
+            if ($err !== null) {
+                return $err;
+            }
+            // Station-API ohne Tischfilter; zweiter Aufruf findet nichts mehr
+            return ff_st_expect_same(1, ff_order_print_partial($c, [$otherTable], null), 'API ohne Tisch')
+                ?? ff_st_expect_same(0, ff_order_print_partial($c, [$ready, $otherTable], null), 'kein zweites Mal');
+        });
+
+        $check($g, 'Wieder öffnen: abgeschlossene Zeile zurück auf die Station, stornierte nicht', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $done = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00', 'delivered' => true]);
+            $deleted = ff_st_flow_row($c, $p, ['pt' => $pt, 'delivered' => true, 'deleted' => true]);
+            ff_st_exec($c, 'UPDATE bestellungen SET timestampAuslieferung = NOW() WHERE rowid IN (?, ?)', 'ii', [$done, $deleted]);
+            ff_order_reopen_rows($c, [$done, $deleted]);
+            return ff_st_expect_fields(['ausgeliefert' => 0, 'timestampAuslieferung' => 'leer', 'kueche' => 1, 'zeitKueche' => 'gesetzt'], ff_st_flow_state($c, $done), 'wieder offen')
+                ?? ff_st_expect_fields(['ausgeliefert' => 1, 'timestampAuslieferung' => 'gesetzt'], ff_st_flow_state($c, $deleted), 'storniert bleibt');
+        });
+
+        $check($g, 'Druckziele der Zeilen: Zeile vor Position, Tischfilter', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            ff_st_exec($c, 'UPDATE positionen SET print_target = 7792 WHERE rowid = ?', 'i', [$p]);
+            $own = ff_st_flow_row($c, $p, ['pt' => 7791, 'tisch' => 7784]);
+            $fromPos = ff_st_flow_row($c, $p, ['tisch' => 7785]);
+            ff_st_exec($c, 'UPDATE bestellungen SET print_target = NULL WHERE rowid = ?', 'i', [$fromPos]);
+            $all = ff_order_rows_print_targets($c, [$own, $fromPos]);
+            sort($all);
+            return ff_st_expect_same([7791, 7792], $all, 'alle')
+                ?? ff_st_expect_same([7791], ff_order_rows_print_targets($c, [$own, $fromPos], 7784), 'nur Tisch 7784');
+        });
+
+        $g = 'Abläufe: Auto-Druck';
+
+        $check($g, 'Neue Bestellung wird sofort gedruckt, solange weniger als auto_print_limit offen sind', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7793, 2);
+            $p = ff_st_position($c, 5.0);
+            ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7781, 'order_nr' => 91]);           // 1 offene Bestellung
+            $new = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7781, 'order_nr' => 92]);
+            $otherPt = ff_st_flow_row($c, $p, ['pt' => 7791, 'tisch' => 7781, 'order_nr' => 92]); // anderes Ziel ohne Limit
+            ff_auto_print_for_order($c, 7781, 92);
+            $err = ff_st_expect_same(1, ff_st_flow_state($c, $new)['auto_print'], 'Platz frei → Sofortdruck')
+                ?? ff_st_expect_same(0, ff_st_flow_state($c, $otherPt)['auto_print'], 'Druckziel ohne Limit');
+            if ($err !== null) {
+                return $err;
+            }
+            $full = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7781, 'order_nr' => 93]); // jetzt 2 offen
+            ff_auto_print_for_order($c, 7781, 93);
+            return ff_st_expect_same(0, ff_st_flow_state($c, $full)['auto_print'], 'Limit erreicht → wartet');
+        });
+
+        $check($g, 'Nachrücken nach Abschluss: älteste wartende Bestellung wird gedruckt, nur bis zum Limit', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7794, 1);
+            $p = ff_st_position($c, 5.0);
+            $active = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'order_nr' => 81, 'auto_print' => 1, 'minutes_ago' => 30]);
+            $older = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'order_nr' => 82, 'minutes_ago' => 20]);
+            $newer = ff_st_flow_row($c, $p, ['pt' => $pt, 'tisch' => 7782, 'order_nr' => 83, 'minutes_ago' => 10]);
+            ff_auto_print_refill($c, [$pt]);
+            $err = ff_st_expect_same(0, ff_st_flow_state($c, $older)['auto_print'], 'Limit belegt → kein Nachrücken');
+            if ($err !== null) {
+                return $err;
+            }
+            ff_order_close_rows($c, [$active], false, true);
+            ff_auto_print_refill($c, [$pt]);
+            ff_auto_print_refill($c, [$pt]); // zweiter Aufruf darf nicht noch eine nachziehen
+            return ff_st_expect_same(1, ff_st_flow_state($c, $older)['auto_print'], 'älteste rückt nach')
+                ?? ff_st_expect_same(0, ff_st_flow_state($c, $newer)['auto_print'], 'jüngere wartet weiter');
+        });
+
+        $g = 'Abläufe: Bezahlen & Rechnung';
+
+        $check($g, 'Bezahlen ohne Rechnung: Zeilen bezahlt, Kellner gesetzt, Summe stimmt', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $a = ff_st_flow_row($c, $p, ['tisch' => 7786, 'betrag' => 4.5]);
+            $b = ff_st_flow_row($c, $p, ['tisch' => 7786, 'betrag' => 3.2]);
+            $res = ff_payment_pay_rows($c, 7786, [$a, $b], 'zz_selftest_pay', false, null);
+            $row = ff_st_order_row($c, $a);
+            return ff_st_expect_same(2, $res['affected'], 'affected')
+                ?? ff_st_expect_same(7.7, round($res['total'], 2), 'Summe')
+                ?? ff_st_expect_same(null, $res['rechnung_id'], 'keine Rechnung')
+                ?? ff_st_expect_same('gesetzt', ff_st_flow_state($c, $b)['bezahlt'], 'bezahlt')
+                ?? ff_st_expect_same('zz_selftest_pay', (string) $row['kellnerZahlung'], 'kellnerZahlung')
+                ?? ff_st_expect_same(null, $row['rechnung_id'], 'rechnung_id');
+        });
+
+        $check($g, 'Bezahlen mit Rechnung: Nummer aus dem Nummernkreis, Belegzeilen gruppiert, Zeilen verknüpft', function (mysqli $c) {
+            $seqRow = ff_st_fetch_one($c, 'SELECT v FROM settings WHERE k = ?', 's', [FF_RECHNUNG_NEXT_KEY]);
+            $seqBefore = (int) ($seqRow['v'] ?? 0);
+            try {
+                $p = ff_st_position($c, 5.0);
+                $a = ff_st_flow_row($c, $p, ['tisch' => 7787, 'betrag' => 6.0, 'order_nr' => 71]);
+                $b = ff_st_flow_row($c, $p, ['tisch' => 7787, 'betrag' => 6.0, 'order_nr' => 71]);
+                $x = ff_st_flow_row($c, $p, ['tisch' => 7787, 'betrag' => 2.5, 'order_nr' => 71, 'zusatz' => 'ohne Zwiebel']);
+                $res = ff_payment_pay_rows($c, 7787, [$a, $b, $x], 'zz_selftest_pay', true, null, ['name' => 'Test Gast']);
+                $rid = (int) $res['rechnung_id'];
+                $inv = ff_st_fetch_one($c, 'SELECT rechnungsnummer, total, tischnummer, order_nr, lines_json, empfaenger_name FROM rechnungen WHERE id = ?', 'i', [$rid]);
+                $lines = json_decode((string) ($inv['lines_json'] ?? ''), true) ?: [];
+                $cnts = array_map(static fn (array $l): int => (int) $l['cnt'], $lines);
+                sort($cnts);
+                $seqAfter = (int) (ff_st_fetch_one($c, 'SELECT v FROM settings WHERE k = ?', 's', [FF_RECHNUNG_NEXT_KEY])['v'] ?? 0);
+                $linked = (int) (ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM bestellungen WHERE rowid IN (?, ?, ?) AND rechnung_id = ?', 'iiii', [$a, $b, $x, $rid])['c'] ?? 0);
+                return ff_st_expect_same(true, $rid > 0, 'Rechnung angelegt')
+                    ?? ff_st_expect_same(ff_rechnung_prefix_for_fest($c, null) . $seqBefore, $res['rechnungsnummer'], 'Rechnungsnummer')
+                    ?? ff_st_expect_same($res['rechnungsnummer'], (string) $inv['rechnungsnummer'], 'gespeicherte Nummer')
+                    ?? ff_st_expect_same($seqBefore + 1, $seqAfter, 'Nummernkreis weitergezählt')
+                    ?? ff_st_expect_same(14.5, round((float) $inv['total'], 2), 'Rechnungssumme')
+                    ?? ff_st_expect_same(71, (int) $inv['order_nr'], 'Bestellnummer')
+                    ?? ff_st_expect_same('Test Gast', (string) $inv['empfaenger_name'], 'Empfänger')
+                    ?? ff_st_expect_same([1, 2], $cnts, 'Belegzeilen gruppiert')
+                    ?? ff_st_expect_same(3, $linked, 'Zeilen mit Rechnung verknüpft');
+            } finally {
+                // Datenbank wird am Ende zurückgerollt; den Settings-Cache dieses Requests ebenso
+                ff_settings_cache($c, ['v' => (string) $seqBefore], FF_RECHNUNG_NEXT_KEY);
+            }
+        });
+
+        $check($g, 'Bezahlen bricht ab, wenn eine Zeile schon bezahlt ist oder zu einem anderen Tisch gehört (keine Nummer verbraucht)', function (mysqli $c) {
+            $seqBefore = (int) (ff_st_fetch_one($c, 'SELECT v FROM settings WHERE k = ?', 's', [FF_RECHNUNG_NEXT_KEY])['v'] ?? 0);
+            $p = ff_st_position($c, 5.0);
+            $open = ff_st_flow_row($c, $p, ['tisch' => 7788]);
+            $paid = ff_st_flow_row($c, $p, ['tisch' => 7788, 'paid' => true]);
+            $foreign = ff_st_flow_row($c, $p, ['tisch' => 7789]);
+            foreach ([[$open, $paid], [$open, $foreign]] as $i => $ids) {
+                try {
+                    ff_payment_pay_rows($c, 7788, $ids, 'zz_selftest_pay', true, null);
+                    return 'Fall ' . ($i + 1) . ': Abbruch erwartet';
+                } catch (RuntimeException $e) {
+                    // erwartet
+                }
+            }
+            $seqAfter = (int) (ff_st_fetch_one($c, 'SELECT v FROM settings WHERE k = ?', 's', [FF_RECHNUNG_NEXT_KEY])['v'] ?? 0);
+            return ff_st_expect_same('leer', ff_st_flow_state($c, $open)['bezahlt'], 'offene Zeile bleibt unbezahlt')
+                ?? ff_st_expect_same('leer', ff_st_flow_state($c, $foreign)['bezahlt'], 'fremder Tisch unberührt')
+                ?? ff_st_expect_same($seqBefore, $seqAfter, 'keine Rechnungsnummer verbraucht');
+        });
+
+        $g = 'Abläufe: Tisch verschieben';
+
+        $check($g, 'Sofort-Zahlung (Admin): offene Zeilen wandern, ausgelieferte bleiben', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $open = ff_st_flow_row($c, $p, ['tisch' => 7781]);
+            $delivered = ff_st_flow_row($c, $p, ['tisch' => 7781, 'delivered' => true]);
+            $res = ff_verschieben_move_rowids($c, [$open, $delivered], 7782, true, 'admin', 'instant');
+            return ff_st_expect_same(['moved' => 1, 'skipped' => 1], $res, 'Ergebnis')
+                ?? ff_st_expect_same(7782, ff_st_flow_state($c, $open)['tisch'], 'offene Zeile')
+                ?? ff_st_expect_same(7781, ff_st_flow_state($c, $delivered)['tisch'], 'ausgelieferte Zeile');
+        });
+
+        $check($g, 'Später zahlen: unbezahlte Zeilen wandern (auch ausgeliefert), bezahlte bleiben', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $deliveredUnpaid = ff_st_flow_row($c, $p, ['tisch' => 7783, 'delivered' => true]);
+            $paid = ff_st_flow_row($c, $p, ['tisch' => 7783, 'paid' => true]);
+            $res = ff_verschieben_move_rowids($c, [$deliveredUnpaid, $paid], 7784, false, 'kellner_a', 'after');
+            return ff_st_expect_same(['moved' => 1, 'skipped' => 1], $res, 'Ergebnis')
+                ?? ff_st_expect_same(7784, ff_st_flow_state($c, $deliveredUnpaid)['tisch'], 'unbezahlt')
+                ?? ff_st_expect_same(7783, ff_st_flow_state($c, $paid)['tisch'], 'bezahlt');
+        });
+
+        $check($g, 'Sofort-Zahlung (Kellner): nur eigene Zeilen', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $own = ff_st_flow_row($c, $p, ['tisch' => 7785, 'kellner' => 'zz_kellner_a']);
+            $foreign = ff_st_flow_row($c, $p, ['tisch' => 7785, 'kellner' => 'zz_kellner_b']);
+            $res = ff_verschieben_move_rowids($c, [$own, $foreign], 7786, false, 'zz_kellner_a', 'instant');
+            return ff_st_expect_same(['moved' => 1, 'skipped' => 1], $res, 'Ergebnis')
+                ?? ff_st_expect_same(7786, ff_st_flow_state($c, $own)['tisch'], 'eigene Zeile')
+                ?? ff_st_expect_same(7785, ff_st_flow_state($c, $foreign)['tisch'], 'fremde Zeile');
+        });
+
+        $g = 'Abläufe: Storno';
+
+        $check($g, 'Storno entfernt die Zeile aus der Druck-Queue (print-Eintrag, Flags)', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $id = ff_st_flow_row($c, $p, ['ready_at' => '2026-01-01 10:00:00']);
+            ff_order_close_rows($c, [$id], true);
+            ff_st_exec($c, 'UPDATE bestellungen SET ausgeliefert = 0 WHERE rowid = ?', 'i', [$id]); // Bon noch nicht ausgegeben
+            if (ff_st_print_rows($c, $id) !== 1) {
+                return 'Vorbedingung: Druck-Queue-Eintrag fehlt';
+            }
+            $r = ff_bestellung_unpaid_storno($c, $id);
+            return ff_st_expect_same(true, !empty($r['ok']), 'Storno ok')
+                ?? ff_st_expect_fields(['delete' => 1, 'kueche' => 0, 'print' => 0, 'print_status' => 0], ff_st_flow_state($c, $id), 'Zeile')
+                ?? ff_st_expect_same(0, ff_st_print_rows($c, $id), 'print-Eintrag');
+        });
+
+        $check($g, 'Storno mehrerer Zeilen zählt erledigte und übersprungene', function (mysqli $c) {
+            $p = ff_st_position($c, 5.0);
+            $open = ff_st_flow_row($c, $p);
+            $paid = ff_st_flow_row($c, $p, ['paid' => true]);
+            $deleted = ff_st_flow_row($c, $p, ['deleted' => true]);
+            $res = ff_bestellung_storno_rowids($c, [$open, $paid, $deleted]);
+            return ff_st_expect_same(true, $res['ok'], 'ok')
+                ?? ff_st_expect_same(2, $res['stornoed'], 'storniert (offen + bezahlt)')
+                ?? ff_st_expect_same(1, $res['skipped'], 'übersprungen (schon storniert)')
+                ?? ff_st_expect_same(1, ff_st_flow_state($c, $paid)['delete'], 'bezahlte Zeile storniert');
         });
 
         $g = 'Code-Hygiene';

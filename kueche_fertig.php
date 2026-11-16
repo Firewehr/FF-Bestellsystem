@@ -3,6 +3,7 @@
 require_once('auth.php');
 
 require_once 'include/db.php';
+require_once __DIR__ . '/include/ff_order_flow.php';
 
 $raw = $_POST['rowids'] ?? $_GET['rowids'] ?? $_POST['rowid'] ?? $_GET['rowid'] ?? $_REQUEST['rowid'] ?? 0;
 if (is_array($raw)) {
@@ -25,17 +26,9 @@ if (empty($ids)) {
     exit;
 }
 
-[$in, $inT, $inV] = ff_db_in_ints(array_keys($ids));
-
 // Nur als fertig markieren (rechts anzeigen), NICHT ausgeliefert – das passiert bei "Bestellung abschließen".
 // print bleibt 0: Bon/Thermodruck erst nach „Gesamt Fertig“ (kueche_fertig_tisch.php setzt print=2).
-$sql = "UPDATE `bestellungen` "
-        . "SET `zeitKueche`=current_timestamp,"
-        . "`print`='0',"
-        . "`kueche`='1' "
-        . "WHERE rowid IN (" . $in . ")";
-
-if (ff_db_query($conn, $sql, $inT, $inV)) {
+if (ff_order_mark_ready($conn, array_keys($ids), false)) {
     echo "Record updated successfully";
 } else {
     http_response_code(500);

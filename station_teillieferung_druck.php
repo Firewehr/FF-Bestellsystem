@@ -9,6 +9,7 @@ require_once __DIR__ . '/include/db.php';
 require_once __DIR__ . '/include/settings.php';
 require_once __DIR__ . '/include/ff_station_events.php';
 require_once __DIR__ . '/include/ff_event_notifications.php';
+require_once __DIR__ . '/include/ff_order_flow.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -24,38 +25,19 @@ if (!is_array($PositionsListe)) {
     $PositionsListe = [];
 }
 
-$rowids = [];
-foreach ($PositionsListe as $v) {
-    $id = (int) $v;
-    if ($id > 0) {
-        $rowids[] = $id;
-    }
-}
-$rowids = array_values(array_unique($rowids));
+$rowids = ff_order_rowids($PositionsListe);
 
 if ($tischnummer <= 0 || $rowids === []) {
     echo json_encode(['ok' => false, 'error' => 'fehlende_daten']);
     exit;
 }
 
-[$in, $inT, $inV] = ff_db_in_ints($rowids);
-$sql = "UPDATE bestellungen SET "
-    . "print = 3, "   // 3 = Teillieferung angefordert (ohne Sibling-Filter in print_target.php)
-    . "print_status = 0, "
-    . "kueche = 1 "
-    . "WHERE rowid IN ($in) "
-    . "AND tischnummer = ? "
-    . "AND `delete` = 0 "
-    . "AND ausgeliefert = 0 "
-    . "AND COALESCE(print_status, 0) = 0 "
-    . "AND (kueche = 1 OR (zeitKueche IS NOT NULL AND zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')))";
-
-if (!ff_db_query($conn, $sql, $inT . 'i', array_merge($inV, [(int) $tischnummer]))) {
+// Nur Zeilen dieses Tisches; print = 3 kennzeichnet die angeforderte Teillieferung
+$n = ff_order_print_partial($conn, $rowids, $tischnummer);
+if ($n < 0) {
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);
     exit;
 }
-
-$n = ff_db_affected_rows();
 if ($n <= 0) {
     echo json_encode([
         'ok' => false,
@@ -66,24 +48,7 @@ if ($n <= 0) {
 }
 ff_event_notifications_evaluate_rows($conn, $rowids, 'station_teillieferung_druck.php');
 
-$targetRes = ff_db_query(
-    $conn,
-    'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS print_target '
-    . 'FROM bestellungen b JOIN positionen p ON p.rowid = b.position '
-    . 'WHERE b.rowid IN (' . $in . ') AND b.tischnummer = ?',
-    $inT . 'i',
-    array_merge($inV, [(int) $tischnummer])
-);
-if ($targetRes) {
-    $printTargets = [];
-    while ($targetRow = mysqli_fetch_assoc($targetRes)) {
-        $printTargets[] = (int) $targetRow['print_target'];
-    }
-    mysqli_free_result($targetRes);
-    ff_print_events_publish($conn, $printTargets);
-} else {
-    error_log('station_teillieferung_druck.php: Druckziele konnten nicht ermittelt werden: ' . mysqli_error($conn));
-}
+ff_print_events_publish($conn, ff_order_rows_print_targets($conn, $rowids, $tischnummer));
 
 echo json_encode([
     'ok' => true,

@@ -13,6 +13,7 @@ require_once dirname(__DIR__, 2) . '/include/ff_rechnungen_ensure_columns.php';
 require_once dirname(__DIR__, 2) . '/include/ff_station_events.php';
 require_once dirname(__DIR__, 2) . '/include/ff_event_notifications.php';
 require_once dirname(__DIR__, 2) . '/include/ff_pilot_orders.php';
+require_once dirname(__DIR__, 2) . '/include/ff_payment.php';
 
 $user = api_require_auth();
 $data = api_get_request_data();
@@ -476,6 +477,14 @@ if ($isSammel) {
     api_error('Dieser Tisch ist als Sammelrechnung markiert und kann nur zentral abgerechnet werden.', 'sammelrechnung_locked', 409);
 }
 
+// Schema-Prüfungen VOR der Transaktion: ein ALTER TABLE (nur falls eine Spalte fehlt)
+// würde sonst die Zahlung mittendrin implizit festschreiben.
+if ($action === 'with_invoice') {
+    ff_rechnungen_ensure_extra_columns($conn);
+    ff_bestellungen_ensure_rechnung_id_column($conn);
+    ff_feste_ensure_rechnung_prefix_column($conn);
+}
+
 // In Transaktion abwickeln
 if (!mysqli_begin_transaction($conn)) {
     api_error('Datenbankfehler bei Transaktionsstart.', 'db_error', 500);
@@ -497,107 +506,21 @@ try {
         }
     }
 
-    $marks = implode(',', array_fill(0, count($rowids), '?'));
-    $sumStmt = mysqli_prepare(
+    $payRes = ff_payment_pay_rows(
         $conn,
-        "SELECT b.rowid, b.position, COALESCE(b.betrag, p.Betrag) AS betrag, b.Zusatzinfo, b.order_nr,
-                COALESCE(p.Positionsname, '(Position)') AS name
-         FROM bestellungen b LEFT JOIN positionen p ON p.rowid = b.position
-         WHERE b.`delete` = 0 AND b.tischnummer = ?
-           AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
-           AND b.rowid IN ({$marks}) FOR UPDATE"
+        (int) $tischnummer,
+        $rowids,
+        $username,
+        $action === 'with_invoice',
+        $activeFestId,
+        (array) ($data['recipient'] ?? [])
     );
-    if (!$sumStmt) {
-        throw new RuntimeException('Zahlungspositionen konnten nicht gesperrt werden.');
-    }
-    mysqli_stmt_bind_param($sumStmt, 'i' . str_repeat('i', count($rowids)), $tischnummer, ...$rowids);
-    if (!mysqli_stmt_execute($sumStmt)) {
-        $error = mysqli_stmt_error($sumStmt);
-        mysqli_stmt_close($sumStmt);
-        throw new RuntimeException('Zahlungspositionen konnten nicht geladen werden: ' . $error);
-    }
-    $sRes = mysqli_stmt_get_result($sumStmt);
-    $payableRows = [];
-    $totalAmount = 0.0;
-    $groupedLines = [];
-    $firstOrderNr = null;
-    while ($sRes && ($sr = mysqli_fetch_assoc($sRes))) {
-        $payableRows[] = (int)$sr['rowid'];
-        $bVal = (float)$sr['betrag'];
-        $totalAmount += $bVal;
-        if ($firstOrderNr === null && !empty($sr['order_nr'])) {
-            $firstOrderNr = (int)$sr['order_nr'];
-        }
-        $gKey = (string)$sr['name'] . '|' . (string)$sr['Zusatzinfo'] . '|' . number_format($bVal, 2, '.', '');
-        if (!isset($groupedLines[$gKey])) {
-            $groupedLines[$gKey] = ['cnt' => 0, 'name' => (string)$sr['name'], 'betrag' => $bVal, 'zusatzinfo' => (string)$sr['Zusatzinfo']];
-        }
-        $groupedLines[$gKey]['cnt']++;
-    }
-    mysqli_stmt_close($sumStmt);
-    sort($payableRows);
-    $expectedRows = $rowids;
-    sort($expectedRows);
-    if ($payableRows === [] || $payableRows !== $expectedRows) {
-        throw new RuntimeException('Die ausgewählten Positionen wurden bereits abgerechnet oder existieren nicht mehr.');
-    }
-
-    $rechnungId = null;
-    $rechnungsnummer = null;
-
-    // Falls MIT RECHNUNG gewählt wurde
-    if ($action === 'with_invoice') {
-        ff_rechnungen_ensure_extra_columns($conn);
-        ff_bestellungen_ensure_rechnung_id_column($conn);
-
-        $rPrefix = ff_rechnung_prefix_for_fest($conn, $activeFestId);
-        $seq = ff_rechnung_next_allocate($conn);
-        $rechnungsnummer = $rPrefix . $seq;
-
-        $linesJson = json_encode(array_values($groupedLines), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $recipient = (array)($data['recipient'] ?? []);
-        $isFirma = !empty($recipient['is_firma']) ? 1 : 0;
-
-        $insR = "INSERT INTO rechnungen 
-                 (rechnungsnummer, created_by, fest_id, tischnummer, order_nr, total, lines_json, gedruckt, druck_status, is_firma, empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?, ?, ?, ?)";
-        $okIns = ff_db_query($conn, $insR, 'ssiiidsisssss', [
-            $rechnungsnummer,
-            $username,
-            $activeFestId ?: null,
-            (int)$tischnummer,
-            $firstOrderNr ?: null,
-            (float)$totalAmount,
-            $linesJson ?: '[]',
-            $isFirma,
-            (string)($recipient['name'] ?? ''),
-            (string)($recipient['strasse'] ?? ''),
-            (string)($recipient['plz'] ?? ''),
-            (string)($recipient['ort'] ?? ''),
-            (string)($recipient['uid'] ?? ''),
-        ]);
-        if (!$okIns) {
-            throw new RuntimeException('Rechnung konnte nicht angelegt werden: ' . mysqli_error($conn));
-        }
-
-        $rechnungId = ff_db_insert_id();
-    }
-
-    // Positionen als bezahlt markieren
-    [$inPayMarks, $inPayTypes, $inPayIds] = ff_db_in_ints($payableRows);
-    $updSql = "UPDATE `bestellungen` 
-               SET `timestampBezahlung` = CURRENT_TIMESTAMP, 
-                   `kellnerZahlung` = ?"
-               . ($rechnungId ? ", `rechnung_id` = ? " : " ")
-               . "WHERE `rowid` IN ({$inPayMarks})";
-    $updTypes = 's' . ($rechnungId ? 'i' : '') . $inPayTypes;
-    $updParams = array_merge([$username], $rechnungId ? [$rechnungId] : [], $inPayIds);
-
-    if (!ff_db_query($conn, $updSql, $updTypes, $updParams)) {
-        throw new RuntimeException('Bezahlung konnte nicht gespeichert werden: ' . mysqli_error($conn));
-    }
-
-    $affected = ff_db_affected_rows();
+    $affected = $payRes['affected'];
+    $totalAmount = $payRes['total'];
+    $rechnungId = $payRes['rechnung_id'];
+    $rechnungsnummer = $payRes['rechnungsnummer'];
+    $linesJson = $payRes['lines_json'];
+    $firstOrderNr = $payRes['first_order_nr'];
     $response = [
         'ok' => true,
         'affected' => $affected,

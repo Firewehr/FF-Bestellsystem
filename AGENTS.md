@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 103) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 120) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -281,12 +281,13 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 103 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 120 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Änderungen an Kellner-App, Station oder Pilot-Admin zusätzlich den Browser-Smoke-Test ausführen (speichert nichts, alle POSTs werden abgefangen; Zugangsdaten nur per Umgebungsvariable):
   ```bash
   FF_UI_USER=... FF_UI_PASS=... python3 tools/ui_smoke_test.py [--shots /pfad/zu/screenshots]
   ```
 * Bei Anpassung oder Erweiterung von Geschäftslogik (z. B. Storno, Rechnungsbeträge, Kapazitäten, Zahlungsmodi) sind entsprechende Testfälle in `include/ff_selftests.php` zu ergänzen.
+* Schreibende Kernabläufe liegen als Funktionen ohne Seiteneffekte in `include/` (`ff_order_flow.php`: fertig melden, abschließen, Teillieferung, wieder öffnen; `ff_payment.php`: Bezahlen/Rechnung; `ff_auto_print.php`, `ff_bestellung_storno.php`, `ff_bestellung_verschieben.php`). Endpunkte rufen diese auf und lösen Events/Push selbst aus. Tests dafür in der Gruppe „Abläufe: …“ mit `ff_st_flow_row()` (eigene Testtische 7781–7789, Druckziele ab 7791, ohne Fest → keine Push-Auswertung). Schema-Prüfungen (`…_ensure_…`) gehören vor `BEGIN`, sonst schreibt ein `ALTER TABLE` die Test-Transaktion fest.
 
 Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter https://pos.ballner.ipv64.de erreichbar. Login via username: ki passwort: ki12345
 

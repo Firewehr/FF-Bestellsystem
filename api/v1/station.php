@@ -16,6 +16,7 @@ require_once dirname(__DIR__, 2) . '/include/ff_rezepturen_schema.php';
 require_once dirname(__DIR__, 2) . '/include/ff_station_events.php';
 require_once dirname(__DIR__, 2) . '/include/ff_auto_print.php';
 require_once dirname(__DIR__, 2) . '/include/ff_event_notifications.php';
+require_once dirname(__DIR__, 2) . '/include/ff_order_flow.php';
 require_once dirname(__DIR__, 2) . '/include/settings.php';
 require_once dirname(__DIR__, 2) . '/include/user_landing.php';
 
@@ -62,16 +63,14 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine gültigen Positionen angegeben.', 'missing_rowids', 400);
         }
-        [$in, $inT, $inV] = ff_db_in_ints($rowids);
-        $sql = "UPDATE bestellungen SET zeitKueche = CURRENT_TIMESTAMP, kueche = 1, print = 0 WHERE rowid IN ($in) AND `delete` = 0 AND ausgeliefert = 0";
-        if (!ff_db_query($conn, $sql, $inT, $inV)) {
+        if (!ff_order_mark_ready($conn, $rowids, true)) {
             api_error('Fehler beim Aktualisieren: ' . mysqli_error($conn), 'db_error', 500);
         }
 
         ff_event_notifications_evaluate_rows($conn, $rowids, 'api_station_item_done');
 
         // Druckziele für Event-Publishing ermitteln
-        $targets = ff_station_get_print_targets_for_rows($conn, $rowids);
+        $targets = ff_order_rows_print_targets($conn, $rowids);
         if ($targets !== []) {
             ff_station_events_publish($conn, $targets, 'station_change');
         }
@@ -90,23 +89,13 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine gültigen Positionen angegeben.', 'missing_rowids', 400);
         }
-        [$in, $inT, $inV] = ff_db_in_ints($rowids);
-
-        $printStatusSql = '';
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
-        if ($chk && mysqli_num_rows($chk) > 0) {
-            $printStatusSql = ', print_status = 0';
-        }
-
-        $sql = "UPDATE bestellungen SET zeitKueche = '0000-00-00 00:00:00', kueche = 0, print = 0" . $printStatusSql
-            . " WHERE `delete` = 0 AND rowid IN ($in)";
-        if (!ff_db_query($conn, $sql, $inT, $inV)) {
+        if (!ff_order_undo_ready($conn, $rowids)) {
             api_error('Fehler beim Zurücksetzen: ' . mysqli_error($conn), 'db_error', 500);
         }
 
         ff_event_notifications_evaluate_rows($conn, $rowids, 'api_station_undo_done');
 
-        $targets = ff_station_get_print_targets_for_rows($conn, $rowids);
+        $targets = ff_order_rows_print_targets($conn, $rowids);
         if ($targets !== []) {
             ff_station_events_publish($conn, $targets, 'station_change');
         }
@@ -127,52 +116,15 @@ if ($method === 'POST') {
         }
         $mitDruck = !empty($data['mit_druck']);
         $tischnummer = (int) ($data['tischnummer'] ?? 0);
-        [$in, $inT, $inV] = ff_db_in_ints($rowids);
-
-        // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren
-        ff_db_query(
-            $conn,
-            "UPDATE bestellungen SET kueche = 1, zeitKueche = IF(zeitKueche IS NULL OR zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00'), CURRENT_TIMESTAMP, zeitKueche) WHERE rowid IN ($in)",
-            $inT,
-            $inV
-        );
-
-        $printed = 0;
-        $printedRowIds = [];
-        $timestamp = date('Y-m-d H:i:s');
-
-        if ($mitDruck) {
-            foreach ($rowids as $rowid) {
-                // Bereits als Teillieferung gedruckt?
-                $chk = ff_db_query($conn, 'SELECT COALESCE(print_status, 0) AS ps FROM bestellungen WHERE rowid = ? LIMIT 1', 'i', [$rowid]);
-                $alreadyPrinted = false;
-                if ($chk && ($cr = ff_db_row_text(mysqli_fetch_assoc($chk)))) {
-                    $alreadyPrinted = ((int) ($cr['ps'] ?? 0) === 1);
-                }
-
-                if ($alreadyPrinted) {
-                    ff_db_query($conn, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid = ?', 'i', [(int) $rowid]);
-                } else {
-                    $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid = ?";
-                    ff_db_query($conn, $sql, 'i', [(int) $rowid]);
-                    ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
-                    $printed++;
-                    $printedRowIds[] = $rowid;
-                }
-            }
-
-            if ($printedRowIds !== []) {
-                $printTargets = ff_station_get_print_targets_for_rows($conn, $printedRowIds);
-                ff_print_events_publish($conn, $printTargets);
-            }
-        } else {
-            $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid IN ($in)";
-            ff_db_query($conn, $sql, $inT, $inV);
+        $closeRes = ff_order_close_rows($conn, $rowids, $mitDruck, true);
+        $printed = count($closeRes['printed_rowids']);
+        if ($closeRes['printed_rowids'] !== []) {
+            ff_print_events_publish($conn, ff_order_rows_print_targets($conn, $closeRes['printed_rowids']));
         }
 
         ff_event_notifications_evaluate_rows($conn, $rowids, 'api_station_complete_order');
 
-        $affectedTargets = ff_station_get_print_targets_for_rows($conn, $rowids);
+        $affectedTargets = ff_order_rows_print_targets($conn, $rowids);
         if ($affectedTargets !== []) {
             ff_station_events_publish($conn, $affectedTargets, 'station_change');
             // Nachrücken immer: Auch ein Abschluss ohne Druck (z. B. Abholbon) gibt einen
@@ -198,18 +150,12 @@ if ($method === 'POST') {
         }
         $tischnummer = (int) ($data['tischnummer'] ?? 0);
         $printTarget = (int) ($data['print_target'] ?? 0);
-        [$in, $inT, $inV] = ff_db_in_ints($rowids);
-
         // print = 3 kennzeichnet eine angeforderte Teillieferung (print_target.php druckt sie,
         // obwohl andere Positionen derselben Bestellung noch offen sind).
-        $sql = "UPDATE bestellungen SET print = 3, print_status = 0, kueche = 1 "
-            . "WHERE rowid IN ($in) AND `delete` = 0 AND ausgeliefert = 0 AND COALESCE(print_status, 0) = 0 "
-            . "AND (kueche = 1 OR (zeitKueche IS NOT NULL AND zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')))";
-
-        if (!ff_db_query($conn, $sql, $inT, $inV)) {
+        $affected = ff_order_print_partial($conn, $rowids, null);
+        if ($affected < 0) {
             api_error('Fehler bei Teillieferung: ' . mysqli_error($conn), 'db_error', 500);
         }
-        $affected = ff_db_affected_rows();
 
         if ($affected <= 0) {
             api_error('Keine fertigen, noch ungedruckten Positionen gefunden.', 'nothing_to_print', 400);
@@ -217,7 +163,7 @@ if ($method === 'POST') {
 
         ff_event_notifications_evaluate_rows($conn, $rowids, 'api_station_teillieferung_druck');
 
-        $targets = ff_station_get_print_targets_for_rows($conn, $rowids);
+        $targets = ff_order_rows_print_targets($conn, $rowids);
         if ($targets !== []) {
             ff_print_events_publish($conn, $targets);
             ff_station_events_publish($conn, $targets, 'station_change');
@@ -246,7 +192,7 @@ if ($method === 'POST') {
             ff_db_query($conn, 'UPDATE bestellungen SET bestellt = 1 WHERE tischnummer = ? AND `delete` = 0 AND ausgeliefert = 0', 'i', [$tischnummer]);
         }
 
-        $targets = $rowids !== [] ? ff_station_get_print_targets_for_rows($conn, $rowids) : [11, 12];
+        $targets = $rowids !== [] ? ff_order_rows_print_targets($conn, $rowids) : [11, 12];
         ff_station_events_publish($conn, $targets, 'station_change');
 
         api_response([
@@ -262,13 +208,11 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine Positionen zum Wiedereröffnen angegeben.', 'missing_rowids', 400);
         }
-        [$in, $inT, $inV] = ff_db_in_ints($rowids);
-        $sql = "UPDATE bestellungen SET ausgeliefert = 0, timestampAuslieferung = '0000-00-00 00:00:00', kueche = 1, zeitKueche = CURRENT_TIMESTAMP WHERE rowid IN ($in) AND `delete` = 0";
-        if (!ff_db_query($conn, $sql, $inT, $inV)) {
+        if (!ff_order_reopen_rows($conn, $rowids)) {
             api_error('Fehler beim Wiedereröffnen: ' . mysqli_error($conn), 'db_error', 500);
         }
 
-        $targets = ff_station_get_print_targets_for_rows($conn, $rowids);
+        $targets = ff_order_rows_print_targets($conn, $rowids);
         if ($targets !== []) {
             ff_station_events_publish($conn, $targets, 'station_change');
         }
@@ -699,24 +643,3 @@ api_response([
  * @param list<int> $rowids
  * @return list<int>
  */
-function ff_station_get_print_targets_for_rows(mysqli $conn, array $rowids): array
-{
-    if ($rowids === []) {
-        return [];
-    }
-    [$in, $inT, $inV] = ff_db_in_ints($rowids);
-    $res = ff_db_query(
-        $conn,
-        "SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b "
-        . "JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN ($in)",
-        $inT,
-        $inV
-    );
-    $targets = [];
-    if ($res) {
-        while ($r = mysqli_fetch_assoc($res)) {
-            $targets[] = (int) $r['pt'];
-        }
-    }
-    return $targets;
-}
