@@ -42,31 +42,31 @@ $datumBis = isset($_GET['bis']) ? trim((string) $_GET['bis']) : '';
 
 $range = null;
 
-$whereDatum = '';
+// Datumsfilter als Bausteine [sql, types, params]: Bestellungen (DATE der Bezahlung) und Buchungen (datum)
+$whereDatum = ff_db_frag();
+$whereBuchung = ff_db_frag();
 
 if ($datumVon !== '' && $datumBis !== '') {
 
-    $von = mysqli_real_escape_string($conn, $datumVon);
+    $whereDatum = ff_db_frag(' AND DATE(b.timestampBezahlung) >= ? AND DATE(b.timestampBezahlung) <= ? ', 'ss', [$datumVon, $datumBis]);
 
-    $bis = mysqli_real_escape_string($conn, $datumBis);
-
-    $whereDatum = " AND DATE(b.timestampBezahlung) >= '{$von}' AND DATE(b.timestampBezahlung) <= '{$bis}' ";
+    $whereBuchung = ff_db_frag(' AND datum IS NOT NULL AND datum >= ? AND datum <= ? ', 'ss', [$datumVon, $datumBis]);
 
     $range = ['von_sql' => $datumVon . ' 00:00:00', 'bis_sql' => $datumBis . ' 23:59:59', 'has_time' => false];
 
 } elseif ($datumVon !== '') {
 
-    $von = mysqli_real_escape_string($conn, $datumVon);
+    $whereDatum = ff_db_frag(' AND DATE(b.timestampBezahlung) >= ? ', 's', [$datumVon]);
 
-    $whereDatum = " AND DATE(b.timestampBezahlung) >= '{$von}' ";
+    $whereBuchung = ff_db_frag(' AND datum IS NOT NULL AND datum >= ? ', 's', [$datumVon]);
 
     $range = ['von_sql' => $datumVon . ' 00:00:00', 'bis_sql' => $datumVon . ' 23:59:59', 'has_time' => false];
 
 } elseif ($datumBis !== '') {
 
-    $bis = mysqli_real_escape_string($conn, $datumBis);
+    $whereDatum = ff_db_frag(' AND DATE(b.timestampBezahlung) <= ? ', 's', [$datumBis]);
 
-    $whereDatum = " AND DATE(b.timestampBezahlung) <= '{$bis}' ";
+    $whereBuchung = ff_db_frag(' AND datum IS NOT NULL AND datum <= ? ', 's', [$datumBis]);
 
     $range = ['von_sql' => $datumBis . ' 00:00:00', 'bis_sql' => $datumBis . ' 23:59:59', 'has_time' => false];
 
@@ -96,9 +96,9 @@ if ($hasSelbstkosten) {
 
         JOIN positionen p ON p.rowid = b.position
 
-        WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereDatum}";
+        WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereDatum[0]}";
 
-    $resV = mysqli_query($conn, $sqlVar);
+    $resV = ff_db_query($conn, $sqlVar, $whereDatum[1], $whereDatum[2]);
 
     if ($resV && ($rowV = mysqli_fetch_assoc($resV))) {
 
@@ -110,33 +110,15 @@ if ($hasSelbstkosten) {
 
 
 
-$whereBuchung = '';
-
-if ($datumVon !== '' && $datumBis !== '') {
-
-    $whereBuchung = " AND datum IS NOT NULL AND datum >= '{$von}' AND datum <= '{$bis}' ";
-
-} elseif ($datumVon !== '') {
-
-    $whereBuchung = " AND datum IS NOT NULL AND datum >= '{$von}' ";
-
-} elseif ($datumBis !== '') {
-
-    $whereBuchung = " AND datum IS NOT NULL AND datum <= '{$bis}' ";
-
-}
-
-
-
 @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS buchungen (id INT(11) NOT NULL AUTO_INCREMENT, typ ENUM('einnahme','ausgabe') NOT NULL, bezeichnung VARCHAR(255) NOT NULL, betrag DECIMAL(10,2) NOT NULL, datum DATE NULL, kategorie VARCHAR(100) NULL, notiz TEXT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id))");
 
-$sqlEinnahmen = "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen WHERE typ='einnahme' " . $whereBuchung;
+$sqlEinnahmen = "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen WHERE typ='einnahme' " . $whereBuchung[0];
 
-$sqlAusgaben = "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen WHERE typ='ausgabe' " . $whereBuchung;
+$sqlAusgaben = "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen WHERE typ='ausgabe' " . $whereBuchung[0];
 
-$resE = mysqli_query($conn, $sqlEinnahmen);
+$resE = ff_db_query($conn, $sqlEinnahmen, $whereBuchung[1], $whereBuchung[2]);
 
-$resA = mysqli_query($conn, $sqlAusgaben);
+$resA = ff_db_query($conn, $sqlAusgaben, $whereBuchung[1], $whereBuchung[2]);
 
 $fixeEinnahmen = 0.0;
 

@@ -122,14 +122,18 @@ function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): 
     return $consumed;
 }
 
-function ff_position_consumed_orders(mysqli $conn, int $positionId, string $orderExtraWhereSql = ''): int
+/** @param array{0:string,1:string,2:list<mixed>} $orderExtraWhere Zusatz-Baustein auf bestellungen */
+function ff_position_consumed_orders(mysqli $conn, int $positionId, array $orderExtraWhere = ['', '', []]): int
 {
     if ($positionId <= 0) {
         return 0;
     }
 
-    $sql = 'SELECT COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0 AND `position`=' . (int) $positionId . $orderExtraWhereSql;
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0 AND `position`=' . (int) $positionId,
+        $orderExtraWhere
+    );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         return (int) ($row['cnt'] ?? 0);
     }
@@ -152,17 +156,16 @@ function ff_position_consumed_mv(mysqli $conn, int $positionId): int
     return 0;
 }
 
-function ff_position_consumed_total(mysqli $conn, int $positionId, string $orderExtraWhereSql = ''): int
+function ff_position_consumed_total(mysqli $conn, int $positionId, array $orderExtraWhere = ['', '', []]): int
 {
-    return ff_position_consumed_orders($conn, $positionId, $orderExtraWhereSql)
+    return ff_position_consumed_orders($conn, $positionId, $orderExtraWhere)
         + ff_position_consumed_mv($conn, $positionId);
 }
 
-function ff_position_batch_order_counts(mysqli $conn, string $orderExtraWhereSql = ''): array
+function ff_position_batch_order_counts(mysqli $conn, array $orderExtraWhere = ['', '', []]): array
 {
     $map = [];
-    $sql = 'SELECT `position`, COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0' . $orderExtraWhereSql . ' GROUP BY `position`';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query_parts($conn, 'SELECT `position`, COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0', $orderExtraWhere, ' GROUP BY `position`');
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $map[(int) $row['position']] = (int) ($row['cnt'] ?? 0);
@@ -216,9 +219,9 @@ function ff_mv_batch_counts_for_datum(mysqli $conn, string $datum, int $bereichI
     return $map;
 }
 
-function ff_position_batch_consumed_totals(mysqli $conn, string $orderExtraWhereSql = ''): array
+function ff_position_batch_consumed_totals(mysqli $conn, array $orderExtraWhere = ['', '', []]): array
 {
-    $map = ff_position_batch_order_counts($conn, $orderExtraWhereSql);
+    $map = ff_position_batch_order_counts($conn, $orderExtraWhere);
     foreach (ff_position_batch_mv_counts($conn) as $pid => $cnt) {
         $map[$pid] = ($map[$pid] ?? 0) + $cnt;
     }
@@ -479,7 +482,7 @@ function ff_position_display_capacity(mysqli $conn, int $positionId, int $maxBes
     return ['max' => $maxBestellbar, 'rest' => $maxBestellbar, 'limited' => false];
 }
 
-function ff_position_check_capacity(mysqli $conn, int $positionId, int $maxBestellbar, int $requestedMenge, string $orderExtraWhereSql = ''): ?array
+function ff_position_check_capacity(mysqli $conn, int $positionId, int $maxBestellbar, int $requestedMenge, array $orderExtraWhere = ['', '', []]): ?array
 {
     if ($positionId <= 0) {
         return null;
@@ -498,7 +501,7 @@ function ff_position_check_capacity(mysqli $conn, int $positionId, int $maxBeste
         return null;
     }
 
-    $consumed = ff_position_consumed_total($conn, $positionId, $orderExtraWhereSql);
+    $consumed = ff_position_consumed_total($conn, $positionId, $orderExtraWhere);
     if ($consumed >= $maxBestellbar) {
         return [
             'ok' => false,

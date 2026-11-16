@@ -22,7 +22,7 @@ if ($bonFilter !== '') {
 }
 $kellnerFilter = trim((string) ($_GET['kellner'] ?? ''));
 $scopeSql = ff_direktverkauf_history_scope_sql($conn, $isAdmin, 'b', $kellnerFilter);
-$bonSql = $bonFilter !== '' ? ff_direktverkauf_bon_filter_sql($conn, $bonFilter, 'b') : '';
+$bonSql = $bonFilter !== '' ? ff_direktverkauf_bon_filter_sql($conn, $bonFilter, 'b') : ff_db_frag();
 $limit = 250;
 
 $kellnerList = [];
@@ -49,13 +49,13 @@ $sql = "SELECT b.rowid, b.zeitstempel, b.timestampBezahlung, b.`delete`, b.ausge
         p.Positionsname, p.type AS pos_type, {$amt} AS line_amt
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
-    WHERE b.tischnummer = {$Tischnummer}{$scopeSql}{$bonSql}
+    WHERE b.tischnummer = {$Tischnummer}{$scopeSql[0]}{$bonSql[0]}
     ORDER BY b.bon_id DESC, b.rowid DESC
     LIMIT {$limit}";
 
 $rows = [];
 $sqlError = '';
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, $scopeSql[1] . $bonSql[1], array_merge($scopeSql[2], $bonSql[2]));
 if (!$res) {
     $sqlError = mysqli_error($conn);
 } else {

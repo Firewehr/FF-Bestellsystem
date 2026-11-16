@@ -7,23 +7,27 @@ declare(strict_types=1);
 require_once __DIR__ . '/menu_lock_helpers.php';
 require_once __DIR__ . '/ff_position_stock_summary.php';
 
-/** SQL-Zusatz für Direktverkauf, wenn nur eigene Bestellungen des Kellners zählen. */
-function ff_direktverkauf_kellner_filter_sql(mysqli $conn, string $alias = 'bestellungen'): string
+/**
+ * SQL-Baustein [sql, types, params] für Direktverkauf, wenn nur eigene Bestellungen des Kellners zählen.
+ * Leerer Baustein, wenn kein Filter gilt. $alias stammt immer aus dem Code.
+ *
+ * @return array{0:string,1:string,2:list<string>}
+ */
+function ff_direktverkauf_kellner_filter_sql(mysqli $conn, string $alias = 'bestellungen'): array
 {
     require_once __DIR__ . '/settings.php';
     if (setting_get($conn, 'kellner_nur_eigene', '1') !== '1') {
-        return '';
+        return ff_db_frag();
     }
     $user = (string) ($_SESSION['user']['username'] ?? '');
     if ($user === '') {
-        return '';
+        return ff_db_frag();
     }
-    $esc = mysqli_real_escape_string($conn, $user);
     if ($alias === '') {
-        return " AND (`kellner`='{$esc}' OR `kellnerZahlung`='{$esc}')";
+        return ff_db_frag(' AND (`kellner`=? OR `kellnerZahlung`=?)', 'ss', [$user, $user]);
     }
 
-    return " AND (`{$alias}`.`kellner`='{$esc}' OR `{$alias}`.`kellnerZahlung`='{$esc}')";
+    return ff_db_frag(" AND (`{$alias}`.`kellner`=? OR `{$alias}`.`kellnerZahlung`=?)", 'ss', [$user, $user]);
 }
 
 /** @param list<array<string,mixed>> $rows */
@@ -55,9 +59,12 @@ function ff_tisch_count_unsent(mysqli $conn, int $tischnummer): int
         return 0;
     }
     $kel = ff_tisch_kellner_scope_filter_sql($conn, 'b');
-    $sql = 'SELECT COUNT(*) AS cnt FROM bestellungen b WHERE b.tischnummer=' . (int) $tischnummer
-        . ' AND ' . ff_tisch_unsent_sql_condition('b') . $kel;
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT COUNT(*) AS cnt FROM bestellungen b WHERE b.tischnummer=' . (int) $tischnummer
+        . ' AND ' . ff_tisch_unsent_sql_condition('b'),
+        $kel
+    );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         return (int) ($row['cnt'] ?? 0);
     }
@@ -82,11 +89,11 @@ function ff_tisch_clear_unsent_orders(mysqli $conn, int $tischnummer): array
             b.zeitKueche = '0000-00-00 00:00:00',
             b.ausgeliefert = 0
         WHERE b.tischnummer = " . (int) $tischnummer . '
-          AND ' . ff_tisch_unsent_sql_condition('b') . $kel;
-    if (!mysqli_query($conn, $sql)) {
+          AND ' . ff_tisch_unsent_sql_condition('b');
+    if (!ff_db_query_parts($conn, $sql, $kel)) {
         return ['ok' => false, 'error' => 'db', 'message' => 'Löschen fehlgeschlagen.'];
     }
-    $aff = mysqli_affected_rows($conn);
+    $aff = ff_db_affected_rows();
 
     return [
         'ok' => true,
@@ -117,16 +124,18 @@ function ff_menu_batch_open_counts_tisch(mysqli $conn, int $tischnummer): array
 }
 
 /**
- * Kellner-Filter für Tisch-Zähler (wie tisch_anzeigen.php / list_tische.php).
+ * Kellner-Filter für Tisch-Zähler (wie list_tische.php) als Baustein [sql, types, params].
+ *
+ * @return array{0:string,1:string,2:list<string>}
  */
-function ff_tisch_kellner_scope_filter_sql(mysqli $conn, string $alias = 'b'): string
+function ff_tisch_kellner_scope_filter_sql(mysqli $conn, string $alias = 'b'): array
 {
     require_once __DIR__ . '/settings.php';
     if (setting_get($conn, 'kellner_nur_eigene', '1') !== '1') {
-        return '';
+        return ff_db_frag();
     }
     if (!empty($_SESSION['admin']) && (int) $_SESSION['admin'] >= 1) {
-        return '';
+        return ff_db_frag();
     }
 
     return ff_direktverkauf_kellner_filter_sql($conn, $alias);
@@ -149,8 +158,8 @@ function ff_tisch_count_unpaid_kasse(mysqli $conn, int $tischnummer, ?string $pa
     $sql = 'SELECT COUNT(*) AS cnt FROM bestellungen b
             INNER JOIN positionen p ON p.rowid = b.position
             WHERE b.tischnummer = ' . (int) $tischnummer . '
-              AND ' . $where . $kellner;
-    $res = mysqli_query($conn, $sql);
+              AND ' . $where;
+    $res = ff_db_query_parts($conn, $sql, $kellner);
     if (!$res) {
         return 0;
     }
@@ -177,8 +186,8 @@ function ff_tisch_count_unpaid_orphan(mysqli $conn, int $tischnummer, ?string $p
             LEFT JOIN positionen p ON p.rowid = b.position
             WHERE b.tischnummer = ' . (int) $tischnummer . '
               AND p.rowid IS NULL
-              AND ' . $where . $kellner;
-    $res = mysqli_query($conn, $sql);
+              AND ' . $where;
+    $res = ff_db_query_parts($conn, $sql, $kellner);
     if (!$res) {
         return 0;
     }
@@ -236,39 +245,42 @@ function ff_direktverkauf_history_scope_sql(
     bool $isAdmin,
     string $alias = 'b',
     ?string $kellnerFilter = null
-): string {
-    /** Wie Tisch-Historie: alle Kassa-Zeilen; optional Admin-Filter ?kellner= */
+): array {
+    /** Wie Tisch-Historie: alle Kassa-Zeilen; optional Admin-Filter ?kellner= — Baustein [sql, types, params] */
     if (!$isAdmin) {
-        return '';
+        return ff_db_frag();
     }
     $kellner = $kellnerFilter !== null
         ? trim($kellnerFilter)
         : trim((string) ($_GET['kellner'] ?? ''));
     if ($kellner === '') {
-        return '';
+        return ff_db_frag();
     }
-    $esc = mysqli_real_escape_string($conn, $kellner);
 
-    return " AND (`{$alias}`.`kellner` = '{$esc}' OR `{$alias}`.`kellnerZahlung` = '{$esc}')";
+    return ff_db_frag(" AND (`{$alias}`.`kellner` = ? OR `{$alias}`.`kellnerZahlung` = ?)", 'ss', [$kellner, $kellner]);
 }
 
-/** SQL: nur aktueller Direktverkauf-Bon (optional, TRIM wegen utf8mb4_bin-Spalte). */
-function ff_direktverkauf_bon_filter_sql(mysqli $conn, string $bonId, string $alias = 'bestellungen'): string
+/**
+ * Baustein [sql, types, params]: nur aktueller Direktverkauf-Bon (optional, TRIM wegen utf8mb4_bin-Spalte).
+ *
+ * @return array{0:string,1:string,2:list<string>}
+ */
+function ff_direktverkauf_bon_filter_sql(mysqli $conn, string $bonId, string $alias = 'bestellungen'): array
 {
-    $variants = ff_direktverkauf_bon_match_variants($bonId);
+    $variants = array_values(ff_direktverkauf_bon_match_variants($bonId));
     if ($variants === []) {
-        return '';
+        return ff_db_frag();
     }
     $a = preg_replace('/[^a-zA-Z0-9_]/', '', $alias);
     if ($a === '') {
         $a = 'bestellungen';
     }
-    $in = [];
-    foreach ($variants as $v) {
-        $in[] = "'" . mysqli_real_escape_string($conn, $v) . "'";
-    }
 
-    return ' AND TRIM(CAST(`' . $a . '`.`bon_id` AS CHAR CHARACTER SET utf8mb4)) IN (' . implode(',', $in) . ')';
+    return ff_db_frag(
+        ' AND TRIM(CAST(`' . $a . '`.`bon_id` AS CHAR CHARACTER SET utf8mb4)) IN (' . implode(',', array_fill(0, count($variants), '?')) . ')',
+        str_repeat('s', count($variants)),
+        array_map('strval', $variants)
+    );
 }
 
 /**
@@ -281,17 +293,22 @@ function ff_direktverkauf_open_pay_summary(mysqli $conn, string $bonId = ''): ar
     $kellnerFilter = ff_direktverkauf_kellner_filter_sql($conn, 'b');
     $bonSql = ff_direktverkauf_bon_filter_sql($conn, $bonId, 'b');
     $amt = 'COALESCE(NULLIF(b.betrag, 0), p.Betrag)';
-    $sql = 'SELECT b.rowid AS rowidBestellung, ' . $amt . ' AS betrag
+    $sum = 0.0;
+    $ids = [];
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT b.rowid AS rowidBestellung, ' . $amt . ' AS betrag
             FROM bestellungen b
             INNER JOIN positionen p ON p.rowid = b.position
             WHERE b.tischnummer = 999999
-              ' . $kellnerFilter . $bonSql . "
+              ',
+        $kellnerFilter,
+        $bonSql,
+        "
               AND b.`delete` = 0
               AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
-            ORDER BY b.rowid ASC";
-    $sum = 0.0;
-    $ids = [];
-    $res = mysqli_query($conn, $sql);
+            ORDER BY b.rowid ASC"
+    );
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $sum += (float) ($row['betrag'] ?? 0);
@@ -313,17 +330,19 @@ function ff_direktverkauf_open_pay_summary(mysqli $conn, string $bonId = ''): ar
  *
  * @return array<int,int>
  */
-function ff_menu_batch_open_counts_direkt(mysqli $conn, string $kellnerFilterSql = '', string $bonId = ''): array
+function ff_menu_batch_open_counts_direkt(mysqli $conn, array $kellnerFilter = ['', '', []], string $bonId = ''): array
 {
     $map = [];
-    $sql = 'SELECT `position`, COUNT(*) AS cnt FROM `bestellungen`
-            WHERE tischnummer=999999'
-        . $kellnerFilterSql
-        . ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen')
-        . " AND `delete`=0
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT `position`, COUNT(*) AS cnt FROM `bestellungen`
+            WHERE tischnummer=999999',
+        $kellnerFilter,
+        ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen'),
+        " AND `delete`=0
               AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')
-            GROUP BY `position`";
-    $res = mysqli_query($conn, $sql);
+            GROUP BY `position`"
+    );
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $map[(int)$row['position']] = (int)$row['cnt'];
@@ -333,19 +352,21 @@ function ff_menu_batch_open_counts_direkt(mysqli $conn, string $kellnerFilterSql
 }
 
 /** Eine offene Menge am DV-Bon (schneller als ff_menu_batch_open_counts_direkt bei jedem Klick). */
-function ff_menu_open_count_direkt(mysqli $conn, int $positionId, string $kellnerFilterSql = '', string $bonId = ''): int
+function ff_menu_open_count_direkt(mysqli $conn, int $positionId, array $kellnerFilter = ['', '', []], string $bonId = ''): int
 {
     if ($positionId <= 0) {
         return 0;
     }
-    $sql = 'SELECT COUNT(*) AS cnt FROM `bestellungen`
+    $res = ff_db_query_parts(
+        $conn,
+        'SELECT COUNT(*) AS cnt FROM `bestellungen`
             WHERE tischnummer=999999
-              AND `position`=' . (int) $positionId
-        . $kellnerFilterSql
-        . ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen')
-        . " AND `delete`=0
-              AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')";
-    $res = mysqli_query($conn, $sql);
+              AND `position`=' . (int) $positionId,
+        $kellnerFilter,
+        ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen'),
+        " AND `delete`=0
+              AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')"
+    );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         return (int) ($row['cnt'] ?? 0);
     }
@@ -354,9 +375,9 @@ function ff_menu_open_count_direkt(mysqli $conn, int $positionId, string $kellne
 }
 
 /** Gesamtverbrauch pro Position (Bestellungen + Mitarbeiter-Verpflegung, für maxBestellbar). @return array<int,int> */
-function ff_menu_batch_global_counts(mysqli $conn, string $extraWhereSql = ''): array
+function ff_menu_batch_global_counts(mysqli $conn, array $extraWhere = ['', '', []]): array
 {
-    return ff_position_batch_consumed_totals($conn, $extraWhereSql);
+    return ff_position_batch_consumed_totals($conn, $extraWhere);
 }
 
 /**
@@ -429,11 +450,11 @@ function ff_menu_open_count_tisch(mysqli $conn, int $tischnummer, int $positionI
 }
 
 /** @return array{global_cnt:int,rest:int,max_bestellbar:int} */
-function ff_menu_stock_state(mysqli $conn, int $positionId, int $maxBestellbar, string $extraWhereSql = ''): array
+function ff_menu_stock_state(mysqli $conn, int $positionId, int $maxBestellbar, array $extraWhere = ['', '', []]): array
 {
     $globalCnt = 0;
     if ($maxBestellbar > 0 && $positionId > 0) {
-        $globalCnt = ff_position_consumed_total($conn, $positionId, $extraWhereSql);
+        $globalCnt = ff_position_consumed_total($conn, $positionId, $extraWhere);
     }
     $rest = $maxBestellbar > 0 ? ($maxBestellbar - $globalCnt) : 999999;
     return [

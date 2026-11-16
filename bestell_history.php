@@ -649,8 +649,10 @@ if ($hasBonSearch) {
     // Bon-Detail: alle Zeilen dieses Bons (nicht „nur unbezahlt“ aus dem Formular)
     $extraCond = '';
     $kellnerCond = $fromStation
-        ? ''
+        ? ff_db_frag()
         : ff_direktverkauf_history_scope_sql($conn, $isAdmin, 'b', $kellnerSel);
+    // Bausteine [sql, types, params] in SQL-Reihenfolge: Bon, dann Kellner
+    $bonParams = ff_db_frag_concat($bonSqlMatch, $kellnerCond);
     $typeCond = '';
     $typeSql = ff_hist_type_sql($typeFilter);
     if ($typeSql !== '') {
@@ -667,13 +669,13 @@ if ($hasBonSearch) {
             LEFT JOIN positionen p ON p.rowid = b.position
             LEFT JOIN tische t ON t.tischnummer = b.tischnummer
             WHERE b.tischnummer = " . FF_HIST_TISCH_DIREKTVERKAUF . "
-              {$bonSqlMatch}
-              {$extraCond}{$kellnerCond}{$typeCond}
+              {$bonSqlMatch[0]}
+              {$extraCond}{$kellnerCond[0]}{$typeCond}
             ORDER BY p.type ASC, Positionsname ASC, b.rowid ASC";
-    $resBon = mysqli_query($conn, $sqlBon);
+    $resBon = ff_db_query($conn, $sqlBon, $bonParams[1], $bonParams[2]);
     if ($resBon) {
         while ($r = mysqli_fetch_assoc($resBon)) {
-            $resultsBon[] = $r;
+            $resultsBon[] = ff_db_row_text($r);
         }
     }
 
@@ -681,13 +683,13 @@ if ($hasBonSearch) {
             FROM bestellungen b
             LEFT JOIN positionen p ON p.rowid = b.position
             WHERE b.tischnummer = " . FF_HIST_TISCH_DIREKTVERKAUF . "
-              {$bonSqlMatch}
-              {$kellnerCond}{$typeCond}
+              {$bonSqlMatch[0]}
+              {$kellnerCond[0]}{$typeCond}
             ORDER BY b.rowid ASC";
-    $resBonAll = mysqli_query($conn, $sqlBonAll);
+    $resBonAll = ff_db_query($conn, $sqlBonAll, $bonParams[1], $bonParams[2]);
     if ($resBonAll) {
         while ($r = mysqli_fetch_assoc($resBonAll)) {
-            $resultsBonAll[] = $r;
+            $resultsBonAll[] = ff_db_row_text($r);
         }
     }
     $orderDeliveryStats = ff_hist_order_delivery_stats($resultsBonAll);

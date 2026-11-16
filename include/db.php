@@ -168,6 +168,59 @@ if (!function_exists('ff_db_query')) {
     }
 
     /**
+     * SQL-Baustein mit Platzhaltern: [sql, types, params].
+     * Bausteine werden mit ff_db_frag_concat() in SQL-Reihenfolge zusammengesetzt.
+     *
+     * @param list<mixed> $params
+     * @return array{0:string,1:string,2:list<mixed>}
+     */
+    function ff_db_frag(string $sql = '', string $types = '', array $params = []): array
+    {
+        return [$sql, $types, array_values($params)];
+    }
+
+    /**
+     * Fügt Bausteine in der angegebenen Reihenfolge zusammen (SQL, Typen und Parameter).
+     *
+     * @param array{0:string,1:string,2:list<mixed>} ...$frags
+     * @return array{0:string,1:string,2:list<mixed>}
+     */
+    function ff_db_frag_concat(array ...$frags): array
+    {
+        $sql = '';
+        $types = '';
+        $params = [];
+        foreach ($frags as $f) {
+            $sql .= (string) ($f[0] ?? '');
+            $types .= (string) ($f[1] ?? '');
+            foreach (($f[2] ?? []) as $p) {
+                $params[] = $p;
+            }
+        }
+
+        return [$sql, $types, $params];
+    }
+
+    /**
+     * Führt eine aus Teilen zusammengesetzte Abfrage als Prepared Statement aus.
+     * Strings sind SQL aus dem Code, Arrays sind Bausteine [sql, types, params] (siehe ff_db_frag()).
+     * Rückgabe wie ff_db_query().
+     *
+     * @param string|array{0:string,1:string,2:list<mixed>} ...$parts
+     * @return mysqli_result|bool
+     */
+    function ff_db_query_parts(mysqli $conn, ...$parts)
+    {
+        $frags = [];
+        foreach ($parts as $p) {
+            $frags[] = is_array($p) ? $p : ff_db_frag((string) $p);
+        }
+        [$sql, $types, $params] = ff_db_frag_concat(...$frags);
+
+        return ff_db_query($conn, $sql, $types, $params);
+    }
+
+    /**
      * Ergebniszeile aus ff_db_query() wie bei mysqli_query(): Zahlen als Text.
      *
      * Prepared Statements liefern INT/DOUBLE als PHP-Zahlen, mysqli_query() als Strings.

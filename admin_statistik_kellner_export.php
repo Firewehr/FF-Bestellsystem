@@ -19,7 +19,7 @@ if ($filterUser === '') {
     $filterUser = null;
 }
 $F = ff_admin_statistik_filter_sql($conn, $filterUser);
-$hasF = $F['kEsc'] !== '';
+$hasF = $F['user'] !== '';
 $paidDate = ff_admin_statistik_paid_date_filter(
     $conn,
     isset($_GET['von']) ? trim((string)$_GET['von']) : null,
@@ -29,16 +29,16 @@ $paidDate = ff_admin_statistik_paid_date_filter(
 );
 
 $fAb = $hasF ? $F['fKasse'] : '';
-$sql = 'SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung, SUM(COALESCE(NULLIF(bestellungen.betrag, 0), positionen.Betrag)) as summe
+$sql = ['SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung, SUM(COALESCE(NULLIF(bestellungen.betrag, 0), positionen.Betrag)) as summe
         FROM bestellungen, positionen
         WHERE bestellungen.position=positionen.rowid
           AND bestellungen.`delete`=0
           AND bestellungen.timestampBezahlung!=\'0000-00-00 00:00:00\'
           AND IFNULL(bestellungen.is_gratis,0)=0
-          AND IFNULL(bestellungen.schreibaus,0)=0 ' . $fAb . $paidDate['sql'] . '
+          AND IFNULL(bestellungen.schreibaus,0)=0 ', $fAb, $paidDate['sql'], '
         GROUP BY bestellungen.kellnerZahlung
-        ORDER BY bestellungen.kellnerZahlung';
-$res = mysqli_query($conn, $sql);
+        ORDER BY bestellungen.kellnerZahlung'];
+$res = ff_db_query_parts($conn, ...$sql);
 
 $filename = 'kellner_abrechnung_' . date('Ymd_His') . '.csv';
 header('Content-Type: text/csv; charset=UTF-8');

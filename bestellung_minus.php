@@ -32,17 +32,20 @@ if ($tischnummer === 999999) {
   require_once __DIR__ . '/include/ff_direktverkauf_auth.php';
   ff_direktverkauf_require($conn);
   // Direktverkauf: dieselbe „offen“-Logik wie listSpeisen_direktverkauf (kein bestellt-Filter — Zähler auch nicht)
-  $kellnerClause = '';
+  // Kellner-Einschränkung als Baustein [sql, types, params]
+  $kellnerClause = ff_db_frag();
   if (setting_get($conn, 'kellner_nur_eigene', '1') === '1') {
-    $kellnerClause = " AND kellner='" . mysqli_real_escape_string($conn, (string)($_SESSION['user']['username'] ?? '')) . "'";
+    $kellnerClause = ff_db_frag(" AND kellner=?", 's', [(string)($_SESSION['user']['username'] ?? '')]);
   }
   if ($hasFestIdColumn) {
-    $festRow = mysqli_query(
+    $festRow = ff_db_query_parts(
       $conn,
       "SELECT fest_id FROM bestellungen
        WHERE tischnummer=999999 AND position=" . (int) $position . "
          AND `delete`=0 AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')
-         $kellnerClause ORDER BY rowid DESC LIMIT 1"
+         ",
+      $kellnerClause,
+      " ORDER BY rowid DESC LIMIT 1"
     );
     if ($festRow && ($row = mysqli_fetch_assoc($festRow))) {
       $removedFestId = (int) ($row['fest_id'] ?? 0);
@@ -53,12 +56,12 @@ if ($tischnummer === 999999) {
             AND position=?
             AND `delete`=0
             AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')
-            $kellnerClause
+            {$kellnerClause[0]}
           ORDER BY rowid DESC
           LIMIT 1";
   $stmt = mysqli_prepare($conn, $sql);
   if ($stmt) {
-    mysqli_stmt_bind_param($stmt, "i", $position);
+    ff_mysqli_stmt_bind($stmt, 'i' . $kellnerClause[1], array_merge([(int) $position], $kellnerClause[2]));
     mysqli_stmt_execute($stmt);
     $affected = mysqli_stmt_affected_rows($stmt);
     mysqli_stmt_close($stmt);
@@ -123,11 +126,11 @@ if ($affected > 0) {
 }
 
 $payload = ['ok' => true, 'removed' => ($affected > 0)];
-$kellnerFilterDv = '';
+$kellnerFilterDv = ff_db_frag();
 if ($tischnummer === 999999) {
     $bonForCnt = trim((string) ($_SESSION['dv_current_bon_id'] ?? ''));
     if (setting_get($conn, 'kellner_nur_eigene', '1') === '1') {
-        $kellnerFilterDv = " AND `bestellungen`.`kellner`='" . mysqli_real_escape_string($conn, (string)($_SESSION['user']['username'] ?? '')) . "'";
+        $kellnerFilterDv = ff_db_frag(' AND `bestellungen`.`kellner`=?', 's', [(string)($_SESSION['user']['username'] ?? '')]);
     }
     $openMap = ff_menu_batch_open_counts_direkt($conn, $kellnerFilterDv, $bonForCnt);
     $payload['open_cnt'] = (int) ($openMap[$position] ?? 0);

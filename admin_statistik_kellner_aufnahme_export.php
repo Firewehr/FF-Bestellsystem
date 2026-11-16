@@ -19,7 +19,7 @@ if ($filterUser === '') {
     $filterUser = null;
 }
 $F = ff_admin_statistik_filter_sql($conn, $filterUser);
-$hasF = $F['kEsc'] !== '';
+$hasF = $F['user'] !== '';
 $captureDate = ff_admin_statistik_capture_date_filter(
     $conn,
     isset($_GET['von']) ? trim((string)$_GET['von']) : null,
@@ -29,14 +29,14 @@ $captureDate = ff_admin_statistik_capture_date_filter(
 );
 
 $fAuf = $hasF ? $F['fAufnahme'] : '';
-$sql = 'SELECT bestellungen.kellner, COUNT(*) as anzahl
+$sql = ['SELECT bestellungen.kellner, COUNT(*) as anzahl
         FROM bestellungen
         JOIN positionen ON bestellungen.position=positionen.rowid
         WHERE bestellungen.ausgeliefert=1
-          AND bestellungen.`delete`=0 ' . $fAuf . $captureDate['sql'] . '
+          AND bestellungen.`delete`=0 ', $fAuf, $captureDate['sql'], '
         GROUP BY bestellungen.kellner
-        ORDER BY bestellungen.kellner';
-$res = mysqli_query($conn, $sql);
+        ORDER BY bestellungen.kellner'];
+$res = ff_db_query_parts($conn, ...$sql);
 
 $filename = 'kellner_aufnahme_' . date('Ymd_His') . '.csv';
 header('Content-Type: text/csv; charset=UTF-8');

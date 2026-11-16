@@ -15,7 +15,8 @@ function ff_thermal_bon_druckziel_label(string $druckzielName): ?string
     return $dn !== '' ? $dn : null;
 }
 
-function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $bonId, string $kellnerFilterSql): ?array
+/** @param array{0:string,1:string,2:list<mixed>} $kellnerFilter Baustein [sql, types, params] */
+function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $bonId, array $kellnerFilter = ['', '', []]): ?array
 {
     ff_users_ensure_landing_columns($conn);
     $bonId = trim($bonId);
@@ -38,7 +39,7 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
           AND b.timestampBezahlung IS NOT NULL
           AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
           AND COALESCE(p.kassa_only, 0) = 0
-          ' . $kellnerFilterSql . '
+          ' . $kellnerFilter[0] . '
         GROUP BY p.rowid, p.Positionsname, p.Kurzbezeichnung, p.Betrag,
             TRIM(COALESCE(b.Zusatzinfo, \'\')), pt.print_target, pt.name, pt.sort_order
         ORDER BY pt.sort_order, p.Positionsname, zusatzinfo';
@@ -47,7 +48,7 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
     if (!$stmt) {
         return null;
     }
-    mysqli_stmt_bind_param($stmt, 's', $bonId);
+    ff_mysqli_stmt_bind($stmt, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
 
@@ -83,12 +84,12 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
           AND b.tischnummer = 999999
           AND b.timestampBezahlung IS NOT NULL
           AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
-          ' . $kellnerFilterSql;
+          ' . $kellnerFilter[0];
     $st2 = mysqli_prepare($conn, $sqlMeta);
     if (!$st2) {
         return null;
     }
-    mysqli_stmt_bind_param($st2, 's', $bonId);
+    ff_mysqli_stmt_bind($st2, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
     mysqli_stmt_execute($st2);
     $metaRes = mysqli_stmt_get_result($st2);
     $meta = $metaRes ? mysqli_fetch_assoc($metaRes) : null;
@@ -102,10 +103,10 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
     $sqlIds = 'SELECT b.rowid FROM bestellungen b WHERE b.bon_id = ?
           AND b.delete = 0 AND b.tischnummer = 999999
           AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
-          ' . $kellnerFilterSql . ' ORDER BY b.rowid';
+          ' . $kellnerFilter[0] . ' ORDER BY b.rowid';
     $st3 = mysqli_prepare($conn, $sqlIds);
     if ($st3) {
-        mysqli_stmt_bind_param($st3, 's', $bonId);
+        ff_mysqli_stmt_bind($st3, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
         mysqli_stmt_execute($st3);
         $idr = mysqli_stmt_get_result($st3);
         while ($idr && ($rr = mysqli_fetch_assoc($idr))) {

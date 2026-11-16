@@ -46,8 +46,6 @@ require_once __DIR__ . '/include/ff_sammelrechnung_helpers.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
 require_once __DIR__ . '/include/ff_schreibaus.php';
 
-$kellnerSqlFilter = ff_tisch_kellner_scope_filter_sql($conn, '');
-
 $sql = "SELECT tischname, IFNULL(is_sammelrechnung,0) as is_sammelrechnung, IFNULL(is_ehrengast,0) as is_ehrengast FROM tische WHERE tischnummer=$Tischnummer";
 $result = mysqli_query($conn, $sql);
 $tischname = "";

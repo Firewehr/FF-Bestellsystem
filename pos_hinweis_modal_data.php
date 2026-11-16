@@ -125,17 +125,19 @@ $rowids = [];
 $hinweise = [];
 $recipeItems = ff_order_recipe_components($conn, $positionsid);
 $bonId = trim((string) ($_GET['bon_id'] ?? ''));
-$dvScopeSql = '';
+$dvScope = ff_db_frag();
 if ($tischnummer === 999999) {
-    $dvScopeSql .= ff_direktverkauf_kellner_filter_sql($conn, 'bestellungen');
-    $dvScopeSql .= ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen');
+    $dvScope = ff_db_frag_concat(
+        ff_direktverkauf_kellner_filter_sql($conn, 'bestellungen'),
+        ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen')
+    );
     $sql = "SELECT rowid, COALESCE(Zusatzinfo, '') AS Zusatzinfo
             FROM bestellungen
             WHERE `delete`=0
               AND tischnummer=?
               AND position=?
               AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')
-              {$dvScopeSql}
+              {$dvScope[0]}
             ORDER BY rowid ASC
             LIMIT 50";
     $stmt = mysqli_prepare($conn, $sql);
@@ -144,7 +146,7 @@ if ($tischnummer === 999999) {
         echo json_encode(['ok' => false, 'error' => 'prepare bestellungen failed'], JSON_UNESCAPED_UNICODE);
         exit;
     }
-    mysqli_stmt_bind_param($stmt, 'ii', $tischnummer, $positionsid);
+    ff_mysqli_stmt_bind($stmt, 'ii' . $dvScope[1], array_merge([(int) $tischnummer, (int) $positionsid], $dvScope[2]));
 } else {
     $kueche = $kuechefertig === 1 ? 1 : 0;
     $sql = "SELECT rowid, COALESCE(Zusatzinfo, '') AS Zusatzinfo

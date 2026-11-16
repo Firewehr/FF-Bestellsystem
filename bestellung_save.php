@@ -345,9 +345,9 @@ if ($print_target > 0) {
 
 header('Content-Type: application/json; charset=UTF-8');
 $openCnt = 0;
-$kellnerFilterDv = '';
+$kellnerFilterDv = ff_db_frag();
 if ($tischnummer === 999999 && setting_get($conn, 'kellner_nur_eigene', '1') === '1') {
-    $kellnerFilterDv = " AND `bestellungen`.`kellner`='" . mysqli_real_escape_string($conn, (string)($_SESSION['user']['username'] ?? '')) . "'";
+    $kellnerFilterDv = ff_db_frag(' AND `bestellungen`.`kellner`=?', 's', [(string)($_SESSION['user']['username'] ?? '')]);
 }
 $bonForCnt = '';
 if ($tischnummer === 999999) {

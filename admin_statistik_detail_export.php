@@ -26,8 +26,10 @@ if ($filterUser === '') {
     $filterUser = null;
 }
 $F = ff_admin_statistik_filter_sql($conn, $filterUser);
-$captureDate = ff_admin_statistik_capture_date_filter(
+// Die Abfrage unten nennt die Tabelle „b“ – Filter deshalb auf b.* (vorher bestellungen.*, Abfrage schlug mit Filter fehl)
+$captureDate = ff_admin_statistik_datetime_filter(
     $conn,
+    'b.zeitstempel',
     isset($_GET['von']) ? trim((string) $_GET['von']) : null,
     isset($_GET['von_zeit']) ? trim((string) $_GET['von_zeit']) : null,
     isset($_GET['bis']) ? trim((string) $_GET['bis']) : null,
@@ -43,12 +45,12 @@ $mvCapture = ff_admin_statistik_datetime_filter(
     isset($_GET['bis_zeit']) ? trim((string) $_GET['bis_zeit']) : null
 );
 
-$mvUser = '';
-if ($F['kEsc'] !== '') {
-    $mvUser = " AND IFNULL(v.created_by,'') = '{$F['kEsc']}' ";
+$mvUser = ff_db_frag();
+if ($F['user'] !== '') {
+    $mvUser = ff_db_frag(" AND IFNULL(v.created_by,'') = ? ", 's', [$F['user']]);
 }
 
-$fPlain = $F['fBeidesPlain'];
+$fPlain = $F['fBeidesB'];
 
 $filename = 'statistik_einzelzeilen_' . date('Ymd_His') . '.csv';
 header('Content-Type: text/csv; charset=UTF-8');
@@ -103,7 +105,7 @@ $wr([
     'print_target',
 ]);
 
-$sqlG = 'SELECT b.rowid, b.fest_id, b.zeitstempel, b.timestampBezahlung,
+$sqlG = ['SELECT b.rowid, b.fest_id, b.zeitstempel, b.timestampBezahlung,
     p.Positionsname, p.Kurzbezeichnung, p.rowid AS position_id,
     COALESCE(NULLIF(b.betrag, 0), p.Betrag) AS einzelpreis,
     b.Zusatzinfo, b.tischnummer, t.tischname,
@@ -113,9 +115,9 @@ $sqlG = 'SELECT b.rowid, b.fest_id, b.zeitstempel, b.timestampBezahlung,
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
     LEFT JOIN tische t ON t.tischnummer = b.tischnummer
-    WHERE b.`delete` = 0 ' . $fPlain . $captureDate['sql'] . '
-    ORDER BY b.zeitstempel ASC, b.rowid ASC';
-$resG = mysqli_query($conn, $sqlG);
+    WHERE b.`delete` = 0 ', $fPlain, $captureDate['sql'], '
+    ORDER BY b.zeitstempel ASC, b.rowid ASC'];
+$resG = ff_db_query_parts($conn, ...$sqlG);
 if ($resG) {
     while ($r = mysqli_fetch_assoc($resG)) {
         $tsB = $r['zeitstempel'] ?? '';
@@ -183,16 +185,16 @@ $wr([
 
 $tblMv = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
 if ($tblMv && mysqli_num_rows($tblMv) > 0) {
-    $sqlM = 'SELECT v.id, v.datum, v.created_at, v.menge, v.notiz, v.created_by,
+    $sqlM = ['SELECT v.id, v.datum, v.created_at, v.menge, v.notiz, v.created_by,
         v.position_id, v.bereich_id,
         p.Positionsname, p.Kurzbezeichnung, p.Betrag AS listenpreis,
         b.name AS bereich_name
         FROM mitarbeiter_verpflegung v
         JOIN positionen p ON p.rowid = v.position_id
         LEFT JOIN mitarbeiter_bereiche b ON b.id = v.bereich_id
-        WHERE 1=1 ' . $mvUser . $mvCapture['sql'] . '
-        ORDER BY v.created_at ASC, v.id ASC';
-    $resM = mysqli_query($conn, $sqlM);
+        WHERE 1=1 ', $mvUser, $mvCapture['sql'], '
+        ORDER BY v.created_at ASC, v.id ASC'];
+    $resM = ff_db_query_parts($conn, ...$sqlM);
     if ($resM) {
         while ($r = mysqli_fetch_assoc($resM)) {
             $ca = $r['created_at'] ?? '';

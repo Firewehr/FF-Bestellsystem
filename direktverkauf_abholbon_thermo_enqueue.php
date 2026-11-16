@@ -58,12 +58,12 @@ if ($postPt > 0 && ff_dv_abholbon_target_is_valid($conn, $postPt)) {
 }
 
 $settingKellner = setting_get($conn, 'kellner_nur_eigene', '1');
-$kellnerFilterSql = '';
+$kellnerFilter = ff_db_frag();
 if ($settingKellner === '1' && $uname !== '') {
-    $kellnerFilterSql = " AND b.kellner = '" . mysqli_real_escape_string($conn, $uname) . "'";
+    $kellnerFilter = ff_db_frag(' AND b.kellner = ?', 's', [$uname]);
 }
 
-$built = ff_direktverkauf_abholbon_build_thermal_payload($conn, $bonId, $kellnerFilterSql);
+$built = ff_direktverkauf_abholbon_build_thermal_payload($conn, $bonId, $kellnerFilter);
 if ($built === null) {
     echo json_encode(['ok' => false, 'error' => 'keine_daten', 'print_target' => $printTarget], JSON_UNESCAPED_UNICODE);
     exit;

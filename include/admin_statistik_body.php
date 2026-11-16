@@ -105,31 +105,32 @@ function ff_admin_statistik_usernames(mysqli $conn): array {
 }
 
 /**
- * @return array{kEsc: string, fKasse: string, fAufnahme: string, fBeidesB: string, fBeidesPlain: string}
+ * Benutzerfilter als Bausteine [sql, types, params] (leer, wenn kein Filter).
+ *
+ * @return array{user: string, fKasse: array, fAufnahme: array, fBeidesB: array, fBeidesPlain: array}
  */
 function ff_admin_statistik_filter_sql(mysqli $conn, ?string $filterUser): array {
-    $empty = [
-        'kEsc' => '',
-        'fKasse' => '',
-        'fAufnahme' => '',
-        'fBeidesB' => '',
-        'fBeidesPlain' => '',
-    ];
-    if ($filterUser === null || trim($filterUser) === '') {
-        return $empty;
+    $u = $filterUser === null ? '' : trim($filterUser);
+    if ($u === '') {
+        return [
+            'user' => '',
+            'fKasse' => ff_db_frag(),
+            'fAufnahme' => ff_db_frag(),
+            'fBeidesB' => ff_db_frag(),
+            'fBeidesPlain' => ff_db_frag(),
+        ];
     }
-    $kEsc = mysqli_real_escape_string($conn, trim($filterUser));
     return [
-        'kEsc' => $kEsc,
-        'fKasse' => " AND bestellungen.kellnerZahlung = '{$kEsc}' ",
-        'fAufnahme' => " AND bestellungen.kellner = '{$kEsc}' ",
-        'fBeidesB' => " AND (b.kellnerZahlung = '{$kEsc}' OR b.kellner = '{$kEsc}') ",
-        'fBeidesPlain' => " AND (bestellungen.kellnerZahlung = '{$kEsc}' OR bestellungen.kellner = '{$kEsc}') ",
+        'user' => $u,
+        'fKasse' => ff_db_frag(' AND bestellungen.kellnerZahlung = ? ', 's', [$u]),
+        'fAufnahme' => ff_db_frag(' AND bestellungen.kellner = ? ', 's', [$u]),
+        'fBeidesB' => ff_db_frag(' AND (b.kellnerZahlung = ? OR b.kellner = ?) ', 'ss', [$u, $u]),
+        'fBeidesPlain' => ff_db_frag(' AND (bestellungen.kellnerZahlung = ? OR bestellungen.kellner = ?) ', 'ss', [$u, $u]),
     ];
 }
 
 /**
- * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:string}
+ * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:array}
  */
 function ff_admin_statistik_datetime_filter(
     mysqli $conn,
@@ -180,14 +181,13 @@ function ff_admin_statistik_datetime_filter(
         $toDt = $tmp;
     }
 
-    $sql = '';
+    // 'sql' ist ein Baustein [sql, types, params]; $columnExpr kommt immer aus dem Code.
+    $sql = ff_db_frag();
     if ($fromDt !== '') {
-        $fEsc = mysqli_real_escape_string($conn, $fromDt);
-        $sql .= " AND {$columnExpr} >= '{$fEsc}'";
+        $sql = ff_db_frag_concat($sql, ff_db_frag(" AND {$columnExpr} >= ?", 's', [$fromDt]));
     }
     if ($toDt !== '') {
-        $tEsc = mysqli_real_escape_string($conn, $toDt);
-        $sql .= " AND {$columnExpr} <= '{$tEsc}'";
+        $sql = ff_db_frag_concat($sql, ff_db_frag(" AND {$columnExpr} <= ?", 's', [$toDt]));
     }
 
     return [
@@ -200,7 +200,7 @@ function ff_admin_statistik_datetime_filter(
 }
 
 /**
- * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:string}
+ * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:array}
  */
 function ff_admin_statistik_paid_date_filter(
     mysqli $conn,
@@ -213,7 +213,7 @@ function ff_admin_statistik_paid_date_filter(
 }
 
 /**
- * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:string}
+ * @return array{from_date:string,from_time:string,to_date:string,to_time:string,sql:array}
  */
 function ff_admin_statistik_capture_date_filter(
     mysqli $conn,
@@ -235,11 +235,11 @@ function ff_admin_render_statistik_inner(
 ): void {
     ff_users_ensure_landing_columns($conn);
     $F = ff_admin_statistik_filter_sql($conn, $filterUser);
-    $hasF = $F['kEsc'] !== '';
+    $hasF = $F['user'] !== '';
     $paidDate = ff_admin_statistik_paid_date_filter($conn, $dateFrom, $timeFrom, $dateTo, $timeTo);
     $captureDate = ff_admin_statistik_capture_date_filter($conn, $dateFrom, $timeFrom, $dateTo, $timeTo);
     $paidDateB = ff_admin_statistik_datetime_filter($conn, 'b.timestampBezahlung', $dateFrom, $timeFrom, $dateTo, $timeTo);
-    $hasDateFilter = ($paidDate['sql'] !== '');
+    $hasDateFilter = ($paidDate['sql'][0] !== '');
 
     try {
         echo '<div class="d-flex align-items-center gap-2 mb-3">';
@@ -268,18 +268,18 @@ function ff_admin_render_statistik_inner(
         }
         ff_admin_info_panel('statHintOverview', $overviewHtml);
 
-        $qrOrderSql = 'SELECT
+        $qrOrderSql = ['SELECT
                 CASE WHEN bestellungen.kellner LIKE \'QR-Tisch-%\'
                     THEN \'QR-Code\'
                     ELSE \'Ohne QR-Code\'
                 END AS bestellart,
                 COUNT(*) AS anzahl
             FROM bestellungen
-            WHERE bestellungen.`delete` = 0 '
-            . ($hasF ? $F['fBeidesPlain'] : '')
-            . $captureDate['sql']
-            . ' GROUP BY bestellart';
-        $qrOrderResult = mysqli_query($conn, $qrOrderSql);
+            WHERE bestellungen.`delete` = 0 ',
+            $hasF ? $F['fBeidesPlain'] : '',
+            $captureDate['sql'],
+            ' GROUP BY bestellart'];
+        $qrOrderResult = ff_db_query_parts($conn, ...$qrOrderSql);
         $qrOrderCounts = ['QR-Code' => 0, 'Ohne QR-Code' => 0];
         if ($qrOrderResult) {
             while ($qrOrderRow = mysqli_fetch_assoc($qrOrderResult)) {
@@ -344,18 +344,18 @@ function ff_admin_render_statistik_inner(
         echo '</div></div></div></div>';
 
         if ($hasF) {
-            $qAll = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 0 ' . $F['fBeidesPlain'] . $captureDate['sql'];
-            $qDel = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 1 ' . $F['fBeidesPlain'];
+            $qAll = ['SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 0 ', $F['fBeidesPlain'], $captureDate['sql']];
+            $qDel = ['SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 1 ', $F['fBeidesPlain']];
         } else {
-            $qAll = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 0' . $captureDate['sql'];
-            $qDel = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 1';
+            $qAll = ['SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 0', $captureDate['sql']];
+            $qDel = ['SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete` = 1'];
         }
-        $sql4 = mysqli_query($conn, $qAll);
+        $sql4 = ff_db_query_parts($conn, ...$qAll);
         $cntAll = 0;
         while ($row4 = mysqli_fetch_assoc($sql4)) {
             $cntAll = (int)$row4['cnt'];
         }
-        $sql5 = mysqli_query($conn, $qDel);
+        $sql5 = ff_db_query_parts($conn, ...$qDel);
         $cntDel = 0;
         while ($row = mysqli_fetch_assoc($sql5)) {
             $cntDel = (int)$row['cnt'];
@@ -378,8 +378,8 @@ function ff_admin_render_statistik_inner(
             . '<p class="mb-0">Aufgenommen: wer die Bestellung erfasst hat (<code>kellner</code>).</p>'
         );
         $fAb = $hasF ? $F['fKasse'] : '';
-        $sql = 'SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung, SUM(COALESCE(NULLIF(bestellungen.betrag, 0), positionen.Betrag)) as summe FROM bestellungen, positionen WHERE bestellungen.position=positionen.rowid AND bestellungen.`delete`=0 AND bestellungen.timestampBezahlung!=\'0000-00-00 00:00:00\' AND IFNULL(bestellungen.is_gratis,0)=0 AND IFNULL(bestellungen.schreibaus,0)=0 ' . $fAb . $paidDate['sql'] . ' GROUP BY bestellungen.kellnerZahlung ORDER BY bestellungen.kellnerZahlung';
-        $result = mysqli_query($conn, $sql);
+        $sql = ['SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung, SUM(COALESCE(NULLIF(bestellungen.betrag, 0), positionen.Betrag)) as summe FROM bestellungen, positionen WHERE bestellungen.position=positionen.rowid AND bestellungen.`delete`=0 AND bestellungen.timestampBezahlung!=\'0000-00-00 00:00:00\' AND IFNULL(bestellungen.is_gratis,0)=0 AND IFNULL(bestellungen.schreibaus,0)=0 ', $fAb, $paidDate['sql'], ' GROUP BY bestellungen.kellnerZahlung ORDER BY bestellungen.kellnerZahlung'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead><tr><th>Kellner <span class="text-muted fw-normal small">(Anzeige · Login)</span></th><th>Anzahl</th><th>Betrag</th></tr></thead><tbody>';
         $summe = 0.0;
         while ($row = mysqli_fetch_assoc($result)) {
@@ -391,8 +391,8 @@ function ff_admin_render_statistik_inner(
         echo '<h5 class="mt-3">Kellner aufgenommene Positionen (ausgeliefert)</h5>';
         echo '<p class="small text-muted mb-2">Gezählt werden Positionen, die von Küche/Schank als <strong>ausgeliefert</strong> markiert wurden — nicht nur „an Küche gesendet“.</p>';
         $fAuf = $hasF ? $F['fAufnahme'] : '';
-        $sql = 'SELECT kellner, COUNT(*) as anzahl FROM bestellungen JOIN positionen ON bestellungen.position=positionen.rowid WHERE bestellungen.ausgeliefert=1 AND bestellungen.`delete`=0 ' . $fAuf . $captureDate['sql'] . ' GROUP BY kellner';
-        $result = mysqli_query($conn, $sql);
+        $sql = ['SELECT kellner, COUNT(*) as anzahl FROM bestellungen JOIN positionen ON bestellungen.position=positionen.rowid WHERE bestellungen.ausgeliefert=1 AND bestellungen.`delete`=0 ', $fAuf, $captureDate['sql'], ' GROUP BY kellner'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead><tr><th>Kellner <span class="text-muted fw-normal small">(Anzeige · Login)</span></th><th>Anzahl</th></tr></thead><tbody>';
         while ($row = mysqli_fetch_assoc($result)) {
             echo '<tr><td>' . ff_stat_kellner_td_html($conn, (string) ($row['kellner'] ?? '')) . '</td><td class="text-end">' . (int) $row['anzahl'] . '</td></tr>';
@@ -404,17 +404,17 @@ function ff_admin_render_statistik_inner(
         echo '<h5 class="mt-3">Bezahlter Umsatz pro Tisch</h5>';
         echo '<p class="small text-muted mb-2">Summe aus <code>bestellungen.betrag</code> bzw. Positionspreis, nur <strong>bezahlte</strong> Zeilen (ohne Gratis/Schreibaus).</p>';
         $fB = $hasF ? $F['fBeidesB'] : '';
-        $sql = 'SELECT SUM(COALESCE(NULLIF(b.betrag, 0), p.Betrag)) AS summe, t.tischname
+        $sql = ['SELECT SUM(COALESCE(NULLIF(b.betrag, 0), p.Betrag)) AS summe, t.tischname
                 FROM bestellungen b
                 JOIN positionen p ON p.rowid = b.position
                 JOIN tische t ON t.tischnummer = b.tischnummer
                 WHERE b.`delete` = 0
                   AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
                   AND IFNULL(b.is_gratis, 0) = 0 AND IFNULL(b.schreibaus, 0) = 0
-                  ' . $fB . $paidDateB['sql'] . '
+                  ', $fB, $paidDateB['sql'], '
                 GROUP BY b.tischnummer, t.tischname
-                ORDER BY t.tischname ASC';
-        $result = mysqli_query($conn, $sql);
+                ORDER BY t.tischname ASC'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead><tr><th>Tisch</th><th>Umsatz</th></tr></thead><tbody>';
         while ($row = mysqli_fetch_assoc($result)) {
             echo '<tr><td>' . ff_stat_out((string)$row['tischname']) . '</td><td class="text-end">' . ff_stat_format_eur($row['summe']) . '</td></tr>';
@@ -425,8 +425,8 @@ function ff_admin_render_statistik_inner(
         echo '<div class="ff-stat-sec" data-stat-sec="wartezeit">';
         echo '<h5 class="mt-3">Wartezeit je Position</h5>';
         $fW = $hasF ? $F['fBeidesPlain'] : '';
-        $sql = 'SELECT positionen.Positionsname, AVG(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS avgsec, MAX(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS maxsec FROM bestellungen JOIN positionen ON positionen.rowid = bestellungen.position WHERE bestellungen.`delete`=0 AND bestellungen.`kueche`=1 AND bestellungen.zeitKueche!=\'0000-00-00 00:00:00\' ' . $fW . $captureDate['sql'] . ' GROUP BY bestellungen.position ORDER BY avgsec DESC';
-        $result = mysqli_query($conn, $sql);
+        $sql = ['SELECT positionen.Positionsname, AVG(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS avgsec, MAX(TIMESTAMPDIFF(SECOND, bestellungen.zeitstempel, zeitKueche)) AS maxsec FROM bestellungen JOIN positionen ON positionen.rowid = bestellungen.position WHERE bestellungen.`delete`=0 AND bestellungen.`kueche`=1 AND bestellungen.zeitKueche!=\'0000-00-00 00:00:00\' ', $fW, $captureDate['sql'], ' GROUP BY bestellungen.position ORDER BY avgsec DESC'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead><tr><th>Position</th><th>Ø Wartezeit (hh:mm:ss)</th><th>Max (hh:mm:ss)</th></tr></thead><tbody>';
         while ($row = mysqli_fetch_assoc($result)) {
             echo '<tr><td>' . ff_stat_out((string)$row['Positionsname']) . '</td><td>' . ff_stat_out(ff_stat_format_duration_seconds($row['avgsec'] ?? 0)) . '</td><td>' . ff_stat_out(ff_stat_format_duration_seconds($row['maxsec'] ?? 0)) . '</td></tr>';
@@ -436,16 +436,16 @@ function ff_admin_render_statistik_inner(
         echo '</div>';
         echo '<div class="ff-stat-sec" data-stat-sec="haeufigkeit">';
         echo '<h5 class="mt-3">Speisen – Bestellhäufigkeit</h5>';
-        $sql = 'SELECT positionen.Positionsname, COUNT(*) as cnt FROM bestellungen, positionen WHERE positionen.rowid = bestellungen.position AND bestellungen.`delete`=0 ' . $fW . $captureDate['sql'] . ' GROUP BY bestellungen.position ORDER BY cnt DESC';
-        $result = mysqli_query($conn, $sql);
+        $sql = ['SELECT positionen.Positionsname, COUNT(*) as cnt FROM bestellungen, positionen WHERE positionen.rowid = bestellungen.position AND bestellungen.`delete`=0 ', $fW, $captureDate['sql'], ' GROUP BY bestellungen.position ORDER BY cnt DESC'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive mb-3"><table class="table table-sm table-hover"><thead><tr><th>Name</th><th>x Bestellt</th></tr></thead><tbody>';
         while ($row5 = mysqli_fetch_assoc($result)) {
             echo '<tr><td>' . ff_stat_out((string)$row5['Positionsname']) . '</td><td class="text-end">' . (int)$row5['cnt'] . '</td></tr>';
         }
         echo '</tbody></table></div>';
 
-        $qWart = 'SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `kueche`=0 AND zeitKueche=\'0000-00-00 00:00:00\' ' . $fW . $captureDate['sql'];
-        $result = mysqli_query($conn, $qWart);
+        $qWart = ['SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `kueche`=0 AND zeitKueche=\'0000-00-00 00:00:00\' ', $fW, $captureDate['sql']];
+        $result = ff_db_query_parts($conn, ...$qWart);
         $wartend = 0;
         while ($row3 = mysqli_fetch_assoc($result)) {
             $wartend = (int)$row3['cnt'];
@@ -457,8 +457,8 @@ function ff_admin_render_statistik_inner(
             echo '<p class="small text-muted">Nur noch <strong>nicht küchenbestätigte</strong> Bestellungen mit <code>zeitstempel</code> im gewählten Zeitraum.</p>';
         }
         echo '<p><strong>' . $wartend . ' Positionen wartend</strong> (Küche/Schank)</p>';
-        $sql = 'SELECT TIMEDIFF(now(),zeitstempel) as zeit, FLOOR(UNIX_TIMESTAMP(zeitstempel)/120) AS t, COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `kueche`=0 AND zeitKueche=\'0000-00-00 00:00:00\' ' . $fW . $captureDate['sql'] . ' GROUP BY t ORDER BY t DESC LIMIT 10';
-        $result = mysqli_query($conn, $sql);
+        $sql = ['SELECT TIMEDIFF(now(),zeitstempel) as zeit, FLOOR(UNIX_TIMESTAMP(zeitstempel)/120) AS t, COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `kueche`=0 AND zeitKueche=\'0000-00-00 00:00:00\' ', $fW, $captureDate['sql'], ' GROUP BY t ORDER BY t DESC LIMIT 10'];
+        $result = ff_db_query_parts($conn, ...$sql);
         echo '<div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Zeit</th><th>Wartezeit</th></tr></thead><tbody>';
         while ($row4 = mysqli_fetch_assoc($result)) {
             echo '<tr><td>' . date('H:i', ((int)$row4['t']) * 120) . '</td><td>' . ff_stat_out((string)$row4['zeit']) . '</td></tr>';

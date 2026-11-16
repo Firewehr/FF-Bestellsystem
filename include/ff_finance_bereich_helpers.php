@@ -298,16 +298,44 @@ function ff_finance_print_target_is_kellner_direkt_fixed(string $name): bool
     return false;
 }
 
-/** Entfernt fälschliche Finanzbereich-Zuordnung an festen Druckzielen. */
-function ff_finance_sql_exclude_fixed_print_targets(mysqli $conn, string $ptAlias = 'pt'): string
+/**
+ * Zeitraum-Bedingung als Baustein: " AND <spalte> >= ? AND <spalte> <= ? " mit von/bis als Parameter.
+ * $columnExpr stammt immer aus dem Code (nie aus der Anfrage).
+ *
+ * @param array{von_sql:string,bis_sql:string}|null $range
+ * @return array{0:string,1:string,2:list<string>}
+ */
+function ff_finance_range_frag(string $columnExpr, ?array $range): array
 {
-    $in = [];
+    if ($range === null) {
+        return ff_db_frag();
+    }
+
+    return ff_db_frag(
+        " AND {$columnExpr} >= ? AND {$columnExpr} <= ? ",
+        'ss',
+        [(string) $range['von_sql'], (string) $range['bis_sql']]
+    );
+}
+
+/** Entfernt fälschliche Finanzbereich-Zuordnung an festen Druckzielen. */
+/** @return array{0:string,1:string,2:list<string>} Baustein mit den Namen als Parameter */
+function ff_finance_sql_exclude_fixed_print_targets(mysqli $conn, string $ptAlias = 'pt'): array
+{
+    $names = [];
     foreach (ff_finance_print_target_kellner_direkt_fixed_names() as $n) {
-        $in[] = "'" . mysqli_real_escape_string($conn, mb_strtolower(trim($n), 'UTF-8')) . "'";
+        $names[] = mb_strtolower(trim($n), 'UTF-8');
     }
     $alias = preg_replace('/[^a-zA-Z0-9_]/', '', $ptAlias) ?: 'pt';
+    if ($names === []) {
+        return ff_db_frag();
+    }
 
-    return " AND ({$alias}.name IS NULL OR LOWER(TRIM({$alias}.name)) NOT IN (" . implode(',', $in) . ')) ';
+    return ff_db_frag(
+        " AND ({$alias}.name IS NULL OR LOWER(TRIM({$alias}.name)) NOT IN (" . implode(',', array_fill(0, count($names), '?')) . ')) ',
+        str_repeat('s', count($names)),
+        $names
+    );
 }
 
 function ff_finance_ensure_kellner_direkt_print_targets(mysqli $conn): void
@@ -354,11 +382,11 @@ function ff_finance_verkauf_kellner_anteil_where(string $b = 'b'): string
 /**
  * @return array{kellner:float,direktverkauf:float,summe:float}
  */
-function ff_finance_kellner_direkt_breakdown(mysqli $conn, ?array $range, string $extraBezDateSql = ''): array
+function ff_finance_kellner_direkt_breakdown(mysqli $conn, ?array $range, array $extraBez = ['', '', []]): array
 {
     $base = ff_finance_verkauf_unzugeordnet_where();
-    $kellner = ff_finance_sum_verkauf($conn, $base . ff_finance_verkauf_kellner_anteil_where(), $range, $extraBezDateSql);
-    $direkt = ff_finance_sum_verkauf($conn, $base . ff_finance_verkauf_direktverkauf_where(), $range, $extraBezDateSql);
+    $kellner = ff_finance_sum_verkauf($conn, $base . ff_finance_verkauf_kellner_anteil_where(), $range, $extraBez);
+    $direkt = ff_finance_sum_verkauf($conn, $base . ff_finance_verkauf_direktverkauf_where(), $range, $extraBez);
 
     return [
         'kellner' => $kellner,
@@ -382,18 +410,16 @@ function ff_finance_kellner_direkt_breakdown(mysqli $conn, ?array $range, string
  * }
  */
 /** JOIN: nur gültige Kellner-Abrechnungsprotokolle (nicht aufgehoben). */
-function ff_finance_kellner_settlement_join_sql(mysqli $conn, string $b = 'b', ?array $range = null): string
+/** @return array{0:string,1:string,2:list<string>} Baustein mit Zeitraum als Parameter */
+function ff_finance_kellner_settlement_join_sql(mysqli $conn, string $b = 'b', ?array $range = null): array
 {
     $scope = "(ks.settlement_scope = 'kellner' OR ks.settlement_scope IS NULL OR ks.settlement_scope = '')";
     $void = "(ks.voided_at IS NULL OR ks.voided_at = '0000-00-00 00:00:00')";
-    $when = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $when = " AND ks.created_at >= '{$vonEsc}' AND ks.created_at <= '{$bisEsc}' ";
-    }
 
-    return "INNER JOIN kellner_settlements ks ON ks.id = {$b}.settlement_id AND {$void} AND {$scope}{$when}";
+    return ff_db_frag_concat(
+        ff_db_frag("INNER JOIN kellner_settlements ks ON ks.id = {$b}.settlement_id AND {$void} AND {$scope}"),
+        ff_finance_range_frag('ks.created_at', $range)
+    );
 }
 
 /**
@@ -407,12 +433,7 @@ function ff_finance_kellner_protokoll_abgleich(mysqli $conn, ?array $range): arr
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereSettle = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereSettle = " AND ks.created_at >= '{$vonEsc}' AND ks.created_at <= '{$bisEsc}' ";
-    }
+    [$whereSettle, $settleTypes, $settleParams] = ff_finance_range_frag('ks.created_at', $range);
 
     $amt = ff_finance_order_amount_expr('b', 'p');
     $paidKel = ff_finance_order_paid_base_sql('b') . $fest
@@ -421,11 +442,13 @@ function ff_finance_kellner_protokoll_abgleich(mysqli $conn, ?array $range): arr
     $protokollSoll = 0.0;
     $zeilenGueltig = 0.0;
     $stornoNach = 0.0;
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
         'SELECT ks.id, ks.umsatz_soll FROM kellner_settlements ks WHERE ks.voided_at IS NULL '
         . " AND (ks.settlement_scope = 'kellner' OR ks.settlement_scope IS NULL OR ks.settlement_scope = '') "
-        . $whereSettle
+        . $whereSettle,
+        $settleTypes,
+        $settleParams
     );
     while ($res && ($row = mysqli_fetch_assoc($res))) {
         $sid = (int) ($row['id'] ?? 0);
@@ -470,26 +493,24 @@ function ff_finance_kellner_abrechnung_summary(mysqli $conn, ?array $range, floa
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereBez = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez = " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-    }
 
-    $joinPt = ff_finance_print_target_join_sql('b', 'p');
+    $joinPt = ff_db_frag(ff_finance_print_target_join_sql('b', 'p'));
     $amt = ff_finance_order_amount_expr('b', 'p');
     $paid = ff_finance_order_paid_base_sql('b') . $fest;
-    $baseKel = "{$paid} AND b.tischnummer <> 999999 AND b.kellnerZahlung IS NOT NULL AND TRIM(b.kellnerZahlung) <> ''{$whereBez}";
+    $baseKel = ff_db_frag_concat(
+        ff_db_frag("{$paid} AND b.tischnummer <> 999999 AND b.kellnerZahlung IS NOT NULL AND TRIM(b.kellnerZahlung) <> ''"),
+        ff_finance_range_frag('b.timestampBezahlung', $range)
+    );
     $unz = ff_finance_verkauf_unzugeordnet_where();
     $zugeordnetPt = ' AND pt.finance_bereich_id IS NOT NULL AND pt.finance_bereich_id > 0 ';
 
-    $sumKel = static function (mysqli $c, string $join, string $amount, string $base, string $extra): float {
+    // $join und $base sind Bausteine [sql, types, params]; im SQL steht der JOIN vor dem WHERE.
+    $sumKel = static function (mysqli $c, array $join, string $amount, array $base, string $extra): float {
         $sql = "SELECT COALESCE(SUM({$amount}), 0) AS s FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
-            {$join}
-            WHERE {$base} {$extra}";
-        $res = mysqli_query($c, $sql);
+            {$join[0]}
+            WHERE {$base[0]} {$extra}";
+        $res = ff_db_query($c, $sql, $join[1] . $base[1], array_merge($join[2], $base[2]));
 
         return ($res && ($r = mysqli_fetch_assoc($res))) ? round((float) ($r['s'] ?? 0), 2) : 0.0;
     };
@@ -506,7 +527,7 @@ function ff_finance_kellner_abrechnung_summary(mysqli $conn, ?array $range, floa
         'abgerechnet_alle' => $zeilenAnProtokoll,
         'abgerechnet_zeilen_gueltig' => $zeilenAnProtokoll,
         'offen_alle' => $sumKel($conn, $joinPt, $amt, $baseKel, 'AND b.settlement_id IS NULL'),
-        'abgerechnet_kachel' => $sumKel($conn, $joinPt . ' ' . $ksJoin, $amt, $baseKel, $unz),
+        'abgerechnet_kachel' => $sumKel($conn, ff_db_frag_concat($joinPt, ff_db_frag(' '), $ksJoin), $amt, $baseKel, $unz),
         'offen_kachel' => $sumKel($conn, $joinPt, $amt, $baseKel, 'AND b.settlement_id IS NULL' . $unz),
         'zugeordnet_finanzbereich' => $sumKel($conn, $joinPt, $amt, $baseKel, $zugeordnetPt),
         'abgerechnet_protokoll' => $protokollSoll > 0 ? $protokollSoll : round($abgerechnetProtokoll, 2),
@@ -532,23 +553,19 @@ function ff_finance_kellner_storno_summen(mysqli $conn, ?array $range): array
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereBez = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez = " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-    }
+    [$whereBez, $bezTypes, $bezParams] = ff_finance_range_frag('b.timestampBezahlung', $range);
 
     $amt = ff_finance_order_amount_expr('b', 'p');
     $scope = "b.tischnummer <> 999999 AND b.kellnerZahlung IS NOT NULL AND TRIM(b.kellnerZahlung) <> ''{$fest}{$whereBez}";
     $paidStorno = "b.`delete` = 1 AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung <> '0000-00-00 00:00:00'"
         . ' AND COALESCE(b.is_gratis, 0) = 0 AND COALESCE(b.schreibaus, 0) = 0';
 
-    $fetch = static function (mysqli $c, string $amount, string $base, string $extra): array {
+    // Einzige Platzhalter stehen im Zeitraum ($scope), $extra ist reiner Code.
+    $fetch = static function (mysqli $c, string $amount, string $base, string $extra) use ($bezTypes, $bezParams): array {
         $sql = "SELECT COALESCE(SUM({$amount}), 0) AS s, COUNT(*) AS c FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
             WHERE {$base} {$extra}";
-        $res = mysqli_query($c, $sql);
+        $res = ff_db_query($c, $sql, $bezTypes, $bezParams);
 
         return ($res && ($r = mysqli_fetch_assoc($res)))
             ? ['sum' => round((float) ($r['s'] ?? 0), 2), 'cnt' => (int) ($r['c'] ?? 0)]
@@ -578,12 +595,7 @@ function ff_finance_storno_nach_abrechnung_zeilen(mysqli $conn, ?array $range, s
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereKs = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereKs = " AND ks.created_at >= '{$vonEsc}' AND ks.created_at <= '{$bisEsc}' ";
-    }
+    [$whereKs, $ksTypes, $ksParams] = ff_finance_range_frag('ks.created_at', $range);
     $tisch = $scope === 'dv' ? ' AND b.tischnummer = 999999 ' : ' AND b.tischnummer <> 999999 ';
     $scopeKs = $scope === 'dv'
         ? "ks.settlement_scope = 'direktverkauf'"
@@ -602,7 +614,7 @@ function ff_finance_storno_nach_abrechnung_zeilen(mysqli $conn, ?array $range, s
         ORDER BY ks.created_at DESC, b.timestampBezahlung DESC
         LIMIT 100";
     $rows = [];
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $ksTypes, $ksParams);
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $login = (string) ($r['kellnerZahlung'] ?? '');
         $rows[] = [
@@ -629,35 +641,33 @@ function ff_finance_verkauf_echt_unzugeordnet_where(string $b = 'b'): string
 }
 
 /**
- * @param string $extraBezDateSql Zusatz auf b.timestampBezahlung
+ * @param string $whereExtra Bedingung aus dem Code (ohne Werte/Platzhalter)
+ * @param array{0:string,1:string,2:list<mixed>} $extraBez Zusatz-Baustein auf b.timestampBezahlung
  */
 function ff_finance_sum_verkauf(
     mysqli $conn,
     string $whereExtra,
     ?array $range,
-    string $extraBezDateSql = ''
+    array $extraBez = ['', '', []]
 ): float {
     ff_finance_ensure_schema($conn);
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereBez = $extraBezDateSql;
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez .= " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-    }
+    [$whereBez, $bezTypes, $bezParams] = ff_db_frag_concat($extraBez, ff_finance_range_frag('b.timestampBezahlung', $range));
 
     $joinPt = ff_finance_print_target_join_sql('b', 'p');
     $amt = ff_finance_order_amount_expr('b', 'p');
     $basePaid = ff_finance_order_paid_base_sql('b') . $fest;
 
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
         "SELECT COALESCE(SUM({$amt}), 0) AS s FROM bestellungen b
         JOIN positionen p ON p.rowid = b.position
         {$joinPt}
-        WHERE {$basePaid}{$whereBez} {$whereExtra}"
+        WHERE {$basePaid}{$whereBez} {$whereExtra}",
+        $bezTypes,
+        $bezParams
     );
     if ($res && ($r = mysqli_fetch_assoc($res))) {
         return round((float) $r['s'], 2);
@@ -669,35 +679,30 @@ function ff_finance_sum_verkauf(
 /**
  * Umsatz-Kennzahlen ohne Doppelzählung: Verkauf je Druckziel-Bereich nur in Bereichen, Rest „unzugeordnet“.
  *
- * @param string $extraBezDateSql Zusatz auf b.timestampBezahlung (z. B. DATE-Filter aus gewinn_api)
+ * @param array{0:string,1:string,2:list<mixed>} $extraBez Zusatz-Baustein auf b.timestampBezahlung (z. B. DATE-Filter aus gewinn_api)
  * @return array<string,mixed>
  */
-function ff_finance_revenue_summary(mysqli $conn, ?array $range, string $extraBezDateSql = ''): array
+function ff_finance_revenue_summary(mysqli $conn, ?array $range, array $extraBez = ['', '', []]): array
 {
     ff_finance_ensure_schema($conn);
     ff_finance_ensure_kellner_direkt_print_targets($conn);
     ff_schreibaus_ensure_column($conn);
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
-    $whereBez = $extraBezDateSql;
-    $whereKasse = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez .= " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-        $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
-    }
+    [$whereBez, $bezTypes, $bezParams] = ff_db_frag_concat($extraBez, ff_finance_range_frag('b.timestampBezahlung', $range));
 
     $joinPt = ff_finance_print_target_join_sql('b', 'p');
     $amt = ff_finance_order_amount_expr('b', 'p');
     $basePaid = ff_finance_order_paid_base_sql('b') . $fest;
 
     $verkaufGesamt = 0.0;
-    $resG = mysqli_query(
+    $resG = ff_db_query(
         $conn,
         "SELECT COALESCE(SUM({$amt}), 0) AS s FROM bestellungen b
         JOIN positionen p ON p.rowid = b.position
-        WHERE {$basePaid}{$whereBez}"
+        WHERE {$basePaid}{$whereBez}",
+        $bezTypes,
+        $bezParams
     );
     if ($resG && ($rg = mysqli_fetch_assoc($resG))) {
         $verkaufGesamt = (float) $rg['s'];
@@ -707,9 +712,9 @@ function ff_finance_revenue_summary(mysqli $conn, ?array $range, string $extraBe
         $conn,
         ff_finance_verkauf_unzugeordnet_where(),
         $range,
-        $extraBezDateSql
+        $extraBez
     );
-    $kelDirektBreakdown = ff_finance_kellner_direkt_breakdown($conn, $range, $extraBezDateSql);
+    $kelDirektBreakdown = ff_finance_kellner_direkt_breakdown($conn, $range, $extraBez);
     $verkaufKellnerDirekt = (float) ($kelDirektBreakdown['summe'] ?? 0);
     $verkaufKellnerAnteil = (float) ($kelDirektBreakdown['kellner'] ?? 0);
     $verkaufDirektAnteil = (float) ($kelDirektBreakdown['direktverkauf'] ?? 0);
@@ -717,7 +722,7 @@ function ff_finance_revenue_summary(mysqli $conn, ?array $range, string $extraBe
         $conn,
         ff_finance_verkauf_echt_unzugeordnet_where(),
         $range,
-        $extraBezDateSql
+        $extraBez
     );
     $verkaufUnzugeordnet = $verkaufUnzugeordnetGesamt;
 
@@ -905,8 +910,11 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     $effPt = ff_finance_effective_print_target_expr('b', 'p');
     $joinPt = "LEFT JOIN print_targets pt ON pt.print_target = {$effPt}";
     $wherePt = '';
+    $ptTypes = '';
+    $ptParams = [];
     if ($bereichId > 0) {
-        $wherePt = ' AND pt.finance_bereich_id = ' . $bereichId . ff_finance_sql_exclude_fixed_print_targets($conn, 'pt');
+        [$exSql, $ptTypes, $ptParams] = ff_finance_sql_exclude_fixed_print_targets($conn, 'pt');
+        $wherePt = ' AND pt.finance_bereich_id = ' . $bereichId . $exSql;
     } elseif ($bereichId === ff_finance_bereich_id_kellner_direkt()) {
         $wherePt = ff_finance_verkauf_unzugeordnet_where() . ff_finance_verkauf_kellner_direkt_where();
     } elseif ($bereichId === 0) {
@@ -921,7 +929,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
         {$joinPt}
         WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}
         {$whereBez} {$wherePt}";
-    $resU = ff_db_query($conn, $sqlU, $rangeTypes, $rangeParams);
+    $resU = ff_db_query($conn, $sqlU, $rangeTypes . $ptTypes, array_merge($rangeParams, $ptParams));
     if ($resU && ($ru = mysqli_fetch_assoc($resU))) {
         $verkauf = (float) $ru['s'];
     }
@@ -935,7 +943,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
             {$joinPt}
             WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}
             {$whereBez} {$wherePt}";
-        $resV = ff_db_query($conn, $sqlV, $rangeTypes, $rangeParams);
+        $resV = ff_db_query($conn, $sqlV, $rangeTypes . $ptTypes, array_merge($rangeParams, $ptParams));
         if ($resV && ($rv = mysqli_fetch_assoc($resV))) {
             $variableKosten = (float) $rv['s'];
         }
@@ -1013,19 +1021,14 @@ function ff_finance_kassen_sessions_detail(mysqli $conn, int $bereichId, ?array 
     }
     ff_finance_ensure_schema($conn);
 
-    $whereKasse = '';
-    if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
-    }
+    [$whereKasse, $kasseTypes, $kasseParams] = ff_finance_range_frag('s.closed_at', $range);
 
     $out = [];
     $sql = "SELECT s.*, b.name AS bereich_name FROM kassen_sessions s
         JOIN kassen_bereiche b ON b.id = s.bereich_id
         WHERE s.status = 'closed' AND s.bereich_id = " . (int) $bereichId . " {$whereKasse}
         ORDER BY s.closed_at DESC";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $kasseTypes, $kasseParams);
     while ($res && ($s = mysqli_fetch_assoc($res))) {
         $sid = (int) ($s['id'] ?? 0);
         $entCnt = 0;

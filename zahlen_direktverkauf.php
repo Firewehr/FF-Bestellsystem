@@ -27,8 +27,8 @@ $sql = "SELECT b.rowid AS rowidBestellung, b.position, p.Positionsname, p.type A
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
     WHERE b.tischnummer = {$Tischnummer}
-        {$kellnerFilter}
-        {$bonSql}
+        {$kellnerFilter[0]}
+        {$bonSql[0]}
         AND b.`delete` = 0
         AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
     ORDER BY p.type ASC, p.Positionsname ASC, b.rowid ASC";
@@ -36,7 +36,7 @@ $sql = "SELECT b.rowid AS rowidBestellung, b.position, p.Positionsname, p.type A
 $Summe = 0.0;
 $lines = [];
 $dvIds = [];
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, $kellnerFilter[1] . $bonSql[1], array_merge($kellnerFilter[2], $bonSql[2]));
 while ($res && ($row = mysqli_fetch_assoc($res))) {
     $lines[] = $row;
     $Summe += (float) $row['betrag'];
