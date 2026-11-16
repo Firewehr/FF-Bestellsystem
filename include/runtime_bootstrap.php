@@ -32,3 +32,7 @@ if (function_exists('mysqli_report')) {
 }
 
 require_once __DIR__ . '/ff_asset.php';
+
+// DB-Helfer hier laden, nicht nur in db.php: db.php wird nicht deployt (Zugangsdaten), auf Servern kann
+// daher eine ältere db.php ohne ff_db_query() & Co. liegen. Jede db.php bindet diese Datei zuerst ein.
+require_once __DIR__ . '/ff_db_helpers.php';

@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 129) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 130) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -243,6 +243,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
 1. **Keine externen npm- oder Composer-Bibliotheken:**
    - Keine `composer.json` oder `package.json` im Stammverzeichnis anlegen oder installieren, außer der Benutzer fordert dies ausdrücklich.
 2. **Dualer Datenbank-Layer:**
+   - **`include/db.php` wird nicht deployt** (`tools/deploy.py` schließt es aus, auf Servern stehen dort teils Zugangsdaten). Es enthält nur den Verbindungsaufbau. Alle DB-Helfer (`db()`, `ff_db_query()` …) liegen in `include/ff_db_helpers.php` und werden über `include/runtime_bootstrap.php` geladen. Nie neue Funktionen in `db.php` ergänzen (Selbsttest „Code-Hygiene“ prüft das).
    - Ältere Bestandsdateien nutzen `$conn` (`mysqli`).
    - Neue Skripte und alle APIs unter `api/v1/` nutzen `db()` (`PDO`).
    - **Niemals Variablen direkt in SQL-Statements einbetten!** Ausschließlich Prepared Statements verwenden (`PDO::prepare()` oder `ff_mysqli_stmt_bind`).
@@ -283,7 +284,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 129 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 130 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Änderungen an Kellner-App, Station oder Pilot-Admin zusätzlich den Browser-Smoke-Test ausführen (speichert nichts, alle POSTs werden abgefangen; Zugangsdaten nur per Umgebungsvariable):
   ```bash
   FF_UI_USER=... FF_UI_PASS=... python3 tools/ui_smoke_test.py [--shots /pfad/zu/screenshots]

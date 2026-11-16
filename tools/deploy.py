@@ -233,6 +233,8 @@ def deploy_environment(env_key: str, env: dict, excludes: list[str], dry_run: bo
     remote_dir = env.get("remote_dir", "/")
 
     # Exclude-Flags für lftp
+    # include/db.php bleibt ausgeschlossen (auf Servern stehen dort teils Zugangsdaten). Deshalb enthält
+    # db.php nur den Verbindungsaufbau; alle Helfer liegen in include/ff_db_helpers.php (wird deployt).
     exclude_list = list(excludes)
     for essential in [
         ".git*",

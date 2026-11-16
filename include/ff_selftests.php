@@ -3499,6 +3499,16 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return $hits === [] ? null : 'Externe Einbindung gefunden: ' . implode(' | ', array_slice($hits, 0, 5));
         });
 
+        $check($g, 'include/db.php enthält nur die Verbindung (wird nicht deployt; Helfer in ff_db_helpers.php)', function (mysqli $c) {
+            $root = dirname(__DIR__);
+            $src = (string) @file_get_contents($root . '/include/db.php');
+            if (preg_match_all('/^\s*function\s+(\w+)/m', $src, $m)) {
+                return 'Funktionen in db.php (kommen auf Servern nicht an): ' . implode(', ', $m[1]);
+            }
+            $boot = (string) @file_get_contents($root . '/include/runtime_bootstrap.php');
+            return strpos($boot, 'ff_db_helpers.php') !== false ? null : 'runtime_bootstrap.php lädt ff_db_helpers.php nicht';
+        });
+
         $check($g, 'Keine Werte direkt im SQL (Platzhalter verwenden, include/ff_sql_lint.php)', function (mysqli $c) {
             require_once __DIR__ . '/ff_sql_lint.php';
             // Wächter selbst prüfen: ein bekannter Verstoß muss erkannt werden
