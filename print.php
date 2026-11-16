@@ -39,7 +39,7 @@ try {
             . "AND `bestellungen`.`kueche`=1 "
             . "AND `bestellungen`.`print`=2 "
             . "AND bestellungen.tischnummer=tische.tischnummer "
-            . "AND type=" . $type . " "
+            . "AND type=? "
             . "AND `bestellungen`.`timestampBezahlung`='0000-00-00 00:00:00' "
             . "AND print.bestellungID=bestellungen.rowid "
             . "GROUP BY `bestellungen`.`tischnummer`,`bestellungen`.`position` "
@@ -47,7 +47,7 @@ try {
 
     //echo $sql;
 
-    $result1 = mysqli_query($conn, $sql);
+    $result1 = ff_db_query($conn, $sql, 'i', [$type]);
     mysqli_set_charset($conn, "SET NAMES utf8");
     mysqli_set_charset($conn, "utf8");
 
@@ -55,43 +55,17 @@ try {
 
     $array = array();
     while ($row = mysqli_fetch_assoc($result1)) {
-        $array[] = $row;
+        $array[] = ff_db_row_text($row);
     }
     echo json_encode($array);
 
 
 
-    $sql = "SELECT "
-            . "timestampBestellung, `bestellungen`.`tischnummer`,"
-            . "bestellungen.kellner,"
-            . "bestellungen.kellnerZahlung,"
-            . "bestellungen.timestampBezahlung, "
-            . "bestellungen.timestampBezahlung, "
-            . "bestellungen.Zusatzinfo, "
-            . "`positionen`.`Betrag` as betrag, "
-            . "`positionen`.`Positionsname`, "
-            . "`bestellungen`.`zeitKueche`,"
-            . "`bestellungen`.`position`, "
-            . "`positionen`.`rowid`, "
-            . "`bestellungen`.`zeitstempel`, "
-            . "`bestellungen`.`rowid`,"
-            . "`bestellungen`.`delete`,"
-            . "`bestellungen`.`kueche` AS kuechef "
-            . "FROM `bestellungen`, "
-            . "`positionen`,"
-            . "print "
-            . "WHERE  `positionen`.`rowid`=`bestellungen`.`position` "
-            . "AND `bestellungen`.`delete`=0 "
-            . "AND `bestellungen`.`kueche`=1 "
-            . "AND `bestellungen`.`print`=2 "
-            . "AND type=" . $type . " "
-            . "AND `bestellungen`.`timestampBezahlung`='0000-00-00 00:00:00' "
-            . "AND print.bestellungID=bestellungen.rowid "
-            . "GROUP BY bestellungen.rowid ORDER BY bestellungen.tischnummer DESC LIMIT 100";
+    $sql = 'SELECT timestampBestellung, `bestellungen`.`tischnummer`,bestellungen.kellner,bestellungen.kellnerZahlung,bestellungen.timestampBezahlung, bestellungen.timestampBezahlung, bestellungen.Zusatzinfo, `positionen`.`Betrag` as betrag, `positionen`.`Positionsname`, `bestellungen`.`zeitKueche`,`bestellungen`.`position`, `positionen`.`rowid`, `bestellungen`.`zeitstempel`, `bestellungen`.`rowid`,`bestellungen`.`delete`,`bestellungen`.`kueche` AS kuechef FROM `bestellungen`, `positionen`,print WHERE  `positionen`.`rowid`=`bestellungen`.`position` AND `bestellungen`.`delete`=0 AND `bestellungen`.`kueche`=1 AND `bestellungen`.`print`=2 AND type=? AND `bestellungen`.`timestampBezahlung`=\'0000-00-00 00:00:00\' AND print.bestellungID=bestellungen.rowid GROUP BY bestellungen.rowid ORDER BY bestellungen.tischnummer DESC LIMIT 100';
 
     //echo $sql;
 
-    $result1 = mysqli_query($conn, $sql);
+    $result1 = ff_db_query($conn, $sql, 'i', [$type]);
     mysqli_set_charset($conn, "SET NAMES utf8");
     mysqli_set_charset($conn, "utf8");
 
@@ -99,27 +73,25 @@ try {
 
     $array = array();
     while ($row = mysqli_fetch_assoc($result1)) {
-        $array[] = $row;
+        $array[] = ff_db_row_text($row);
     }
     //echo json_encode($array);    
 
 
     foreach ($array as $item) {
 
-        $sql2 = "UPDATE `bestellungen` "
-                . "SET `print`='1' "
-                . "WHERE rowid=" . intval($item['rowid']);
+        $sql2 = 'UPDATE `bestellungen` SET `print`=\'1\' WHERE rowid=?';
         //echo "<br>" . $sql2;
-        if (mysqli_query($conn, $sql2)) {
+        if (ff_db_query($conn, $sql2, 'i', [intval($item['rowid'])])) {
             //echo "Record updated successfully";
         } else {
             //echo "Error updating record: " . mysqli_error($conn);
         }
 
 
-        $sql2 = "DELETE FROM `print` WHERE `print`.`bestellungID`=" . intval($item['rowid']);
+        $sql2 = 'DELETE FROM `print` WHERE `print`.`bestellungID`=?';
         //echo "<br>" . $sql2;
-        if (mysqli_query($conn, $sql2)) {
+        if (ff_db_query($conn, $sql2, 'i', [intval($item['rowid'])])) {
             //echo "Record updated successfully";
         } else {
             //echo "Error updating record: " . mysqli_error($conn);

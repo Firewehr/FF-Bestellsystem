@@ -37,17 +37,17 @@ try {
             p.Positionsname
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
-            WHERE b.`delete`=0 AND b.tischnummer=' . (int) $Tischnummer . '
+            WHERE b.`delete`=0 AND b.tischnummer=?
               AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>\'0000-00-00 00:00:00\'
               AND (b.is_gratis IS NULL OR b.is_gratis=0)
               AND (b.rechnung_id IS NULL OR b.rechnung_id=0)
             ORDER BY b.zeitstempel ASC
             LIMIT 500';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, 'i', [(int) $Tischnummer]);
     $rows = [];
     $summe = 0.0;
     if ($res) {
-        while ($r = mysqli_fetch_assoc($res)) {
+        while ($r = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $rows[] = $r;
             $summe += (float) ($r['betrag'] ?? 0);
         }

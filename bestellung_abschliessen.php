@@ -42,62 +42,41 @@ foreach ($PositionsListe as $row) {
     }
 
     // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren
-    @mysqli_query(
-        $conn,
-        "UPDATE bestellungen SET "
-        . "kueche=1, "
-        . "zeitKueche=IF(zeitKueche IS NULL OR zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00'), current_timestamp, zeitKueche) "
-        . "WHERE rowid=" . $rowid
-    );
+    ff_db_query($conn, 'UPDATE bestellungen SET kueche=1, zeitKueche=IF(zeitKueche IS NULL OR zeitKueche IN (\'0000-00-00 00:00:00\',\'1970-01-01 00:00:00\'), current_timestamp, zeitKueche) WHERE rowid=?', 'i', [$rowid]);
 
     if ($mitDruck) {
         // Bereits als Teillieferung gedruckt? → nur ausliefern, nicht erneut in die Druck-Queue
-        $chk = mysqli_query($conn, 'SELECT COALESCE(print_status,0) AS ps FROM bestellungen WHERE rowid=' . $rowid . ' LIMIT 1');
+        $chk = ff_db_query($conn, 'SELECT COALESCE(print_status,0) AS ps FROM bestellungen WHERE rowid=? LIMIT 1', 'i', [$rowid]);
         $alreadyPrinted = false;
-        if ($chk && ($cr = mysqli_fetch_assoc($chk))) {
+        if ($chk && ($cr = ff_db_row_text(mysqli_fetch_assoc($chk)))) {
             $alreadyPrinted = ((int) ($cr['ps'] ?? 0) === 1);
         }
 
         if ($alreadyPrinted) {
-            $sql = "UPDATE bestellungen SET "
-                . "ausgeliefert=1, "
-                . "timestampAuslieferung=current_timestamp, "
-                . "bestellt=1, "
-                . "kueche=1 "
-                . "WHERE rowid=" . $rowid;
-            mysqli_query($conn, $sql);
+            $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp, bestellt=1, kueche=1 WHERE rowid=?';
+            ff_db_query($conn, $sql, 'i', [$rowid]);
         } else {
             // bestellt=1 + kueche=1 + print=2 + print_status=0 → Thermo-Client (print_target.php).
-            $sql = "UPDATE bestellungen SET "
-                . "ausgeliefert=1, "
-                . "timestampAuslieferung=current_timestamp, "
-                . "bestellt=1, "
-                . "kueche=1, "
-                . "print=2, "
-                . "print_status=0 "
-                . "WHERE rowid=" . $rowid;
-            mysqli_query($conn, $sql);
+            $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp, bestellt=1, kueche=1, print=2, print_status=0 WHERE rowid=?';
+            ff_db_query($conn, $sql, 'i', [$rowid]);
             ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
             $printed++;
             $printedRowIds[] = $rowid;
         }
     } else {
-        $sql = "UPDATE bestellungen SET "
-            . "ausgeliefert=1, "
-            . "timestampAuslieferung=current_timestamp "
-            . "WHERE rowid=" . $rowid;
-        mysqli_query($conn, $sql);
+        $sql = 'UPDATE bestellungen SET ausgeliefert=1, timestampAuslieferung=current_timestamp WHERE rowid=?';
+        ff_db_query($conn, $sql, 'i', [$rowid]);
     }
     $closed++;
 }
 
 if ($printedRowIds !== []) {
     $printTargets = [];
-    $ptRes = mysqli_query(
+    [$ptIn, $ptInT, $ptInV] = ff_db_in_ints($printedRowIds);
+    $ptRes = ff_db_query(
         $conn,
         'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
-        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . implode(',', $printedRowIds) . ')'
-    );
+        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . $ptIn . ')', $ptInT, $ptInV);
     if ($ptRes) {
         while ($ptRow = mysqli_fetch_assoc($ptRes)) {
             $printTargets[] = (int) $ptRow['pt'];
@@ -112,11 +91,11 @@ if ($validIds !== []) {
     ff_event_notifications_evaluate_rows($conn, $validIds, 'bestellung_abschliessen.php');
 
     $refillTargets = [];
-    $rtRes = mysqli_query(
+    [$rtIn, $rtInT, $rtInV] = ff_db_in_ints($validIds);
+    $rtRes = ff_db_query(
         $conn,
         'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b '
-        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . implode(',', $validIds) . ')'
-    );
+        . 'JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN (' . $rtIn . ')', $rtInT, $rtInV);
     if ($rtRes) {
         while ($rt = mysqli_fetch_assoc($rtRes)) {
             $refillTargets[] = (int) $rt['pt'];

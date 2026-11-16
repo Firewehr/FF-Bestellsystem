@@ -298,7 +298,7 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
     if (!$jRes || mysqli_num_rows($jRes) === 0) {
         return ['attempted' => false, 'ok' => false, 'message' => 'Job nicht gefunden.'];
     }
-    $job = mysqli_fetch_assoc($jRes);
+    $job = ff_db_row_text(mysqli_fetch_assoc($jRes));
     mysqli_free_result($jRes);
 
     $printerKey = (string) ($job['printer'] ?? '');
@@ -312,7 +312,7 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
     if (!$ptRes || mysqli_num_rows($ptRes) === 0) {
         return ['attempted' => false, 'ok' => false, 'message' => 'Druckziel nicht gefunden.'];
     }
-    $target = mysqli_fetch_assoc($ptRes);
+    $target = ff_db_row_text(mysqli_fetch_assoc($ptRes));
     mysqli_free_result($ptRes);
 
     $connType = (string) ($target['connection_type'] ?? 'client');
@@ -354,10 +354,7 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
     $res = ff_socket_print_raw($ip, $port, $escData, 2.0);
 
     if ($res['ok']) {
-        $upd = mysqli_query(
-            $conn,
-            "UPDATE printer_jobs SET status = 'done', reserved_by = 'socket_printer', reserved_at = NOW(), attempts = attempts + 1 WHERE id = {$jobId}"
-        );
+        $upd = ff_db_query($conn, 'UPDATE printer_jobs SET status = \'done\', reserved_by = \'socket_printer\', reserved_at = NOW(), attempts = attempts + 1 WHERE id = ?', 'i', [$jobId]);
         return [
             'attempted' => true,
             'ok' => true,

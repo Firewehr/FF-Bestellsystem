@@ -17,11 +17,12 @@ if (!function_exists('ff_station_history_eur')) {
 require_once __DIR__ . '/ff_hist_navigation.php';
 
 /**
- * @param string $whereExtra zusätzliche WHERE-Bedingung (mit führendem " AND ..."), z. B. Typ- oder Druckziel-Filter
+ * @param string|array{0:string,1:string,2:list<mixed>} $whereExtra zusätzliche WHERE-Bedingung (mit führendem " AND ..."),
+ *        z. B. Typ- oder Druckziel-Filter. Mit Werten nur als Baustein aus ff_db_frag().
  */
 function ff_station_history_render(
     mysqli $conn,
-    string $whereExtra,
+    $whereExtra,
     string $title,
     string $backOnclick,
     string $introText = 'Letzte Bestellungen, nach Bestellung gruppiert.',
@@ -41,15 +42,18 @@ function ff_station_history_render(
         . 'COALESCE(bestellungen.betrag, positionen.Betrag) AS betrag_zeile, '
         . 'positionen.Positionsname, positionen.type '
         . 'FROM bestellungen, positionen, tische '
-        . 'WHERE tische.tischnummer=bestellungen.tischnummer AND bestellungen.position=positionen.rowid AND bestellungen.delete=0 '
-        . $whereExtra
-        . ' ORDER BY bestellungen.zeitstempel DESC, bestellungen.order_nr DESC, bestellungen.rowid DESC LIMIT 400';
-    $res = mysqli_query($conn, $sql);
+        . 'WHERE tische.tischnummer=bestellungen.tischnummer AND bestellungen.position=positionen.rowid AND bestellungen.delete=0 ';
+    $res = ff_db_query_parts(
+        $conn,
+        $sql,
+        $whereExtra,
+        ' ORDER BY bestellungen.zeitstempel DESC, bestellungen.order_nr DESC, bestellungen.rowid DESC LIMIT 400'
+    );
 
     $groups = [];
     $groupOrder = [];
     if ($res) {
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $onr = (int) ($row['order_nr'] ?? 0);
             $tnr = (int) ($row['tischnummer'] ?? 0);
             $bestelltTs = (string) ($row['timestampBestellung'] ?? '');

@@ -52,7 +52,7 @@ function ff_ensure_direktverkauf_tisch_row(mysqli $conn): void
     }
     $done = true;
     $dv = (int) FF_TISCH_DIREKTVERKAUF;
-    $chk = @mysqli_query($conn, 'SELECT 1 FROM tische WHERE tischnummer=' . $dv . ' LIMIT 1');
+    $chk = ff_db_query($conn, 'SELECT 1 FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$dv]);
     if ($chk && mysqli_num_rows($chk) > 0) {
         mysqli_free_result($chk);
         return;
@@ -60,11 +60,7 @@ function ff_ensure_direktverkauf_tisch_row(mysqli $conn): void
     if ($chk) {
         mysqli_free_result($chk);
     }
-    @mysqli_query(
-        $conn,
-        'INSERT INTO tische (tischnummer, tischname, userID, x, y) VALUES ('
-        . $dv . ", 'Direktverkauf', 0, 0, 0) ON DUPLICATE KEY UPDATE tischname='Direktverkauf'"
-    );
+    ff_db_query($conn, 'INSERT INTO tische (tischnummer, tischname, userID, x, y) VALUES (?, \'Direktverkauf\', 0, 0, 0) ON DUPLICATE KEY UPDATE tischname=\'Direktverkauf\'', 'i', [$dv]);
 }
 
 /** SQL-Ausdruck: Anzeigename auf dem Thermo-Bon (DV = Bon #…). */

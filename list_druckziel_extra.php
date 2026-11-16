@@ -66,12 +66,12 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
         $timeQuery = "SELECT p.{$nameCol} as item_name, MIN(b.{$timeCol}) as min_time 
                       FROM positionen p 
                       JOIN bestellungen b ON p.{$fkCol} = b.id 
-                      WHERE p.print_target = {$print_target} {$statusCheck} 
+                      WHERE p.print_target = ? {$statusCheck} 
                       GROUP BY p.{$nameCol}";
-        
-        $tRes = @mysqli_query($conn, $timeQuery);
+        // Spaltennamen kommen aus der Schema-Erkennung (feste Kandidatenliste), Wert als Parameter
+        $tRes = ff_db_query($conn, $timeQuery, 'i', [(int) $print_target]);
         if ($tRes) {
-            while ($tRow = mysqli_fetch_assoc($tRes)) {
+            while ($tRow = ff_db_row_text(mysqli_fetch_assoc($tRes))) {
                 $timeMap[trim($tRow['item_name'])] = $tRow['min_time'];
             }
         }

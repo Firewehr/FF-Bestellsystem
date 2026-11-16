@@ -66,12 +66,14 @@ if (!function_exists('ff_auto_print_for_order')) {
         $woken = [];
         foreach ($limits as $pt => $limit) {
             // Offene Bestellungen dieser Station, ohne die gerade abgeschickte.
-            $cntRes = mysqli_query(
+            $cntRes = ff_db_query(
                 $conn,
                 'SELECT COUNT(DISTINCT b.tischnummer, b.order_nr) AS c FROM bestellungen b '
                 . 'JOIN positionen p ON p.rowid = b.position '
-                . 'WHERE b.`delete` = 0 AND b.bestellt = 1 AND b.ausgeliefert = 0 AND ' . $ptExpr . ' = ' . (int) $pt . ' '
-                . 'AND NOT (b.tischnummer = ' . $tischnummer . ' AND b.order_nr = ' . $orderNr . ')'
+                . 'WHERE b.`delete` = 0 AND b.bestellt = 1 AND b.ausgeliefert = 0 AND ' . $ptExpr . ' = ? '
+                . 'AND NOT (b.tischnummer = ? AND b.order_nr = ?)',
+                'iii',
+                [(int) $pt, $tischnummer, $orderNr]
             );
             if (!$cntRes) {
                 error_log('ff_auto_print_for_order count: ' . mysqli_error($conn));
@@ -82,17 +84,19 @@ if (!function_exists('ff_auto_print_for_order')) {
             if ($open >= $limit) {
                 continue;
             }
-            $ok = mysqli_query(
+            $ok = ff_db_query(
                 $conn,
                 'UPDATE bestellungen b JOIN positionen p ON p.rowid = b.position SET b.auto_print = 1 '
-                . 'WHERE b.tischnummer = ' . $tischnummer . ' AND b.order_nr = ' . $orderNr . ' '
-                . 'AND b.`delete` = 0 AND b.bestellt = 1 AND b.print_status = 0 AND ' . $ptExpr . ' = ' . (int) $pt
+                . 'WHERE b.tischnummer = ? AND b.order_nr = ? '
+                . 'AND b.`delete` = 0 AND b.bestellt = 1 AND b.print_status = 0 AND ' . $ptExpr . ' = ?',
+                'iii',
+                [$tischnummer, $orderNr, (int) $pt]
             );
             if (!$ok) {
                 error_log('ff_auto_print_for_order mark: ' . mysqli_error($conn));
                 continue;
             }
-            if (mysqli_affected_rows($conn) > 0) {
+            if (ff_db_affected_rows() > 0) {
                 $woken[] = (int) $pt;
             }
         }
@@ -118,14 +122,15 @@ if (!function_exists('ff_auto_print_refill')) {
         $ptExpr = 'COALESCE(b.print_target, p.print_target, 11)';
         $woken = [];
         foreach (array_unique(array_map('intval', $printTargets)) as $pt) {
-            $lr = mysqli_query($conn, 'SELECT auto_print_limit FROM print_targets WHERE active = 1 AND print_target = ' . $pt);
+            $lr = ff_db_query($conn, 'SELECT auto_print_limit FROM print_targets WHERE active = 1 AND print_target = ?', 'i', [$pt]);
             $limit = $lr ? (int) (mysqli_fetch_assoc($lr)['auto_print_limit'] ?? 0) : 0;
             if ($limit <= 0) {
                 continue;
             }
+            // $base enthält genau einen Platzhalter (Druckziel)
             $base = 'FROM bestellungen b JOIN positionen p ON p.rowid = b.position '
-                . 'WHERE b.`delete` = 0 AND b.bestellt = 1 AND b.ausgeliefert = 0 AND ' . $ptExpr . ' = ' . $pt . ' ';
-            $cr = mysqli_query($conn, 'SELECT COUNT(DISTINCT b.tischnummer, b.order_nr) AS c ' . $base . 'AND b.auto_print = 1');
+                . 'WHERE b.`delete` = 0 AND b.bestellt = 1 AND b.ausgeliefert = 0 AND ' . $ptExpr . ' = ? ';
+            $cr = ff_db_query($conn, 'SELECT COUNT(DISTINCT b.tischnummer, b.order_nr) AS c ' . $base . 'AND b.auto_print = 1', 'i', [$pt]);
             if (!$cr) {
                 error_log('ff_auto_print_refill count: ' . mysqli_error($conn));
                 continue;
@@ -134,23 +139,27 @@ if (!function_exists('ff_auto_print_refill')) {
             if ($free <= 0) {
                 continue;
             }
-            $wr = mysqli_query(
+            $wr = ff_db_query(
                 $conn,
                 'SELECT b.tischnummer, b.order_nr, MIN(b.zeitstempel) AS ts ' . $base
-                . 'AND b.auto_print = 0 AND b.print_status = 0 GROUP BY b.tischnummer, b.order_nr ORDER BY ts ASC LIMIT ' . $free
+                . 'AND b.auto_print = 0 AND b.print_status = 0 GROUP BY b.tischnummer, b.order_nr ORDER BY ts ASC LIMIT ?',
+                'ii',
+                [$pt, (int) $free]
             );
             if (!$wr) {
                 error_log('ff_auto_print_refill select: ' . mysqli_error($conn));
                 continue;
             }
             while ($w = mysqli_fetch_assoc($wr)) {
-                $ok = mysqli_query(
+                $ok = ff_db_query(
                     $conn,
                     'UPDATE bestellungen b JOIN positionen p ON p.rowid = b.position SET b.auto_print = 1 '
-                    . 'WHERE b.tischnummer = ' . (int) $w['tischnummer'] . ' AND b.order_nr = ' . (int) $w['order_nr'] . ' '
-                    . 'AND b.`delete` = 0 AND b.bestellt = 1 AND b.print_status = 0 AND ' . $ptExpr . ' = ' . $pt
+                    . 'WHERE b.tischnummer = ? AND b.order_nr = ? '
+                    . 'AND b.`delete` = 0 AND b.bestellt = 1 AND b.print_status = 0 AND ' . $ptExpr . ' = ?',
+                    'iii',
+                    [(int) $w['tischnummer'], (int) $w['order_nr'], $pt]
                 );
-                if ($ok && mysqli_affected_rows($conn) > 0) {
+                if ($ok && ff_db_affected_rows() > 0) {
                     $woken[] = $pt;
                 }
             }

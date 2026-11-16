@@ -25,13 +25,13 @@ foreach ($PositionsListe as $row) {
 }
 
 if (!empty($ids)) {
-    $in = implode(',', $ids);
+    [$in, $inT, $inV] = ff_db_in_ints($ids);
     $sql = "UPDATE `bestellungen` SET "
             . "`zeitKueche`=current_timestamp,"
             . "`kueche`='1',"
             . "`print`=0 "
             . "WHERE `rowid` IN (" . $in . ")";
-    mysqli_query($conn, $sql);
+    ff_db_query($conn, $sql, $inT, $inV);
 }
 
 mysqli_close($conn);

@@ -100,7 +100,12 @@ if (!function_exists('ff_fest_scope_position_sql')) {
         if ($festId <= 0) {
             return ' AND 1=0 ';
         }
-        return ' AND (' . $safeAlias . '.fest_id IS NULL OR ' . $safeAlias . '.fest_id = ' . $festId . ') ';
+        // Fest-ID als Sitzungsvariable (Prepared Statement): der Baustein enthält keinen Wert.
+        // Bei jedem Aufruf setzen (nicht cachen): die Variable gilt pro Verbindung, nicht pro PHP-Request.
+        $lastDb = $GLOBALS['__ff_db_last'] ?? null;
+        ff_db_query($conn, 'SET @ff_scope_fest_id = ?', 'i', [$festId]);
+        $GLOBALS['__ff_db_last'] = $lastDb;
+        return ' AND (' . $safeAlias . '.fest_id IS NULL OR ' . $safeAlias . '.fest_id = @ff_scope_fest_id) ';
     }
 }
 

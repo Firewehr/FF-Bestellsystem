@@ -62,9 +62,9 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine gültigen Positionen angegeben.', 'missing_rowids', 400);
         }
-        $in = implode(',', $rowids);
+        [$in, $inT, $inV] = ff_db_in_ints($rowids);
         $sql = "UPDATE bestellungen SET zeitKueche = CURRENT_TIMESTAMP, kueche = 1, print = 0 WHERE rowid IN ($in) AND `delete` = 0 AND ausgeliefert = 0";
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_db_query($conn, $sql, $inT, $inV)) {
             api_error('Fehler beim Aktualisieren: ' . mysqli_error($conn), 'db_error', 500);
         }
 
@@ -90,7 +90,7 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine gültigen Positionen angegeben.', 'missing_rowids', 400);
         }
-        $in = implode(',', $rowids);
+        [$in, $inT, $inV] = ff_db_in_ints($rowids);
 
         $printStatusSql = '';
         $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
@@ -100,7 +100,7 @@ if ($method === 'POST') {
 
         $sql = "UPDATE bestellungen SET zeitKueche = '0000-00-00 00:00:00', kueche = 0, print = 0" . $printStatusSql
             . " WHERE `delete` = 0 AND rowid IN ($in)";
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_db_query($conn, $sql, $inT, $inV)) {
             api_error('Fehler beim Zurücksetzen: ' . mysqli_error($conn), 'db_error', 500);
         }
 
@@ -127,12 +127,14 @@ if ($method === 'POST') {
         }
         $mitDruck = !empty($data['mit_druck']);
         $tischnummer = (int) ($data['tischnummer'] ?? 0);
-        $in = implode(',', $rowids);
+        [$in, $inT, $inV] = ff_db_in_ints($rowids);
 
         // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren
-        @mysqli_query(
+        ff_db_query(
             $conn,
-            "UPDATE bestellungen SET kueche = 1, zeitKueche = IF(zeitKueche IS NULL OR zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00'), CURRENT_TIMESTAMP, zeitKueche) WHERE rowid IN ($in)"
+            "UPDATE bestellungen SET kueche = 1, zeitKueche = IF(zeitKueche IS NULL OR zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00'), CURRENT_TIMESTAMP, zeitKueche) WHERE rowid IN ($in)",
+            $inT,
+            $inV
         );
 
         $printed = 0;
@@ -142,18 +144,17 @@ if ($method === 'POST') {
         if ($mitDruck) {
             foreach ($rowids as $rowid) {
                 // Bereits als Teillieferung gedruckt?
-                $chk = mysqli_query($conn, 'SELECT COALESCE(print_status, 0) AS ps FROM bestellungen WHERE rowid = ' . $rowid . ' LIMIT 1');
+                $chk = ff_db_query($conn, 'SELECT COALESCE(print_status, 0) AS ps FROM bestellungen WHERE rowid = ? LIMIT 1', 'i', [$rowid]);
                 $alreadyPrinted = false;
-                if ($chk && ($cr = mysqli_fetch_assoc($chk))) {
+                if ($chk && ($cr = ff_db_row_text(mysqli_fetch_assoc($chk)))) {
                     $alreadyPrinted = ((int) ($cr['ps'] ?? 0) === 1);
                 }
 
                 if ($alreadyPrinted) {
-                    $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid = " . $rowid;
-                    mysqli_query($conn, $sql);
+                    ff_db_query($conn, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid = ?', 'i', [(int) $rowid]);
                 } else {
-                    $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid = " . $rowid;
-                    mysqli_query($conn, $sql);
+                    $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid = ?";
+                    ff_db_query($conn, $sql, 'i', [(int) $rowid]);
                     ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
                     $printed++;
                     $printedRowIds[] = $rowid;
@@ -166,7 +167,7 @@ if ($method === 'POST') {
             }
         } else {
             $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid IN ($in)";
-            mysqli_query($conn, $sql);
+            ff_db_query($conn, $sql, $inT, $inV);
         }
 
         ff_event_notifications_evaluate_rows($conn, $rowids, 'api_station_complete_order');
@@ -197,7 +198,7 @@ if ($method === 'POST') {
         }
         $tischnummer = (int) ($data['tischnummer'] ?? 0);
         $printTarget = (int) ($data['print_target'] ?? 0);
-        $in = implode(',', $rowids);
+        [$in, $inT, $inV] = ff_db_in_ints($rowids);
 
         // print = 3 kennzeichnet eine angeforderte Teillieferung (print_target.php druckt sie,
         // obwohl andere Positionen derselben Bestellung noch offen sind).
@@ -205,10 +206,10 @@ if ($method === 'POST') {
             . "WHERE rowid IN ($in) AND `delete` = 0 AND ausgeliefert = 0 AND COALESCE(print_status, 0) = 0 "
             . "AND (kueche = 1 OR (zeitKueche IS NOT NULL AND zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')))";
 
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_db_query($conn, $sql, $inT, $inV)) {
             api_error('Fehler bei Teillieferung: ' . mysqli_error($conn), 'db_error', 500);
         }
-        $affected = (int) mysqli_affected_rows($conn);
+        $affected = ff_db_affected_rows();
 
         if ($affected <= 0) {
             api_error('Keine fertigen, noch ungedruckten Positionen gefunden.', 'nothing_to_print', 400);
@@ -242,7 +243,7 @@ if ($method === 'POST') {
             [$in, $inTypes, $inIds] = ff_db_in_ints($rowids);
             ff_db_query($conn, "UPDATE bestellungen SET bestellt = 1 WHERE rowid IN ($in) AND `delete` = 0", $inTypes, $inIds);
         } elseif ($tischnummer > 0) {
-            mysqli_query($conn, "UPDATE bestellungen SET bestellt = 1 WHERE tischnummer = " . $tischnummer . " AND `delete` = 0 AND ausgeliefert = 0");
+            ff_db_query($conn, 'UPDATE bestellungen SET bestellt = 1 WHERE tischnummer = ? AND `delete` = 0 AND ausgeliefert = 0', 'i', [$tischnummer]);
         }
 
         $targets = $rowids !== [] ? ff_station_get_print_targets_for_rows($conn, $rowids) : [11, 12];
@@ -261,9 +262,9 @@ if ($method === 'POST') {
         if ($rowids === []) {
             api_error('Keine Positionen zum Wiedereröffnen angegeben.', 'missing_rowids', 400);
         }
-        $in = implode(',', $rowids);
+        [$in, $inT, $inV] = ff_db_in_ints($rowids);
         $sql = "UPDATE bestellungen SET ausgeliefert = 0, timestampAuslieferung = '0000-00-00 00:00:00', kueche = 1, zeitKueche = CURRENT_TIMESTAMP WHERE rowid IN ($in) AND `delete` = 0";
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_db_query($conn, $sql, $inT, $inV)) {
             api_error('Fehler beim Wiedereröffnen: ' . mysqli_error($conn), 'db_error', 500);
         }
 
@@ -309,11 +310,17 @@ if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
 if ($view === 'history') {
     $batchKeySql = ff_sql_bestellung_batch_key('b');
     $where = 'b.`delete` = 0 AND b.ausgeliefert = 1 ';
+    $whereTypes = '';
+    $whereParams = [];
     if ($targetId > 0) {
-        $where .= 'AND (COALESCE(b.print_target, p.print_target) = ' . $targetId . ') ';
+        $where .= 'AND (COALESCE(b.print_target, p.print_target) = ?) ';
+        $whereTypes .= 'i';
+        $whereParams[] = (int) $targetId;
     }
     if ($posType > 0) {
-        $where .= 'AND p.type = ' . $posType . ' ';
+        $where .= 'AND p.type = ? ';
+        $whereTypes .= 'i';
+        $whereParams[] = (int) $posType;
     }
 
     $sql = "SELECT b.rowid, b.tischnummer, b.bestellt, b.kellner, b.zeitstempel, b.zeitKueche, b.timestampAuslieferung, "
@@ -327,11 +334,11 @@ if ($view === 'history') {
         . "WHERE " . $where
         . "ORDER BY b.timestampAuslieferung DESC, b.zeitstempel DESC LIMIT 120";
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $whereTypes, $whereParams);
     $historyOrders = [];
     if ($res) {
         $grouped = [];
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $bk = (string) ($row['batch_key'] ?? '');
             $tn = (int) ($row['tischnummer'] ?? 0);
             $key = $tn . '_' . $bk;
@@ -415,11 +422,17 @@ $targets[0]['count'] = $totalWaitingAll;
 // 2. Aktive Zeilen laden
 $batchKeySql = ff_sql_bestellung_batch_key('b');
 $whereScope = 'b.`delete` = 0 AND b.ausgeliefert = 0 ';
+$scopeTypes = '';
+$scopeParams = [];
 if ($targetId > 0) {
-    $whereScope .= 'AND (COALESCE(b.print_target, p.print_target) = ' . $targetId . ') ';
+    $whereScope .= 'AND (COALESCE(b.print_target, p.print_target) = ?) ';
+    $scopeTypes .= 'i';
+    $scopeParams[] = (int) $targetId;
 }
 if ($posType > 0) {
-    $whereScope .= 'AND p.type = ' . $posType . ' ';
+    $whereScope .= 'AND p.type = ? ';
+    $scopeTypes .= 'i';
+    $scopeParams[] = (int) $posType;
 }
 
 $sql = "SELECT b.rowid, b.tischnummer, b.bestellt, b.kellner, b.zeitstempel, b.zeitKueche, "
@@ -444,10 +457,10 @@ $sql = "SELECT b.rowid, b.tischnummer, b.bestellt, b.kellner, b.zeitstempel, b.z
     . ff_position_sql_station_visible('p', 's')
     . "ORDER BY b.zeitstempel ASC";
 
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, $scopeTypes, $scopeParams);
 $lines = [];
 if ($res) {
-    while ($r = mysqli_fetch_assoc($res)) {
+    while ($r = ff_db_row_text(mysqli_fetch_assoc($res))) {
         $lines[] = $r;
     }
 }
@@ -691,11 +704,13 @@ function ff_station_get_print_targets_for_rows(mysqli $conn, array $rowids): arr
     if ($rowids === []) {
         return [];
     }
-    $in = implode(',', array_map('intval', $rowids));
-    $res = mysqli_query(
+    [$in, $inT, $inV] = ff_db_in_ints($rowids);
+    $res = ff_db_query(
         $conn,
         "SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt FROM bestellungen b "
-        . "JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN ($in)"
+        . "JOIN positionen p ON p.rowid = b.position WHERE b.rowid IN ($in)",
+        $inT,
+        $inV
     );
     $targets = [];
     if ($res) {

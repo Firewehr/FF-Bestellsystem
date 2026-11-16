@@ -40,10 +40,10 @@ if ($tischnummer === 999999) {
   if ($hasFestIdColumn) {
     $festRow = ff_db_query_parts(
       $conn,
-      "SELECT fest_id FROM bestellungen
-       WHERE tischnummer=999999 AND position=" . (int) $position . "
+      ff_db_frag("SELECT fest_id FROM bestellungen
+       WHERE tischnummer=999999 AND position=?
          AND `delete`=0 AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')
-         ",
+         ", 'i', [(int) $position]),
       $kellnerClause,
       " ORDER BY rowid DESC LIMIT 1"
     );
@@ -115,8 +115,8 @@ if ($affected > 0 && $removedFestId > 0) {
 }
 
 if ($affected > 0) {
-  $ptRes = mysqli_query($conn, 'SELECT COALESCE(print_target, 11) AS print_target FROM positionen WHERE rowid = ' . (int)$position . ' LIMIT 1');
-  if ($ptRes && ($ptRow = mysqli_fetch_assoc($ptRes))) {
+  $ptRes = ff_db_query($conn, 'SELECT COALESCE(print_target, 11) AS print_target FROM positionen WHERE rowid = ? LIMIT 1', 'i', [(int)$position]);
+  if ($ptRes && ($ptRow = ff_db_row_text(mysqli_fetch_assoc($ptRes)))) {
     $minPt = (int)($ptRow['print_target'] ?? 11);
     if ($minPt > 0) {
       require_once __DIR__ . '/include/ff_station_events.php';
@@ -145,8 +145,8 @@ if ($tischnummer === 999999) {
 }
 
 $maxBestellbar = 0;
-$posRes = mysqli_query($conn, 'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=' . (int) $position . ' LIMIT 1');
-if ($posRes && ($pr = mysqli_fetch_assoc($posRes))) {
+$posRes = ff_db_query($conn, 'SELECT COALESCE(maxBestellbar, 0) AS maxBestellbar FROM positionen WHERE rowid=? LIMIT 1', 'i', [(int) $position]);
+if ($posRes && ($pr = ff_db_row_text(mysqli_fetch_assoc($posRes)))) {
     $maxBestellbar = (int) ($pr['maxBestellbar'] ?? 0);
 }
 $positionConsumed = ff_position_consumed_total($conn, (int)$position);

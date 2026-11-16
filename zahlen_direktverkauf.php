@@ -26,7 +26,7 @@ $sql = "SELECT b.rowid AS rowidBestellung, b.position, p.Positionsname, p.type A
         {$amt} AS betrag, b.Zusatzinfo
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
-    WHERE b.tischnummer = {$Tischnummer}
+    WHERE b.tischnummer = ?
         {$kellnerFilter[0]}
         {$bonSql[0]}
         AND b.`delete` = 0
@@ -36,8 +36,8 @@ $sql = "SELECT b.rowid AS rowidBestellung, b.position, p.Positionsname, p.type A
 $Summe = 0.0;
 $lines = [];
 $dvIds = [];
-$res = ff_db_query($conn, $sql, $kellnerFilter[1] . $bonSql[1], array_merge($kellnerFilter[2], $bonSql[2]));
-while ($res && ($row = mysqli_fetch_assoc($res))) {
+$res = ff_db_query($conn, $sql, 'i' . $kellnerFilter[1] . $bonSql[1], array_merge([(int) $Tischnummer], $kellnerFilter[2], $bonSql[2]));
+while ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
     $lines[] = $row;
     $Summe += (float) $row['betrag'];
     $dvIds[] = (int) $row['rowidBestellung'];

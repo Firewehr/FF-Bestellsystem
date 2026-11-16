@@ -44,7 +44,7 @@ if ($zielTischnummer === 999999) {
     exit;
 }
 
-$tischCheck = mysqli_query($conn, "SELECT tischnummer FROM tische WHERE tischnummer=" . $zielTischnummer . " LIMIT 1");
+$tischCheck = ff_db_query($conn, 'SELECT tischnummer FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$zielTischnummer]);
 if (!$tischCheck || mysqli_num_rows($tischCheck) === 0) {
     $response['error'] = 'Zieltisch existiert nicht';
     echo json_encode($response);

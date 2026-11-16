@@ -83,7 +83,7 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
     if ($parentIds === []) {
         return [];
     }
-    $parentList = implode(',', $parentIds);
+    [$parentList, $parentT, $parentV] = ff_db_in_ints($parentIds);
     $festFilter = '';
     if ($festId > 0) {
         $festFilter = ' AND (parent.fest_id IS NULL OR parent.fest_id = ?) AND (child.fest_id IS NULL OR child.fest_id = ?)';
@@ -104,9 +104,12 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
     if (!$stmt) {
         return [];
     }
-    if ($festId > 0) {
-        mysqli_stmt_bind_param($stmt, 'ii', $festId, $festId);
-    }
+    // Reihenfolge wie im SQL: Eltern-IDs (IN), dann Fest-Filter
+    ff_mysqli_stmt_bind(
+        $stmt,
+        $parentT . ($festId > 0 ? 'ii' : ''),
+        array_merge($parentV, $festId > 0 ? [$festId, $festId] : [])
+    );
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $rows = [];

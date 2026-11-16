@@ -67,15 +67,11 @@ if ($currentFestId > 0) {
 
 // Erst nach erfolgreichem Abschicken die betroffenen Stationen benachrichtigen.
 $stationTargets = [];
-$targetResult = mysqli_query(
-    $conn,
-    'SELECT DISTINCT COALESCE(print_target, 11) AS print_target FROM bestellungen '
-    . 'WHERE tischnummer=' . (int) $tischnummer . ' AND order_nr=' . (int) $orderNr . ' AND `delete`=0'
-);
+$targetResult = ff_db_query($conn, 'SELECT DISTINCT COALESCE(print_target, 11) AS print_target FROM bestellungen WHERE tischnummer=? AND order_nr=? AND `delete`=0', 'ii', [(int) $tischnummer, (int) $orderNr]);
 if (!$targetResult) {
     error_log('bestellung_abschicken.php: Druckziele für order_nr ' . (int) $orderNr . ' konnten nicht ermittelt werden: ' . mysqli_error($conn));
 } else {
-    while ($targetRow = mysqli_fetch_assoc($targetResult)) {
+    while ($targetRow = ff_db_row_text(mysqli_fetch_assoc($targetResult))) {
         $stationTargets[] = (int) $targetRow['print_target'];
     }
     mysqli_free_result($targetResult);
@@ -101,7 +97,7 @@ $requirePayment = false;
 // Honorary tables never pay
 $tres = ff_db_query($conn, 'SELECT is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int)$tischnummer]);
 $isSammel = 0; $isEhren = 0;
-if ($tres && ($trow = mysqli_fetch_assoc($tres))) {
+if ($tres && ($trow = ff_db_row_text(mysqli_fetch_assoc($tres)))) {
     $isSammel = (int)($trow['is_sammelrechnung'] ?? 0);
     $isEhren = (int)($trow['is_ehrengast'] ?? 0);
 }

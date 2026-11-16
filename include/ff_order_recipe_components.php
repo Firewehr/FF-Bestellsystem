@@ -149,11 +149,13 @@ function ff_order_recipe_selection_map(mysqli $conn, array $orderRowIds, array $
         return [];
     }
     ff_rezepturen_ensure_schema($conn);
-    $idList = implode(',', $ids);
+    [$idList, $idT, $idV] = ff_db_in_ints($ids);
     $snapshots = [];
-    $result = mysqli_query(
+    $result = ff_db_query(
         $conn,
-        'SELECT bestellung_rowid FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN (' . $idList . ')'
+        'SELECT bestellung_rowid FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN (' . $idList . ')',
+        $idT,
+        $idV
     );
     if (!$result) {
         throw new RuntimeException('recipe_snapshot_lookup_failed');
@@ -164,11 +166,13 @@ function ff_order_recipe_selection_map(mysqli $conn, array $orderRowIds, array $
     mysqli_free_result($result);
 
     $selections = [];
-    $result = mysqli_query(
+    $result = ff_db_query(
         $conn,
         'SELECT bestellung_rowid, bestandteil_id
          FROM bestellung_rezeptur_komponenten
-         WHERE bestellung_rowid IN (' . $idList . ') AND selected = 1'
+         WHERE bestellung_rowid IN (' . $idList . ') AND selected = 1',
+        $idT,
+        $idV
     );
     if (!$result) {
         throw new RuntimeException('recipe_components_lookup_failed');

@@ -19,8 +19,8 @@ if ($tischnummer <= 0 || $tischnummer === 999999) {
 $paymentMode = ff_aktiver_payment_mode($conn);
 $isEhrengast = 0;
 $isSammelrechnung = 0;
-$tres = @mysqli_query($conn, 'SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=' . $tischnummer . ' LIMIT 1');
-if ($tres && ($trow = mysqli_fetch_assoc($tres))) {
+$tres = ff_db_query($conn, 'SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$tischnummer]);
+if ($tres && ($trow = ff_db_row_text(mysqli_fetch_assoc($tres)))) {
     $isEhrengast = (int) ($trow['is_ehrengast'] ?? 0);
     $isSammelrechnung = (int) ($trow['is_sammelrechnung'] ?? 0);
 }

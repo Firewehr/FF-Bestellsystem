@@ -27,14 +27,11 @@ $limit = 250;
 
 $kellnerList = [];
 if ($isAdmin) {
-    $resK = mysqli_query(
-        $conn,
-        "SELECT DISTINCT COALESCE(NULLIF(TRIM(b.kellnerZahlung), ''), TRIM(b.kellner)) AS k
+    $resK = ff_db_query($conn, 'SELECT DISTINCT COALESCE(NULLIF(TRIM(b.kellnerZahlung), \'\'), TRIM(b.kellner)) AS k
             FROM bestellungen b
-            WHERE b.tischnummer = {$Tischnummer}
-            AND (TRIM(b.kellner) <> '' OR TRIM(b.kellnerZahlung) <> '')
-            ORDER BY k"
-    );
+            WHERE b.tischnummer = ?
+            AND (TRIM(b.kellner) <> \'\' OR TRIM(b.kellnerZahlung) <> \'\')
+            ORDER BY k', 'i', [$Tischnummer]);
     while ($resK && ($rk = mysqli_fetch_assoc($resK))) {
         $k = trim((string) ($rk['k'] ?? ''));
         if ($k !== '') {
@@ -49,17 +46,17 @@ $sql = "SELECT b.rowid, b.zeitstempel, b.timestampBezahlung, b.`delete`, b.ausge
         p.Positionsname, p.type AS pos_type, {$amt} AS line_amt
     FROM bestellungen b
     JOIN positionen p ON p.rowid = b.position
-    WHERE b.tischnummer = {$Tischnummer}{$scopeSql[0]}{$bonSql[0]}
+    WHERE b.tischnummer = ?{$scopeSql[0]}{$bonSql[0]}
     ORDER BY b.bon_id DESC, b.rowid DESC
-    LIMIT {$limit}";
+    LIMIT ?";
 
 $rows = [];
 $sqlError = '';
-$res = ff_db_query($conn, $sql, $scopeSql[1] . $bonSql[1], array_merge($scopeSql[2], $bonSql[2]));
+$res = ff_db_query($conn, $sql, 'i' . $scopeSql[1] . $bonSql[1] . 'i', array_merge([(int) $Tischnummer], $scopeSql[2], $bonSql[2], [(int) $limit]));
 if (!$res) {
     $sqlError = mysqli_error($conn);
 } else {
-    while ($r = mysqli_fetch_assoc($res)) {
+    while ($r = ff_db_row_text(mysqli_fetch_assoc($res))) {
         $rows[] = $r;
     }
 }

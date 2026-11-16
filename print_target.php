@@ -93,13 +93,13 @@ $sql = "
       AND b.bestellt = 1
       AND " . ($ffAutoPrintCol ? "((b.kueche = 1 AND b.print IN (2, 3)) OR b.auto_print = 1)" : "(b.kueche = 1 AND b.print IN (2, 3))") . "
       AND b.print_status = 0
-      AND COALESCE(b.print_target, p.print_target, 11) = " . $print_target . "
+      AND COALESCE(b.print_target, p.print_target, 11) = ?
     ORDER BY b.tischnummer ASC, b.zeitstempel ASC
     LIMIT 200
 ";
 
 $ffT2 = microtime(true);
-$result = mysqli_query($conn, $sql);
+$result = ff_db_query($conn, $sql, 'i', [(int) $print_target]);
 $ffTimings['main_query_ms'] = round((microtime(true) - $ffT2) * 1000, 1);
 if (!$result) {
     echo json_encode(['error' => 'Datenbankfehler: ' . mysqli_error($conn)]);
@@ -120,7 +120,7 @@ if (!$result) {
 $ffT3 = microtime(true);
 $rows = [];
 $tischNummern = [];
-while ($r = mysqli_fetch_assoc($result)) {
+while ($r = ff_db_row_text(mysqli_fetch_assoc($result))) {
     $rows[] = $r;
     $tischNummern[(int)$r['tischnummer']] = true;
 }
@@ -131,7 +131,7 @@ $blockedByTisch_Timestamp   = [];     // [tisch][timestampBestellung] => true
 $blockedByTisch_FiveMinKeys = [];     // [tisch] => [bucketKey => true]
 
 if (!empty($tischNummern) && !empty($rows)) {
-    $tischIds = implode(',', array_map('intval', array_keys($tischNummern)));
+    [$tischIds, $tischIdsT, $tischIdsV] = ff_db_in_ints(array_keys($tischNummern));
     $sibSql = "
         SELECT b2.tischnummer,
                b2.bon_id,
@@ -143,11 +143,11 @@ if (!empty($tischNummern) && !empty($rows)) {
           AND b2.bestellt = 1
           AND b2.kueche = 0
           AND b2.tischnummer IN ($tischIds)
-          AND COALESCE(b2.print_target, p2.print_target, 11) = " . $print_target . "
+          AND COALESCE(b2.print_target, p2.print_target, 11) = ?
     ";
-    $sibRes = mysqli_query($conn, $sibSql);
+    $sibRes = ff_db_query($conn, $sibSql, $tischIdsT . 'i', array_merge($tischIdsV, [(int) $print_target]));
     if ($sibRes) {
-        while ($s = mysqli_fetch_assoc($sibRes)) {
+        while ($s = ff_db_row_text(mysqli_fetch_assoc($sibRes))) {
             $t  = (int)$s['tischnummer'];
             $bi = (string)($s['bon_id'] ?? '');
             if (trim($bi) !== '') {
@@ -286,27 +286,23 @@ foreach ($tische as $bucketKey => &$tischRef) {
     if (!empty($tischRef['auto_print'])) {
         // Sofortdruck: Bon ist die komplette Bestellung, keine Teillieferung.
     } elseif ($tnr > 0 && $tnr !== FF_TISCH_DIREKTVERKAUF && $onrs !== []) {
-        $onrList = implode(',', array_map('intval', $onrs));
-        $sibOpen = @mysqli_query(
+        [$onrList, $onrT, $onrV] = ff_db_in_ints($onrs);
+        $sibOpen = ff_db_query(
             $conn,
             "SELECT 1 FROM bestellungen b "
-            . "WHERE b.`delete`=0 AND b.ausgeliefert=0 AND b.tischnummer=" . $tnr . " "
+            . "WHERE b.`delete`=0 AND b.ausgeliefert=0 AND b.tischnummer=? "
             . "AND b.order_nr IN ($onrList) "
             . "AND (b.kueche=0 OR b.zeitKueche IS NULL OR b.zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00')) "
-            . "LIMIT 1"
+            . "LIMIT 1",
+            'i' . $onrT,
+            array_merge([$tnr], $onrV)
         );
         if ($sibOpen && mysqli_fetch_row($sibOpen)) {
             $isTeil = true;
         }
     } elseif ($tnr > 0 && $tnr !== FF_TISCH_DIREKTVERKAUF) {
         // Ohne order_nr: offene Geschwister am Tisch (noch nicht abgeschickte Runde selten hier)
-        $sibOpen = @mysqli_query(
-            $conn,
-            "SELECT 1 FROM bestellungen b "
-            . "WHERE b.`delete`=0 AND b.ausgeliefert=0 AND b.tischnummer=" . $tnr . " "
-            . "AND (b.kueche=0 OR b.zeitKueche IS NULL OR b.zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00')) "
-            . "LIMIT 1"
-        );
+        $sibOpen = ff_db_query($conn, 'SELECT 1 FROM bestellungen b WHERE b.`delete`=0 AND b.ausgeliefert=0 AND b.tischnummer=? AND (b.kueche=0 OR b.zeitKueche IS NULL OR b.zeitKueche IN (\'0000-00-00 00:00:00\',\'1970-01-01 00:00:00\')) LIMIT 1', 'i', [$tnr]);
         if ($sibOpen && mysqli_fetch_row($sibOpen)) {
             $isTeil = true;
         }

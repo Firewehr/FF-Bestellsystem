@@ -28,7 +28,7 @@ if ($liste === [] || $tischnummer <= 0) {
     exit;
 }
 
-$ids = implode(',', $liste);
+[$ids, $idsT, $idsV] = ff_db_in_ints($liste);
 $sql = "SELECT b.rowid, b.tischnummer, b.kellner, b.zeitstempel, b.zeitKueche, b.Zusatzinfo,
         COALESCE(b.betrag, p.Betrag) AS betrag_zeile, b.order_nr,
         p.rowid AS position_id, p.Positionsname, p.Betrag AS betrag_katalog, t.tischname,
@@ -37,11 +37,11 @@ $sql = "SELECT b.rowid, b.tischnummer, b.kellner, b.zeitstempel, b.zeitKueche, b
         JOIN positionen p ON p.rowid = b.position
         JOIN tische t ON t.tischnummer = b.tischnummer
         LEFT JOIN rechnungen r ON r.id = b.rechnung_id
-        WHERE b.`delete` = 0 AND b.tischnummer = " . (int)$tischnummer . "
+        WHERE b.`delete` = 0 AND b.tischnummer = ?
           AND b.rowid IN (" . $ids . ")
         ORDER BY p.Positionsname ASC, b.rowid ASC";
 
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, 'i' . $idsT, array_merge([(int) $tischnummer], $idsV));
 if (!$res) {
     echo '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><p>Datenbankfehler.</p></body></html>';
     exit;
@@ -49,7 +49,7 @@ if (!$res) {
 
 $rows = [];
 while ($r = mysqli_fetch_assoc($res)) {
-    $rows[] = $r;
+    $rows[] = ff_db_row_text($r);
 }
 
 if ($rows === []) {

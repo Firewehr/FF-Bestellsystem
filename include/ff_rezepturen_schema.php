@@ -450,16 +450,16 @@ if (!function_exists('ff_rezeptur_allergene_by_position')) {
             return [];
         }
 
-        $result = mysqli_query(
+        [$alIn, $alInT, $alInV] = ff_db_in_ints($ids);
+        $result = ff_db_query(
             $conn,
             'SELECT pr.position_id, a.name
              FROM position_rezepturen pr
              INNER JOIN bestandteil_allergene ba ON ba.bestandteil_id = pr.bestandteil_id
              INNER JOIN allergene a ON a.id = ba.allergen_id
-             WHERE pr.position_id IN (' . implode(',', $ids) . ')
+             WHERE pr.position_id IN (' . $alIn . ')
              GROUP BY pr.position_id, a.id, a.name, a.sort_order
-             ORDER BY pr.position_id, a.sort_order, a.name'
-        );
+             ORDER BY pr.position_id, a.sort_order, a.name', $alInT, $alInV);
         if (!$result) {
             return [];
         }

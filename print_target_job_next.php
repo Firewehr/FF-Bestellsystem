@@ -74,10 +74,10 @@ if (!$row) {
 
 $jobId = (int)$row['id'];
 $jobType = (string)($row['type'] ?? 'kellner_bon');
-$upd = "UPDATE printer_jobs SET status = 'reserved', reserved_at = NOW(), reserved_by = 'print_client'
-        WHERE id = " . $jobId . " AND status = 'pending'";
-mysqli_query($conn, $upd);
-if (mysqli_affected_rows($conn) !== 1) {
+$upd = 'UPDATE printer_jobs SET status = \'reserved\', reserved_at = NOW(), reserved_by = \'print_client\'
+        WHERE id = ? AND status = \'pending\'';
+ff_db_query($conn, $upd, 'i', [$jobId]);
+if (ff_db_affected_rows() !== 1) {
     mysqli_rollback($conn);
     echo json_encode(array_merge([
         'ok' => true, 'count' => 0, 'tische' => [], 'print_target' => $print_target,

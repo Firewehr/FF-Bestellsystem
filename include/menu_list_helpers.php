@@ -61,8 +61,8 @@ function ff_tisch_count_unsent(mysqli $conn, int $tischnummer): int
     $kel = ff_tisch_kellner_scope_filter_sql($conn, 'b');
     $res = ff_db_query_parts(
         $conn,
-        'SELECT COUNT(*) AS cnt FROM bestellungen b WHERE b.tischnummer=' . (int) $tischnummer
-        . ' AND ' . ff_tisch_unsent_sql_condition('b'),
+        ff_db_frag('SELECT COUNT(*) AS cnt FROM bestellungen b WHERE b.tischnummer=?', 'i', [(int) $tischnummer]),
+        ' AND ' . ff_tisch_unsent_sql_condition('b'),
         $kel
     );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
@@ -88,9 +88,9 @@ function ff_tisch_clear_unsent_orders(mysqli $conn, int $tischnummer): array
             b.kueche = 0,
             b.zeitKueche = '0000-00-00 00:00:00',
             b.ausgeliefert = 0
-        WHERE b.tischnummer = " . (int) $tischnummer . '
-          AND ' . ff_tisch_unsent_sql_condition('b');
-    if (!ff_db_query_parts($conn, $sql, $kel)) {
+        WHERE b.tischnummer = ?
+          AND " . ff_tisch_unsent_sql_condition('b');
+    if (!ff_db_query_parts($conn, ff_db_frag($sql, 'i', [(int) $tischnummer]), $kel)) {
         return ['ok' => false, 'error' => 'db', 'message' => 'Löschen fehlgeschlagen.'];
     }
     $aff = ff_db_affected_rows();
@@ -110,13 +110,13 @@ function ff_menu_batch_open_counts_tisch(mysqli $conn, int $tischnummer): array
         return $map;
     }
     $sql = 'SELECT `position`, COUNT(*) AS cnt FROM `bestellungen`
-            WHERE tischnummer=' . (int)$tischnummer . '
+            WHERE tischnummer=?
               AND kueche=0 AND `delete`=0
               AND (bestellt IS NULL OR bestellt=0)
             GROUP BY `position`';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, 'i', [(int)$tischnummer]);
     if ($res) {
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $map[(int)$row['position']] = (int)$row['cnt'];
         }
     }
@@ -157,9 +157,9 @@ function ff_tisch_count_unpaid_kasse(mysqli $conn, int $tischnummer, ?string $pa
     $kellner = ff_tisch_kellner_scope_filter_sql($conn, 'b');
     $sql = 'SELECT COUNT(*) AS cnt FROM bestellungen b
             INNER JOIN positionen p ON p.rowid = b.position
-            WHERE b.tischnummer = ' . (int) $tischnummer . '
+            WHERE b.tischnummer = ?
               AND ' . $where;
-    $res = ff_db_query_parts($conn, $sql, $kellner);
+    $res = ff_db_query_parts($conn, ff_db_frag($sql, 'i', [(int) $tischnummer]), $kellner);
     if (!$res) {
         return 0;
     }
@@ -184,10 +184,10 @@ function ff_tisch_count_unpaid_orphan(mysqli $conn, int $tischnummer, ?string $p
     $kellner = ff_tisch_kellner_scope_filter_sql($conn, 'b');
     $sql = 'SELECT COUNT(*) AS cnt FROM bestellungen b
             LEFT JOIN positionen p ON p.rowid = b.position
-            WHERE b.tischnummer = ' . (int) $tischnummer . '
+            WHERE b.tischnummer = ?
               AND p.rowid IS NULL
               AND ' . $where;
-    $res = ff_db_query_parts($conn, $sql, $kellner);
+    $res = ff_db_query_parts($conn, ff_db_frag($sql, 'i', [(int) $tischnummer]), $kellner);
     if (!$res) {
         return 0;
     }
@@ -359,9 +359,9 @@ function ff_menu_open_count_direkt(mysqli $conn, int $positionId, array $kellner
     }
     $res = ff_db_query_parts(
         $conn,
-        'SELECT COUNT(*) AS cnt FROM `bestellungen`
+        ff_db_frag('SELECT COUNT(*) AS cnt FROM `bestellungen`
             WHERE tischnummer=999999
-              AND `position`=' . (int) $positionId,
+              AND `position`=?', 'i', [(int) $positionId]),
         $kellnerFilter,
         ff_direktverkauf_bon_filter_sql($conn, $bonId, 'bestellungen'),
         " AND `delete`=0
@@ -397,26 +397,26 @@ function ff_menu_batch_lock_map(mysqli $conn, array $positionIds, int $menuType)
         return $map;
     }
 
-    $in = implode(',', $ids);
-    $res = mysqli_query($conn, "SELECT position_id, reason, locked_until FROM menu_locks
+    [$in, $inT, $inV] = ff_db_in_ints($ids);
+    $res = ff_db_query($conn, "SELECT position_id, reason, locked_until FROM menu_locks
             WHERE scope='position' AND position_id IN ({$in})
-              AND (locked_until IS NULL OR locked_until > NOW())");
+              AND (locked_until IS NULL OR locked_until > NOW())", $inT, $inV);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $map[(int)$row['position_id']] = menu_lock_format_row($row);
         }
     }
 
-    $res2 = mysqli_query($conn, 'SELECT l.id, l.reason, l.locked_until FROM menu_locks l
-            WHERE l.scope=\'type_all\' AND l.menu_type=' . (int)$menuType . '
+    $res2 = ff_db_query($conn, 'SELECT l.id, l.reason, l.locked_until FROM menu_locks l
+            WHERE l.scope=\'type_all\' AND l.menu_type=?
               AND (l.locked_until IS NULL OR l.locked_until > NOW())
-            LIMIT 1');
-    if ($res2 && ($lock = mysqli_fetch_assoc($res2))) {
+            LIMIT 1', 'i', [(int)$menuType]);
+    if ($res2 && ($lock = ff_db_row_text(mysqli_fetch_assoc($res2)))) {
         $lid = (int)$lock['id'];
         $exceptions = [];
-        $exRes = mysqli_query($conn, 'SELECT position_id FROM menu_lock_exceptions WHERE lock_id=' . $lid);
+        $exRes = ff_db_query($conn, 'SELECT position_id FROM menu_lock_exceptions WHERE lock_id=?', 'i', [$lid]);
         if ($exRes) {
-            while ($ex = mysqli_fetch_assoc($exRes)) {
+            while ($ex = ff_db_row_text(mysqli_fetch_assoc($exRes))) {
                 $exceptions[(int)$ex['position_id']] = true;
             }
         }
@@ -438,12 +438,12 @@ function ff_menu_open_count_tisch(mysqli $conn, int $tischnummer, int $positionI
         return 0;
     }
     $sql = 'SELECT COUNT(*) AS cnt FROM `bestellungen`
-            WHERE tischnummer=' . (int)$tischnummer . '
+            WHERE tischnummer=?
               AND kueche=0 AND `delete`=0
               AND (bestellt IS NULL OR bestellt=0)
-              AND `position`=' . (int)$positionId;
-    $res = mysqli_query($conn, $sql);
-    if ($res && ($row = mysqli_fetch_assoc($res))) {
+              AND `position`=?';
+    $res = ff_db_query($conn, $sql, 'ii', [(int)$tischnummer, (int)$positionId]);
+    if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         return (int)$row['cnt'];
     }
     return 0;

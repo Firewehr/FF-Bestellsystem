@@ -114,8 +114,8 @@ function ff_rechnung_prefix_for_fest(mysqli $conn, ?int $fest_id): string
     if ($fest_id === null || $fest_id <= 0) {
         return $fallback;
     }
-    $q = mysqli_query($conn, 'SELECT rechnung_prefix FROM feste WHERE id=' . (int) $fest_id . ' LIMIT 1');
-    if ($q && ($r = mysqli_fetch_assoc($q))) {
+    $q = ff_db_query($conn, 'SELECT rechnung_prefix FROM feste WHERE id=? LIMIT 1', 'i', [(int) $fest_id]);
+    if ($q && ($r = ff_db_row_text(mysqli_fetch_assoc($q)))) {
         $p = trim((string) ($r['rechnung_prefix'] ?? ''));
         if ($p !== '') {
             return $p;

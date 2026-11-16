@@ -131,12 +131,9 @@ function ff_tisch_count_paid_without_rechnung(mysqli $conn, int $tischnummer): i
     ff_bestellungen_ensure_rechnung_id_column($conn);
     ff_bestellungen_ensure_is_gratis_column($conn);
 
-    $sql = 'SELECT COUNT(*) AS c FROM bestellungen b WHERE b.`delete`=0 AND b.tischnummer=' . (int) $tischnummer
-        . " AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'0000-00-00 00:00:00'"
-        . ' AND (b.is_gratis IS NULL OR b.is_gratis=0)'
-        . ' AND (b.rechnung_id IS NULL OR b.rechnung_id=0)';
-    $res = @mysqli_query($conn, $sql);
-    if (!$res || !($row = mysqli_fetch_assoc($res))) {
+    $sql = 'SELECT COUNT(*) AS c FROM bestellungen b WHERE b.`delete`=0 AND b.tischnummer=? AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>\'0000-00-00 00:00:00\' AND (b.is_gratis IS NULL OR b.is_gratis=0) AND (b.rechnung_id IS NULL OR b.rechnung_id=0)';
+    $res = ff_db_query($conn, $sql, 'i', [(int) $tischnummer]);
+    if (!$res || !($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         return 0;
     }
 

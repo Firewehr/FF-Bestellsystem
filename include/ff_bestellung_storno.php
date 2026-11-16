@@ -43,12 +43,12 @@ function ff_bestellung_clear_print_queue(mysqli $conn, int $rowid): void
 
     $tbPrint = @mysqli_query($conn, "SHOW TABLES LIKE 'print'");
     if ($tbPrint && mysqli_num_rows($tbPrint) > 0) {
-        mysqli_query($conn, 'DELETE FROM `print` WHERE `bestellungID` = ' . $rowid);
+        ff_db_query($conn, 'DELETE FROM `print` WHERE `bestellungID` = ?', 'i', [$rowid]);
         mysqli_free_result($tbPrint);
     }
     $cPs = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
     if ($cPs && mysqli_num_rows($cPs) > 0) {
-        @mysqli_query($conn, 'UPDATE bestellungen SET print = 0, print_status = 0 WHERE rowid = ' . $rowid);
+        ff_db_query($conn, 'UPDATE bestellungen SET print = 0, print_status = 0 WHERE rowid = ?', 'i', [$rowid]);
         mysqli_free_result($cPs);
     }
 }

@@ -30,7 +30,7 @@ if (empty($ids)) {
     echo json_encode(['ok' => false, 'error' => 'Keine gültigen IDs']);
     exit;
 }
-$in = implode(',', array_keys($ids));
+[$in, $inT, $inV] = ff_db_in_ints(array_keys($ids));
 
 $printStatusSql = '';
 $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
@@ -41,12 +41,12 @@ if ($chk && mysqli_num_rows($chk) > 0) {
 $sql = "UPDATE bestellungen SET zeitKueche='0000-00-00 00:00:00', kueche=0, print=0" . $printStatusSql
     . " WHERE `delete`=0 AND rowid IN (" . $in . ")";
 
-if (!mysqli_query($conn, $sql)) {
+if (!ff_db_query($conn, $sql, $inT, $inV)) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);
     exit;
 }
-$affected = mysqli_affected_rows($conn);
+$affected = ff_db_affected_rows();
 if ($affected < 1) {
     http_response_code(404);
     echo json_encode(['ok' => false, 'error' => 'Keine Zeile geändert (ungültige IDs oder bereits zurück?)']);

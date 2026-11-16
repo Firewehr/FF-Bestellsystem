@@ -423,9 +423,12 @@ function ff_event_notifications_evaluate_rows(mysqli $conn, array $rowIds, strin
 
     try {
         ff_event_notifications_bootstrap($conn);
-        $result = mysqli_query(
+        [$rowIn, $rowT, $rowV] = ff_db_in_ints($rowIds);
+        $result = ff_db_query(
             $conn,
-            'SELECT DISTINCT fest_id FROM bestellungen WHERE rowid IN (' . implode(',', $rowIds) . ') AND fest_id IS NOT NULL'
+            'SELECT DISTINCT fest_id FROM bestellungen WHERE rowid IN (' . $rowIn . ') AND fest_id IS NOT NULL',
+            $rowT,
+            $rowV
         );
         if (!$result) {
             throw new RuntimeException(mysqli_error($conn));

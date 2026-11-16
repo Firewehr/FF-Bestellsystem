@@ -16,7 +16,7 @@ function ff_kueche_thermal_build_tische_for_rowids(mysqli $conn, int $print_targ
     if ($rowids === []) {
         return null;
     }
-    $in = implode(',', $rowids);
+    [$in, $inT, $inV] = ff_db_in_ints($rowids);
 
     // Für Nachdruck (Bon verloren): Druck-Status-Filter ignorieren, damit auch
     // bereits gedruckte Zeilen erneut erzeugt werden können.
@@ -51,12 +51,12 @@ function ff_kueche_thermal_build_tische_for_rowids(mysqli $conn, int $print_targ
     LEFT JOIN tische t ON t.tischnummer = b.tischnummer
     LEFT JOIN rechnungen r ON r.id = b.rechnung_id
     WHERE b.`delete` = 0
-" . $stateFilter . "      AND COALESCE(b.print_target, p.print_target, 11) = " . (int)$print_target . "
+" . $stateFilter . "      AND COALESCE(b.print_target, p.print_target, 11) = ?
       AND b.rowid IN (" . $in . ")
     ORDER BY b.tischnummer ASC, b.zeitstempel ASC
     ";
 
-    $result = mysqli_query($conn, $sql);
+    $result = ff_db_query($conn, $sql, 'i' . $inT, array_merge([(int) $print_target], $inV));
     if (!$result) {
         return null;
     }
@@ -64,7 +64,7 @@ function ff_kueche_thermal_build_tische_for_rowids(mysqli $conn, int $print_targ
     $tische = [];
     $bestellungIds = [];
 
-    while ($row = mysqli_fetch_assoc($result)) {
+    while ($row = ff_db_row_text(mysqli_fetch_assoc($result))) {
         $tnr = (int)$row['tischnummer'];
         $bucketKey = ff_print_target_tisch_bucket_key($tnr, (string)($row['bon_id'] ?? ''));
         if (!isset($tische[$bucketKey])) {

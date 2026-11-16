@@ -14,8 +14,8 @@ if ($rowid <= 0) {
     exit;
 }
 
-$res = mysqli_query($conn, 'SELECT b.`position`, p.`Betrag` FROM `bestellungen` b INNER JOIN `positionen` p ON p.rowid = b.position WHERE b.rowid = ' . $rowid . ' LIMIT 1');
-if (!$res || !($pr = mysqli_fetch_assoc($res))) {
+$res = ff_db_query($conn, 'SELECT b.`position`, p.`Betrag` FROM `bestellungen` b INNER JOIN `positionen` p ON p.rowid = b.position WHERE b.rowid = ? LIMIT 1', 'i', [$rowid]);
+if (!$res || !($pr = ff_db_row_text(mysqli_fetch_assoc($res)))) {
     echo 'Bestellung nicht gefunden';
     mysqli_close($conn);
     exit;

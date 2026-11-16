@@ -103,7 +103,7 @@ if ($thermoTarget > 0 && !isset($validTargets[$thermoTarget])) {
 $kellner = isset($_SESSION['user']['username']) ? (string)$_SESSION['user']['username'] : '';
 session_write_close();
 
-$in = implode(',', array_map('intval', $ids));
+[$in, $inT, $inV] = ff_db_in_ints($ids);
 
 $fest_id = null;
 $resFest = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
@@ -116,7 +116,7 @@ mysqli_begin_transaction($conn);
 $chkSql = "SELECT rowid, tischnummer, order_nr, rechnung_id,
            (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00') AS noch_offen
            FROM bestellungen WHERE `delete`=0 AND rowid IN ($in)";
-$chkRes = mysqli_query($conn, $chkSql);
+$chkRes = ff_db_query($conn, $chkSql, $inT, $inV);
 if (!$chkRes) {
     mysqli_rollback($conn);
     br_json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
@@ -155,9 +155,9 @@ foreach ($rows as $r) {
 foreach ($rows as $r) {
     $exR = (int)($r['rechnung_id'] ?? 0);
     if ($exR > 0) {
-        $rq = mysqli_query($conn, 'SELECT IFNULL(is_proforma,0) AS ip FROM rechnungen WHERE id=' . $exR . ' LIMIT 1');
+        $rq = ff_db_query($conn, 'SELECT IFNULL(is_proforma,0) AS ip FROM rechnungen WHERE id=? LIMIT 1', 'i', [$exR]);
         $ip = 0;
-        if ($rq && ($rr = mysqli_fetch_assoc($rq))) {
+        if ($rq && ($rr = ff_db_row_text(mysqli_fetch_assoc($rq)))) {
             $ip = (int)$rr['ip'];
         }
         mysqli_rollback($conn);
@@ -184,14 +184,14 @@ sort($selSorted, SORT_NUMERIC);
 $expectedOpen = [];
 
 if ($needPay) {
-    $orderInList = implode(',', array_map('intval', array_keys($orderNrs)));
-    $expSql = 'SELECT b.rowid FROM bestellungen b WHERE b.delete=0 AND b.bestellt=1 AND b.tischnummer=' . $tischnummer
+    [$orderInList, $orderInT, $orderInV] = ff_db_in_ints(array_keys($orderNrs));
+    $expSql = 'SELECT b.rowid FROM bestellungen b WHERE b.delete=0 AND b.bestellt=1 AND b.tischnummer=?'
         . ' AND b.order_nr IN (' . $orderInList . ')'
         . " AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung='0000-00-00 00:00:00')"
         . ' AND (b.is_gratis IS NULL OR b.is_gratis=0)'
         . $kuecheFilterOpen
         . ' ORDER BY b.rowid';
-    $expRes = mysqli_query($conn, $expSql);
+    $expRes = ff_db_query($conn, $expSql, 'i' . $orderInT, array_merge([(int) $tischnummer], $orderInV));
     if (!$expRes) {
         mysqli_rollback($conn);
         br_json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
@@ -224,10 +224,10 @@ $sqlItems = "SELECT b.rowid, p.Positionsname, p.Kurzbezeichnung, p.Betrag
         FROM bestellungen b
         JOIN positionen p ON p.rowid=b.position
         WHERE b.delete=0 AND b.rowid IN ($in)
-          AND b.tischnummer=" . $tischnummer . "
+          AND b.tischnummer=?
           AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'0000-00-00 00:00:00'
           AND (b.is_gratis IS NULL OR b.is_gratis=0)";
-$resItems = mysqli_query($conn, $sqlItems);
+$resItems = ff_db_query($conn, $sqlItems, $inT . 'i', array_merge($inV, [(int) $tischnummer]));
 if (!$resItems) {
     mysqli_rollback($conn);
     br_json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
@@ -319,7 +319,7 @@ $rechnung_id = (int)mysqli_insert_id($conn);
 mysqli_stmt_close($stmt);
 
 foreach ($items as $it) {
-    mysqli_query($conn, 'UPDATE bestellungen SET rechnung_id=' . $rechnung_id . ' WHERE rowid=' . (int)$it['rowid']);
+    ff_db_query($conn, 'UPDATE bestellungen SET rechnung_id=? WHERE rowid=?', 'ii', [$rechnung_id, (int)$it['rowid']]);
 }
 
 mysqli_commit($conn);
@@ -327,8 +327,8 @@ mysqli_commit($conn);
 $thermoOk = false;
 $thermoEnqueueError = null;
 if ($thermoTarget > 0) {
-    $rFull = mysqli_query($conn, 'SELECT * FROM rechnungen WHERE id=' . $rechnung_id . ' LIMIT 1');
-    $rrow = $rFull ? mysqli_fetch_assoc($rFull) : null;
+    $rFull = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id=? LIMIT 1', 'i', [$rechnung_id]);
+    $rrow = $rFull ? ff_db_row_text(mysqli_fetch_assoc($rFull)) : null;
     if ($rrow) {
         $txt = ff_rechnung_build_thermal_text($conn, $rrow);
         if ($txt === '') {

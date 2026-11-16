@@ -245,11 +245,7 @@ if (!function_exists('ff_printer_device_register')) {
 
         if ($status === 'pending') {
             // Verwaiste Anfragen aufräumen
-            mysqli_query(
-                $conn,
-                "DELETE FROM printer_devices WHERE status = 'pending' AND created_at < NOW() - INTERVAL "
-                . (int)FF_PRINTER_DEVICE_PENDING_TTL_DAYS . ' DAY'
-            );
+            ff_db_query($conn, 'DELETE FROM printer_devices WHERE status = \'pending\' AND created_at < NOW() - INTERVAL ? DAY', 'i', [(int)FF_PRINTER_DEVICE_PENDING_TTL_DAYS]);
 
             $stmt = mysqli_prepare($conn, "SELECT COUNT(*) FROM printer_devices WHERE created_ip = ? AND created_at > NOW() - INTERVAL 10 MINUTE");
             mysqli_stmt_bind_param($stmt, 's', $ip);

@@ -191,7 +191,10 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
     $nameMatch = ff_api_device_sql_speise_name_match($conn, 'p', $needleLower, $matchMode);
     $nameParam = ff_api_device_speise_name_param($needleLower, $matchMode);
     $effPt = ff_api_device_sql_effective_print_target('b', 'p');
-    $ptWhere = $printTarget > 0 ? ("AND {$effPt} = " . (int)$printTarget . ' ') : '';
+    // Druckziel-Filter als Platzhalter; $ptT/$ptV stehen in SQL-Reihenfolge an dieser Stelle
+    $ptWhere = $printTarget > 0 ? "AND {$effPt} = ? " : '';
+    $ptT = $printTarget > 0 ? 'i' : '';
+    $ptV = $printTarget > 0 ? [(int) $printTarget] : [];
 
     $sqlBatches = "SELECT b.tischnummer, b.bon_id, COALESCE(t.tischname, '') AS tischname, {$batchExpr} AS batch_key, MIN(b.zeitstempel) AS zeit_min "
         . 'FROM bestellungen b '
@@ -203,7 +206,7 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
         . 'ORDER BY zeit_min ASC '
         . 'LIMIT 3';
 
-    $resB = mysqli_query($conn, $sqlBatches);
+    $resB = ff_db_query($conn, $sqlBatches, $ptT, $ptV);
     $nextThree = [];
     if ($resB) {
         while ($row = mysqli_fetch_assoc($resB)) {
@@ -224,7 +227,7 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
                 . "AND ({$batchExpr}) = ? "
                 . 'AND ' . $nameMatch;
 
-            $r2 = ff_db_query($conn, $sqlCnt, 'iss', [$tn, $bk, $nameParam]);
+            $r2 = ff_db_query($conn, $sqlCnt, $ptT . 'iss', array_merge($ptV, [$tn, $bk, $nameParam]));
             if ($r2) {
                 while ($r = mysqli_fetch_assoc($r2)) {
                     $c = ff_api_device_speise_classify((string)($r['Positionsname'] ?? ''), $needleLower, $matchMode);
@@ -270,7 +273,7 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
         . $ptWhere
         . 'AND ' . $nameMatch . ' '
         . 'ORDER BY b.zeitstempel ASC';
-    $rAll = ff_db_query($conn, $sqlAll, 's', [$nameParam]);
+    $rAll = ff_db_query($conn, $sqlAll, $ptT . 's', array_merge($ptV, [$nameParam]));
     if ($rAll) {
         while ($r = mysqli_fetch_assoc($rAll)) {
             $c = ff_api_device_speise_classify((string)($r['Positionsname'] ?? ''), $needleLower, $matchMode);

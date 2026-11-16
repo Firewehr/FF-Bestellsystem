@@ -130,20 +130,20 @@ $linkRowids = true;
 
 if ($sammelrechnung_id > 0) {
     // Nach SammelrechnungBezahlt: bezahlt + sammelrechnung_id; kueche kann 0 oder 1 sein (instant/after)
-    $sql = "SELECT b.rowid, b.order_nr, p.Positionsname, p.Kurzbezeichnung,
+    $sql = 'SELECT b.rowid, b.order_nr, p.Positionsname, p.Kurzbezeichnung,
             COALESCE(NULLIF(b.betrag, 0), p.Betrag) AS Betrag
             FROM bestellungen b
             JOIN positionen p ON p.rowid=b.position
             WHERE b.delete=0
-              AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'0000-00-00 00:00:00'
+              AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>\'0000-00-00 00:00:00\'
               AND (b.is_gratis IS NULL OR b.is_gratis=0)
               AND (b.rechnung_id IS NULL OR b.rechnung_id = 0)
-              AND b.sammelrechnung_id=" . (int) $sammelrechnung_id;
-    $result = mysqli_query($conn, $sql);
+              AND b.sammelrechnung_id=?';
+    $result = ff_db_query($conn, $sql, 'i', [(int) $sammelrechnung_id]);
     if (!$result) {
         respond(false, 'DB Fehler: ' . mysqli_error($conn));
     }
-    while ($r = mysqli_fetch_assoc($result)) {
+    while ($r = ff_db_row_text(mysqli_fetch_assoc($result))) {
         $items[] = $r;
         $total += (float)$r['Betrag'];
     }
@@ -153,19 +153,19 @@ if ($sammelrechnung_id > 0) {
 } elseif ($basis === 'tischstand') {
     // Wie am Bon: Position + Zusatzinfo zusammengruppieren, damit z. B. 5 Schnitzel
     // mit unterschiedlichen Beilagen/Zusatzpositionen 5 separate Zeilen ergeben.
-    $sql = "SELECT p.Positionsname, p.Kurzbezeichnung, p.Betrag, b.Zusatzinfo, COUNT(*) AS cnt,
+    $sql = 'SELECT p.Positionsname, p.Kurzbezeichnung, p.Betrag, b.Zusatzinfo, COUNT(*) AS cnt,
                    SUM(COALESCE(b.betrag, p.Betrag)) AS summe
             FROM bestellungen b
             JOIN positionen p ON p.rowid=b.position
-            WHERE b.tischnummer=" . $tischnummer . "
+            WHERE b.tischnummer=?
               AND b.delete=0
               AND b.bestellt=1
-              AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung='0000-00-00 00:00:00')
-              " . $kuecheFilterOffen . "
+              AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung=\'0000-00-00 00:00:00\')
+              ' . $kuecheFilterOffen . '
               AND (b.is_gratis IS NULL OR b.is_gratis=0)
             GROUP BY p.rowid, p.Positionsname, p.Kurzbezeichnung, p.Betrag, b.Zusatzinfo
-            ORDER BY p.Positionsname ASC, b.Zusatzinfo ASC";
-    $result = mysqli_query($conn, $sql);
+            ORDER BY p.Positionsname ASC, b.Zusatzinfo ASC';
+    $result = ff_db_query($conn, $sql, 'i', [$tischnummer]);
     if (!$result) {
         respond(false, 'DB Fehler: ' . mysqli_error($conn));
     }
@@ -206,15 +206,20 @@ if ($sammelrechnung_id > 0) {
               AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'0000-00-00 00:00:00'
               AND (b.is_gratis IS NULL OR b.is_gratis=0)
               AND (b.rechnung_id IS NULL OR b.rechnung_id = 0)
-              AND b.tischnummer=" . $tischnummer;
+              AND b.tischnummer=?";
+    $sqlTypes = 'i';
+    $sqlParams = [(int) $tischnummer];
     if (count($filterRowIds) > 0) {
-        $sql .= ' AND b.rowid IN (' . implode(',', array_map('intval', $filterRowIds)) . ')';
+        [$frIn, $frT, $frV] = ff_db_in_ints($filterRowIds);
+        $sql .= ' AND b.rowid IN (' . $frIn . ')';
+        $sqlTypes .= $frT;
+        $sqlParams = array_merge($sqlParams, $frV);
     }
-    $result = mysqli_query($conn, $sql);
+    $result = ff_db_query($conn, $sql, $sqlTypes, $sqlParams);
     if (!$result) {
         respond(false, 'DB Fehler: ' . mysqli_error($conn));
     }
-    while ($r = mysqli_fetch_assoc($result)) {
+    while ($r = ff_db_row_text(mysqli_fetch_assoc($result))) {
         $items[] = $r;
         $total += (float)$r['Betrag'];
     }
@@ -288,12 +293,12 @@ if ($rechnung_id <= 0) {
 if ($isProforma === 1 && $linesSnapshot !== null) {
     ff_db_query($conn, 'UPDATE rechnungen SET is_proforma=1, lines_json=? WHERE id=?', 'si', [$linesSnapshot, (int)$rechnung_id]);
 } else {
-    @mysqli_query($conn, "UPDATE rechnungen SET is_proforma=0, lines_json=NULL WHERE id=" . $rechnung_id);
+    ff_db_query($conn, 'UPDATE rechnungen SET is_proforma=0, lines_json=NULL WHERE id=?', 'i', [$rechnung_id]);
 }
 
 if ($linkRowids) {
     foreach ($items as $it) {
-        @mysqli_query($conn, 'UPDATE bestellungen SET rechnung_id=' . $rechnung_id . ' WHERE rowid=' . (int)$it['rowid']);
+        ff_db_query($conn, 'UPDATE bestellungen SET rechnung_id=? WHERE rowid=?', 'ii', [$rechnung_id, (int)$it['rowid']]);
     }
 }
 
@@ -313,14 +318,14 @@ if ($linkRowids && $items !== []) {
     }
 }
 if ($orderNrIns !== null && $orderNrIns > 0 && $rechnung_id > 0) {
-    @mysqli_query($conn, 'UPDATE rechnungen SET order_nr=' . $orderNrIns . ' WHERE id=' . $rechnung_id);
+    ff_db_query($conn, 'UPDATE rechnungen SET order_nr=? WHERE id=?', 'ii', [$orderNrIns, $rechnung_id]);
 }
 
 $thermoOk = false;
 $thermoEnqueueError = null;
 if ($thermoTarget > 0) {
-    $rFull = mysqli_query($conn, 'SELECT * FROM rechnungen WHERE id=' . $rechnung_id . ' LIMIT 1');
-    $rrow = $rFull ? mysqli_fetch_assoc($rFull) : null;
+    $rFull = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id=? LIMIT 1', 'i', [$rechnung_id]);
+    $rrow = $rFull ? ff_db_row_text(mysqli_fetch_assoc($rFull)) : null;
     if ($rrow) {
         $txt = ff_rechnung_build_thermal_text($conn, $rrow);
         if ($txt === '') {

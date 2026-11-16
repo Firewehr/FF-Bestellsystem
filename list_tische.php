@@ -179,11 +179,11 @@ require_once __DIR__ . '/include/user_landing.php';
             foreach ($tischRows as $t) {
                 $ids[] = (int)$t['tischnummer'];
             }
-            $in = implode(',', $ids);
+            [$in, $inT, $inV] = ff_db_in_ints($ids);
             $qOpen = 'SELECT b.tischnummer, COUNT(*) AS cnt FROM bestellungen b
                 INNER JOIN positionen p ON p.rowid = b.position
                 WHERE b.tischnummer IN (' . $in . ') AND ' . $openCond;
-            $rOpen = ff_db_query_parts($conn, $qOpen, $kellnerCountFilter, ' GROUP BY b.tischnummer');
+            $rOpen = ff_db_query_parts($conn, ff_db_frag($qOpen, $inT, $inV), $kellnerCountFilter, ' GROUP BY b.tischnummer');
             if ($rOpen) {
                 while ($or = mysqli_fetch_assoc($rOpen)) {
                     $openMap[(int)$or['tischnummer']] = ((int)$or['cnt'] > 0);
@@ -191,7 +191,7 @@ require_once __DIR__ . '/include/user_landing.php';
             }
             $qUnsent = 'SELECT b.tischnummer, COUNT(*) AS cnt FROM bestellungen b
                 WHERE b.tischnummer IN (' . $in . ') AND ' . ff_tisch_unsent_sql_condition('b');
-            $rUnsent = ff_db_query_parts($conn, $qUnsent, $kellnerCountFilter, ' GROUP BY b.tischnummer');
+            $rUnsent = ff_db_query_parts($conn, ff_db_frag($qUnsent, $inT, $inV), $kellnerCountFilter, ' GROUP BY b.tischnummer');
             if ($rUnsent) {
                 while ($ur = mysqli_fetch_assoc($rUnsent)) {
                     $unsentMap[(int) $ur['tischnummer']] = (int) ($ur['cnt'] ?? 0);

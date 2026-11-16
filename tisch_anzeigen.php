@@ -46,12 +46,12 @@ require_once __DIR__ . '/include/ff_sammelrechnung_helpers.php';
 require_once __DIR__ . '/include/menu_list_helpers.php';
 require_once __DIR__ . '/include/ff_schreibaus.php';
 
-$sql = "SELECT tischname, IFNULL(is_sammelrechnung,0) as is_sammelrechnung, IFNULL(is_ehrengast,0) as is_ehrengast FROM tische WHERE tischnummer=$Tischnummer";
-$result = mysqli_query($conn, $sql);
+$sql = 'SELECT tischname, IFNULL(is_sammelrechnung,0) as is_sammelrechnung, IFNULL(is_ehrengast,0) as is_ehrengast FROM tische WHERE tischnummer=?';
+$result = ff_db_query($conn, $sql, 'i', [$Tischnummer]);
 $tischname = "";
 $isSammelrechnung = 0;
 $isEhrengast = 0;
-while ($row = mysqli_fetch_assoc($result)) {
+while ($row = ff_db_row_text(mysqli_fetch_assoc($result))) {
     $tischname = $row['tischname'];
     $isSammelrechnung = (int)$row['is_sammelrechnung'];
     $isEhrengast = (int)$row['is_ehrengast'];

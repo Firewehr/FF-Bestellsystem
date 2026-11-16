@@ -82,8 +82,8 @@ if ($action === 'move') {
     }
 
     // Prüfen, ob Zieltisch existiert
-    $tCheck = mysqli_query($conn, 'SELECT tischnummer, tischname FROM tische WHERE tischnummer = ' . $targetTischnummer . ' LIMIT 1');
-    $tRow = $tCheck ? mysqli_fetch_assoc($tCheck) : null;
+    $tCheck = ff_db_query($conn, 'SELECT tischnummer, tischname FROM tische WHERE tischnummer = ? LIMIT 1', 'i', [$targetTischnummer]);
+    $tRow = $tCheck ? ff_db_row_text(mysqli_fetch_assoc($tCheck)) : null;
     if (!$tRow) {
         api_error("Zieltisch {$targetTischnummer} existiert nicht.", 'target_table_not_found', 404);
     }

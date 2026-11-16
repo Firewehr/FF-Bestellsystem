@@ -86,13 +86,15 @@ if ($rowids === []) {
 }
 
 // Druckziele der beteiligten Positionen bestimmen.
-$in = implode(',', array_map('intval', $rowids));
+[$in, $inT, $inV] = ff_db_in_ints($rowids);
 $targets = [];
-$tq = mysqli_query(
+$tq = ff_db_query(
     $conn,
     "SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS pt
        FROM bestellungen b JOIN positionen p ON p.rowid = b.position
-      WHERE b.rowid IN ({$in})"
+      WHERE b.rowid IN ({$in})",
+    $inT,
+    $inV
 );
 if ($tq) {
     while ($r = mysqli_fetch_assoc($tq)) {

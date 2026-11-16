@@ -215,13 +215,13 @@ function ff_verschieben_move_rowids(
             continue;
         }
 
-        $sql = "UPDATE bestellungen
-                SET tischnummer = {$zielTischnummer}
-                WHERE rowid = {$rowid}
-                  {$whereExtra}
-                LIMIT 1";
+        $sql = 'UPDATE bestellungen
+                SET tischnummer = ?
+                WHERE rowid = ?
+                  ' . $whereExtra . '
+                LIMIT 1';
 
-        if (mysqli_query($conn, $sql) && mysqli_affected_rows($conn) > 0) {
+        if (ff_db_query($conn, $sql, 'ii', [$zielTischnummer, $rowid]) && ff_db_affected_rows() > 0) {
             $moved++;
         } else {
             $skipped++;

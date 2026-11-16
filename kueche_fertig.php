@@ -25,7 +25,7 @@ if (empty($ids)) {
     exit;
 }
 
-$in = implode(',', array_keys($ids));
+[$in, $inT, $inV] = ff_db_in_ints(array_keys($ids));
 
 // Nur als fertig markieren (rechts anzeigen), NICHT ausgeliefert – das passiert bei "Bestellung abschließen".
 // print bleibt 0: Bon/Thermodruck erst nach „Gesamt Fertig“ (kueche_fertig_tisch.php setzt print=2).
@@ -35,7 +35,7 @@ $sql = "UPDATE `bestellungen` "
         . "`kueche`='1' "
         . "WHERE rowid IN (" . $in . ")";
 
-if (mysqli_query($conn, $sql)) {
+if (ff_db_query($conn, $sql, $inT, $inV)) {
     echo "Record updated successfully";
 } else {
     http_response_code(500);

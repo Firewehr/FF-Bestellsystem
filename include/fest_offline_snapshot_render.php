@@ -142,12 +142,12 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
                 $bonQuery = 'SELECT b.bon_id FROM bestellungen b INNER JOIN positionen po ON b.position = po.rowid '
                     . $joinSubPo
                     . 'WHERE b.tischnummer=999999 AND b.delete=0 AND b.ausgeliefert=0 '
-                    . 'AND (COALESCE(b.print_target, po.print_target) = ' . $print_target . ') ' . $kassaStationSqlPo
+                    . 'AND (COALESCE(b.print_target, po.print_target) = ?) ' . $kassaStationSqlPo
                     . "AND " . ff_sql_bestellung_batch_key('b') . "=? "
                     . 'AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 LIMIT 1';
-                $bonRes = ff_db_query($conn, $bonQuery, 's', [$batch_key]);
+                $bonRes = ff_db_query($conn, $bonQuery, 'is', [(int) $print_target, $batch_key]);
                 $bonId = '';
-                if ($bonRes && ($bonRow = mysqli_fetch_assoc($bonRes))) {
+                if ($bonRes && ($bonRow = ff_db_row_text(mysqli_fetch_assoc($bonRes)))) {
                     $bonId = (string) $bonRow['bon_id'];
                 }
                 if ($bonId !== '') {
@@ -175,7 +175,7 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
             $r2 = ff_db_query($conn, $sql2, 'is', [$tischnummer, $batch_key]);
             $openLines = 0;
             if ($r2) {
-                while ($row2 = mysqli_fetch_assoc($r2)) {
+                while ($row2 = ff_db_row_text(mysqli_fetch_assoc($r2))) {
                     $openLines++;
                     $zi = trim((string) ($row2['Zusatzinfo'] ?? ''));
                     echo '<li><strong>' . (int) $row2['anzahl'] . '×</strong> ' . $h($row2['Positionsname']);
@@ -200,7 +200,7 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
             $r3 = ff_db_query($conn, $qDone, 'is', [$tischnummer, $batch_key]);
             $doneLines = 0;
             if ($r3) {
-                while ($row3 = mysqli_fetch_assoc($r3)) {
+                while ($row3 = ff_db_row_text(mysqli_fetch_assoc($r3))) {
                     $doneLines++;
                     $zi = trim((string) ($row3['Zusatzinfo'] ?? ''));
                     echo '<li><strong>' . (int) $row3['anzahl'] . '×</strong> ' . $h($row3['Positionsname']);
@@ -222,14 +222,10 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
         }
 
         echo '<h4>Übersicht: noch offen (kueche=0) nach Artikel</h4><ul class="snap-sum">';
-        $sql6 = 'SELECT positionen.Positionsname, COUNT(*) AS anzahl '
-            . 'FROM positionen, bestellungen WHERE bestellungen.position=positionen.rowid AND bestellungen.kueche=0 AND bestellungen.delete=0 AND bestellungen.ausgeliefert=0 '
-            . 'AND (COALESCE(bestellungen.print_target, positionen.print_target) = ' . $print_target . ') '
-            . $kassaStationSql
-            . ' GROUP BY bestellungen.position ORDER BY anzahl DESC';
-        $q6 = mysqli_query($conn, $sql6);
+        $sql6 = 'SELECT positionen.Positionsname, COUNT(*) AS anzahl FROM positionen, bestellungen WHERE bestellungen.position=positionen.rowid AND bestellungen.kueche=0 AND bestellungen.delete=0 AND bestellungen.ausgeliefert=0 AND (COALESCE(bestellungen.print_target, positionen.print_target) = ?) ' . $kassaStationSql . ' GROUP BY bestellungen.position ORDER BY anzahl DESC';
+        $q6 = ff_db_query($conn, $sql6, 'i', [$print_target]);
         if ($q6 && mysqli_num_rows($q6) > 0) {
-            while ($row6 = mysqli_fetch_assoc($q6)) {
+            while ($row6 = ff_db_row_text(mysqli_fetch_assoc($q6))) {
                 echo '<li>' . (int) $row6['anzahl'] . '× ' . $h($row6['Positionsname']) . '</li>';
             }
         } else {

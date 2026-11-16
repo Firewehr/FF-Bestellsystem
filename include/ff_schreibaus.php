@@ -60,8 +60,8 @@ function ff_tisch_is_ehrengast(mysqli $conn, int $tischnummer): bool
     if ($tischnummer <= 0) {
         return false;
     }
-    $tres = @mysqli_query($conn, 'SELECT IFNULL(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer=' . (int) $tischnummer . ' LIMIT 1');
-    if ($tres && ($tr = mysqli_fetch_assoc($tres))) {
+    $tres = ff_db_query($conn, 'SELECT IFNULL(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int) $tischnummer]);
+    if ($tres && ($tr = ff_db_row_text(mysqli_fetch_assoc($tres)))) {
         return (int) ($tr['is_ehrengast'] ?? 0) === 1;
     }
 

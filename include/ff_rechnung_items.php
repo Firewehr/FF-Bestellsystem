@@ -34,14 +34,14 @@ function ff_rechnung_load_items_grouped(mysqli $conn, array $rechnungRow): array
     // unterschiedlichen Zusatzpositionen (z. B. 5 Schnitzel mit 5 Beilagen) als eigene
     // Zeilen erscheinen.
     $rechnung_id = $rid;
-    $ires = mysqli_query($conn, "SELECT p.Kurzbezeichnung, p.Positionsname, p.Betrag, b.Zusatzinfo, COUNT(*) AS cnt
+    $ires = ff_db_query($conn, "SELECT p.Kurzbezeichnung, p.Positionsname, p.Betrag, b.Zusatzinfo, COUNT(*) AS cnt
         FROM bestellungen b JOIN positionen p ON p.rowid=b.position
-        WHERE b.rechnung_id={$rechnung_id} AND b.delete=0
+        WHERE b.rechnung_id=? AND b.delete=0
         GROUP BY b.position, b.Zusatzinfo
-        ORDER BY p.Positionsname ASC, b.Zusatzinfo ASC");
+        ORDER BY p.Positionsname ASC, b.Zusatzinfo ASC", 'i', [(int) $rechnung_id]);
     $items = [];
     if ($ires) {
-        while ($ir = mysqli_fetch_assoc($ires)) {
+        while ($ir = ff_db_row_text(mysqli_fetch_assoc($ires))) {
             $items[] = [
                 'cnt' => (int)$ir['cnt'],
                 'name' => (string)($ir['Kurzbezeichnung'] ?: $ir['Positionsname'] ?? ''),
@@ -81,8 +81,8 @@ function ff_rechnung_build_thermal_text(mysqli $conn, array $rechnungRow): strin
     $tischnummer = (int)($r['tischnummer'] ?? 0);
     $tischname = '';
     if ($tischnummer > 0) {
-        $tres = @mysqli_query($conn, "SELECT tischname FROM tische WHERE tischnummer=" . $tischnummer . " LIMIT 1");
-        if ($tres && ($trow = mysqli_fetch_assoc($tres))) {
+        $tres = ff_db_query($conn, 'SELECT tischname FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$tischnummer]);
+        if ($tres && ($trow = ff_db_row_text(mysqli_fetch_assoc($tres)))) {
             $tischname = (string)($trow['tischname'] ?? '');
         }
     }
@@ -130,13 +130,9 @@ function ff_rechnung_build_thermal_text(mysqli $conn, array $rechnungRow): strin
     $onrList = [];
     $rid = (int)($r['id'] ?? 0);
     if ($rid > 0) {
-        $resOnr = @mysqli_query(
-            $conn,
-            'SELECT DISTINCT order_nr FROM bestellungen WHERE rechnung_id=' . $rid
-            . ' AND `delete`=0 AND order_nr IS NOT NULL AND order_nr > 0 ORDER BY order_nr ASC'
-        );
+        $resOnr = ff_db_query($conn, 'SELECT DISTINCT order_nr FROM bestellungen WHERE rechnung_id=? AND `delete`=0 AND order_nr IS NOT NULL AND order_nr > 0 ORDER BY order_nr ASC', 'i', [$rid]);
         if ($resOnr) {
-            while ($ro = mysqli_fetch_assoc($resOnr)) {
+            while ($ro = ff_db_row_text(mysqli_fetch_assoc($resOnr))) {
                 $onrList[] = (int)$ro['order_nr'];
             }
         }

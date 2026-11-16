@@ -201,18 +201,18 @@ function ff_station_bon_id_for_batch(mysqli $conn, string $batchKey, array $ctx)
         $pt = (int) ($ctx['print_target'] ?? 0);
         $sql = "SELECT b.bon_id FROM bestellungen b INNER JOIN positionen po ON b.position = po.rowid "
             . "WHERE b.tischnummer=999999 AND b.delete=0 AND b.ausgeliefert=0 "
-            . "AND (COALESCE(b.print_target, po.print_target) = {$pt}) "
+            . "AND (COALESCE(b.print_target, po.print_target) = ?) "
             . "AND {$bkExpr}=? "
             . "AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 LIMIT 1";
     } else {
         $ptype = (int) ($ctx['position_type'] ?? 1);
         $sql = "SELECT b.bon_id FROM bestellungen b JOIN positionen p ON b.position=p.rowid "
-            . "WHERE b.tischnummer=999999 AND b.`delete`=0 AND p.type={$ptype} "
+            . "WHERE b.tischnummer=999999 AND b.`delete`=0 AND p.type=? "
             . "AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 "
             . "AND {$bkExpr}=? ORDER BY b.zeitstempel DESC LIMIT 1";
     }
-    $bonRes = ff_db_query($conn, $sql, 's', [$batchKey]);
-    if ($bonRes && ($bonRow = mysqli_fetch_assoc($bonRes))) {
+    $bonRes = ff_db_query($conn, $sql, 'is', [$ctx['druckziel_mode'] ? $pt : $ptype, $batchKey]);
+    if ($bonRes && ($bonRow = ff_db_row_text(mysqli_fetch_assoc($bonRes)))) {
         return trim((string) ($bonRow['bon_id'] ?? ''));
     }
 

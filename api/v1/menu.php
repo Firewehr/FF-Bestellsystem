@@ -22,6 +22,9 @@ $festRes = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($festRes && ($fRow = mysqli_fetch_assoc($festRes))) {
     $activeFestId = (int)$fRow['id'];
 }
+// Fest-Filter als Parameter (nur wenn ein Fest aktiv ist)
+$festTypes = $activeFestId > 0 ? 'i' : '';
+$festParams = $activeFestId > 0 ? [$activeFestId] : [];
 
 // Wartezeiten berechnen
 $waitTimes = ['drink' => 0, 'food' => 0];
@@ -61,11 +64,11 @@ $subcategories = [];
 $subcategoriesMap = [];
 $subSql = 'SELECT id, type, name, sort_order, COALESCE(kassa_only, 0) AS kassa_only, COALESCE(tile_bg, "") AS tile_bg '
     . 'FROM position_subcategories '
-    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = {$activeFestId}) " : '')
+    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = ?) " : '')
     . 'ORDER BY type ASC, sort_order ASC, name ASC';
-$subRes = mysqli_query($conn, $subSql);
+$subRes = ff_db_query($conn, $subSql, $festTypes, $festParams);
 if ($subRes) {
-    while ($sRow = mysqli_fetch_assoc($subRes)) {
+    while ($sRow = ff_db_row_text(mysqli_fetch_assoc($subRes))) {
         $subId = (int)$sRow['id'];
         $cleanSubTile = ff_sanitize_category_tile_bg($sRow['tile_bg'] ?? null) ?: '';
         $subData = [
@@ -86,11 +89,11 @@ if ($subRes) {
 // 3. Beilagen & Zusatzinfos laden (pro Position zuordnen)
 $beilagenByPos = [];
 $bSql = 'SELECT rowid, name, position, COALESCE(betrag, 0) AS betrag FROM beilagen '
-    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = {$activeFestId}) " : '')
+    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = ?) " : '')
     . 'ORDER BY name ASC';
-$bRes = mysqli_query($conn, $bSql);
+$bRes = ff_db_query($conn, $bSql, $festTypes, $festParams);
 if ($bRes) {
-    while ($bRow = mysqli_fetch_assoc($bRes)) {
+    while ($bRow = ff_db_row_text(mysqli_fetch_assoc($bRes))) {
         $posId = (int)$bRow['position'];
         if (!isset($beilagenByPos[$posId])) {
             $beilagenByPos[$posId] = [];
@@ -111,11 +114,11 @@ $rSql = 'SELECT pr.position_id, pr.bestandteil_id, pr.menge, pr.optional_enabled
          FROM position_rezepturen pr
          INNER JOIN bestandteile b ON b.id = pr.bestandteil_id
          WHERE b.aktiv = 1 '
-    . ($activeFestId > 0 ? "AND (pr.fest_id IS NULL OR pr.fest_id = {$activeFestId}) " : '')
+    . ($activeFestId > 0 ? "AND (pr.fest_id IS NULL OR pr.fest_id = ?) " : '')
     . 'ORDER BY pr.position_id ASC, pr.reihenfolge ASC, pr.id ASC';
-$rRes = mysqli_query($conn, $rSql);
+$rRes = ff_db_query($conn, $rSql, $festTypes, $festParams);
 if ($rRes) {
-    while ($rRow = mysqli_fetch_assoc($rRes)) {
+    while ($rRow = ff_db_row_text(mysqli_fetch_assoc($rRes))) {
         $pId = (int)$rRow['position_id'];
         if (!isset($recipesByPos[$pId])) {
             $recipesByPos[$pId] = [];
@@ -145,16 +148,16 @@ $posSql = 'SELECT rowid, Positionsname, Kurzbezeichnung, Betrag, type, '
     . 'COALESCE(maxBestellbar, 0) AS maxBestellbar, '
     . 'COALESCE(kassa_only, 0) AS kassa_only '
     . 'FROM positionen '
-    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = {$activeFestId}) " : '')
+    . ($activeFestId > 0 ? "WHERE (fest_id IS NULL OR fest_id = ?) " : '')
     . 'ORDER BY type ASC, reihenfolge ASC, Positionsname ASC';
 
-$posRes = mysqli_query($conn, $posSql);
+$posRes = ff_db_query($conn, $posSql, $festTypes, $festParams);
 if (!$posRes) {
     api_error('Konnte Speisekarte nicht abfragen: ' . mysqli_error($conn), 'db_error', 500);
 }
 
 $items = [];
-while ($pRow = mysqli_fetch_assoc($posRes)) {
+while ($pRow = ff_db_row_text(mysqli_fetch_assoc($posRes))) {
     $posId = (int)$pRow['rowid'];
     $posType = (int)$pRow['type'];
     $subId = (int)$pRow['subcategory_id'];

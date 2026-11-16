@@ -31,8 +31,8 @@ if ($tischnummer <= 0 || count($myArray) === 0) {
 }
 
 // Sicherheit: nur wenn Tisch tatsächlich als Ehrengast markiert ist
-$tres = mysqli_query($conn, "SELECT is_ehrengast FROM tische WHERE tischnummer=" . $tischnummer . " LIMIT 1");
-$trow = $tres ? mysqli_fetch_assoc($tres) : null;
+$tres = ff_db_query($conn, 'SELECT is_ehrengast FROM tische WHERE tischnummer=? LIMIT 1', 'i', [$tischnummer]);
+$trow = $tres ? ff_db_row_text(mysqli_fetch_assoc($tres)) : null;
 if (!$trow || (int)($trow['is_ehrengast'] ?? 0) !== 1) {
     http_response_code(403);
     echo "not-allowed";
@@ -59,15 +59,14 @@ foreach ($myArray as $row) {
 }
 
 // Wie bei Sammelrechnung nach Bezahlung: keine offenen Posten mehr → Tisch wieder „normal“ (Ehrengast-Flag weg)
-$openSql = "SELECT COUNT(*) AS c FROM bestellungen WHERE `delete`=0 AND tischnummer=" . (int)$tischnummer
-    . " AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')";
-$openRes = mysqli_query($conn, $openSql);
+$openSql = 'SELECT COUNT(*) AS c FROM bestellungen WHERE `delete`=0 AND tischnummer=? AND (timestampBezahlung IS NULL OR timestampBezahlung=\'0000-00-00 00:00:00\')';
+$openRes = ff_db_query($conn, $openSql, 'i', [(int)$tischnummer]);
 $stillOpen = 1;
-if ($openRes && ($ow = mysqli_fetch_assoc($openRes))) {
+if ($openRes && ($ow = ff_db_row_text(mysqli_fetch_assoc($openRes)))) {
     $stillOpen = (int)$ow['c'];
 }
 if ($stillOpen === 0) {
-    @mysqli_query($conn, 'UPDATE tische SET is_ehrengast=0 WHERE tischnummer=' . (int)$tischnummer . ' LIMIT 1');
+    ff_db_query($conn, 'UPDATE tische SET is_ehrengast=0 WHERE tischnummer=? LIMIT 1', 'i', [(int)$tischnummer]);
 }
 
 mysqli_close($conn);

@@ -73,14 +73,8 @@ $betrag = 0.0;
 $print_target = 11;
 $maxBestellbar = 0;
 $isKassaOnly = false;
-$res = mysqli_query(
-    $conn,
-    'SELECT p.Betrag, p.type, COALESCE(p.print_target, 11) AS print_target, COALESCE(p.maxBestellbar, 0) AS maxBestellbar, '
-    . 'COALESCE(p.kassa_only, 0) AS kassa_only, COALESCE(s.kassa_only, 0) AS sub_kassa_only '
-    . 'FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id '
-    . 'WHERE p.rowid=' . (int) $positionsid . ' LIMIT 1'
-);
-if ($res && ($row = mysqli_fetch_assoc($res))) {
+$res = ff_db_query($conn, 'SELECT p.Betrag, p.type, COALESCE(p.print_target, 11) AS print_target, COALESCE(p.maxBestellbar, 0) AS maxBestellbar, COALESCE(p.kassa_only, 0) AS kassa_only, COALESCE(s.kassa_only, 0) AS sub_kassa_only FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id WHERE p.rowid=? LIMIT 1', 'i', [(int) $positionsid]);
+if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
     $betrag = (float)$row['Betrag'];
     $print_target = isset($row['print_target']) ? (int) $row['print_target'] : 11;
     $maxBestellbar = (int)($row['maxBestellbar'] ?? 0);
@@ -225,10 +219,11 @@ try {
             }
         }
         if (!empty($lockIds)) {
-            $lockSql = 'SELECT id, kapazitaet FROM bestandteile WHERE id IN (' . implode(',', $lockIds) . ') FOR UPDATE';
-            $lockRes = mysqli_query($conn, $lockSql);
+            [$lockIn, $lockT, $lockV] = ff_db_in_ints($lockIds);
+            $lockSql = 'SELECT id, kapazitaet FROM bestandteile WHERE id IN (' . $lockIn . ') FOR UPDATE';
+            $lockRes = ff_db_query($conn, $lockSql, $lockT, $lockV);
             if ($lockRes) {
-                while ($lRow = mysqli_fetch_assoc($lockRes)) {
+                while ($lRow = ff_db_row_text(mysqli_fetch_assoc($lockRes))) {
                     $lId = (int) $lRow['id'];
                     if (isset($componentsById[$lId])) {
                         $componentsById[$lId]['kapazitaet'] = (int) $lRow['kapazitaet'];
@@ -260,8 +255,8 @@ try {
         }
     } else {
         if ($maxBestellbar > 0) {
-            $lockPos = mysqli_query($conn, 'SELECT rowid, maxBestellbar FROM positionen WHERE rowid = ' . (int) $positionsid . ' FOR UPDATE');
-            if ($lockPos && ($lpRow = mysqli_fetch_assoc($lockPos))) {
+            $lockPos = ff_db_query($conn, 'SELECT rowid, maxBestellbar FROM positionen WHERE rowid = ? FOR UPDATE', 'i', [(int) $positionsid]);
+            if ($lockPos && ($lpRow = ff_db_row_text(mysqli_fetch_assoc($lockPos)))) {
                 $maxBestellbar = (int) ($lpRow['maxBestellbar'] ?? $maxBestellbar);
                 mysqli_free_result($lockPos);
             }

@@ -32,20 +32,20 @@ $selectedTotal = 0.0;
 if ($hasRowSelection) {
     ff_bestellungen_ensure_rechnung_id_column($conn);
     ff_bestellungen_ensure_is_gratis_column($conn);
-    $in = implode(',', array_map('intval', $selectedRowIds));
+    [$in, $inT, $inV] = ff_db_in_ints($selectedRowIds);
     $sqlSel = "SELECT b.rowid, p.Positionsname, b.Zusatzinfo,
             COALESCE(NULLIF(b.betrag, 0), p.Betrag) AS betrag
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
-            WHERE b.rowid IN ($in) AND b.tischnummer=" . (int) $tischnummer . "
+            WHERE b.rowid IN ($in) AND b.tischnummer=?
               AND b.`delete`=0
               AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung<>'0000-00-00 00:00:00'
               AND (b.is_gratis IS NULL OR b.is_gratis=0)
               AND (b.rechnung_id IS NULL OR b.rechnung_id=0)";
-    $resSel = mysqli_query($conn, $sqlSel);
+    $resSel = ff_db_query($conn, $sqlSel, $inT . 'i', array_merge($inV, [(int) $tischnummer]));
     if ($resSel) {
-        while ($sr = mysqli_fetch_assoc($resSel)) {
-            $selectedPositions[] = $sr;
+        while ($sr = ff_db_row_text(mysqli_fetch_assoc($resSel))) {
+            $selectedPositions[] = ff_db_row_text($sr);
             $selectedTotal += (float) ($sr['betrag'] ?? 0);
         }
     }

@@ -138,7 +138,7 @@ if (!$aktivesFest) {
 
 $offeneBestellungen = [];
 
-$offeneSql = "
+$offeneSql = '
     SELECT
         b.position,
         p.Positionsname,
@@ -147,28 +147,25 @@ $offeneSql = "
     FROM bestellungen b
     LEFT JOIN positionen p
         ON p.rowid = b.position
-    WHERE b.tischnummer = " . (int)$tischnummer . "
+    WHERE b.tischnummer = ?
       AND b.delete = 0
-      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
+      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = \'0000-00-00 00:00:00\')
       AND b.ausgeliefert = 0
       AND b.timestampBestellung IS NOT NULL
-      AND b.timestampBestellung <> '0000-00-00 00:00:00'
+      AND b.timestampBestellung <> \'0000-00-00 00:00:00\'
     GROUP BY
         b.position,
         p.Positionsname
     ORDER BY
         bestellt_um DESC,
         p.Positionsname
-";
+';
 
-$offeneResult = mysqli_query(
-    $conn,
-    $offeneSql
-);
+$offeneResult = ff_db_query($conn, $offeneSql, 'i', [(int)$tischnummer]);
 
 if ($offeneResult) {
 
-    while ($row = mysqli_fetch_assoc($offeneResult)) {
+    while ($row = ff_db_row_text(mysqli_fetch_assoc($offeneResult))) {
 
         $bestelltUm = '';
 

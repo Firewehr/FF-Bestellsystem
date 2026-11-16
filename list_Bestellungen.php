@@ -67,7 +67,7 @@ try {
                    bestellungen.timestampAuslieferung
             FROM bestellungen
             LEFT JOIN positionen ON positionen.rowid = bestellungen.position
-            WHERE bestellungen.tischnummer = " . (int) $Tischnummer;
+            WHERE bestellungen.tischnummer = ?";
 
     /* 70 aktiv + 30 storniert (neueste jeweils), damit Stornos nicht vom Limit verdrängt werden. */
     $rowsById = [];
@@ -75,12 +75,12 @@ try {
         if (!$res) {
             return;
         }
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $rowsById[(int) ($row['rowid'] ?? 0)] = $row;
         }
     };
-    $mergeHist(mysqli_query($conn, $histSelect . " AND bestellungen.`delete` = 0 ORDER BY bestellungen.zeitstempel DESC LIMIT 70"));
-    $mergeHist(mysqli_query($conn, $histSelect . " AND bestellungen.`delete` = 1 ORDER BY bestellungen.zeitstempel DESC LIMIT 30"));
+    $mergeHist(ff_db_query($conn, $histSelect . " AND bestellungen.`delete` = 0 ORDER BY bestellungen.zeitstempel DESC LIMIT 70", 'i', [(int) $Tischnummer]));
+    $mergeHist(ff_db_query($conn, $histSelect . " AND bestellungen.`delete` = 1 ORDER BY bestellungen.zeitstempel DESC LIMIT 30", 'i', [(int) $Tischnummer]));
 
     $rows = array_values($rowsById);
     usort($rows, static function (array $a, array $b): int {

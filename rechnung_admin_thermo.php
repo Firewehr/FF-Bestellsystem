@@ -36,8 +36,8 @@ if (!isset($validTargets[$printTarget])) {
     exit;
 }
 
-$res = mysqli_query($conn, 'SELECT * FROM rechnungen WHERE id=' . $id . ' LIMIT 1');
-$row = $res ? mysqli_fetch_assoc($res) : null;
+$res = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id=? LIMIT 1', 'i', [$id]);
+$row = $res ? ff_db_row_text(mysqli_fetch_assoc($res)) : null;
 if (!$row) {
     echo json_encode(['ok' => false, 'error' => 'Rechnung nicht gefunden'], JSON_UNESCAPED_UNICODE);
     exit;

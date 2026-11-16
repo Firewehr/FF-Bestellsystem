@@ -141,11 +141,11 @@ if (!$aktivesFest) {
 
 $offeneBestellungen = [];
 
-$offeneSql = "
+$offeneSql = '
     SELECT
         COALESCE(
             CAST(b.order_nr AS CHAR),
-            CONCAT('zeit_', b.timestampBestellung)
+            CONCAT(\'zeit_\', b.timestampBestellung)
         ) AS bestellgruppe,
         MAX(b.order_nr) AS bestellnummer,
         b.position,
@@ -158,32 +158,29 @@ $offeneSql = "
     FROM bestellungen b
     LEFT JOIN positionen p
         ON p.rowid = b.position
-    WHERE b.tischnummer = " . (int)$tischnummer . "
+    WHERE b.tischnummer = ?
       AND b.delete = 0
-      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
+      AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = \'0000-00-00 00:00:00\')
       AND b.ausgeliefert = 0
       AND b.timestampBestellung IS NOT NULL
-      AND b.timestampBestellung <> '0000-00-00 00:00:00'
+      AND b.timestampBestellung <> \'0000-00-00 00:00:00\'
     GROUP BY
         COALESCE(
             CAST(b.order_nr AS CHAR),
-            CONCAT('zeit_', b.timestampBestellung)
+            CONCAT(\'zeit_\', b.timestampBestellung)
         ),
         b.position,
         p.Positionsname
     ORDER BY
         bestellt_um DESC,
         p.Positionsname
-";
+';
 
-$offeneResult = mysqli_query(
-    $conn,
-    $offeneSql
-);
+$offeneResult = ff_db_query($conn, $offeneSql, 'i', [(int)$tischnummer]);
 
 if ($offeneResult) {
 
-    while ($row = mysqli_fetch_assoc($offeneResult)) {
+    while ($row = ff_db_row_text(mysqli_fetch_assoc($offeneResult))) {
 
         $bestelltUm = '';
 
@@ -279,7 +276,7 @@ foreach ($offeneBestellungen as $bestellung) {
 
 $recentOrdersForStatus = [];
 
-$recentOrdersSql = "
+$recentOrdersSql = '
     SELECT
         b.order_nr,
         MIN(b.timestampBestellung) AS bestellt_um,
@@ -290,9 +287,9 @@ $recentOrdersSql = "
         MAX(b.kueche) AS max_kueche,
         MIN(b.ausgeliefert) AS min_ausgeliefert,
         MAX(b.ausgeliefert) AS max_ausgeliefert,
-        MIN(CASE WHEN b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00' THEN 0 ELSE 1 END) AS ist_bezahlt
+        MIN(CASE WHEN b.timestampBezahlung IS NULL OR b.timestampBezahlung = \'0000-00-00 00:00:00\' THEN 0 ELSE 1 END) AS ist_bezahlt
     FROM bestellungen b
-    WHERE b.tischnummer = " . (int)$tischnummer . "
+    WHERE b.tischnummer = ?
       AND b.delete = 0
       AND b.order_nr IS NOT NULL
       AND b.order_nr > 0
@@ -300,12 +297,12 @@ $recentOrdersSql = "
     GROUP BY b.order_nr
     ORDER BY MAX(b.timestampBestellung) DESC, b.order_nr DESC
     LIMIT 5
-";
+';
 
-$recentOrdersRes = mysqli_query($conn, $recentOrdersSql);
+$recentOrdersRes = ff_db_query($conn, $recentOrdersSql, 'i', [(int)$tischnummer]);
 
 if ($recentOrdersRes) {
-    while ($rRow = mysqli_fetch_assoc($recentOrdersRes)) {
+    while ($rRow = ff_db_row_text(mysqli_fetch_assoc($recentOrdersRes))) {
         $recentOrdersForStatus[] = $rRow;
     }
 }

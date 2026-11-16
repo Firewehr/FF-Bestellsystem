@@ -30,8 +30,8 @@ if ($chk && mysqli_num_rows($chk) === 0) {
 
 $targetName = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
 if ($targetName === '') {
-    $res = mysqli_query($conn, 'SELECT name FROM print_targets WHERE print_target=' . $print_target . ' LIMIT 1');
-    if ($res && ($row = mysqli_fetch_assoc($res))) {
+    $res = ff_db_query($conn, 'SELECT name FROM print_targets WHERE print_target=? LIMIT 1', 'i', [$print_target]);
+    if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         $targetName = (string) ($row['name'] ?? '');
     }
 }
@@ -70,10 +70,7 @@ $summaryTitleEsc = htmlspecialchars($summaryTitle, ENT_QUOTES, 'UTF-8');
 
 $showSummaryTop = setting_get($conn, 'station_summary_top', '1') === '1';
 $showSummaryRight = setting_get($conn, 'station_summary_right', '1') === '1';
-$forecastTargetResult = mysqli_query(
-    $conn,
-    'SELECT 1 FROM positionen WHERE type=1 AND kassa_only=0 AND print_target=' . (int) $print_target . ' LIMIT 1'
-);
+$forecastTargetResult = ff_db_query($conn, 'SELECT 1 FROM positionen WHERE type=1 AND kassa_only=0 AND print_target=? LIMIT 1', 'i', [(int) $print_target]);
 $showForecast = $forecastTargetResult && mysqli_num_rows($forecastTargetResult) > 0;
 if ($forecastTargetResult) {
     mysqli_free_result($forecastTargetResult);

@@ -19,7 +19,7 @@ $ptJs = (int) $print_target;
 
 require_once __DIR__ . '/include/ff_station_history.php';
 
-$ptFilter = ' AND (COALESCE(bestellungen.print_target, positionen.print_target) = ' . $ptJs . ') ';
+$ptFilter = ff_db_frag(' AND (COALESCE(bestellungen.print_target, positionen.print_target) = ?) ', 'i', [$ptJs]);
 $backOnclick = "if(typeof DruckzielAnsicht==='function'){DruckzielAnsicht(" . $ptJs . ",'');}return false;";
 ff_station_history_render(
     $conn,

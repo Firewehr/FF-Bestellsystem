@@ -81,9 +81,9 @@ function ff_substation_compute(mysqli $conn, array $cfg): array
     if ($cfg['positions'] === []) {
         return $result;
     }
-    $idList = implode(',', array_map('intval', $cfg['positions']));
+    [$idList, $idT, $idV] = ff_db_in_ints($cfg['positions']);
     $batchKey = ff_sql_bestellung_batch_key('b');
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
         "SELECT {$batchKey} AS batch_key, b.position AS position_id, p.Positionsname AS name, COUNT(*) AS qty, "
         . "MIN(COALESCE(NULLIF(b.timestampBestellung, '0000-00-00 00:00:00'), b.zeitstempel)) AS sent_at, "
@@ -93,7 +93,9 @@ function ff_substation_compute(mysqli $conn, array $cfg): array
         . 'AND b.kueche = 0 '
         . 'AND (b.bestellt = 1 OR b.tischnummer = 999999) '
         . "AND b.position IN ({$idList}) "
-        . 'GROUP BY batch_key, b.position, p.Positionsname'
+        . 'GROUP BY batch_key, b.position, p.Positionsname',
+        $idT,
+        $idV
     );
     if (!$res) {
         throw new RuntimeException('Bestellungen konnten nicht geladen werden.');
@@ -121,13 +123,15 @@ function ff_substation_compute(mysqli $conn, array $cfg): array
     $posName = [];
     $recipes = [];
     if ($cfg['components'] !== []) {
-        $compList = implode(',', array_map('intval', $cfg['components']));
-        $rr = mysqli_query(
+        [$compList, $compT, $compV] = ff_db_in_ints($cfg['components']);
+        $rr = ff_db_query(
             $conn,
             'SELECT r.position_id, bt.name, SUM(r.menge) AS menge FROM position_rezepturen r '
             . 'JOIN bestandteile bt ON bt.id = r.bestandteil_id '
             . "WHERE r.position_id IN ({$idList}) AND r.bestandteil_id IN ({$compList}) "
-            . 'AND (r.optional_enabled = 0 OR r.default_selected = 1) GROUP BY r.position_id, bt.name'
+            . 'AND (r.optional_enabled = 0 OR r.default_selected = 1) GROUP BY r.position_id, bt.name',
+            $idT . $compT,
+            array_merge($idV, $compV)
         );
         while ($rr && ($x = mysqli_fetch_assoc($rr))) {
             $recipes[(int) $x['position_id']][(string) $x['name']] = (float) $x['menge'];

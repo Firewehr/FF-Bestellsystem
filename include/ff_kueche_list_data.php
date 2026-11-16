@@ -22,12 +22,18 @@ function ff_kueche_load_station_lines(mysqli $conn, int $positionType = 1, int $
     $batchKeySql = ff_sql_bestellung_batch_key('b');
     $printTarget = (int) $printTarget;
     $whereScope = 'b.`delete` = 0 AND b.ausgeliefert = 0 ';
+    $scopeTypes = '';
+    $scopeParams = [];
     if ($printTarget > 0) {
-        $whereScope .= 'AND (COALESCE(b.print_target, p.print_target) = ' . $printTarget . ') ';
+        $whereScope .= 'AND (COALESCE(b.print_target, p.print_target) = ?) ';
+        $scopeTypes .= 'i';
+        $scopeParams[] = $printTarget;
         // Druckziel: alle nicht ausgelieferten Zeilen (offen/fertig in Station über zeitKueche in der Anzeige)
     } else {
         $positionType = $positionType === 2 ? 2 : 1;
-        $whereScope .= 'AND p.type = ' . $positionType . ' ';
+        $whereScope .= 'AND p.type = ? ';
+        $scopeTypes .= 'i';
+        $scopeParams[] = $positionType;
         $whereScope .= "AND (b.kueche = 0 OR (b.kueche = 1 AND b.zeitKueche IS NOT NULL AND b.zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00'))) ";
     }
 
@@ -50,14 +56,14 @@ function ff_kueche_load_station_lines(mysqli $conn, int $positionType = 1, int $
         . ff_position_sql_station_visible('p', 's')
         . 'ORDER BY b.zeitstempel ASC';
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $scopeTypes, $scopeParams);
     if ($res === false) {
         return ['__error' => mysqli_error($conn)];
     }
 
     $lines = [];
     while ($row = mysqli_fetch_assoc($res)) {
-        $lines[] = $row;
+        $lines[] = ff_db_row_text($row);
     }
 
     return $lines;
@@ -71,13 +77,8 @@ function ff_station_waiting_count_by_type(mysqli $conn, int $positionType): int
 {
     require_once __DIR__ . '/ff_position_kassa_helpers.php';
     $positionType = $positionType === 2 ? 2 : 1;
-    $res = mysqli_query(
-        $conn,
-        'SELECT COUNT(*) AS anzahl FROM bestellungen b JOIN positionen p ON b.position = p.rowid '
-        . 'WHERE p.type = ' . $positionType . ' AND b.`delete` = 0 AND b.kueche = 0'
-        . ff_position_sql_station_visible('p')
-    );
-    if ($res && ($row = mysqli_fetch_assoc($res))) {
+    $res = ff_db_query($conn, 'SELECT COUNT(*) AS anzahl FROM bestellungen b JOIN positionen p ON b.position = p.rowid WHERE p.type = ? AND b.`delete` = 0 AND b.kueche = 0' . ff_position_sql_station_visible('p'), 'i', [$positionType]);
+    if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         return (int) ($row['anzahl'] ?? 0);
     }
 
@@ -91,13 +92,15 @@ function ff_druckziel_waiting_count(mysqli $conn, int $printTarget): int
     if ($printTarget <= 0) {
         return 0;
     }
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
         'SELECT COUNT(*) AS anzahl FROM bestellungen b JOIN positionen p ON b.position = p.rowid '
         . 'LEFT JOIN position_subcategories s ON s.id = p.subcategory_id '
         . 'WHERE b.`delete` = 0 AND b.ausgeliefert = 0 '
-        . 'AND (COALESCE(b.print_target, p.print_target) = ' . $printTarget . ')'
-        . ff_position_sql_station_visible('p', 's')
+        . 'AND (COALESCE(b.print_target, p.print_target) = ?)'
+        . ff_position_sql_station_visible('p', 's'),
+        'i',
+        [$printTarget]
     );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         return (int) ($row['anzahl'] ?? 0);
@@ -118,7 +121,7 @@ function ff_druckziel_station_revision(mysqli $conn, int $printTarget): string
     if ($pt <= 0) {
         return '0';
     }
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
         'SELECT COUNT(*) AS total, '
         . 'SUM(CASE WHEN b.tischnummer = 999999 AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung IN (\'0000-00-00 00:00:00\', \'1970-01-01 00:00:00\')) THEN 1 ELSE 0 END) AS dv_unpaid, '
@@ -132,10 +135,12 @@ function ff_druckziel_station_revision(mysqli $conn, int $printTarget): string
         . 'FROM bestellungen b JOIN positionen p ON b.position = p.rowid '
         . 'LEFT JOIN position_subcategories s ON s.id = p.subcategory_id '
         . 'WHERE b.`delete` = 0 AND b.ausgeliefert = 0 '
-        . 'AND (COALESCE(b.print_target, p.print_target) = ' . $pt . ')'
-        . ff_position_sql_station_visible('p', 's')
+        . 'AND (COALESCE(b.print_target, p.print_target) = ?)'
+        . ff_position_sql_station_visible('p', 's'),
+        'i',
+        [$pt]
     );
-    if (!$res || !($row = mysqli_fetch_assoc($res))) {
+    if (!$res || !($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         return '0';
     }
 

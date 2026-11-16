@@ -23,7 +23,14 @@ function ff_finance_fest_count(mysqli $conn): int
 function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
 {
     static $cached = null;
+    static $cachedFestId = 0;
     if ($cached !== null) {
+        if ($cachedFestId > 0) {
+            // Sitzungsvariable gilt pro Verbindung: bei jedem Aufruf neu setzen (z. B. nach Reconnect)
+            $lastDb = $GLOBALS['__ff_db_last'] ?? null;
+            ff_db_query($conn, 'SET @ff_fest_id = ?', 'i', [$cachedFestId]);
+            $GLOBALS['__ff_db_last'] = $lastDb;
+        }
         return str_replace('__ALIAS__', $alias, $cached);
     }
     $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
@@ -46,6 +53,7 @@ function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
         $lastDb = $GLOBALS['__ff_db_last'] ?? null;
         ff_db_query($conn, 'SET @ff_fest_id = ?', 'i', [$festId]);
         $GLOBALS['__ff_db_last'] = $lastDb; // affected_rows/insert_id des Aufrufers nicht überschreiben
+        $cachedFestId = $festId;
         if (ff_finance_fest_count($conn) <= 1) {
             $cached = ' AND (__ALIAS__.fest_id = @ff_fest_id OR __ALIAS__.fest_id IS NULL)';
         } else {

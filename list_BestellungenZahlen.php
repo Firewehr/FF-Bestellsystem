@@ -54,8 +54,8 @@ if ($requirePaymentRequested && $Tischnummer > 0) {
     $paymentModeHdr = ff_aktiver_payment_mode($conn);
     $isEhrengastHdr = 0;
     $isSammelrechnungHdr = 0;
-    $tresHdr = @mysqli_query($conn, 'SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=' . (int) $Tischnummer . ' LIMIT 1');
-    if ($tresHdr && ($trowHdr = mysqli_fetch_assoc($tresHdr))) {
+    $tresHdr = ff_db_query($conn, 'SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int) $Tischnummer]);
+    if ($tresHdr && ($trowHdr = ff_db_row_text(mysqli_fetch_assoc($tresHdr)))) {
         $isEhrengastHdr = (int) ($trowHdr['is_ehrengast'] ?? 0);
         $isSammelrechnungHdr = (int) ($trowHdr['is_sammelrechnung'] ?? 0);
     }
@@ -477,9 +477,9 @@ try {
     // Tisch-Flags (Ehrengast / Sammelrechnung)
     $isEhrengast = 0;
     $isSammelrechnung = 0;
-    $tres = mysqli_query($conn, "SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=" . (int)$Tischnummer . " LIMIT 1");
+    $tres = ff_db_query($conn, 'SELECT is_ehrengast, IFNULL(is_sammelrechnung,0) AS is_sammelrechnung FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int)$Tischnummer]);
     if ($tres) {
-        $trow = mysqli_fetch_assoc($tres);
+        $trow = ff_db_row_text(mysqli_fetch_assoc($tres));
         $isEhrengast = (int)($trow['is_ehrengast'] ?? 0);
         $isSammelrechnung = (int)($trow['is_sammelrechnung'] ?? 0);
     } else {
@@ -500,10 +500,10 @@ try {
 
     $openCond = ff_tisch_open_pay_sql_condition($conn, (int) $Tischnummer, $paymentMode);
 
-    $sql = "
+    $sql = '
         SELECT
             COALESCE(b.betrag, p.Betrag) AS betrag,
-            COALESCE(NULLIF(TRIM(p.Positionsname), ''), '(Position nicht gefunden)') AS Positionsname,
+            COALESCE(NULLIF(TRIM(p.Positionsname), \'\'), \'(Position nicht gefunden)\') AS Positionsname,
             b.Zusatzinfo,
             b.zeitKueche,
             b.zeitstempel,
@@ -512,13 +512,13 @@ try {
             IFNULL(b.order_nr, 0) AS order_nr
         FROM bestellungen b
         LEFT JOIN positionen p ON p.rowid = b.position
-        WHERE b.tischnummer=" . (int)$Tischnummer . "
-          AND {$openCond}
+        WHERE b.tischnummer=?
+          AND ' . $openCond . '
         ORDER BY b.zeitstempel ASC
         LIMIT 300
-    ";
+    ';
 
-    $result = mysqli_query($conn, $sql);
+    $result = ff_db_query($conn, $sql, 'i', [(int)$Tischnummer]);
     if (!$result) {
         $id = pay_log_error('Query failed: bestellungen zahlen', mysqli_error($conn));
         echo '<div class="ui-body ui-body-a">Fehler beim Laden der Zahlungsansicht. (' . htmlspecialchars($id) . ')</div>';
@@ -812,8 +812,8 @@ try {
     $payDataOrders = htmlspecialchars(json_encode($ridOrderNr), ENT_QUOTES, 'UTF-8');
     $payModeEsc = htmlspecialchars($paymentMode, ENT_QUOTES, 'UTF-8');
     $payTischName = '';
-    $rtn = @mysqli_query($conn, 'SELECT tischname FROM tische WHERE tischnummer=' . (int)$Tischnummer . ' LIMIT 1');
-    if ($rtn && ($rowTn = mysqli_fetch_assoc($rtn))) {
+    $rtn = ff_db_query($conn, 'SELECT tischname FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int)$Tischnummer]);
+    if ($rtn && ($rowTn = ff_db_row_text(mysqli_fetch_assoc($rtn)))) {
         $payTischName = trim((string)$rowTn['tischname']);
     }
     echo '<div id="PayData" data-tischname="' . htmlspecialchars($payTischName, ENT_QUOTES, 'UTF-8') . '" data-array="' . $payDataArray . '" data-amounts="' . $payDataAmounts . '" data-orders="' . $payDataOrders . '" data-payment-mode="' . $payModeEsc . '" data-tischnummer="' . (int)$Tischnummer . '" style="display:none"></div>';

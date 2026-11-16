@@ -67,11 +67,15 @@ function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): 
     ff_rezepturen_ensure_schema($conn);
 
     $ids = array_values(array_unique(array_filter(array_map('intval', $bestandteilIds), static fn(int $id): bool => $id > 0)));
-    $filter = $ids === [] ? '' : ' WHERE consumed.id IN (' . implode(',', $ids) . ')';
-    $staffFilter = $ids === [] ? '' : ' AND pr.bestandteil_id IN (' . implode(',', $ids) . ')';
+    // IN-Liste mit Platzhaltern; leer = kein Filter
+    [$idIn, $idT, $idV] = ff_db_in_ints($ids);
+    $filter = $ids === [] ? '' : ' WHERE consumed.id IN (' . $idIn . ')';
+    $staffFilter = $ids === [] ? '' : ' AND pr.bestandteil_id IN (' . $idIn . ')';
+    $filterT = $ids === [] ? '' : $idT;
+    $filterV = $ids === [] ? [] : $idV;
     $consumed = [];
 
-    $orders = @mysqli_query(
+    $orders = ff_db_query(
         $conn,
         'SELECT consumed.id, COALESCE(SUM(consumed.qty), 0) AS qty
          FROM (
@@ -88,7 +92,9 @@ function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): 
              WHERE b.`delete` = 0 AND snap.bestellung_rowid IS NULL
                AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
          ) consumed' . $filter . '
-         GROUP BY consumed.id'
+         GROUP BY consumed.id',
+        $filterT,
+        $filterV
     );
     if ($orders) {
         while ($row = mysqli_fetch_assoc($orders)) {
@@ -100,13 +106,15 @@ function ff_bestandteil_consumed_map(mysqli $conn, array $bestandteilIds = []): 
     }
 
     if (ff_position_mv_table_exists($conn)) {
-        $staffMeals = @mysqli_query(
+        $staffMeals = ff_db_query(
             $conn,
             'SELECT pr.bestandteil_id AS id, COALESCE(SUM(v.menge * pr.menge), 0) AS qty
              FROM mitarbeiter_verpflegung v
              JOIN position_rezepturen pr ON pr.position_id = v.position_id
              WHERE (pr.optional_enabled = 0 OR pr.default_selected = 1)' . $staffFilter . '
-             GROUP BY pr.bestandteil_id'
+             GROUP BY pr.bestandteil_id',
+            $filterT,
+            $filterV
         );
         if ($staffMeals) {
             while ($row = mysqli_fetch_assoc($staffMeals)) {
@@ -131,7 +139,7 @@ function ff_position_consumed_orders(mysqli $conn, int $positionId, array $order
 
     $res = ff_db_query_parts(
         $conn,
-        'SELECT COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0 AND `position`=' . (int) $positionId,
+        ff_db_frag('SELECT COUNT(*) AS cnt FROM `bestellungen` WHERE `delete`=0 AND `position`=?', 'i', [(int) $positionId]),
         $orderExtraWhere
     );
     if ($res && ($row = mysqli_fetch_assoc($res))) {
@@ -147,9 +155,9 @@ function ff_position_consumed_mv(mysqli $conn, int $positionId): int
         return 0;
     }
 
-    $sql = 'SELECT COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung WHERE position_id=' . (int) $positionId;
-    $res = mysqli_query($conn, $sql);
-    if ($res && ($row = mysqli_fetch_assoc($res))) {
+    $sql = 'SELECT COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung WHERE position_id=?';
+    $res = ff_db_query($conn, $sql, 'i', [(int) $positionId]);
+    if ($res && ($row = ff_db_row_text(mysqli_fetch_assoc($res)))) {
         return (int) ($row['cnt'] ?? 0);
     }
 
@@ -211,7 +219,7 @@ function ff_mv_batch_counts_for_datum(mysqli $conn, string $datum, int $bereichI
 
     $res = ff_db_query($conn, $sql, $types, $params);
     if ($res) {
-        while ($row = mysqli_fetch_assoc($res)) {
+        while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $map[(int) $row['position_id']] = (int) ($row['cnt'] ?? 0);
         }
     }
@@ -300,8 +308,8 @@ function ff_position_recipe_components(mysqli $conn, int $positionId): array
     $sql = 'SELECT pr.bestandteil_id, pr.menge, b.name, b.kapazitaet
             FROM position_rezepturen pr
             INNER JOIN bestandteile b ON b.id = pr.bestandteil_id
-            WHERE pr.position_id = ' . (int) $positionId . ' AND b.aktiv = 1 AND b.kapazitaet > 0 AND pr.menge > 0';
-    $res = mysqli_query($conn, $sql);
+            WHERE pr.position_id = ? AND b.aktiv = 1 AND b.kapazitaet > 0 AND pr.menge > 0';
+    $res = ff_db_query($conn, $sql, 'i', [(int) $positionId]);
     if (!$res) {
         return [];
     }
@@ -346,20 +354,20 @@ function ff_bestandteil_consumed_total(mysqli $conn, int $bestandteilId): float
                 FROM bestellungen b
                 JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
                 JOIN bestellung_rezeptur_komponenten rc ON rc.bestellung_rowid = b.rowid
-                    AND rc.bestandteil_id = ' . (int) $bestandteilId . ' AND rc.selected = 1
+                    AND rc.bestandteil_id = ? AND rc.selected = 1
                 WHERE b.`delete` = 0
                 UNION ALL
                 SELECT pr.menge AS qty
                 FROM bestellungen b
                 JOIN position_rezepturen pr ON pr.position_id = b.position
-                    AND pr.bestandteil_id = ' . (int) $bestandteilId . '
+                    AND pr.bestandteil_id = ?
                 LEFT JOIN bestellung_rezeptur_snapshots snap ON snap.bestellung_rowid = b.rowid
                 WHERE b.`delete` = 0 AND snap.bestellung_rowid IS NULL
                   AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
             ) consumed';
-    $res = @mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, 'ii', [(int) $bestandteilId, (int) $bestandteilId]);
     if ($res) {
-        if ($row = mysqli_fetch_assoc($res)) {
+        if ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
             $consumed += (float) ($row['cnt'] ?? 0);
         }
         @mysqli_free_result($res);
@@ -371,11 +379,11 @@ function ff_bestandteil_consumed_total(mysqli $conn, int $bestandteilId): float
         $sql2 = 'SELECT COALESCE(SUM(v.menge * pr.menge), 0) AS cnt
                 FROM mitarbeiter_verpflegung v
                 JOIN position_rezepturen pr ON pr.position_id = v.position_id
-                WHERE pr.bestandteil_id = ' . (int) $bestandteilId . '
+                WHERE pr.bestandteil_id = ?
                   AND (pr.optional_enabled = 0 OR pr.default_selected = 1)';
-        $res2 = @mysqli_query($conn, $sql2);
+        $res2 = ff_db_query($conn, $sql2, 'i', [(int) $bestandteilId]);
         if ($res2) {
-            if ($row2 = mysqli_fetch_assoc($res2)) {
+            if ($row2 = ff_db_row_text(mysqli_fetch_assoc($res2))) {
                 $consumed += (float) ($row2['cnt'] ?? 0);
             }
             @mysqli_free_result($res2);

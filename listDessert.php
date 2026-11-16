@@ -26,11 +26,7 @@ while ($rowww = mysqli_fetch_assoc($resulttt)) {
     $rid = (int) $rowww['rowid'];
     echo '<button type="button" class="ui-btn ui-corner-all" onclick="saveBestellung(' . $rid . ',2,' . $Tischnummer . ');"';
 
-    $result4 = mysqli_query(
-        $conn,
-        'SELECT COUNT(*) AS cnt FROM bestellungen WHERE tischnummer=' . $Tischnummer
-        . ' AND kueche=0 AND `delete`=0 AND position=' . $rid
-    );
+    $result4 = ff_db_query($conn, 'SELECT COUNT(*) AS cnt FROM bestellungen WHERE tischnummer=? AND kueche=0 AND `delete`=0 AND position=?', 'ii', [$Tischnummer, $rid]);
 
     $Colour = 'white';
     $cnt = '';

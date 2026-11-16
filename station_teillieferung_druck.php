@@ -38,24 +38,24 @@ if ($tischnummer <= 0 || $rowids === []) {
     exit;
 }
 
-$in = implode(',', $rowids);
+[$in, $inT, $inV] = ff_db_in_ints($rowids);
 $sql = "UPDATE bestellungen SET "
     . "print = 3, "   // 3 = Teillieferung angefordert (ohne Sibling-Filter in print_target.php)
     . "print_status = 0, "
     . "kueche = 1 "
     . "WHERE rowid IN ($in) "
-    . "AND tischnummer = " . (int) $tischnummer . " "
+    . "AND tischnummer = ? "
     . "AND `delete` = 0 "
     . "AND ausgeliefert = 0 "
     . "AND COALESCE(print_status, 0) = 0 "
     . "AND (kueche = 1 OR (zeitKueche IS NOT NULL AND zeitKueche NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')))";
 
-if (!mysqli_query($conn, $sql)) {
+if (!ff_db_query($conn, $sql, $inT . 'i', array_merge($inV, [(int) $tischnummer]))) {
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);
     exit;
 }
 
-$n = (int) mysqli_affected_rows($conn);
+$n = ff_db_affected_rows();
 if ($n <= 0) {
     echo json_encode([
         'ok' => false,
@@ -66,11 +66,13 @@ if ($n <= 0) {
 }
 ff_event_notifications_evaluate_rows($conn, $rowids, 'station_teillieferung_druck.php');
 
-$targetRes = mysqli_query(
+$targetRes = ff_db_query(
     $conn,
     'SELECT DISTINCT COALESCE(b.print_target, p.print_target, 11) AS print_target '
     . 'FROM bestellungen b JOIN positionen p ON p.rowid = b.position '
-    . 'WHERE b.rowid IN (' . $in . ') AND b.tischnummer = ' . (int) $tischnummer
+    . 'WHERE b.rowid IN (' . $in . ') AND b.tischnummer = ?',
+    $inT . 'i',
+    array_merge($inV, [(int) $tischnummer])
 );
 if ($targetRes) {
     $printTargets = [];
