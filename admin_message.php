@@ -61,7 +61,7 @@ if ($message) {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Admin-Meldung</title>
-    <link href="assets/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
 </head>
 <body class="p-3">
 <div class="container" style="max-width: 720px;">

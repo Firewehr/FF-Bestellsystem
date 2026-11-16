@@ -481,9 +481,9 @@ if ($embed) {
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Speisekarte sperren – Admin</title>
     <?php echo ff_favicon_link_tags(null); ?>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="style.css" rel="stylesheet">
-    <link href="admin.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('style.css'); ?>" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('admin.css'); ?>" rel="stylesheet">
 </head>
 <body class="admin-page">
 <nav class="navbar navbar-expand admin-navbar">
@@ -496,6 +496,6 @@ if ($embed) {
 <div class="admin-content">
     <?php echo $menuLocksBody; ?>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?php echo ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js'); ?>"></script>
 </body>
 </html>

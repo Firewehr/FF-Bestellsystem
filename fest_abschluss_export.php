@@ -137,9 +137,9 @@ header('Content-Type: text/html; charset=utf-8');
     <title>Festabschluss <?php echo $festTitel; ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <?php echo ff_favicon_link_tags($conn); ?>
-    <link href="assets/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">
-    <link href="style.css" rel="stylesheet">
-    <link href="admin.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('style.css'); ?>" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('admin.css'); ?>" rel="stylesheet">
     <style>
         .fest-abschluss-gesamt {
             font-size: 1.1rem;
@@ -267,6 +267,6 @@ header('Content-Type: text/html; charset=utf-8');
     </div>
     <?php endif; ?>
 </div>
-<script src="assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js"></script>
+<script src="<?php echo ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js'); ?>"></script>
 </body>
 </html>

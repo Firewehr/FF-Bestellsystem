@@ -1659,9 +1659,8 @@
                 if (startNativeScanner()) return;
             } catch (e) {}
             var urls = [
-                'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js',
-                'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js',
-                'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js'
+                // lokal (keine CDNs im Festzelt, siehe AGENTS.md)
+                'assets/html5-qrcode-2.3.8.min.js'
             ];
             var tryLoad = function(i) {
                 if (i >= urls.length) {
@@ -1808,11 +1807,10 @@
         if (!fi || !fi.files || fi.files.length === 0) { alert('Bitte eine Bilddatei auswählen.'); return; }
         var file = fi.files[0];
         if (typeof Html5Qrcode === 'undefined') {
-            // Try to load library then scan (jsDelivr then unpkg)
+            // Try to load library (local copy) then scan
             var urls = [
-                'https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js',
-                'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/dist/html5-qrcode.min.js',
-                'https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js'
+                // lokal (keine CDNs im Festzelt, siehe AGENTS.md)
+                'assets/html5-qrcode-2.3.8.min.js'
             ];
             var tryLoadFile = function(i) {
                 if (i >= urls.length) { alert('QR‑Bibliothek konnte nicht geladen werden.'); return; }

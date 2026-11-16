@@ -176,8 +176,7 @@ while ($row = mysqli_fetch_assoc($result)) {
         Erzeugt die QR-Codes direkt im Browser.
     -->
 
-    <script src="assets/qrcode.min.js"></script>
-    <script>if (!window.QRCode) document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>');</script>
+    <script src="<?php echo ff_asset_url('assets/qrcode.min.js'); ?>"></script>
 
 
     <style>

@@ -253,10 +253,10 @@ $ffStyleCssMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'style.css');
 $ffAdminCssMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'admin.css');
 $ffStyleCssQs = $ffStyleCssMtime ? ('?v=' . (int)$ffStyleCssMtime) : '';
 $ffAdminCssQs = $ffAdminCssMtime ? ('?v=' . (int)$ffAdminCssMtime) : '';
-echo '<link href="assets/bootstrap-5.3.2/css/bootstrap.min.css" rel="stylesheet">';
+echo '<link href="' . ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css') . '" rel="stylesheet">';
 echo '<link href="style.css' . htmlspecialchars($ffStyleCssQs, ENT_QUOTES, 'UTF-8') . '" rel="stylesheet">';
 echo '<link href="admin.css' . htmlspecialchars($ffAdminCssQs, ENT_QUOTES, 'UTF-8') . '" rel="stylesheet">';
-echo '<script src="assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js"></script>';
+echo '<script src="' . ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js') . '"></script>';
 $ffAdminMainJsMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'admin_main.js');
 $ffAdminMainJsQs = $ffAdminMainJsMtime ? ('?v=' . (int)$ffAdminMainJsMtime) : '';
 echo '<script>window.ffIsSuperAdmin=' . json_encode((bool)$isSuperAdmin, JSON_UNESCAPED_UNICODE)
@@ -268,9 +268,9 @@ echo '<script defer src="js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js
 $ffAdminFinJsMtime = @filemtime(__DIR__ . DIRECTORY_SEPARATOR . 'js' . DIRECTORY_SEPARATOR . 'admin_finance.js');
 $ffAdminFinJsQs = $ffAdminFinJsMtime ? ('?v=' . (int)$ffAdminFinJsMtime) : '';
 echo '<script defer src="js/admin_finance.js' . htmlspecialchars($ffAdminFinJsQs, ENT_QUOTES, 'UTF-8') . '"></script>';
-echo '<script defer src="js/webauthn.js"></script>';
-echo '<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>';
-echo '<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>';
+echo '<script defer src="' . ff_asset_url('js/webauthn.js') . '"></script>';
+echo '<script defer src="' . ff_asset_url('assets/qrcode.min.js') . '"></script>';
+echo '<script defer src="' . ff_asset_url('assets/chart-4.4.1.umd.js') . '"></script>';
 echo '</head>';
 echo '<body class="admin-page">';
 ?>

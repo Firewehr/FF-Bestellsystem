@@ -848,7 +848,7 @@ if ($ff_favicon === '' || !file_exists(__DIR__ . '/' . $ff_favicon)) {
     </div>
 
     <script src="<?php echo htmlspecialchars($ffBsJs, ENT_QUOTES, 'UTF-8'); ?>"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="<?php echo ff_asset_url('assets/html5-qrcode-2.3.8.min.js'); ?>"></script>
     <script src="js/app.js?v=<?php echo @filemtime(__DIR__ . '/js/app.js') ?: '1'; ?>"></script>
     <script src="js/station_forecast.js?v=<?php echo @filemtime(__DIR__ . '/js/station_forecast.js') ?: '1'; ?>"></script>
     <script>

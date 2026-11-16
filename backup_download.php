@@ -14,7 +14,7 @@ if (!isset($_SESSION['admin']) || (int) $_SESSION['admin'] < 1) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Offline-Sicherung &amp; Notfall</title>
     <?php echo ff_favicon_link_tags(null); ?>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { background: #f1f5f9; padding: 1rem 1rem 2rem; }
         .card { border: none; box-shadow: 0 2px 12px rgba(0,0,0,.08); }

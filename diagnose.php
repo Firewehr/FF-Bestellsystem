@@ -36,7 +36,7 @@ if($pdo){
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Diagnose</title>
     <?php echo ff_favicon_link_tags($conn ?? null); ?>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { background: #f0f2f5; }
         .app-navbar { background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important; }
@@ -72,6 +72,6 @@ if($pdo){
     <a href="admin.php" class="btn btn-primary">Zurück zum Admin</a>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?php echo ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js'); ?>"></script>
 </body>
 </html>

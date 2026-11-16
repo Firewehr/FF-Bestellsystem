@@ -100,7 +100,7 @@ $ffPwaJsHref = 'js/pwa.js?v=' . (int) (@filemtime(__DIR__ . '/js/pwa.js') ?: 1);
     <meta name="theme-color" content="#991b1b">
     <script src="<?php echo htmlspecialchars($ffPwaJsHref, ENT_QUOTES, 'UTF-8'); ?>"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body.login-feuerwehr-page {
             min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
@@ -296,7 +296,7 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     </script>
     <script src="js/pwa.js?v=<?php echo @filemtime(__DIR__ . '/js/pwa.js') ?: '1'; ?>"></script>
     <?php echo ff_favicon_link_tags($conn); ?>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body.login-feuerwehr-page {
             min-height: 100vh; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
@@ -359,7 +359,7 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
             </div>
         </form>
     </div>
-    <script src="js/webauthn.js"></script>
+    <script src="<?php echo ff_asset_url('js/webauthn.js'); ?>"></script>
     <script>
     (function() {
         var btn = document.getElementById('ffPasskeyLoginBtn');

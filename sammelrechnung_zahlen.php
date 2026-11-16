@@ -29,7 +29,7 @@ if (count($tables) < 1) {
     <?php echo ff_favicon_link_tags($conn); ?>
     <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
     <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     </style>
@@ -74,7 +74,7 @@ if ($badTables !== []) {
     <?php echo ff_favicon_link_tags($conn); ?>
     <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
     <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { background: #f0f2f5; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
     </style>
@@ -151,7 +151,7 @@ $sessionUser = (string) ($_SESSION['user']['username'] ?? '');
     <?php echo ff_favicon_link_tags($conn); ?>
     <meta name="csrf-token" content="<?php echo htmlspecialchars(ff_csrf_token(), ENT_QUOTES, 'UTF-8'); ?>">
     <script>window.FF_CSRF_TOKEN = <?php echo json_encode(ff_csrf_token()); ?>;</script>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { background: #f0f2f5; }
         .app-navbar { background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%) !important; }
@@ -230,7 +230,7 @@ $sessionUser = (string) ($_SESSION['user']['username'] ?? '');
     <?php endif; ?>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="<?php echo ff_asset_url('assets/bootstrap-5.3.2/js/bootstrap.bundle.min.js'); ?>"></script>
 <script>
 var rowIds = <?php
     $rowIdList = [];

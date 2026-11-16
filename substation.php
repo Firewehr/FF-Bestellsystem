@@ -272,7 +272,7 @@ if (!$isScopedAccess && $station !== '' && isset($config[$station])) {
             <div class="small text-muted" id="ssQrStatus" role="status"></div>
         </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="<?php echo ff_asset_url('assets/qrcode.min.js'); ?>"></script>
     <?php endif; ?>
     <div class="ss-chips" id="ssChips"></div>
     <div class="ss-grid" id="ssList"

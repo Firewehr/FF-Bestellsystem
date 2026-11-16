@@ -2833,6 +2833,39 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
             return null;
         });
+
+        $g = 'Code-Hygiene';
+
+        $check($g, 'Keine CDN-Skripte/-Stylesheets im Live-Betrieb (Fremdbibliotheken liegen unter assets/)', function (mysqli $c) {
+            $root = dirname(__DIR__);
+            $skipDirs = ['.git', '.agents', 'documentation', 'archiv', 'backups', 'uploads', 'Client-Print-Skripte', 'esp8266_grillhuhn_client', 'node_modules', 'tools'];
+            $hits = [];
+            $it = new RecursiveIteratorIterator(
+                new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                    static function (SplFileInfo $f) use ($skipDirs): bool {
+                        return !$f->isDir() || !in_array($f->getFilename(), $skipDirs, true);
+                    }
+                )
+            );
+            foreach ($it as $f) {
+                $ext = strtolower($f->getExtension());
+                if (!in_array($ext, ['php', 'html', 'js'], true) || strpos($f->getPathname(), '/assets/') !== false) {
+                    continue;
+                }
+                $src = (string) @file_get_contents($f->getPathname());
+                // HTML: script-src / link-href auf http(s); JS: dynamisch nachgeladene CDN-URLs
+                $pattern = $ext === 'js'
+                    ? '~[\'"]https?://(?:cdn\.|cdnjs\.|unpkg\.com|ajax\.googleapis|code\.jquery)[^\'"]*[\'"]~i'
+                    : '~(?:<script[^>]*\ssrc|<link[^>]*\shref)=\\\\?[\'"]https?://[^\'"]+~i';
+                if (preg_match_all($pattern, $src, $m)) {
+                    foreach ($m[0] as $hit) {
+                        $hits[] = substr($f->getPathname(), strlen($root) + 1) . ': ' . $hit;
+                    }
+                }
+            }
+            return $hits === [] ? null : 'Externe Einbindung gefunden: ' . implode(' | ', array_slice($hits, 0, 5));
+        });
     } finally {
         mysqli_rollback($conn);
     }

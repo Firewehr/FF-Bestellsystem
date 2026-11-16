@@ -19,7 +19,7 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Passkey anlegen – <?php echo htmlspecialchars($ffAppTitle, ENT_QUOTES, 'UTF-8'); ?></title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="<?php echo ff_asset_url('assets/bootstrap-5.3.2/css/bootstrap.min.css'); ?>" rel="stylesheet">
     <style>
         body { min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; background: #eef2f7; padding: 1.5rem; box-sizing: border-box; }
         .ff-card { background: #fff; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.12); padding: 2rem; max-width: 420px; width: 100%; }
@@ -43,7 +43,7 @@ $ffAppTitle = (isset($conn) && $conn instanceof mysqli) ? ff_app_title($conn) : 
             <button type="button" class="btn btn-primary w-100" id="ffRemoteAddBtn">Passkey jetzt anlegen</button>
         <?php endif; ?>
     </div>
-    <script src="js/webauthn.js"></script>
+    <script src="<?php echo ff_asset_url('js/webauthn.js'); ?>"></script>
     <script>
     (function() {
         var token = <?php echo json_encode($token, JSON_UNESCAPED_UNICODE); ?>;
