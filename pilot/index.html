@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="../pwa-icon-192.png">
   
-  <link rel="stylesheet" href="style.css?v=20261115_8">
+  <link rel="stylesheet" href="style.css?v=20261115_9">
 </head>
 <body>
   <div id="app" v-cloak><!-- Klassen has-cart / has-pay-bar setzt app.js (Einhänge-Element) -->
@@ -395,22 +395,40 @@
             </div>
 
             <div class="round-card-body">
-              <div v-for="(it, iIdx) in r.items" :key="iIdx" class="round-item-line">
-                <div>
-                  <span :style="{ textDecoration: it.is_cancelled ? 'line-through' : 'none' }">
-                    {{ it.name }}
-                  </span>
-                  <div v-if="it.zusatzinfo" class="round-item-notes">✎ {{ it.zusatzinfo }}</div>
+              <!-- Gleiche Positionen gebündelt („15× Kotelett“) -->
+              <div v-for="g in groupRoundItems(r)" :key="g.key" class="round-item-group" :class="{ 'is-cancelled': g.is_cancelled }">
+                <div class="round-item-line">
+                  <div class="round-item-main">
+                    <span class="round-item-qty" :class="{ 'is-multi': g.qty > 1 }">{{ g.qty }}×</span>
+                    <span class="round-item-text">
+                      <span class="round-item-name">{{ g.name }}<span v-if="g.is_cancelled" class="round-item-cancel-tag"> storniert</span></span>
+                      <span v-if="g.zusatzinfo" class="round-item-notes">✎ {{ g.zusatzinfo }}</span>
+                      <span v-if="g.qty > 1" class="round-item-unit">je {{ formatPrice(g.price) }}</span>
+                    </span>
+                  </div>
+                  <div class="round-item-side">
+                    <span class="round-item-total">{{ formatPrice(g.total) }}</span>
+                    <button 
+                      v-if="g.can_cancel && !g.is_cancelled && !r.is_cancelled && historyStorno.key !== g.key" 
+                      class="round-btn danger" 
+                      :title="g.qty > 1 ? 'Positionen stornieren' : 'Diese Position stornieren'"
+                      @click="openGroupStorno(g)">
+                      🗑
+                    </button>
+                  </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <span style="font-weight:700;">{{ formatPrice(it.price) }}</span>
-                  <button 
-                    v-if="it.can_cancel && !r.is_cancelled" 
-                    class="round-btn danger" 
-                    title="Diese Position stornieren"
-                    @click="cancelSingleItem(it)">
-                    🗑
-                  </button>
+                <!-- Mengenwahl fürs Stornieren -->
+                <div v-if="historyStorno.key === g.key" class="round-storno-picker">
+                  <span class="round-storno-label">Wie viele stornieren?</span>
+                  <span class="pay-row-controls">
+                    <button class="pay-qty-btn" :disabled="historyStorno.qty <= 1" @click="historyStorno.qty--">−</button>
+                    <span class="pay-qty-val">{{ historyStorno.qty }} / {{ g.qty }}</span>
+                    <button class="pay-qty-btn" :disabled="historyStorno.qty >= g.qty" @click="historyStorno.qty++">+</button>
+                  </span>
+                  <span class="round-storno-actions">
+                    <button type="button" class="round-btn" @click="closeGroupStorno">Abbrechen</button>
+                    <button type="button" class="round-btn danger round-storno-go" @click="confirmGroupStorno(g)">🗑 {{ historyStorno.qty }} stornieren</button>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1483,6 +1501,6 @@
 
   </div>
 
-  <script type="module" src="app.js?v=20261115_6"></script>
+  <script type="module" src="app.js?v=20261115_8"></script>
 </body>
 </html>

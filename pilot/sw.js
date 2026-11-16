@@ -4,17 +4,16 @@
  * die App auch bei unterbrochenem Festzelt-WLAN sofort geöffnet werden kann.
  */
 
-const CACHE_NAME = 'ff-pilot-v52';
+const CACHE_NAME = 'ff-pilot-v55';
 const APP_SHELL = [
   './index.html',
   './app.js',
-  './app.js?v=20261101_2',
-  './app.js?v=20261115_6',
+  './app.js?v=20261115_8',
   './api.js',
   './admin.html',
   './admin.js?v=20261115_7',
   './style.css',
-  './style.css?v=20261115_8',
+  './style.css?v=20261115_9',
   './station.html',
   './station.js',
   './station.js?v=10',

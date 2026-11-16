@@ -1021,6 +1021,16 @@ createApp({
       if (mode === 'same' && portions.value.length > 1) {
         const srcIdx = optionsViewMode.value === 'tabs' ? activePortionIndex.value : 0;
         const differs = portions.value.some(p => portionKey(p) !== portionKey(portions.value[srcIdx]));
+        // Unterschiedliche Wünsche würden überschrieben → vorher nachfragen
+        if (differs) {
+          const kept = getPortionSummary(portions.value[srcIdx]);
+          const ok = confirm(
+            `Die ${portions.value.length} Portionen haben unterschiedliche Angaben.\n\n`
+            + `Bei „Alle gleich“ gilt Portion ${srcIdx + 1} (${kept}) für alle – die übrigen Angaben gehen verloren.\n\n`
+            + 'Trotzdem umschalten?'
+          );
+          if (!ok) return;
+        }
         copyPortionToAll(srcIdx, false);
         if (differs) showToast(`Angaben von Portion ${srcIdx + 1} gelten jetzt für alle`, '📋', 1800);
         activePortionIndex.value = 0;
@@ -2314,6 +2324,72 @@ createApp({
       }
     };
 
+    // Historie: gleiche Positionen einer Runde bündeln („15× Kotelett“) statt 15 Zeilen.
+    // Schlüssel: Artikel, Preis, Zusatzinfo und Status – nur wirklich Gleiches wird zusammengefasst.
+    const groupRoundItems = (round) => {
+      const groups = [];
+      const byKey = new Map();
+      (round.items || []).forEach(it => {
+        const key = [it.position_id, Number(it.price).toFixed(2), it.zusatzinfo || '', it.is_cancelled ? 1 : 0, it.is_paid ? 1 : 0, it.can_cancel ? 1 : 0].join('|');
+        let g = byKey.get(key);
+        if (!g) {
+          g = { key: (round.batch_key || '') + '|' + key, name: it.name, zusatzinfo: it.zusatzinfo || '', price: Number(it.price) || 0, is_cancelled: !!it.is_cancelled, can_cancel: !!it.can_cancel, rowids: [] };
+          byKey.set(key, g);
+          groups.push(g);
+        }
+        g.rowids.push(it.rowid);
+      });
+      groups.forEach(g => { g.qty = g.rowids.length; g.total = g.qty * g.price; });
+      return groups;
+    };
+
+    // Mengenwahl beim Storno einer Gruppe (nur bei mehr als einer Position)
+    const historyStorno = ref({ key: '', qty: 1 });
+    const openGroupStorno = (g) => {
+      if (g.qty <= 1) {
+        cancelHistoryRows(g.rowids, `Position "${g.name}" wirklich stornieren?`);
+        return;
+      }
+      historyStorno.value = { key: g.key, qty: 1 };
+    };
+    const closeGroupStorno = () => { historyStorno.value = { key: '', qty: 1 }; };
+    const confirmGroupStorno = (g) => {
+      const n = Math.min(Math.max(1, Number(historyStorno.value.qty) || 1), g.qty);
+      // Die zuletzt erfassten Positionen der Gruppe stornieren
+      const rowids = g.rowids.slice(-n);
+      closeGroupStorno();
+      cancelHistoryRows(rowids, null, n);
+    };
+
+    const cancelHistoryRows = async (rowids, confirmText = null, count = rowids.length) => {
+      if (confirmText && !confirm(confirmText)) return;
+      try {
+        const res = await fetch('../api/v1/order_actions.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken.value,
+          },
+          body: JSON.stringify({
+            action: 'storno',
+            tischnummer: selectedTable.value.tischnummer,
+            rowids,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          vibrate(50);
+          showToast(count === 1 ? 'Position storniert' : `${count} Positionen storniert`, '✓', 2500);
+          loadTableHistory();
+          loadTables();
+        } else {
+          showToast(data.message || 'Storno fehlgeschlagen', '✕');
+        }
+      } catch (e) {
+        showToast('Netzwerkfehler: ' + e.message, '✕');
+      }
+    };
+
     const cancelSingleItem = async (item) => {
       if (!confirm(`Position "${item.name}" wirklich stornieren?`)) {
         return;
@@ -2747,6 +2823,11 @@ createApp({
       confirmSumupReturn,
       cancelOrderRound,
       cancelSingleItem,
+      groupRoundItems,
+      historyStorno,
+      openGroupStorno,
+      closeGroupStorno,
+      confirmGroupStorno,
       openMoveDialog,
       filteredMoveTargetTables,
       executeMove,
