@@ -1426,18 +1426,18 @@
           <div class="toolbar">
             <h3 style="font-size: 1.1rem; font-weight: 700;">Integrierte Selbsttests (Automatisierte Suite)</h3>
             <button type="button" class="btn btn-primary" :disabled="isRunningTests" @click="runSelftests">
-              {{ isRunningTests ? 'Führe Tests aus…' : 'Alle 68 Tests jetzt starten' }}
+              {{ isRunningTests ? 'Führe Tests aus…' : (testResults ? 'Alle ' + testResults.total + ' Tests erneut starten' : 'Alle Tests jetzt starten') }}
             </button>
           </div>
 
           <div v-if="testResults" class="admin-card">
             <div class="card-header">
               <h3>
-                <span>{{ testResults.ok ? '✅' : '❌' }}</span>
+                <span>{{ testResults.tests_ok ? '✅' : '❌' }}</span>
                 <span>{{ testResults.passed }} von {{ testResults.total }} Tests bestanden</span>
               </h3>
-              <span class="badge" :class="testResults.ok ? 'badge-success' : 'badge-danger'">
-                {{ testResults.ok ? 'Alle Bestanden' : testResults.failed + ' Fehler' }}
+              <span class="badge" :class="testResults.tests_ok ? 'badge-success' : 'badge-danger'">
+                {{ testResults.tests_ok ? 'Alle bestanden' : testResults.failed + ' Fehler' }}
               </span>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -3573,6 +3573,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261116_1"></script>
+  <script type="module" src="admin.js?v=20261116_2"></script>
 </body>
 </html>

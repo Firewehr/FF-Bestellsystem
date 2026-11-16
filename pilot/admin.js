@@ -2883,7 +2883,7 @@ createApp({
           body: { action: 'run_tests' },
         });
         testResults.value = res;
-        if (res.ok) {
+        if (res.tests_ok) {
           showToast(`Alle ${res.passed} Selbsttests erfolgreich bestanden!`);
         } else {
           showToast(`${res.failed} von ${res.total} Selbsttests fehlgeschlagen!`, 'warning');

@@ -3499,11 +3499,16 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return $hits === [] ? null : 'Externe Einbindung gefunden: ' . implode(' | ', array_slice($hits, 0, 5));
         });
 
-        $check($g, 'include/db.php enthält nur die Verbindung (wird nicht deployt; Helfer in ff_db_helpers.php)', function (mysqli $c) {
+        $check($g, 'DB-Helfer kommen aus ff_db_helpers.php (include/db.php wird nicht deployt)', function (mysqli $c) {
+            // Auf Servern liegt absichtlich eine ältere db.php (mit eigenen, abgesicherten Funktionen).
+            // Geprüft wird daher: Jede Funktion aus db.php gibt es auch in ff_db_helpers.php – nichts
+            // existiert nur in db.php –, und runtime_bootstrap.php lädt die Helfer.
             $root = dirname(__DIR__);
-            $src = (string) @file_get_contents($root . '/include/db.php');
-            if (preg_match_all('/^\s*function\s+(\w+)/m', $src, $m)) {
-                return 'Funktionen in db.php (kommen auf Servern nicht an): ' . implode(', ', $m[1]);
+            preg_match_all('/^\s*function\s+(\w+)/m', (string) @file_get_contents($root . '/include/db.php'), $m);
+            preg_match_all('/^\s*function\s+(\w+)/m', (string) @file_get_contents($root . '/include/ff_db_helpers.php'), $h);
+            $onlyInDb = array_values(array_diff($m[1], $h[1]));
+            if ($onlyInDb !== []) {
+                return 'Nur in db.php definiert (kommt auf Servern nicht an): ' . implode(', ', $onlyInDb);
             }
             $boot = (string) @file_get_contents($root . '/include/runtime_bootstrap.php');
             return strpos($boot, 'ff_db_helpers.php') !== false ? null : 'runtime_bootstrap.php lädt ff_db_helpers.php nicht';

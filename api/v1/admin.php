@@ -2153,8 +2153,11 @@ if ($action === 'run_tests') {
             'detail' => (string)($r['detail'] ?? ''),
         ];
     }
+    // ok = Anfrage erfolgreich; ob alle Tests bestanden sind, steht in tests_ok. Mit ok=false würde der
+    // Pilot-Client die Antwort als Fehler werten („HTTP-Fehler 200“) und die Ergebnisse nicht anzeigen.
     api_response([
-        'ok' => empty($results['failed']),
+        'ok' => true,
+        'tests_ok' => empty($results['failed']),
         'passed' => (int)($results['passed'] ?? 0),
         'failed' => (int)($results['failed'] ?? 0),
         'total' => (int)(($results['passed'] ?? 0) + ($results['failed'] ?? 0)),
