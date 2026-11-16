@@ -96,13 +96,14 @@ function ff_verschieben_user_owns_row(mysqli $conn, int $rowid, string $currentU
     if ($rowid <= 0 || $currentUser === '') {
         return false;
     }
-    $userEsc = mysqli_real_escape_string($conn, $currentUser);
-    $res = mysqli_query(
+    $res = ff_db_query(
         $conn,
-        "SELECT 1 FROM bestellungen
-         WHERE rowid = {$rowid}
-           AND (kellner = '{$userEsc}' OR kellnerZahlung = '{$userEsc}')
-         LIMIT 1"
+        'SELECT 1 FROM bestellungen
+         WHERE rowid = ?
+           AND (kellner = ? OR kellnerZahlung = ?)
+         LIMIT 1',
+        'iss',
+        [$rowid, $currentUser, $currentUser]
     );
 
     return $res && (bool) mysqli_fetch_row($res);
@@ -154,19 +155,24 @@ function ff_verschieben_resolve_order_rowids(
         return [];
     }
 
-    $where = "tischnummer = {$sourceTischnummer} AND `delete` = 0";
+    $where = 'tischnummer = ? AND `delete` = 0';
+    $types = 'i';
+    $params = [(int) $sourceTischnummer];
     if ($orderNr > 0) {
-        $where .= ' AND order_nr = ' . $orderNr;
+        $where .= ' AND order_nr = ?';
+        $types .= 'i';
+        $params[] = (int) $orderNr;
     } elseif ($batchTimestamp !== '') {
-        $btEsc = mysqli_real_escape_string($conn, $batchTimestamp);
-        $where .= " AND timestampBestellung = '{$btEsc}'";
+        $where .= ' AND timestampBestellung = ?';
+        $types .= 's';
+        $params[] = $batchTimestamp;
     } else {
         return [];
     }
 
     $extra = ff_verschieben_where_extra($paymentMode);
     $sql = "SELECT rowid, kellner, kellnerZahlung FROM bestellungen WHERE {$where}{$extra}";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $types, $params);
     if (!$res) {
         return [];
     }

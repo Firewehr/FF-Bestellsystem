@@ -1809,19 +1809,24 @@ function BenutzerNeu() {
                     }
 
                     if ($rechnungSearchQ !== '') {
-                        $escQ = mysqli_real_escape_string($conn, $rechnungSearchQ);
-                        $parts = ["rechnungsnummer LIKE '%{$escQ}%'"];
+                        $parts = ['rechnungsnummer LIKE ?'];
+                        $rTypes = 's';
+                        $rParams = ['%' . $rechnungSearchQ . '%'];
                         if (preg_match('/^\d+$/', $rechnungSearchQ)) {
                             $nQ = (int)$rechnungSearchQ;
-                            $parts[] = 'order_nr = ' . $nQ;
-                            $parts[] = 'id = ' . $nQ;
-                            $parts[] = 'tischnummer = ' . $nQ;
+                            $parts[] = 'order_nr = ?';
+                            $parts[] = 'id = ?';
+                            $parts[] = 'tischnummer = ?';
+                            $rTypes .= 'iii';
+                            array_push($rParams, $nQ, $nQ, $nQ);
                         }
                         $rSql = 'SELECT * FROM rechnungen WHERE (' . implode(' OR ', $parts) . ') ORDER BY created_at DESC LIMIT 100';
                     } else {
                         $rSql = 'SELECT * FROM rechnungen ORDER BY created_at DESC LIMIT 200';
+                        $rTypes = '';
+                        $rParams = [];
                     }
-                    $rRes = mysqli_query($conn, $rSql);
+                    $rRes = ff_db_query($conn, $rSql, $rTypes, $rParams);
                     ?>
                     
                     <div class="table-responsive">
@@ -2005,7 +2010,7 @@ function BenutzerNeu() {
                             <tbody id="mvTbody">
                                 <?php
                                 $mvDatum = isset($_GET['mv_datum']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['mv_datum']) ? $_GET['mv_datum'] : date('Y-m-d');
-                                $resMV = @mysqli_query($conn, "SELECT v.id, v.datum, v.menge, v.notiz, v.created_at, b.name AS bereich_name, p.Positionsname FROM mitarbeiter_verpflegung v JOIN mitarbeiter_bereiche b ON b.id = v.bereich_id JOIN positionen p ON p.rowid = v.position_id WHERE v.datum = '" . mysqli_real_escape_string($conn, $mvDatum) . "' ORDER BY v.created_at ASC");
+                                $resMV = ff_db_query($conn, 'SELECT v.id, v.datum, v.menge, v.notiz, v.created_at, b.name AS bereich_name, p.Positionsname FROM mitarbeiter_verpflegung v JOIN mitarbeiter_bereiche b ON b.id = v.bereich_id JOIN positionen p ON p.rowid = v.position_id WHERE v.datum = ? ORDER BY v.created_at ASC', 's', [(string) $mvDatum]);
                                 $mvCount = 0;
                                 if ($resMV) while ($row = mysqli_fetch_assoc($resMV)) {
                                     $mvCount++;

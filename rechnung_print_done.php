@@ -21,31 +21,33 @@ ff_rechnungen_ensure_print_columns($conn);
 $maxAttempts = intval(settings_get($conn, 'PRINTER_MAX_ATTEMPTS', '5'));
 
 // Nur bestaetigen, wenn Reservation passt (verhindert falsche ACKs)
-$cond = "id={$id}";
+$cond = 'id = ?';
+$condTypes = 'i';
+$condParams = [(int)$id];
 if($reserved_by !== ''){
-    $reserved_by_esc = mysqli_real_escape_string($conn, $reserved_by);
-    $cond .= " AND reserved_by='{$reserved_by_esc}'";
+    $cond .= ' AND reserved_by = ?';
+    $condTypes .= 's';
+    $condParams[] = $reserved_by;
 }
 
 if($status === 'done'){
-    @mysqli_query($conn, "UPDATE rechnungen SET gedruckt=1, druck_status='done' WHERE {$cond}");
+    ff_db_query($conn, "UPDATE rechnungen SET gedruckt=1, druck_status='done' WHERE {$cond}", $condTypes, $condParams);
     echo 'OK';
     exit;
 }
 
 // Fehler: attempts hochzaehlen und ggf. auf error setzen
-$error_esc = mysqli_real_escape_string($conn, $error);
-@mysqli_query($conn, "UPDATE rechnungen SET druck_attempts=druck_attempts+1, druck_last_error='{$error_esc}' WHERE {$cond}");
+ff_db_query($conn, "UPDATE rechnungen SET druck_attempts=druck_attempts+1, druck_last_error=? WHERE {$cond}", 's' . $condTypes, array_merge([(string)$error], $condParams));
 
-$res = @mysqli_query($conn, "SELECT druck_attempts FROM rechnungen WHERE id={$id} LIMIT 1");
+$res = ff_db_query($conn, 'SELECT druck_attempts FROM rechnungen WHERE id=? LIMIT 1', 'i', [(int)$id]);
 $attempts = 0;
 if($res && ($row=mysqli_fetch_assoc($res))){ $attempts = intval($row['druck_attempts']); }
 
 if($attempts >= $maxAttempts){
-    @mysqli_query($conn, "UPDATE rechnungen SET druck_status='error' WHERE id={$id}");
+    ff_db_query($conn, "UPDATE rechnungen SET druck_status='error' WHERE id=?", 'i', [(int)$id]);
     echo 'ERROR_MAX_ATTEMPTS';
 } else {
     // wieder pending setzen, damit spaeter erneut gedruckt wird
-    @mysqli_query($conn, "UPDATE rechnungen SET druck_status='pending' WHERE id={$id}");
+    ff_db_query($conn, "UPDATE rechnungen SET druck_status='pending' WHERE id=?", 'i', [(int)$id]);
     echo 'RETRY';
 }

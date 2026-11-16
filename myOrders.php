@@ -27,8 +27,8 @@ require_once __DIR__ . '/include/user_landing.php';
 <?php
 try {
     $batchKeyExpr = ff_sql_bestellung_batch_key('bestellungen');
-    $kellnerEsc = mysqli_real_escape_string($conn, (string)($_SESSION['user']['username'] ?? ''));
-    $kellnerFilter = " AND (bestellungen.kellner LIKE '" . $kellnerEsc . "' OR bestellungen.kellnerZahlung LIKE '" . $kellnerEsc . "') ";
+    $kellnerName = (string)($_SESSION['user']['username'] ?? '');
+    $kellnerFilter = " AND (bestellungen.kellner LIKE ? OR bestellungen.kellnerZahlung LIKE ?) ";
 
     $paymentMode = 'after';
     $fres = mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
@@ -59,13 +59,13 @@ try {
         ORDER BY MIN(bestellungen.zeitstempel) ASC
         LIMIT 50";
 
-    $result = mysqli_query($conn, $sql);
+    $result = ff_db_query($conn, $sql, 'ss', [$kellnerName, $kellnerName]);
     if (!$result) {
         echo '<p class="text-danger small">Abfrage fehlgeschlagen.</p>';
     } else {
         $rows = [];
         while ($row = mysqli_fetch_assoc($result)) {
-            $rows[] = $row;
+            $rows[] = ff_db_row_text($row);
         }
         if (count($rows) === 0) {
             echo '<p class="text-muted mt-2 mb-0">Keine Bestellungen mehr offen (alles ausgeliefert) oder keine Zuordnung zu deinem Login (Aufnahme/Kasse).</p>';

@@ -47,13 +47,13 @@ $ffTimings['recovered'] = $ffRecovered;
 $ffT2 = microtime(true);
 mysqli_begin_transaction($conn);
 $sql = "SELECT id, payload, type FROM printer_jobs
-        WHERE printer = '" . mysqli_real_escape_string($conn, $printerKey) . "'
+        WHERE printer = ?
           AND type IN ('rechnung_thermo', 'kellner_bon')
           AND status = 'pending'
         ORDER BY id ASC
         LIMIT 1
         FOR UPDATE";
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, 's', [$printerKey]);
 $ffTimings['queue_query_ms'] = round((microtime(true) - $ffT2) * 1000, 1);
 if (!$res) {
     mysqli_rollback($conn);

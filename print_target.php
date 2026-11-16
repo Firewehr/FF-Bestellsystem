@@ -321,8 +321,8 @@ unset($tischRef);
 
 // Als gedruckt markieren (außer Preview-Modus)
 if (!$preview && count($bestellungIds) > 0) {
-    $ids = implode(',', $bestellungIds);
-    mysqli_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE rowid IN ($ids)");
+    [$ids, $idTypes, $idList] = ff_db_in_ints($bestellungIds);
+    ff_db_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE rowid IN ($ids)", $idTypes, $idList);
     // Stationsansicht sofort aktualisieren ("Bon gedruckt"-Markierung)
     ff_station_events_publish($conn, [$print_target], 'printed');
 }

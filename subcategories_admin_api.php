@@ -106,10 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['ok' => false, 'error' => 'bad_tile_bg'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $tileSql = $tileBg === null ? 'NULL' : ("'" . mysqli_real_escape_string($conn, $tileBg) . "'");
-        $sql = 'UPDATE position_subcategories SET sort_order=' . (int)$sort . ', tile_bg=' . $tileSql
-            . ', kassa_only=' . (int)$kassaOnly . ' WHERE id=' . (int)$id . ' LIMIT 1';
-        if (!mysqli_query($conn, $sql)) {
+        $sql = 'UPDATE position_subcategories SET sort_order=?, tile_bg=?, kassa_only=? WHERE id=? LIMIT 1';
+        if (!ff_db_query($conn, $sql, 'isii', [(int)$sort, $tileBg, (int)$kassaOnly, (int)$id])) {
             http_response_code(500);
             echo json_encode(['ok' => false, 'error' => 'update_failed'], JSON_UNESCAPED_UNICODE);
             exit;

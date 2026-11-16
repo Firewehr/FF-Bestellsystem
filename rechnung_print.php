@@ -19,7 +19,7 @@ $maxAttempts = intval(settings_get($conn, 'PRINTER_MAX_ATTEMPTS', '5'));
 
 // Hole max. 5 pending Rechnungen und reserviere sie (damit 2 Services nicht doppelt drucken)
 $reserved_by = bin2hex(random_bytes(8));
-$res = mysqli_query($conn, "SELECT * FROM rechnungen WHERE gedruckt=0 AND (druck_status='pending' OR druck_status IS NULL) AND druck_attempts < {$maxAttempts} ORDER BY id ASC LIMIT 5");
+$res = ff_db_query($conn, "SELECT * FROM rechnungen WHERE gedruckt=0 AND (druck_status='pending' OR druck_status IS NULL) AND druck_attempts < ? ORDER BY id ASC LIMIT 5", 'i', [$maxAttempts]);
 if(!$res){
     echo json_encode(['error'=>mysqli_error($conn)]);
     exit;
@@ -35,8 +35,8 @@ $out = [];
 while ($r = mysqli_fetch_assoc($res)) {
     $rechnung_id = (int)$r['id'];
 
-    @mysqli_query($conn, "UPDATE rechnungen SET druck_status='reserved', reserved_at=NOW(), reserved_by='{$reserved_by}' WHERE id={$rechnung_id} AND (druck_status='pending' OR druck_status IS NULL) AND gedruckt=0");
-    $r2 = mysqli_query($conn, "SELECT * FROM rechnungen WHERE id={$rechnung_id} LIMIT 1");
+    ff_db_query($conn, "UPDATE rechnungen SET druck_status='reserved', reserved_at=NOW(), reserved_by=? WHERE id=? AND (druck_status='pending' OR druck_status IS NULL) AND gedruckt=0", 'si', [$reserved_by, $rechnung_id]);
+    $r2 = ff_db_query($conn, 'SELECT * FROM rechnungen WHERE id=? LIMIT 1', 'i', [$rechnung_id]);
     if ($r2 && ($rr = mysqli_fetch_assoc($r2))) {
         $r = $rr;
     }

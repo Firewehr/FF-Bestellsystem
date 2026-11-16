@@ -77,7 +77,7 @@ foreach ($PositionsListe as $row) {
                 . "print_status=0 "
                 . "WHERE rowid=" . $rowid;
             mysqli_query($conn, $sql);
-            @mysqli_query($conn, "INSERT INTO print (bestellungID, timestamp) VALUES (" . $rowid . ",'" . mysqli_real_escape_string($conn, $timestamp) . "')");
+            ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
             $printed++;
             $printedRowIds[] = $rowid;
         }

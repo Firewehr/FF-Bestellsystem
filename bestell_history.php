@@ -415,20 +415,26 @@ function ff_hist_filter_tables(mysqli $conn, bool $isAdmin, string $currentUser)
 {
     $tables = [];
     $tableSqlExtra = '';
+    $tableTypes = '';
+    $tableParams = [];
     if (!$isAdmin && $currentUser !== '') {
-        $tableSqlExtra = " AND b.kellner = '" . mysqli_real_escape_string($conn, $currentUser) . "' ";
+        $tableSqlExtra = ' AND b.kellner = ? ';
+        $tableTypes = 's';
+        $tableParams = [$currentUser];
     }
-    $tRes = mysqli_query(
+    $tRes = ff_db_query(
         $conn,
         "SELECT DISTINCT b.tischnummer, COALESCE(t.tischname, CONCAT('Tisch ', b.tischnummer)) AS tischname
          FROM bestellungen b
          LEFT JOIN tische t ON t.tischnummer = b.tischnummer
          WHERE b.`delete`=0 {$tableSqlExtra}
-         ORDER BY tischname ASC"
+         ORDER BY tischname ASC",
+        $tableTypes,
+        $tableParams
     );
     if ($tRes) {
         while ($r = mysqli_fetch_assoc($tRes)) {
-            $tables[] = $r;
+            $tables[] = ff_db_row_text($r);
         }
     }
     if ($isAdmin) {
@@ -450,23 +456,18 @@ function ff_hist_filter_tables(mysqli $conn, bool $isAdmin, string $currentUser)
     return $tables;
 }
 
-function ff_hist_kellner_scope_sql(mysqli $conn, bool $isAdmin, string $currentUser, string $kellnerSel): string {
-    if ($isAdmin) {
-        if ($kellnerSel !== '') {
-            $kEsc = mysqli_real_escape_string($conn, $kellnerSel);
-
-            return " AND (b.kellner = '{$kEsc}' OR b.kellnerZahlung = '{$kEsc}') ";
-        }
-
-        return '';
-    }
-    $login = trim($currentUser);
+/**
+ * Kellner-Einschränkung als SQL-Baustein mit Platzhaltern.
+ *
+ * @return array{0:string,1:string,2:list<string>} [sql, types, params]
+ */
+function ff_hist_kellner_scope_sql(mysqli $conn, bool $isAdmin, string $currentUser, string $kellnerSel): array {
+    $login = $isAdmin ? $kellnerSel : trim($currentUser);
     if ($login === '') {
-        return '';
+        return ['', '', []];
     }
-    $kEsc = mysqli_real_escape_string($conn, $login);
 
-    return " AND (b.kellner = '{$kEsc}' OR b.kellnerZahlung = '{$kEsc}') ";
+    return [' AND (b.kellner = ? OR b.kellnerZahlung = ?) ', 'ss', [$login, $login]];
 }
 
 /** Detail-Suche (Nr./Bon): Stations-Historie / DV-Details — Bon einsehen & nachdrucken. */
@@ -476,9 +477,9 @@ function ff_hist_lookup_kellner_scope_sql(
     string $currentUser,
     string $kellnerSel,
     bool $fromExternalLookup
-): string {
+): array {
     if ($fromExternalLookup) {
-        return '';
+        return ['', '', []];
     }
 
     return ff_hist_kellner_scope_sql($conn, $isAdmin, $currentUser, $kellnerSel);
@@ -606,7 +607,7 @@ if ($hasOrderSearch) {
     } elseif ($pendingOnly) {
         $extraCond = ' AND (' . ff_hist_pending_sql() . ') ';
     }
-    $kellnerCond = ff_hist_lookup_kellner_scope_sql($conn, $isAdmin, $currentUser, $kellnerSel, $fromStation);
+    [$kellnerCond, $kellnerTypes, $kellnerParams] = ff_hist_lookup_kellner_scope_sql($conn, $isAdmin, $currentUser, $kellnerSel, $fromStation);
     $typeCond = '';
     $typeSql = ff_hist_type_sql($typeFilter);
     if ($typeSql !== '') {
@@ -625,8 +626,8 @@ if ($hasOrderSearch) {
             WHERE (b.order_nr = {$orderNr} OR b.bestellung = {$orderNr})
               {$deleteCond}{$extraCond}{$kellnerCond}{$typeCond}
             ORDER BY b.`delete` ASC, p.type ASC, p.Positionsname ASC, b.rowid ASC";
-    $res = mysqli_query($conn, $sql);
-    if ($res) { while ($r = mysqli_fetch_assoc($res)) { $resultsOrder[] = $r; } }
+    $res = ff_db_query($conn, $sql, $kellnerTypes, $kellnerParams);
+    if ($res) { while ($r = mysqli_fetch_assoc($res)) { $resultsOrder[] = ff_db_row_text($r); } }
 
     $sqlAll = "SELECT b.ausgeliefert, b.timestampAuslieferung, b.`delete`
             FROM bestellungen b
@@ -634,10 +635,10 @@ if ($hasOrderSearch) {
             WHERE (b.order_nr = {$orderNr} OR b.bestellung = {$orderNr})
               {$deleteCond}{$kellnerCond}{$typeCond}
             ORDER BY b.rowid ASC";
-    $resAll = mysqli_query($conn, $sqlAll);
+    $resAll = ff_db_query($conn, $sqlAll, $kellnerTypes, $kellnerParams);
     if ($resAll) {
         while ($r = mysqli_fetch_assoc($resAll)) {
-            $resultsOrderAll[] = $r;
+            $resultsOrderAll[] = ff_db_row_text($r);
         }
     }
     $orderDeliveryStats = ff_hist_order_delivery_stats($resultsOrderAll);
@@ -694,15 +695,21 @@ if ($hasBonSearch) {
 
 if (!$hasOrderSearch && !$hasBonSearch && $hasFilter) {
     $conds = [ff_hist_delete_base_sql($abrechnungFilter, $openOnly, $pendingOnly, $histKellnerAbrechnungView, $histKellnerAlleZeilen)];
+    $condTypes = '';
+    $condParams = [];
     if ($dateFrom !== '') {
         $df = date('Y-m-d', strtotime($dateFrom));
         $tf = $timeFrom !== '' ? $timeFrom : '00:00';
-        $conds[] = "COALESCE(NULLIF(b.timestampBestellung,'0000-00-00 00:00:00'), b.zeitstempel) >= '" . mysqli_real_escape_string($conn, $df . ' ' . $tf . ':00') . "'";
+        $conds[] = "COALESCE(NULLIF(b.timestampBestellung,'0000-00-00 00:00:00'), b.zeitstempel) >= ?";
+        $condTypes .= 's';
+        $condParams[] = $df . ' ' . $tf . ':00';
     }
     if ($dateTo !== '') {
         $dt = date('Y-m-d', strtotime($dateTo));
         $tt = $timeTo !== '' ? $timeTo : '23:59';
-        $conds[] = "COALESCE(NULLIF(b.timestampBestellung,'0000-00-00 00:00:00'), b.zeitstempel) <= '" . mysqli_real_escape_string($conn, $dt . ' ' . $tt . ':59') . "'";
+        $conds[] = "COALESCE(NULLIF(b.timestampBestellung,'0000-00-00 00:00:00'), b.zeitstempel) <= ?";
+        $condTypes .= 's';
+        $condParams[] = $dt . ' ' . $tt . ':59';
     }
     if ($tableNo > 0) { $conds[] = "b.tischnummer = {$tableNo}"; }
     if ($posId > 0) { $conds[] = "p.rowid = {$posId}"; }
@@ -735,7 +742,10 @@ if (!$hasOrderSearch && !$hasBonSearch && $hasFilter) {
         }
     }
 
-    $where = implode(' AND ', $conds) . ff_hist_kellner_scope_sql($conn, $isAdmin, $currentUser, $kellnerSel);
+    [$kellnerScopeSql, $kellnerScopeTypes, $kellnerScopeParams] = ff_hist_kellner_scope_sql($conn, $isAdmin, $currentUser, $kellnerSel);
+    $where = implode(' AND ', $conds) . $kellnerScopeSql;
+    $condTypes .= $kellnerScopeTypes;
+    $condParams = array_merge($condParams, $kellnerScopeParams);
     $amtExpr = ff_finance_order_amount_expr('b', 'p');
     $sqlF = 'SELECT b.rowid, b.tischnummer, b.kellner, b.kellnerZahlung, ' . ff_hist_kasse_kellner_expr('b') . ' AS kellner_kasse,
                     b.fest_id, b.zeitstempel, b.timestampBezahlung, b.settlement_id,
@@ -750,8 +760,8 @@ if (!$hasOrderSearch && !$hasBonSearch && $hasFilter) {
              LEFT JOIN tische t ON t.tischnummer = b.tischnummer
              WHERE ' . $where . '
              ORDER BY ts_order DESC, t.tischname ASC, p.type ASC, p.Positionsname ASC, b.rowid DESC';
-    $resF = mysqli_query($conn, $sqlF);
-    if ($resF) { while ($r = mysqli_fetch_assoc($resF)) { $resultsFilter[] = $r; } }
+    $resF = ff_db_query($conn, $sqlF, $condTypes, $condParams);
+    if ($resF) { while ($r = mysqli_fetch_assoc($resF)) { $resultsFilter[] = ff_db_row_text($r); } }
     foreach ($resultsFilter as $r) {
         $amt = (float) ($r['betrag'] ?? 0);
         $amtAb = ($isAdmin && $kellnerSel !== '') ? ff_hist_row_abrechnung_betrag($r) : $amt;
@@ -782,7 +792,7 @@ if (!$hasOrderSearch && !$hasBonSearch && $hasFilter) {
 }
 
 if (!$hasOrderSearch && !$hasBonSearch && !$hasFilter) {
-    $recentKellner = ff_hist_kellner_scope_sql($conn, $isAdmin, $currentUser, $isAdmin ? '' : $currentUser);
+    [$recentKellner, $recentKellnerTypes, $recentKellnerParams] = ff_hist_kellner_scope_sql($conn, $isAdmin, $currentUser, $isAdmin ? '' : $currentUser);
     $festRecent = $isAdmin ? ff_finance_fest_filter_sql($conn, 'b') : '';
     $recentSql = 'SELECT b.order_nr, NULL AS bon_id, MIN(b.timestampBestellung) AS ts,
                          MAX(t.tischname) AS tischname, MAX(' . ff_hist_kasse_kellner_expr('b') . ') AS kellner,
@@ -795,10 +805,10 @@ if (!$hasOrderSearch && !$hasBonSearch && !$hasFilter) {
                   ' . $festRecent . $recentKellner . '
                   GROUP BY b.order_nr, b.tischnummer
                   ORDER BY MAX(b.timestampBestellung) DESC LIMIT 30';
-    $recentRes = mysqli_query($conn, $recentSql);
+    $recentRes = ff_db_query($conn, $recentSql, $recentKellnerTypes, $recentKellnerParams);
     if ($recentRes) {
         while ($r = mysqli_fetch_assoc($recentRes)) {
-            $recentOrders[] = $r;
+            $recentOrders[] = ff_db_row_text($r);
         }
     }
 
@@ -816,11 +826,11 @@ if (!$hasOrderSearch && !$hasBonSearch && !$hasFilter) {
                   ' . $festRecent . $recentKellner . '
                   GROUP BY b.bon_id
                   ORDER BY ts DESC LIMIT 30';
-    $recentDvRes = mysqli_query($conn, $recentDvSql);
+    $recentDvRes = ff_db_query($conn, $recentDvSql, $recentKellnerTypes, $recentKellnerParams);
     $recentDv = [];
     if ($recentDvRes) {
         while ($r = mysqli_fetch_assoc($recentDvRes)) {
-            $recentDv[] = $r;
+            $recentDv[] = ff_db_row_text($r);
         }
     }
     $recentOrders = array_merge($recentOrders, $recentDv);

@@ -278,10 +278,10 @@ try {
         // Falls alte unpassende Entwürfe vorhanden waren: bereinigen
         if ($draftRows !== []) {
             $oldIds = array_map(fn($r) => (int)$r['rowid'], $draftRows);
-            $idList = implode(',', $oldIds);
-            mysqli_query($conn, "DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid IN ($idList)");
-            mysqli_query($conn, "DELETE FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN ($idList)");
-            mysqli_query($conn, "DELETE FROM bestellungen WHERE rowid IN ($idList)");
+            [$idList, $idTypes, $idVals] = ff_db_in_ints($oldIds);
+            ff_db_query($conn, "DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid IN ($idList)", $idTypes, $idVals);
+            ff_db_query($conn, "DELETE FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN ($idList)", $idTypes, $idVals);
+            ff_db_query($conn, "DELETE FROM bestellungen WHERE rowid IN ($idList)", $idTypes, $idVals);
         }
 
         // Neue Zeilen einfügen

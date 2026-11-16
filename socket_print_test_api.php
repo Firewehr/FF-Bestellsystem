@@ -37,7 +37,7 @@ if ($printTarget <= 0) {
     exit;
 }
 
-$ptRes = mysqli_query($conn, "SELECT * FROM print_targets WHERE print_target = {$printTarget} LIMIT 1");
+$ptRes = ff_db_query($conn, 'SELECT * FROM print_targets WHERE print_target = ? LIMIT 1', 'i', [(int)$printTarget]);
 if (!$ptRes || mysqli_num_rows($ptRes) === 0) {
     echo json_encode(['ok' => false, 'error' => 'Druckziel nicht gefunden.']);
     exit;

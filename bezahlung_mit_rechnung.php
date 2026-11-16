@@ -101,7 +101,6 @@ if ($thermoTarget > 0 && !isset($validTargets[$thermoTarget])) {
 }
 
 $kellner = isset($_SESSION['user']['username']) ? (string)$_SESSION['user']['username'] : '';
-$kellnerEsc = mysqli_real_escape_string($conn, $kellner);
 session_write_close();
 
 $in = implode(',', array_map('intval', $ids));
@@ -211,10 +210,11 @@ if ($needPay) {
             br_json_out(['ok' => false, 'error' => 'Auswahl enthält Zeilen, die nicht zu den offenen Positionen dieser Bestellung(en) gehören.'], 400);
         }
     }
-    $upd = "UPDATE bestellungen SET timestampBezahlung=CURRENT_TIMESTAMP, kellnerZahlung='" . $kellnerEsc . "'
-            WHERE `delete`=0 AND rowid IN ($in)
+    [$inUpd, $inUpdTypes, $inUpdIds] = ff_db_in_ints($ids);
+    $upd = "UPDATE bestellungen SET timestampBezahlung=CURRENT_TIMESTAMP, kellnerZahlung=?
+            WHERE `delete`=0 AND rowid IN ($inUpd)
             AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')";
-    if (!mysqli_query($conn, $upd)) {
+    if (!ff_db_query($conn, $upd, 's' . $inUpdTypes, array_merge([$kellner], $inUpdIds))) {
         mysqli_rollback($conn);
         br_json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
     }

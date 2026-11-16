@@ -52,17 +52,25 @@ $orderNr = (int) ($base['order_nr'] ?? 0);
 $bonId = trim((string) ($base['bon_id'] ?? ''));
 
 // Alle rowids der gesamten Bestellung sammeln.
-$where = 'tischnummer = ' . $tischnummer . ' AND `delete` = 0';
+$where = 'tischnummer = ? AND `delete` = 0';
+$whereTypes = 'i';
+$whereParams = [$tischnummer];
 if ($tischnummer === 999999 && $bonId !== '') {
-    $where .= " AND bon_id = '" . mysqli_real_escape_string($conn, $bonId) . "'";
+    $where .= ' AND bon_id = ?';
+    $whereTypes .= 's';
+    $whereParams[] = $bonId;
 } elseif ($orderNr > 0) {
-    $where .= ' AND order_nr = ' . $orderNr;
+    $where .= ' AND order_nr = ?';
+    $whereTypes .= 'i';
+    $whereParams[] = $orderNr;
 } else {
-    $where = 'rowid = ' . $rowid;
+    $where = 'rowid = ?';
+    $whereTypes = 'i';
+    $whereParams = [(int)$rowid];
 }
 
 $rowids = [];
-$rq = mysqli_query($conn, "SELECT rowid FROM bestellungen WHERE {$where}");
+$rq = ff_db_query($conn, "SELECT rowid FROM bestellungen WHERE {$where}", $whereTypes, $whereParams);
 if ($rq) {
     while ($r = mysqli_fetch_assoc($rq)) {
         $id = (int) $r['rowid'];
@@ -151,11 +159,8 @@ foreach ($allowedTargets as $pt) {
         continue;
     }
     $metaJson = json_encode(['rowids' => array_values(array_unique($bestellungIds)), 'reprint' => true], JSON_UNESCAPED_UNICODE);
-    $escPayload = mysqli_real_escape_string($conn, $payloadJson);
-    $escMeta = mysqli_real_escape_string($conn, (string) $metaJson);
-    $ins = "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at)
-            VALUES ('" . mysqli_real_escape_string($conn, $printerKey) . "', 'kellner_bon', '" . $escPayload . "', '" . $escMeta . "', 'pending', 0, NULL, NULL, NOW())";
-    if (mysqli_query($conn, $ins)) {
+    $ins = "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at) VALUES (?, 'kellner_bon', ?, ?, 'pending', 0, NULL, NULL, NOW())";
+    if (ff_db_query($conn, $ins, 'sss', [$printerKey, $payloadJson, (string) $metaJson])) {
         $enqueued++;
         ff_print_events_publish($conn, [(int) $pt]);
     } else {

@@ -48,11 +48,10 @@ if (!empty($_POST['delete'])) {
             exit;
         }
         $printerKey = 'target_' . $print_target;
-        $printerEsc = mysqli_real_escape_string($conn, $printerKey);
         $pjChk = mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
         if ($pjChk && mysqli_num_rows($pjChk) > 0) {
             mysqli_free_result($pjChk);
-            mysqli_query($conn, "DELETE FROM printer_jobs WHERE printer = '" . $printerEsc . "'");
+            ff_db_query($conn, 'DELETE FROM printer_jobs WHERE printer = ?', 's', [$printerKey]);
         } elseif ($pjChk) {
             mysqli_free_result($pjChk);
         }
@@ -97,11 +96,9 @@ if ($print_target <= 0 || $name === '') {
 
 ff_socket_printer_ensure_schema($conn);
 
-$nameEsc = mysqli_real_escape_string($conn, $name);
 $connType = isset($_POST['connection_type']) && $_POST['connection_type'] === 'network' ? 'network' : 'client';
-$connTypeEsc = mysqli_real_escape_string($conn, $connType);
 $ipVal = isset($_POST['ip_address']) ? trim((string)$_POST['ip_address']) : null;
-$ipSql = ($ipVal !== null && $ipVal !== '') ? "'" . mysqli_real_escape_string($conn, $ipVal) . "'" : "NULL";
+$ipParam = ($ipVal !== null && $ipVal !== '') ? $ipVal : null;
 $portVal = isset($_POST['port']) ? (int)$_POST['port'] : 9100;
 if ($portVal <= 0 || $portVal > 65535) {
     $portVal = 9100;
@@ -109,15 +106,15 @@ if ($portVal <= 0 || $portVal > 65535) {
 
 if ($isNew) {
     $sql = "INSERT INTO print_targets (print_target, name, active, sort_order, connection_type, ip_address, port) "
-        . "VALUES ($print_target, '$nameEsc', $active, $sort_order, '$connTypeEsc', $ipSql, $portVal) "
+        . "VALUES (?, ?, ?, ?, ?, ?, ?) "
         . "ON DUPLICATE KEY UPDATE name=VALUES(name), active=VALUES(active), sort_order=VALUES(sort_order), "
         . "connection_type=VALUES(connection_type), ip_address=VALUES(ip_address), port=VALUES(port)";
+    $ok = ff_db_query($conn, $sql, 'isiissi', [(int)$print_target, (string)$name, (int)$active, (int)$sort_order, $connType, $ipParam, $portVal]);
 } else {
-    $sql = "UPDATE print_targets SET name='$nameEsc', active=$active, sort_order=$sort_order, "
-        . "connection_type='$connTypeEsc', ip_address=$ipSql, port=$portVal WHERE print_target=$print_target";
+    $sql = "UPDATE print_targets SET name=?, active=?, sort_order=?, connection_type=?, ip_address=?, port=? WHERE print_target=?";
+    $ok = ff_db_query($conn, $sql, 'siissii', [(string)$name, (int)$active, (int)$sort_order, $connType, $ipParam, $portVal, (int)$print_target]);
 }
 
-$ok = mysqli_query($conn, $sql);
 if ($ok && isset($_POST['auto_print_limit']) && ff_auto_print_ensure_schema($conn)) {
     $autoLimit = max(0, min(50, (int) $_POST['auto_print_limit']));
     $ok = mysqli_query($conn, 'UPDATE print_targets SET auto_print_limit = ' . $autoLimit . ' WHERE print_target = ' . $print_target);

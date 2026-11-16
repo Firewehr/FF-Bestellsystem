@@ -132,7 +132,6 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
         while ($row = mysqli_fetch_assoc($result)) {
             $any = true;
             $batch_key = (string) ($row['batch_key'] ?? '');
-            $batch_key_esc = mysqli_real_escape_string($conn, $batch_key);
             $tischnummer = (int) $row['tischnummer'];
             $ts = !empty($row['first_ts']) ? strtotime((string) $row['first_ts']) : false;
             $timeLabel = $ts ? date('d.m. H:i', $ts) : '';
@@ -144,9 +143,9 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
                     . $joinSubPo
                     . 'WHERE b.tischnummer=999999 AND b.delete=0 AND b.ausgeliefert=0 '
                     . 'AND (COALESCE(b.print_target, po.print_target) = ' . $print_target . ') ' . $kassaStationSqlPo
-                    . "AND " . ff_sql_bestellung_batch_key('b') . "='" . $batch_key_esc . "' "
+                    . "AND " . ff_sql_bestellung_batch_key('b') . "=? "
                     . 'AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 LIMIT 1';
-                $bonRes = mysqli_query($conn, $bonQuery);
+                $bonRes = ff_db_query($conn, $bonQuery, 's', [$batch_key]);
                 $bonId = '';
                 if ($bonRes && ($bonRow = mysqli_fetch_assoc($bonRes))) {
                     $bonId = (string) $bonRow['bon_id'];
@@ -171,9 +170,9 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
                 . 'FROM bestellungen, positionen '
                 . 'WHERE bestellungen.position=positionen.rowid ' . $ptFilter . $kassaStationSql
                 . "AND bestellungen.zeitKueche='0000-00-00 00:00:00' AND bestellungen.ausgeliefert=0 AND bestellungen.delete=0 "
-                . 'AND bestellungen.tischnummer=' . $tischnummer . " AND {$batchKeyExpr}='" . $batch_key_esc . "' "
+                . "AND bestellungen.tischnummer=? AND {$batchKeyExpr}=? "
                 . 'GROUP BY bestellungen.Zusatzinfo, positionen.Positionsname ORDER BY positionen.Positionsname ASC';
-            $r2 = mysqli_query($conn, $sql2);
+            $r2 = ff_db_query($conn, $sql2, 'is', [$tischnummer, $batch_key]);
             $openLines = 0;
             if ($r2) {
                 while ($row2 = mysqli_fetch_assoc($r2)) {
@@ -196,9 +195,9 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
                 . 'FROM bestellungen, positionen '
                 . 'WHERE bestellungen.position=positionen.rowid ' . $ptFilter . $kassaStationSql
                 . 'AND bestellungen.ausgeliefert=0 AND bestellungen.kueche=1 AND bestellungen.delete=0 AND bestellungen.zeitKueche!=\'0000-00-00 00:00:00\' '
-                . 'AND bestellungen.tischnummer=' . $tischnummer . " AND {$batchKeyExpr}='" . $batch_key_esc . "' "
+                . "AND bestellungen.tischnummer=? AND {$batchKeyExpr}=? "
                 . 'GROUP BY bestellungen.Zusatzinfo, positionen.Positionsname ORDER BY positionen.Positionsname ASC';
-            $r3 = mysqli_query($conn, $qDone);
+            $r3 = ff_db_query($conn, $qDone, 'is', [$tischnummer, $batch_key]);
             $doneLines = 0;
             if ($r3) {
                 while ($row3 = mysqli_fetch_assoc($r3)) {

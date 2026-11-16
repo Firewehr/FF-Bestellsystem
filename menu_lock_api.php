@@ -66,6 +66,17 @@ function compute_until(?int $minutes): ?string
     return date('Y-m-d H:i:s', time() + $minutes * 60);
 }
 
+/** Sperre anlegen (Prepared Statement). $scope 'position' oder 'type_all'. */
+function ff_menu_lock_insert(mysqli $conn, string $scope, ?int $positionId, ?int $menuType, ?string $until, string $reason, string $user): bool
+{
+    return (bool) ff_db_query(
+        $conn,
+        'INSERT INTO menu_locks (scope, position_id, menu_type, locked_until, reason, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+        'siisss',
+        [$scope, $positionId, $menuType, $until, $reason, $user]
+    );
+}
+
 switch ($action) {
     case 'set_position': {
         $positionId = (int)($data['position_id'] ?? 0);
@@ -80,12 +91,7 @@ switch ($action) {
         }
         mysqli_query($conn, "DELETE FROM menu_locks WHERE scope='position' AND position_id=" . $positionId);
         $until = compute_until($minutes >= 0 ? $minutes : null);
-        $untilSql = $until === null ? 'NULL' : "'" . mysqli_real_escape_string($conn, $until) . "'";
-        $reasonEsc = mysqli_real_escape_string($conn, $reason);
-        $userEsc = mysqli_real_escape_string($conn, $user);
-        $sql = "INSERT INTO menu_locks (scope, position_id, menu_type, locked_until, reason, created_by)
-                VALUES ('position', {$positionId}, NULL, {$untilSql}, '{$reasonEsc}', '{$userEsc}')";
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_menu_lock_insert($conn, 'position', (int)$positionId, null, $until, $reason, (string)$user)) {
             json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
         json_out(['ok' => true]);
@@ -103,9 +109,6 @@ switch ($action) {
         $minutes = isset($data['minutes']) ? (int)$data['minutes'] : -1;
         $reason = trim((string)($data['reason'] ?? ''));
         $until = compute_until($minutes >= 0 ? $minutes : null);
-        $untilSql = $until === null ? 'NULL' : "'" . mysqli_real_escape_string($conn, $until) . "'";
-        $reasonEsc = mysqli_real_escape_string($conn, $reason);
-        $userEsc = mysqli_real_escape_string($conn, $user);
         $done = 0;
         foreach ($positionIds as $positionId) {
             $positionId = (int)$positionId;
@@ -114,9 +117,7 @@ switch ($action) {
                 continue;
             }
             mysqli_query($conn, "DELETE FROM menu_locks WHERE scope='position' AND position_id=" . $positionId);
-            $sql = "INSERT INTO menu_locks (scope, position_id, menu_type, locked_until, reason, created_by)
-                    VALUES ('position', {$positionId}, NULL, {$untilSql}, '{$reasonEsc}', '{$userEsc}')";
-            if (mysqli_query($conn, $sql)) {
+            if (ff_menu_lock_insert($conn, 'position', $positionId, null, $until, $reason, (string)$user)) {
                 $done++;
             }
         }
@@ -150,20 +151,15 @@ switch ($action) {
         }
 
         $until = compute_until($minutes >= 0 ? $minutes : null);
-        $untilSql = $until === null ? 'NULL' : "'" . mysqli_real_escape_string($conn, $until) . "'";
-        $reasonEsc = mysqli_real_escape_string($conn, $reason);
-        $userEsc = mysqli_real_escape_string($conn, $user);
-        $sql = "INSERT INTO menu_locks (scope, position_id, menu_type, locked_until, reason, created_by)
-                VALUES ('type_all', NULL, {$menuType}, {$untilSql}, '{$reasonEsc}', '{$userEsc}')";
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_menu_lock_insert($conn, 'type_all', null, $menuType, $until, $reason, (string)$user)) {
             json_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
-        $newId = (int)mysqli_insert_id($conn);
+        $newId = ff_db_insert_id();
         foreach ($exceptions as $pid) {
             $pid = (int)$pid;
-            $v = mysqli_query($conn, "SELECT rowid FROM positionen WHERE rowid={$pid} AND type={$menuType} LIMIT 1");
+            $v = ff_db_query($conn, 'SELECT rowid FROM positionen WHERE rowid=? AND type=? LIMIT 1', 'ii', [$pid, (int)$menuType]);
             if ($v && mysqli_fetch_row($v)) {
-                mysqli_query($conn, "INSERT IGNORE INTO menu_lock_exceptions (lock_id, position_id) VALUES ({$newId}, {$pid})");
+                ff_db_query($conn, 'INSERT IGNORE INTO menu_lock_exceptions (lock_id, position_id) VALUES (?, ?)', 'ii', [$newId, $pid]);
             }
         }
         json_out(['ok' => true, 'lock_id' => $newId]);

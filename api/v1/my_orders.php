@@ -14,7 +14,6 @@ require_once dirname(__DIR__, 2) . '/include/ff_schreibaus.php';
 $user = api_require_auth();
 
 $username = (string)$user['username'];
-$usernameEsc = mysqli_real_escape_string($conn, $username);
 
 $paymentMode = ff_aktiver_payment_mode($conn);
 $batchKeyExpr = ff_sql_bestellung_batch_key('b');
@@ -24,7 +23,7 @@ if ($paymentMode === 'instant') {
     $statusFilter .= ' AND b.bestellt = 1 ';
 }
 
-$kellnerFilter = " AND (b.kellner = '{$usernameEsc}' OR b.kellnerZahlung = '{$usernameEsc}') ";
+$kellnerFilter = ' AND (b.kellner = ? OR b.kellnerZahlung = ?) ';
 
 $sql = "SELECT 
     b.tischnummer, 
@@ -44,7 +43,7 @@ GROUP BY b.tischnummer, {$batchKeyExpr}
 ORDER BY is_ready DESC, MIN(b.zeitstempel) ASC
 LIMIT 50";
 
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, 'ss', [(string) $username, (string) $username]);
 $orders = [];
 $readyCount = 0;
 

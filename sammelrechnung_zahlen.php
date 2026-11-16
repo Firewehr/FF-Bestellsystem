@@ -49,9 +49,9 @@ $chkSm = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'
 if ($chkSm && mysqli_num_rows($chkSm) === 0) {
     @mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0");
 }
-$inList = implode(',', $tables);
+[$inList, $inListTypes, $inListIds] = ff_db_in_ints($tables);
 $okMap = [];
-$qr = mysqli_query($conn, "SELECT tischnummer FROM tische WHERE tischnummer IN ($inList) AND IFNULL(is_sammelrechnung,0)=1");
+$qr = ff_db_query($conn, "SELECT tischnummer FROM tische WHERE tischnummer IN ($inList) AND IFNULL(is_sammelrechnung,0)=1", $inListTypes, $inListIds);
 if ($qr) {
     while ($rw = mysqli_fetch_assoc($qr)) {
         $okMap[(int) $rw['tischnummer']] = true;
@@ -90,7 +90,7 @@ if ($badTables !== []) {
     exit;
 }
 
-$inTablesSql = implode(',', $tables);
+[$inTablesSql, $inTablesTypes, $inTablesIds] = ff_db_in_ints($tables);
 
 // Im after-Modus: nur kueche=1 (bestätigte Positionen)
 // Im instant-Modus: alle bestellten Positionen (bestellt=1)
@@ -109,7 +109,7 @@ $sql = "SELECT b.rowid, b.tischnummer, t.tischname, p.Positionsname,
           AND IFNULL(t.is_ehrengast,0)=0 AND IFNULL(t.is_sammelrechnung,0)=1 AND b.tischnummer IN ($inTablesSql)
         ORDER BY b.tischnummer, p.Positionsname";
 
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, $inTablesTypes, $inTablesIds);
 if (!$res) {
     die('Datenbankfehler: ' . htmlspecialchars(mysqli_error($conn), ENT_QUOTES, 'UTF-8'));
 }
@@ -117,7 +117,7 @@ if (!$res) {
 $rows = [];
 $total = 0.0;
 while ($r = mysqli_fetch_assoc($res)) {
-    $rows[] = $r;
+    $rows[] = $r = ff_db_row_text($r);
     $total += (float) ($r['zeilenbetrag'] ?? 0);
 }
 

@@ -30,12 +30,12 @@ if ($orderNr <= 0) {
 
 // Mark all positions for the table as 'bestellt' + order_nr zuweisen
 $sql = "UPDATE bestellungen 
-        SET bestellt=1, timestampBestellung=current_timestamp, order_nr=$orderNr 
-        WHERE tischnummer=$tischnummer 
+        SET bestellt=1, timestampBestellung=current_timestamp, order_nr=? 
+        WHERE tischnummer=? 
         AND (bestellt IS NULL OR bestellt=0)
         AND `delete`=0";
 
-$result = mysqli_query($conn, $sql);
+$result = ff_db_query($conn, $sql, 'ii', [(int)$orderNr, (int)$tischnummer]);
 
 if (!$result) {
     http_response_code(500);
@@ -44,7 +44,7 @@ if (!$result) {
 }
 
 // Prüfen, ob überhaupt Zeilen betroffen waren
-$affected = mysqli_affected_rows($conn);
+$affected = ff_db_affected_rows();
 if ($affected === 0) {
     echo json_encode(['ok' => false, 'error' => 'keine_bestellungen_gefunden']);
     exit;
@@ -62,7 +62,7 @@ if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
 }
 
 if ($currentFestId > 0) {
-    @mysqli_query($conn, "UPDATE bestellungen SET fest_id=$currentFestId WHERE tischnummer=$tischnummer AND fest_id IS NULL AND bestellt=1");
+    ff_db_query($conn, 'UPDATE bestellungen SET fest_id=? WHERE tischnummer=? AND fest_id IS NULL AND bestellt=1', 'ii', [(int)$currentFestId, (int)$tischnummer]);
 }
 
 // Erst nach erfolgreichem Abschicken die betroffenen Stationen benachrichtigen.
@@ -99,7 +99,7 @@ if ($currentFestId > 0) {
 $requirePayment = false;
 
 // Honorary tables never pay
-$tres = mysqli_query($conn, "SELECT is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer=$tischnummer LIMIT 1");
+$tres = ff_db_query($conn, 'SELECT is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer=? LIMIT 1', 'i', [(int)$tischnummer]);
 $isSammel = 0; $isEhren = 0;
 if ($tres && ($trow = mysqli_fetch_assoc($tres))) {
     $isSammel = (int)($trow['is_sammelrechnung'] ?? 0);

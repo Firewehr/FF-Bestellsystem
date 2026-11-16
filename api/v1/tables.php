@@ -12,7 +12,6 @@ require_once dirname(__DIR__, 2) . '/include/settings.php';
 $user = api_require_auth();
 
 $username = (string)$user['username'];
-$usernameEsc = mysqli_real_escape_string($conn, $username);
 
 $sumupEnabled = (setting_get($conn, 'sumup_open_app_button', '0') === '1');
 $payCashModal = (setting_get($conn, 'pay_cash_modal', '0') === '1');
@@ -68,7 +67,7 @@ $sql = "SELECT
     COALESCE(t.is_sammelrechnung, 0) AS is_sammelrechnung,
     COALESCE(t.is_ehrengast, 0) AS is_ehrengast,
     COUNT(CASE WHEN b.bestellt = 1 AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00') AND b.`delete` = 0 THEN 1 END) AS open_items_count,
-    COUNT(CASE WHEN b.bestellt = 1 AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00') AND b.`delete` = 0 AND (b.kellner = '{$usernameEsc}' OR b.kellnerZahlung = '{$usernameEsc}') THEN 1 END) AS my_open_items_count,
+    COUNT(CASE WHEN b.bestellt = 1 AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00') AND b.`delete` = 0 AND (b.kellner = ? OR b.kellnerZahlung = ?) THEN 1 END) AS my_open_items_count,
     COUNT(CASE WHEN b.`delete` = 0 AND b.ausgeliefert = 0 AND b.kueche = 1 AND b.zeitKueche IS NOT NULL AND b.zeitKueche NOT IN ('0000-00-00 00:00:00','1970-01-01 00:00:00') THEN 1 END) AS ready_items_count,
     COUNT(CASE WHEN (b.bestellt IS NULL OR b.bestellt = 0) AND b.`delete` = 0 THEN 1 END) AS unsent_items_count
 FROM tische t
@@ -76,7 +75,7 @@ LEFT JOIN bestellungen b ON b.tischnummer = t.tischnummer
 GROUP BY t.tischnummer
 ORDER BY t.tischname ASC, t.tischnummer ASC";
 
-$result = mysqli_query($conn, $sql);
+$result = ff_db_query($conn, $sql, 'ss', [(string) $username, (string) $username]);
 if (!$result) {
     api_error('Konnte Tische nicht abfragen: ' . mysqli_error($conn), 'db_error', 500);
 }

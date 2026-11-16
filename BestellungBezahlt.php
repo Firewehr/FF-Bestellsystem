@@ -34,21 +34,22 @@ if ($ids === []) {
 }
 
 $kellner = isset($_SESSION['user']['username']) ? (string)$_SESSION['user']['username'] : '';
-$kellnerEsc = mysqli_real_escape_string($conn, $kellner);
 
 // Session früh freigeben: kürzere Sperre bei parallelen Requests (Küche-Poll, Status, …)
 session_write_close();
 
-$in = implode(',', $ids);
+[$in, $inTypes, $inIds] = ff_db_in_ints($ids);
 
 // Schutz: Sammelrechnungs-Tische dürfen NUR über den separaten Button
 // "Sammelrechnung erstellen" (SammelrechnungBezahlt.php) abgerechnet werden,
 // sonst bleibt is_sammelrechnung gesetzt und der Tisch hängt.
-$sammelCheck = @mysqli_query(
+$sammelCheck = ff_db_query(
     $conn,
     "SELECT COUNT(*) AS c FROM bestellungen b
        JOIN tische t ON t.tischnummer = b.tischnummer
-      WHERE b.`delete` = 0 AND b.rowid IN (" . $in . ") AND COALESCE(t.is_sammelrechnung, 0) = 1"
+      WHERE b.`delete` = 0 AND b.rowid IN (" . $in . ") AND COALESCE(t.is_sammelrechnung, 0) = 1",
+    $inTypes,
+    $inIds
 );
 if ($sammelCheck) {
     $scRow = mysqli_fetch_assoc($sammelCheck);
@@ -65,17 +66,17 @@ if ($sammelCheck) {
     }
 }
 
-$sql = "UPDATE `bestellungen` SET `timestampBezahlung` = CURRENT_TIMESTAMP, `kellnerZahlung` = '" . $kellnerEsc . "' "
+$sql = "UPDATE `bestellungen` SET `timestampBezahlung` = CURRENT_TIMESTAMP, `kellnerZahlung` = ? "
     . "WHERE `delete` = 0 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND `rowid` IN (" . $in . ")";
 
-if (!mysqli_query($conn, $sql)) {
+if (!ff_db_query($conn, $sql, 's' . $inTypes, array_merge([$kellner], $inIds))) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
     mysqli_close($conn);
     exit;
 }
 
-$affected = mysqli_affected_rows($conn);
+$affected = ff_db_affected_rows();
 if ($affected === 0) {
     http_response_code(409);
     echo json_encode([

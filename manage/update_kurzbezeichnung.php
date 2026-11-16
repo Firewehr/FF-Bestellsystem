@@ -7,12 +7,7 @@ $Kurzbezeichnung = $_GET['Kurzbezeichnung'] ?? '';
 if ($Kurzbezeichnung !== '') {
 
     require_once '../include/db.php';
-    $kb = mysqli_real_escape_string($conn, (string) $Kurzbezeichnung);
-    $sql = "UPDATE `positionen` SET `Kurzbezeichnung`='" . $kb . "' WHERE rowid=" . $rowid;
-
-    //echo $sql;
-
-    if (mysqli_query($conn, $sql)) {
+    if (ff_db_query($conn, 'UPDATE `positionen` SET `Kurzbezeichnung`=? WHERE rowid=?', 'si', [(string) $Kurzbezeichnung, (int) $rowid])) {
         echo "Record updated successfully";
     } else {
         echo "Error updating record: " . mysqli_error($conn);

@@ -154,7 +154,7 @@ if ($method === 'POST') {
                 } else {
                     $sql = "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid = " . $rowid;
                     mysqli_query($conn, $sql);
-                    @mysqli_query($conn, "INSERT INTO print (bestellungID, timestamp) VALUES (" . $rowid . ",'" . mysqli_real_escape_string($conn, $timestamp) . "')");
+                    ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [(int) $rowid, (string) $timestamp]);
                     $printed++;
                     $printedRowIds[] = $rowid;
                 }
@@ -239,8 +239,8 @@ if ($method === 'POST') {
         }
 
         if ($rowids !== []) {
-            $in = implode(',', $rowids);
-            mysqli_query($conn, "UPDATE bestellungen SET bestellt = 1 WHERE rowid IN ($in) AND `delete` = 0");
+            [$in, $inTypes, $inIds] = ff_db_in_ints($rowids);
+            ff_db_query($conn, "UPDATE bestellungen SET bestellt = 1 WHERE rowid IN ($in) AND `delete` = 0", $inTypes, $inIds);
         } elseif ($tischnummer > 0) {
             mysqli_query($conn, "UPDATE bestellungen SET bestellt = 1 WHERE tischnummer = " . $tischnummer . " AND `delete` = 0 AND ausgeliefert = 0");
         }

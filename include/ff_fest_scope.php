@@ -73,7 +73,8 @@ if (!function_exists('ff_fest_scope_attach_last')) {
         if ($fid <= 0) {
             return;
         }
-        @mysqli_query($conn, "UPDATE `{$table}` SET `fest_id`={$fid} WHERE `{$pk}`=" . (int) $insertId . ' LIMIT 1');
+        // Tabellen-/Spaltenname aus fester Liste ($pkMap), Werte als Parameter
+        ff_db_query($conn, "UPDATE `{$table}` SET `fest_id`=? WHERE `{$pk}`=? LIMIT 1", 'ii', [$fid, (int) $insertId]);
     }
 }
 
@@ -123,7 +124,7 @@ if (!function_exists('ff_fest_scope_delete_for_fest')) {
             if (!$c || mysqli_num_rows($c) === 0) {
                 continue;
             }
-            @mysqli_query($conn, "DELETE FROM `{$tbl}` WHERE fest_id=" . (int) $festId);
+            ff_db_query($conn, "DELETE FROM `{$tbl}` WHERE fest_id=?", 'i', [(int) $festId]);
         }
     }
 }

@@ -1295,7 +1295,7 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
         $tokensCreated = 0;
         while ($tRow = mysqli_fetch_assoc($tischeRes)) {
             $tNum = (int)$tRow['tischnummer'];
-            $chkTok = mysqli_query($conn, "SELECT id FROM `table_tokens` WHERE `table_number` = {$tNum} LIMIT 1");
+            $chkTok = ff_db_query($conn, 'SELECT id FROM `table_tokens` WHERE `table_number` = ? LIMIT 1', 'i', [$tNum]);
             if ($chkTok && mysqli_num_rows($chkTok) === 0) {
                 $rndToken = bin2hex(random_bytes(32));
                 if ($tokenStmt) {

@@ -25,7 +25,6 @@ if ($tischnummer <= 0) {
 
 $action = (string)($data['action'] ?? 'pay'); // 'pay', 'ehrengast', 'with_invoice', 'rechnung_nachtraeglich'
 $username = (string)$user['username'];
-$usernameEsc = mysqli_real_escape_string($conn, $username);
 $protectedPilotActions = ['pay', 'ehrengast', 'sumup_prepare', 'sumup_confirm'];
 $paymentKey = null;
 if (in_array($action, $protectedPilotActions, true)) {
@@ -191,11 +190,11 @@ if ($action === 'rechnung_nachtraeglich') {
                     COALESCE(p.Positionsname, '(Position)') AS name
              FROM bestellungen b
              LEFT JOIN positionen p ON p.rowid = b.position
-             WHERE b.tischnummer = {$tischnummer} AND b.`delete` = 0 
+             WHERE b.tischnummer = ? AND b.`delete` = 0 
                AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung NOT IN ('0000-00-00 00:00:00', '1970-01-01 00:00:00')
                AND (b.rechnung_id IS NULL OR b.rechnung_id = 0)
              ORDER BY b.timestampBezahlung ASC";
-    $pRes = mysqli_query($conn, $pSql);
+    $pRes = ff_db_query($conn, $pSql, 'i', [(int)$tischnummer]);
     $paidRows = [];
     $total = 0.0;
     $groupedLines = [];
@@ -231,19 +230,24 @@ if ($action === 'rechnung_nachtraeglich') {
     $rechnungsnummer = $rPrefix . $seq;
 
     $linesJson = json_encode(array_values($groupedLines), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $escLines = mysqli_real_escape_string($conn, $linesJson ?: '[]');
-    $escRnr = mysqli_real_escape_string($conn, $rechnungsnummer);
-
     $insR = "INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, order_nr, total, lines_json, gedruckt, druck_status)
-             VALUES ('{$escRnr}', '{$usernameEsc}', " . ($activeFestId ?: 'NULL') . ", {$tischnummer}, " . ($firstOrderNr ?: 'NULL') . ", {$total}, '{$escLines}', 0, 'pending')";
-
-    if (!mysqli_query($conn, $insR)) {
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending')";
+    $okIns = ff_db_query($conn, $insR, 'ssiiids', [
+        $rechnungsnummer,
+        $username,
+        $activeFestId ?: null,
+        (int)$tischnummer,
+        $firstOrderNr ?: null,
+        (float)$total,
+        $linesJson ?: '[]',
+    ]);
+    if (!$okIns) {
         api_error('Fehler beim Erstellen der Rechnung: ' . mysqli_error($conn), 'db_error', 500);
     }
 
-    $rechnungId = (int)mysqli_insert_id($conn);
-    $inRows = implode(',', $paidRows);
-    mysqli_query($conn, "UPDATE bestellungen SET rechnung_id = {$rechnungId} WHERE rowid IN ({$inRows})");
+    $rechnungId = ff_db_insert_id();
+    [$inRows, $inTypes, $inIds] = ff_db_in_ints($paidRows);
+    ff_db_query($conn, "UPDATE bestellungen SET rechnung_id = ? WHERE rowid IN ({$inRows})", 'i' . $inTypes, array_merge([$rechnungId], $inIds));
 
     // Thermodruck falls gewünscht
     $thermoTarget = (int)($data['thermo_target'] ?? 0);
@@ -537,7 +541,6 @@ try {
     if ($payableRows === [] || $payableRows !== $expectedRows) {
         throw new RuntimeException('Die ausgewählten Positionen wurden bereits abgerechnet oder existieren nicht mehr.');
     }
-    $inPayable = implode(',', $payableRows);
 
     $rechnungId = null;
     $rechnungsnummer = null;
@@ -552,40 +555,49 @@ try {
         $rechnungsnummer = $rPrefix . $seq;
 
         $linesJson = json_encode(array_values($groupedLines), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $escLines = mysqli_real_escape_string($conn, $linesJson ?: '[]');
-        $escRnr = mysqli_real_escape_string($conn, $rechnungsnummer);
-
         $recipient = (array)($data['recipient'] ?? []);
         $isFirma = !empty($recipient['is_firma']) ? 1 : 0;
-        $empfName = mysqli_real_escape_string($conn, (string)($recipient['name'] ?? ''));
-        $empfStr = mysqli_real_escape_string($conn, (string)($recipient['strasse'] ?? ''));
-        $empfPlz = mysqli_real_escape_string($conn, (string)($recipient['plz'] ?? ''));
-        $empfOrt = mysqli_real_escape_string($conn, (string)($recipient['ort'] ?? ''));
-        $empfUid = mysqli_real_escape_string($conn, (string)($recipient['uid'] ?? ''));
 
         $insR = "INSERT INTO rechnungen 
                  (rechnungsnummer, created_by, fest_id, tischnummer, order_nr, total, lines_json, gedruckt, druck_status, is_firma, empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid)
-                 VALUES ('{$escRnr}', '{$usernameEsc}', " . ($activeFestId ?: 'NULL') . ", {$tischnummer}, " . ($firstOrderNr ?: 'NULL') . ", {$totalAmount}, '{$escLines}', 0, 'pending', {$isFirma}, '{$empfName}', '{$empfStr}', '{$empfPlz}', '{$empfOrt}', '{$empfUid}')";
-
-        if (!mysqli_query($conn, $insR)) {
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?, ?, ?, ?)";
+        $okIns = ff_db_query($conn, $insR, 'ssiiidsisssss', [
+            $rechnungsnummer,
+            $username,
+            $activeFestId ?: null,
+            (int)$tischnummer,
+            $firstOrderNr ?: null,
+            (float)$totalAmount,
+            $linesJson ?: '[]',
+            $isFirma,
+            (string)($recipient['name'] ?? ''),
+            (string)($recipient['strasse'] ?? ''),
+            (string)($recipient['plz'] ?? ''),
+            (string)($recipient['ort'] ?? ''),
+            (string)($recipient['uid'] ?? ''),
+        ]);
+        if (!$okIns) {
             throw new RuntimeException('Rechnung konnte nicht angelegt werden: ' . mysqli_error($conn));
         }
 
-        $rechnungId = (int)mysqli_insert_id($conn);
+        $rechnungId = ff_db_insert_id();
     }
 
     // Positionen als bezahlt markieren
+    [$inPayMarks, $inPayTypes, $inPayIds] = ff_db_in_ints($payableRows);
     $updSql = "UPDATE `bestellungen` 
                SET `timestampBezahlung` = CURRENT_TIMESTAMP, 
-                   `kellnerZahlung` = '{$usernameEsc}'"
-               . ($rechnungId ? ", `rechnung_id` = {$rechnungId} " : " ")
-               . "WHERE `rowid` IN ({$inPayable})";
+                   `kellnerZahlung` = ?"
+               . ($rechnungId ? ", `rechnung_id` = ? " : " ")
+               . "WHERE `rowid` IN ({$inPayMarks})";
+    $updTypes = 's' . ($rechnungId ? 'i' : '') . $inPayTypes;
+    $updParams = array_merge([$username], $rechnungId ? [$rechnungId] : [], $inPayIds);
 
-    if (!mysqli_query($conn, $updSql)) {
+    if (!ff_db_query($conn, $updSql, $updTypes, $updParams)) {
         throw new RuntimeException('Bezahlung konnte nicht gespeichert werden: ' . mysqli_error($conn));
     }
 
-    $affected = mysqli_affected_rows($conn);
+    $affected = ff_db_affected_rows();
     $response = [
         'ok' => true,
         'affected' => $affected,

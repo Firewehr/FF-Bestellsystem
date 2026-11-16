@@ -246,6 +246,9 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
    - Ältere Bestandsdateien nutzen `$conn` (`mysqli`).
    - Neue Skripte und alle APIs unter `api/v1/` nutzen `db()` (`PDO`).
    - **Niemals Variablen direkt in SQL-Statements einbetten!** Ausschließlich Prepared Statements verwenden (`PDO::prepare()` oder `ff_mysqli_stmt_bind`).
+   - Für mysqli gibt es `ff_db_query($conn, $sql, $types, $params)` (in `include/db.php`): Prepared Statement in einem Aufruf, Rückgabe wie `mysqli_query()`. `IN (...)`-Listen über `ff_db_in_ints($ids)`. Nach einem Prepared Statement `ff_db_affected_rows()` / `ff_db_insert_id()` statt `mysqli_affected_rows($conn)` verwenden.
+   - Achtung Typen: Prepared Statements liefern INT/DOUBLE-Spalten als PHP-Zahlen, `mysqli_query()` als Strings. Werden ganze Zeilen weitergereicht (JSON-Ausgabe, `=== '1'`-Vergleiche), die Zeile mit `ff_db_row_text($row)` umwandeln, damit sich das Verhalten nicht ändert.
+   - Einzige Ausnahme: **Tabellen- und Spaltennamen** in Schema-Befehlen (`SHOW COLUMNS FROM`, `ALTER TABLE`, `SHOW TABLES LIKE`). MySQL erlaubt dort keine Parameter. Diese Namen dürfen nur aus fest codierten Listen im Code stammen, nie aus Request-Daten.
 3. **Idempotente Schema-Updates & Schema-Cache:**
    - Schema-Erweiterungen müssen abwärtskompatibel sein (z. B. via `ff_table_has_column()` oder `ff_schema_helpers.php`).
    - Bei Spalten-/Tabellenanpassungen muss der Cache geleert werden (`admin_schema_cache_clear.php` bzw. `include/.cache/schema_columns.json`).

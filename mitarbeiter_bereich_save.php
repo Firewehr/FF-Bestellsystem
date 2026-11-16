@@ -20,7 +20,7 @@ if ($name === '') {
 
 @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-$nameEsc = mysqli_real_escape_string($conn, $name);
+$nameEsc = (string) $name; // Prepared Statement – zusätzliches Escaping würde Apostrophe verfälschen
 
 if ($id > 0) {
     $stmt = mysqli_prepare($conn, "UPDATE mitarbeiter_bereiche SET name = ?, sort_order = ? WHERE id = ?");

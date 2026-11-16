@@ -361,21 +361,27 @@ function ff_storno_resolve_order_rowids(
         return [];
     }
 
-    $where = "tischnummer = {$sourceTischnummer} AND `delete` = 0";
+    $where = 'tischnummer = ? AND `delete` = 0';
+    $types = 'i';
+    $params = [(int)$sourceTischnummer];
     $bonId = trim($bonId);
     if ($sourceTischnummer === 999999 && $bonId !== '') {
-        $bonEsc = mysqli_real_escape_string($conn, $bonId);
-        $where .= " AND bon_id = '{$bonEsc}'";
+        $where .= ' AND bon_id = ?';
+        $types .= 's';
+        $params[] = $bonId;
     } elseif ($orderNr > 0) {
-        $where .= ' AND order_nr = ' . $orderNr;
+        $where .= ' AND order_nr = ?';
+        $types .= 'i';
+        $params[] = (int)$orderNr;
     } elseif ($batchTimestamp !== '') {
-        $btEsc = mysqli_real_escape_string($conn, $batchTimestamp);
-        $where .= " AND timestampBestellung = '{$btEsc}'";
+        $where .= ' AND timestampBestellung = ?';
+        $types .= 's';
+        $params[] = $batchTimestamp;
     } else {
         return [];
     }
 
-    $res = mysqli_query($conn, "SELECT rowid FROM bestellungen WHERE {$where}");
+    $res = ff_db_query($conn, "SELECT rowid FROM bestellungen WHERE {$where}", $types, $params);
     if (!$res) {
         return [];
     }

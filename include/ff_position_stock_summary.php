@@ -196,14 +196,17 @@ function ff_mv_batch_counts_for_datum(mysqli $conn, string $datum, int $bereichI
         return $map;
     }
 
-    $esc = mysqli_real_escape_string($conn, $datum);
-    $sql = "SELECT position_id, COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung WHERE datum = '" . $esc . "'";
+    $sql = 'SELECT position_id, COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung WHERE datum = ?';
+    $types = 's';
+    $params = [$datum];
     if ($bereichId > 0) {
-        $sql .= ' AND bereich_id = ' . (int) $bereichId;
+        $sql .= ' AND bereich_id = ?';
+        $types .= 'i';
+        $params[] = (int) $bereichId;
     }
     $sql .= ' GROUP BY position_id';
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $types, $params);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $map[(int) $row['position_id']] = (int) ($row['cnt'] ?? 0);
@@ -1176,16 +1179,17 @@ function ff_mv_render_list_rows(mysqli $conn, string $datum, string $currentUser
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $datum)) {
         $datum = date('Y-m-d');
     }
-    $escDatum = mysqli_real_escape_string($conn, $datum);
-    $resMV = mysqli_query(
+    $resMV = ff_db_query(
         $conn,
         "SELECT v.id, v.datum, v.menge, v.notiz, v.created_at, v.created_by, v.position_id,
                 b.name AS bereich_name, p.Positionsname
          FROM mitarbeiter_verpflegung v
          JOIN mitarbeiter_bereiche b ON b.id = v.bereich_id
          JOIN positionen p ON p.rowid = v.position_id
-         WHERE v.datum = '" . $escDatum . "'
-         ORDER BY v.created_at ASC"
+         WHERE v.datum = ?
+         ORDER BY v.created_at ASC",
+        's',
+        [$datum]
     );
     $html = '';
     $count = 0;

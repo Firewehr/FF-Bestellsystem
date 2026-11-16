@@ -26,12 +26,7 @@ if ($fest_id <= 0) {
 ff_feste_ensure_rechnung_prefix_column($conn);
 
 $val = $raw === '' ? null : mb_substr($raw, 0, 16, 'UTF-8');
-if ($val === null) {
-    $ok = mysqli_query($conn, 'UPDATE feste SET rechnung_prefix=NULL WHERE id=' . $fest_id . ' LIMIT 1');
-} else {
-    $esc = mysqli_real_escape_string($conn, $val);
-    $ok = mysqli_query($conn, "UPDATE feste SET rechnung_prefix='{$esc}' WHERE id=" . $fest_id . ' LIMIT 1');
-}
+$ok = ff_db_query($conn, 'UPDATE feste SET rechnung_prefix=? WHERE id=? LIMIT 1', 'si', [$val, (int)$fest_id]);
 
 if (!$ok) {
     http_response_code(500);

@@ -126,13 +126,18 @@ function ff_api_device_sql_speise_name_match(mysqli $conn, string $aliasPosition
     if ($a === '') {
         $a = 'p';
     }
-    $esc = mysqli_real_escape_string($conn, $needleLower);
-
+    // Platzhalter statt eingebettetem Wert – Parameter liefert ff_api_device_speise_name_param()
     $expr = "LOWER(CAST({$a}.Positionsname AS CHAR CHARACTER SET utf8mb4))";
     if ($matchMode === 'exact') {
-        return "{$expr} = '{$esc}'";
+        return "{$expr} = ?";
     }
-    return "{$expr} LIKE '%{$esc}%'";
+    return "{$expr} LIKE ?";
+}
+
+/** Parameterwert passend zu ff_api_device_sql_speise_name_match(). */
+function ff_api_device_speise_name_param(string $needleLower, string $matchMode): string
+{
+    return $matchMode === 'exact' ? $needleLower : '%' . $needleLower . '%';
 }
 
 /**
@@ -184,6 +189,7 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
 {
     $batchExpr = ff_sql_bestellung_batch_key('b');
     $nameMatch = ff_api_device_sql_speise_name_match($conn, 'p', $needleLower, $matchMode);
+    $nameParam = ff_api_device_speise_name_param($needleLower, $matchMode);
     $effPt = ff_api_device_sql_effective_print_target('b', 'p');
     $ptWhere = $printTarget > 0 ? ("AND {$effPt} = " . (int)$printTarget . ' ') : '';
 
@@ -207,7 +213,6 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
             $geb = 0;
             $speisenBatch = [];
 
-            $bkEsc = mysqli_real_escape_string($conn, $bk);
             $sqlCnt = 'SELECT p.Positionsname, p.rowid AS position_id, b.rowid AS bestellung_rowid, '
                 . 'b.tischnummer, b.bon_id, COALESCE(t.tischname, \'\') AS tischname, b.zeitstempel, b.order_nr, b.Zusatzinfo '
                 . 'FROM bestellungen b '
@@ -215,11 +220,11 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
                 . 'LEFT JOIN tische t ON t.tischnummer = b.tischnummer '
                 . "WHERE b.`delete` = 0 AND b.kueche = 0 AND b.ausgeliefert = 0 "
                 . $ptWhere
-                . 'AND b.tischnummer = ' . $tn . ' '
-                . "AND ({$batchExpr}) = '{$bkEsc}' "
+                . 'AND b.tischnummer = ? '
+                . "AND ({$batchExpr}) = ? "
                 . 'AND ' . $nameMatch;
 
-            $r2 = mysqli_query($conn, $sqlCnt);
+            $r2 = ff_db_query($conn, $sqlCnt, 'iss', [$tn, $bk, $nameParam]);
             if ($r2) {
                 while ($r = mysqli_fetch_assoc($r2)) {
                     $c = ff_api_device_speise_classify((string)($r['Positionsname'] ?? ''), $needleLower, $matchMode);
@@ -265,7 +270,7 @@ function ff_api_device_action_speise_queue(mysqli $conn, string $filterKey, stri
         . $ptWhere
         . 'AND ' . $nameMatch . ' '
         . 'ORDER BY b.zeitstempel ASC';
-    $rAll = mysqli_query($conn, $sqlAll);
+    $rAll = ff_db_query($conn, $sqlAll, 's', [$nameParam]);
     if ($rAll) {
         while ($r = mysqli_fetch_assoc($rAll)) {
             $c = ff_api_device_speise_classify((string)($r['Positionsname'] ?? ''), $needleLower, $matchMode);

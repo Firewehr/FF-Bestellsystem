@@ -22,7 +22,6 @@ try {
     while ($row1 = mysqli_fetch_assoc($result1)) {
         
         $batch_key = (string)($row1['batch_key'] ?? '');
-        $batch_key_esc = mysqli_real_escape_string($conn, $batch_key);
 
         /*
           if ($tischnummerselect != $row1['tischnummer']) {
@@ -33,9 +32,9 @@ try {
          */
         $tischnummerselect = $row1['tischnummer'];
         //$result = mysql_query("SELECT `bestellungen`.`tischnummer`,bestellungen.timestampBezahlung,`positionen`.`Betrag` as betrag, `positionen`.`Positionsname`, `bestellungen`.`zeitKueche`,`bestellungen`.`position`, `positionen`.`rowid`, `bestellungen`.`zeitstempel`, `bestellungen`.`rowid`,`bestellungen`.`delete`,`bestellungen`.`kueche` AS kuechef FROM `bestellungen`, `positionen` WHERE  `positionen`.`rowid`=`bestellungen`.`position` AND `bestellungen`.`tischnummer`=" . $Tischnummer . ' AND `bestellungen`.`delete`=0  ORDER BY bestellungen.zeitstempel DESC LIMIT 300');
-        $sql2 = "SELECT COUNT( * ) AS anzahl, `bestellungen`.`zeitKueche`, `bestellungen`.`position`, `bestellungen`.`tischnummer`, `bestellungen`.`zeitstempel`, `positionen`.`rowid`, `positionen`.`Positionsname`, `positionen`.`type`, `bestellungen`.`kueche`, `bestellungen`.`delete`, `bestellungen`.`rowid`, FLOOR(UNIX_TIMESTAMP(`bestellungen`.`zeitstempel`)/900) AS tt  FROM bestellungen, positionen WHERE bestellungen.position=positionen.rowid AND `type`=1 AND  bestellungen.zeitKueche='0000-00-00 00:00:00' AND bestellungen.ausgeliefert=0 AND positionen.type=1 AND bestellungen.delete=0 AND bestellungen.tischnummer=" . $tischnummerselect . " AND {$batchKeyExpr}='" . $batch_key_esc . "' GROUP BY bestellungen.position ORDER BY positionen.Positionsname ASC";
+        $sql2 = "SELECT COUNT( * ) AS anzahl, `bestellungen`.`zeitKueche`, `bestellungen`.`position`, `bestellungen`.`tischnummer`, `bestellungen`.`zeitstempel`, `positionen`.`rowid`, `positionen`.`Positionsname`, `positionen`.`type`, `bestellungen`.`kueche`, `bestellungen`.`delete`, `bestellungen`.`rowid`, FLOOR(UNIX_TIMESTAMP(`bestellungen`.`zeitstempel`)/900) AS tt  FROM bestellungen, positionen WHERE bestellungen.position=positionen.rowid AND `type`=1 AND  bestellungen.zeitKueche='0000-00-00 00:00:00' AND bestellungen.ausgeliefert=0 AND positionen.type=1 AND bestellungen.delete=0 AND bestellungen.tischnummer=? AND {$batchKeyExpr}=? GROUP BY bestellungen.position ORDER BY positionen.Positionsname ASC";
 
-        $result2 = mysqli_query($conn, $sql2);
+        $result2 = ff_db_query($conn, $sql2, 'is', [(int) $tischnummerselect, $batch_key]);
         $Summe = 0;
 
         while ($row = mysqli_fetch_assoc($result2)) {

@@ -456,7 +456,7 @@ if ($action === 'print_target_test') {
     require_once __DIR__ . '/../../include/settings.php';
     ff_socket_printer_ensure_schema($conn);
 
-    $ptRes = mysqli_query($conn, "SELECT * FROM print_targets WHERE print_target = {$id} LIMIT 1");
+    $ptRes = ff_db_query($conn, 'SELECT * FROM print_targets WHERE print_target = ? LIMIT 1', 'i', [(int)$id]);
     if (!$ptRes || mysqli_num_rows($ptRes) === 0) {
         api_error('Druckziel nicht gefunden.');
     }
@@ -512,9 +512,8 @@ if ($action === 'stress_test_cleanup') {
     if ($tag === '' || !preg_match('/^STRESS_\d+_\d+$/', $tag)) {
         api_error('Ungültiges Stresstest-Tag.');
     }
-    $tagEsc = mysqli_real_escape_string($conn, $tag);
-    $res = mysqli_query($conn, "DELETE FROM bestellungen WHERE Zusatzinfo LIKE '%{$tagEsc}%'");
-    $affected = mysqli_affected_rows($conn);
+    $res = ff_db_query($conn, 'DELETE FROM bestellungen WHERE Zusatzinfo LIKE ?', 's', ['%' . $tag . '%']);
+    $affected = ff_db_affected_rows();
     api_response(['ok' => true, 'deleted_positions' => $affected]);
 }
 
@@ -927,7 +926,7 @@ if ($action === 'user_save') {
         if ($password === '') {
             api_error('Ein Passwort ist für neue Benutzer erforderlich.');
         }
-        $chk = mysqli_query($conn, 'SELECT id FROM users WHERE username = "' . mysqli_real_escape_string($conn, $username) . '" LIMIT 1');
+        $chk = ff_db_query($conn, 'SELECT id FROM users WHERE username = ? LIMIT 1', 's', [$username]);
         if ($chk && mysqli_fetch_assoc($chk)) {
             api_error('Dieser Benutzername ist bereits vergeben.');
         }
@@ -1080,19 +1079,25 @@ if ($action === 'invoices_list') {
     $offset = ($page - 1) * $limit;
 
     $where = [];
+    $whereTypes = '';
+    $whereParams = [];
     if ($q !== '') {
-        $escQ = mysqli_real_escape_string($conn, $q);
-        $wParts = ["rechnungsnummer LIKE '%{$escQ}%'", "created_by LIKE '%{$escQ}%'", "empfaenger_name LIKE '%{$escQ}%'"];
+        $like = '%' . $q . '%';
+        $wParts = ['rechnungsnummer LIKE ?', 'created_by LIKE ?', 'empfaenger_name LIKE ?'];
+        $whereTypes .= 'sss';
+        array_push($whereParams, $like, $like, $like);
         if (is_numeric($q)) {
-            $wParts[] = 'tischnummer = ' . (int)$q;
-            $wParts[] = 'id = ' . (int)$q;
+            $wParts[] = 'tischnummer = ?';
+            $wParts[] = 'id = ?';
+            $whereTypes .= 'ii';
+            array_push($whereParams, (int)$q, (int)$q);
         }
         $where[] = '(' . implode(' OR ', $wParts) . ')';
     }
 
     $whereSql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
 
-    $countRes = mysqli_query($conn, "SELECT COUNT(*) AS c, COALESCE(SUM(total), 0) AS sum_total FROM rechnungen {$whereSql}");
+    $countRes = ff_db_query($conn, "SELECT COUNT(*) AS c, COALESCE(SUM(total), 0) AS sum_total FROM rechnungen {$whereSql}", $whereTypes, $whereParams);
     $totalCount = 0;
     $sumTotal = 0.0;
     if ($countRes && ($cr = mysqli_fetch_assoc($countRes))) {
@@ -1106,8 +1111,8 @@ if ($action === 'invoices_list') {
             FROM rechnungen 
             {$whereSql} 
             ORDER BY id DESC 
-            LIMIT {$offset}, {$limit}";
-    $res = mysqli_query($conn, $sql);
+            LIMIT ?, ?";
+    $res = ff_db_query($conn, $sql, $whereTypes . 'ii', array_merge($whereParams, [(int)$offset, (int)$limit]));
     $invoices = [];
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
@@ -1256,8 +1261,8 @@ if ($action === 'invoice_storno') {
         mysqli_stmt_close($stB);
 
         if (count($linkedRowids) > 0) {
-            $idList = implode(',', $linkedRowids);
-            mysqli_query($conn, "UPDATE bestellungen SET `delete` = 1, `kueche` = 0, `zeitKueche` = '0000-00-00 00:00:00', `ausgeliefert` = 0 WHERE rowid IN ({$idList})");
+            [$idList, $idTypes, $idVals] = ff_db_in_ints($linkedRowids);
+            ff_db_query($conn, "UPDATE bestellungen SET `delete` = 1, `kueche` = 0, `zeitKueche` = '0000-00-00 00:00:00', `ausgeliefert` = 0 WHERE rowid IN ({$idList})", $idTypes, $idVals);
             foreach ($linkedRowids as $rid) {
                 ff_bestellung_clear_print_queue($conn, $rid);
             }
@@ -1295,16 +1300,15 @@ if ($action === 'verpflegung_list') {
 
     // Einträge
     $entries = [];
-    $escD = mysqli_real_escape_string($conn, $datum);
     $sql = "SELECT mv.id, mv.datum, mv.bereich_id, b.name AS bereich_name, 
                    mv.position_id, p.Positionsname AS position_name, mv.menge, 
                    mv.notiz, mv.created_at, mv.created_by 
             FROM mitarbeiter_verpflegung mv 
             JOIN mitarbeiter_bereiche b ON b.id = mv.bereich_id 
             JOIN positionen p ON p.rowid = mv.position_id 
-            WHERE mv.datum = '{$escD}' 
+            WHERE mv.datum = ? 
             ORDER BY mv.id DESC";
-    $resE = mysqli_query($conn, $sql);
+    $resE = ff_db_query($conn, $sql, 's', [(string) $datum]);
     if ($resE) {
         while ($re = mysqli_fetch_assoc($resE)) {
             $entries[] = [
@@ -1403,7 +1407,7 @@ if ($action === 'mitarbeiter_bereich_save') {
     }
     $savedId = $id > 0 ? $id : (int)mysqli_insert_id($conn);
     if ($savedId <= 0) {
-        $checkQ = mysqli_query($conn, "SELECT id FROM mitarbeiter_bereiche WHERE name = '" . mysqli_real_escape_string($conn, $name) . "' LIMIT 1");
+        $checkQ = ff_db_query($conn, 'SELECT id FROM mitarbeiter_bereiche WHERE name = ? LIMIT 1', 's', [$name]);
         if ($checkQ && ($rowQ = mysqli_fetch_assoc($checkQ))) {
             $savedId = (int)$rowQ['id'];
         }
@@ -1520,6 +1524,8 @@ if ($action === 'kellner_sales_report') {
     $festId = isset($data['fest_id']) && (int)$data['fest_id'] > 0 ? (int)$data['fest_id'] : null;
 
     $where = ["b.`delete` = 0", "b.timestampBezahlung IS NOT NULL", "b.timestampBezahlung <> '0000-00-00 00:00:00'", "IFNULL(b.schreibaus, 0) = 0", "b.kellnerZahlung IS NOT NULL", "TRIM(b.kellnerZahlung) <> ''"];
+    $whereTypes = '';
+    $whereParams = [];
     if ($festId !== null) {
         $where[] = 'b.fest_id = ' . $festId;
     } else {
@@ -1529,16 +1535,19 @@ if ($action === 'kellner_sales_report') {
         }
     }
     if ($von !== null) {
-        $vEsc = mysqli_real_escape_string($conn, $von . (strlen($von) === 10 ? ' 00:00:00' : ''));
-        $where[] = "b.timestampBezahlung >= '{$vEsc}'";
+        $where[] = 'b.timestampBezahlung >= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $von . (strlen($von) === 10 ? ' 00:00:00' : '');
     }
     if ($bis !== null) {
-        $bEsc = mysqli_real_escape_string($conn, $bis . (strlen($bis) === 10 ? ' 23:59:59' : ''));
-        $where[] = "b.timestampBezahlung <= '{$bEsc}'";
+        $where[] = 'b.timestampBezahlung <= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $bis . (strlen($bis) === 10 ? ' 23:59:59' : '');
     }
     if ($kellnerFilter !== null) {
-        $kEsc = mysqli_real_escape_string($conn, $kellnerFilter);
-        $where[] = "b.kellnerZahlung = '{$kEsc}'";
+        $where[] = 'b.kellnerZahlung = ?';
+        $whereTypes .= 's';
+        $whereParams[] = $kellnerFilter;
     }
 
     $amtExpr = "COALESCE(NULLIF(b.betrag, 0), p.Betrag)";
@@ -1560,7 +1569,7 @@ if ($action === 'kellner_sales_report') {
             GROUP BY b.kellnerZahlung
             ORDER BY umsatz_soll DESC";
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $whereTypes, $whereParams);
     $waiters = [];
     $totals = [
         'pos_count' => 0,
@@ -1584,8 +1593,7 @@ if ($action === 'kellner_sales_report') {
 
             // Zwischenentnahmen / Zuzahlungen
             $mov = ['entnahmen' => 0.0, 'zuzahlungen' => 0.0];
-            $kEsc = mysqli_real_escape_string($conn, $login);
-            $mr = mysqli_query($conn, "SELECT typ, COALESCE(SUM(betrag), 0) AS s FROM kellner_bewegungen WHERE kellner_login = '{$kEsc}' AND settlement_id IS NULL GROUP BY typ");
+            $mr = ff_db_query($conn, 'SELECT typ, COALESCE(SUM(betrag), 0) AS s FROM kellner_bewegungen WHERE kellner_login = ? AND settlement_id IS NULL GROUP BY typ', 's', [$login]);
             while ($mr && ($m = mysqli_fetch_assoc($mr))) {
                 if ($m['typ'] === 'entnahme') {
                     $mov['entnahmen'] = (float)$m['s'];
@@ -1649,9 +1657,9 @@ if ($action === 'kellner_sales_report') {
 
 if ($action === 'kellner_movements_list') {
     $kellner = trim((string)($data['kellner'] ?? ''));
-    $kEsc = mysqli_real_escape_string($conn, $kellner);
-    $kWhere = $kellner !== '' ? "WHERE kellner_login = '{$kEsc}'" : '';
-    $res = mysqli_query($conn, "SELECT * FROM kellner_bewegungen {$kWhere} ORDER BY created_at DESC LIMIT 100");
+    $res = $kellner !== ''
+        ? ff_db_query($conn, 'SELECT * FROM kellner_bewegungen WHERE kellner_login = ? ORDER BY created_at DESC LIMIT 100', 's', [$kellner])
+        : ff_db_query($conn, 'SELECT * FROM kellner_bewegungen ORDER BY created_at DESC LIMIT 100');
     $list = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $list[] = [
@@ -1702,16 +1710,15 @@ if ($action === 'kellner_settle') {
         api_error('Kellner-Login erforderlich.');
     }
 
-    $kEsc = mysqli_real_escape_string($conn, $kellner);
     $amtExpr = ff_finance_order_amount_expr('b', 'p');
     $sql = "SELECT b.rowid, {$amtExpr} AS amt, b.timestampBezahlung
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
             WHERE " . ff_finance_order_paid_base_sql('b') . "
-              AND b.kellnerZahlung = '{$kEsc}'
+              AND b.kellnerZahlung = ?
               AND b.settlement_id IS NULL{$festCond}{$tischCond}";
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, 's', [$kellner]);
     $ids = [];
     $umsatz = 0.0;
     $minTs = null;
@@ -1733,7 +1740,7 @@ if ($action === 'kellner_settle') {
     $umsatz = round($umsatz, 2);
 
     $mov = ['entnahmen' => 0.0, 'zuzahlungen' => 0.0];
-    $mr = mysqli_query($conn, "SELECT typ, COALESCE(SUM(betrag),0) AS s FROM kellner_bewegungen WHERE kellner_login = '{$kEsc}' AND settlement_id IS NULL GROUP BY typ");
+    $mr = ff_db_query($conn, 'SELECT typ, COALESCE(SUM(betrag),0) AS s FROM kellner_bewegungen WHERE kellner_login = ? AND settlement_id IS NULL GROUP BY typ', 's', [$kellner]);
     while ($mr && ($m = mysqli_fetch_assoc($mr))) {
         if ($m['typ'] === 'entnahme') {
             $mov['entnahmen'] = (float)$m['s'];
@@ -1753,10 +1760,9 @@ if ($action === 'kellner_settle') {
         $settlementId = (int)mysqli_insert_id($conn);
         mysqli_stmt_close($st);
 
-        $idList = implode(',', $ids);
-        $byEsc = mysqli_real_escape_string($conn, $by);
-        mysqli_query($conn, "UPDATE bestellungen SET settlement_id = {$settlementId}, settled_at = NOW(), settled_by = '{$byEsc}' WHERE rowid IN ({$idList})");
-        mysqli_query($conn, "UPDATE kellner_bewegungen SET settlement_id = {$settlementId} WHERE kellner_login = '{$kEsc}' AND settlement_id IS NULL");
+        [$idList, $idTypes, $idVals] = ff_db_in_ints($ids);
+        ff_db_query($conn, "UPDATE bestellungen SET settlement_id = ?, settled_at = NOW(), settled_by = ? WHERE rowid IN ({$idList})", 'is' . $idTypes, array_merge([$settlementId, (string)$by], $idVals));
+        ff_db_query($conn, 'UPDATE kellner_bewegungen SET settlement_id = ? WHERE kellner_login = ? AND settlement_id IS NULL', 'is', [$settlementId, $kellner]);
 
         mysqli_commit($conn);
         api_response([
@@ -1859,24 +1865,27 @@ if ($action === 'finance_overview') {
     $whereSettle = '';
     $whereBuch = '';
     $fest = ff_finance_fest_filter_sql($conn, 'b');
+    // Zeitraum als Parameter: jedes Fragment hat genau zwei Platzhalter
+    $rangeTypes = '';
+    $rangeParams = [];
     if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez = " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-        $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
-        $whereSettle = " AND created_at >= '{$vonEsc}' AND created_at <= '{$bisEsc}' ";
+        $whereBez = ' AND b.timestampBezahlung >= ? AND b.timestampBezahlung <= ? ';
+        $whereKasse = ' AND s.closed_at >= ? AND s.closed_at <= ? ';
+        $whereSettle = ' AND created_at >= ? AND created_at <= ? ';
         $bt = ff_finance_buchung_timestamp_expr('bu');
-        $whereBuch = " AND {$bt} >= '{$vonEsc}' AND {$bt} <= '{$bisEsc}' ";
+        $whereBuch = " AND {$bt} >= ? AND {$bt} <= ? ";
+        $rangeTypes = 'ss';
+        $rangeParams = [(string)$range['von_sql'], (string)$range['bis_sql']];
     }
 
     $kassenUmsatz = 0.0;
-    $resK = mysqli_query($conn, "SELECT COALESCE(SUM(revenue_amount), 0) AS s FROM kassen_sessions s WHERE s.status = 'closed' {$whereKasse}");
+    $resK = ff_db_query($conn, "SELECT COALESCE(SUM(revenue_amount), 0) AS s FROM kassen_sessions s WHERE s.status = 'closed' {$whereKasse}", $rangeTypes, $rangeParams);
     if ($resK && ($rk = mysqli_fetch_assoc($resK))) {
         $kassenUmsatz = (float)$rk['s'];
     }
 
     $kellnerUmsatz = 0.0;
-    $resKel = mysqli_query($conn, "SELECT COALESCE(SUM(umsatz_soll), 0) AS s FROM kellner_settlements WHERE voided_at IS NULL {$whereSettle}");
+    $resKel = ff_db_query($conn, "SELECT COALESCE(SUM(umsatz_soll), 0) AS s FROM kellner_settlements WHERE voided_at IS NULL {$whereSettle}", $rangeTypes, $rangeParams);
     if ($resKel && ($rkel = mysqli_fetch_assoc($resKel))) {
         $kellnerUmsatz = (float)$rkel['s'];
     }
@@ -1887,16 +1896,16 @@ if ($action === 'finance_overview') {
 
     $fixEinnahmen = 0.0;
     $fixAusgaben = 0.0;
-    $resE = mysqli_query($conn, "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen bu WHERE typ = 'einnahme' {$whereBuch}");
+    $resE = ff_db_query($conn, "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen bu WHERE typ = 'einnahme' {$whereBuch}", $rangeTypes, $rangeParams);
     if ($resE && ($re = mysqli_fetch_assoc($resE))) $fixEinnahmen = (float)$re['s'];
-    $resA = mysqli_query($conn, "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen bu WHERE typ = 'ausgabe' {$whereBuch}");
+    $resA = ff_db_query($conn, "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen bu WHERE typ = 'ausgabe' {$whereBuch}", $rangeTypes, $rangeParams);
     if ($resA && ($ra = mysqli_fetch_assoc($resA))) $fixAusgaben = (float)$ra['s'];
 
     $variableKosten = 0.0;
     $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         $sqlVar = "SELECT COALESCE(SUM(COALESCE(p.selbstkosten, 0)), 0) AS k FROM bestellungen b JOIN positionen p ON p.rowid = b.position WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereBez}";
-        $resV = mysqli_query($conn, $sqlVar);
+        $resV = ff_db_query($conn, $sqlVar, $rangeTypes, $rangeParams);
         if ($resV && ($rv = mysqli_fetch_assoc($resV))) $variableKosten = (float)$rv['k'];
     }
 
@@ -1997,21 +2006,26 @@ if ($action === 'statistics_articles') {
     $kat = isset($data['kategorie']) && trim((string)$data['kategorie']) !== '' ? trim((string)$data['kategorie']) : null;
 
     $where = ["b.`delete` = 0", "b.timestampBezahlung IS NOT NULL", "b.timestampBezahlung <> '0000-00-00 00:00:00'", "IFNULL(b.schreibaus, 0) = 0", "IFNULL(b.is_gratis, 0) = 0"];
+    $whereTypes = '';
+    $whereParams = [];
     $festSql = trim(ff_finance_fest_filter_sql($conn, 'b'));
     if ($festSql !== '') {
         $where[] = ltrim($festSql, ' AND');
     }
     if ($von !== null) {
-        $vEsc = mysqli_real_escape_string($conn, $von . (strlen($von) === 10 ? ' 00:00:00' : ''));
-        $where[] = "b.timestampBezahlung >= '{$vEsc}'";
+        $where[] = 'b.timestampBezahlung >= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $von . (strlen($von) === 10 ? ' 00:00:00' : '');
     }
     if ($bis !== null) {
-        $bEsc = mysqli_real_escape_string($conn, $bis . (strlen($bis) === 10 ? ' 23:59:59' : ''));
-        $where[] = "b.timestampBezahlung <= '{$bEsc}'";
+        $where[] = 'b.timestampBezahlung <= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $bis . (strlen($bis) === 10 ? ' 23:59:59' : '');
     }
     if ($kellner !== null) {
-        $kEsc = mysqli_real_escape_string($conn, $kellner);
-        $where[] = "b.kellnerZahlung = '{$kEsc}'";
+        $where[] = 'b.kellnerZahlung = ?';
+        $whereTypes .= 's';
+        $whereParams[] = $kellner;
     }
     if ($kat !== null) {
         $katLower = mb_strtolower($kat, 'UTF-8');
@@ -2039,7 +2053,7 @@ if ($action === 'statistics_articles') {
             GROUP BY p.rowid, p.Positionsname, p.type, pt.name, p.Betrag
             ORDER BY cnt DESC, summe DESC";
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $whereTypes, $whereParams);
     $articles = [];
     $totalCnt = 0;
     $totalSumme = 0.0;
@@ -2079,17 +2093,21 @@ if ($action === 'statistics_timeline') {
     $bis = isset($data['bis']) && trim((string)$data['bis']) !== '' ? trim((string)$data['bis']) : null;
 
     $where = ["b.`delete` = 0", "b.timestampBezahlung IS NOT NULL", "b.timestampBezahlung <> '0000-00-00 00:00:00'", "IFNULL(b.schreibaus, 0) = 0", "IFNULL(b.is_gratis, 0) = 0"];
+    $whereTypes = '';
+    $whereParams = [];
     $festSql = trim(ff_finance_fest_filter_sql($conn, 'b'));
     if ($festSql !== '') {
         $where[] = ltrim($festSql, ' AND');
     }
     if ($von !== null) {
-        $vEsc = mysqli_real_escape_string($conn, $von . (strlen($von) === 10 ? ' 00:00:00' : ''));
-        $where[] = "b.timestampBezahlung >= '{$vEsc}'";
+        $where[] = 'b.timestampBezahlung >= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $von . (strlen($von) === 10 ? ' 00:00:00' : '');
     }
     if ($bis !== null) {
-        $bEsc = mysqli_real_escape_string($conn, $bis . (strlen($bis) === 10 ? ' 23:59:59' : ''));
-        $where[] = "b.timestampBezahlung <= '{$bEsc}'";
+        $where[] = 'b.timestampBezahlung <= ?';
+        $whereTypes .= 's';
+        $whereParams[] = $bis . (strlen($bis) === 10 ? ' 23:59:59' : '');
     }
     $whereSql = implode(' AND ', $where);
     $amtExpr = "COALESCE(NULLIF(b.betrag, 0), p.Betrag)";
@@ -2103,7 +2121,7 @@ if ($action === 'statistics_timeline') {
             GROUP BY HOUR(b.timestampBezahlung)
             ORDER BY stunde ASC";
 
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $whereTypes, $whereParams);
     $timeline = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $stunde = (int)$r['stunde'];

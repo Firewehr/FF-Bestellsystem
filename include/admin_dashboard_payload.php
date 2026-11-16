@@ -45,7 +45,6 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     mysqli_set_charset($conn, 'utf8mb4');
 
     $today = date('Y-m-d');
-    $todayEsc = mysqli_real_escape_string($conn, $today);
 
     $base = ff_finance_order_paid_base_sql('b');
     $festFilterSql = ff_finance_fest_filter_sql($conn, 'b');
@@ -69,7 +68,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     }
 
     $sqlHeute = "SELECT COALESCE(SUM({$amtExpr}),0) AS s, COUNT(*) AS c FROM bestellungen b
-        JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql} AND DATE(b.timestampBezahlung) = '{$todayEsc}'";
+        JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql} AND DATE(b.timestampBezahlung) = ?";
     $sqlGes = "SELECT COALESCE(SUM({$amtExpr}),0) AS s, COUNT(*) AS c FROM bestellungen b
         JOIN positionen p ON p.rowid = b.position WHERE {$base}{$festFilterSql}";
     $sqlBestellt = "SELECT COUNT(*) AS c FROM bestellungen b
@@ -87,7 +86,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     $offen = ['sum' => 0.0, 'count' => 0];
     $kellnerGes = ['sum' => 0.0, 'count' => 0];
 
-    $r1 = mysqli_query($conn, $sqlHeute);
+    $r1 = ff_db_query($conn, $sqlHeute, 's', [$today]);
     if ($r1 && ($row = mysqli_fetch_assoc($r1))) {
         $heute = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }

@@ -7,12 +7,7 @@ $Positionsname = $_GET['Positionsname'] ?? '';
 if ($Positionsname !== '') {
 
     require_once '../include/db.php';
-    $pn = mysqli_real_escape_string($conn, (string) $Positionsname);
-    $sql = "UPDATE `positionen` SET `Positionsname`='" . $pn . "' WHERE rowid=" . $rowid;
-
-    //echo $sql;
-
-    if (mysqli_query($conn, $sql)) {
+    if (ff_db_query($conn, 'UPDATE `positionen` SET `Positionsname`=? WHERE rowid=?', 'si', [(string) $Positionsname, (int) $rowid])) {
         echo "Record updated successfully";
     } else {
         echo "Error updating record: " . mysqli_error($conn);

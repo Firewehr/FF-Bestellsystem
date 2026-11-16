@@ -236,15 +236,6 @@ $fest_id_int = $fest_id !== null ? (int) $fest_id : 0;
 $tischnummerIns = $tischnummer > 0 ? (int) $tischnummer : 0;
 $sammelIns = $sammelrechnung_id > 0 ? (int) $sammelrechnung_id : 0;
 
-$rnEsc = mysqli_real_escape_string($conn, $rechnungsnummer);
-$cbEsc = mysqli_real_escape_string($conn, $created_by);
-$enEsc = mysqli_real_escape_string($conn, $empfaenger_name);
-$esEsc = mysqli_real_escape_string($conn, $empfaenger_strasse);
-$epEsc = mysqli_real_escape_string($conn, $empfaenger_plz);
-$eoEsc = mysqli_real_escape_string($conn, $empfaenger_ort);
-$euEsc = mysqli_real_escape_string($conn, $empfaenger_uid);
-$totalSql = number_format($total, 2, '.', '');
-
 $existingCols = [];
 $chkCols = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
 if ($chkCols) {
@@ -254,39 +245,48 @@ if ($chkCols) {
     mysqli_free_result($chkCols);
 }
 
-$cols = [
-    'rechnungsnummer', 'created_by', 'fest_id', 'tischnummer', 'sammelrechnung_id', 'is_firma',
-    'empfaenger_name', 'empfaenger_strasse', 'empfaenger_plz', 'empfaenger_ort', 'empfaenger_uid',
-    'total', 'gedruckt', 'druck_status', 'druck_attempts', 'is_proforma', 'lines_json'
+// Spaltennamen fest im Code, alle Werte als Parameter (Prepared Statement)
+$insCols = [
+    'rechnungsnummer' => ['s', $rechnungsnummer],
+    'created_by' => ['s', $created_by],
+    'fest_id' => ['i', $fest_id_int],
+    'tischnummer' => ['i', $tischnummerIns],
+    'sammelrechnung_id' => ['i', $sammelIns],
+    'is_firma' => ['i', (int) $is_firma],
+    'empfaenger_name' => ['s', (string) $empfaenger_name],
+    'empfaenger_strasse' => ['s', (string) $empfaenger_strasse],
+    'empfaenger_plz' => ['s', (string) $empfaenger_plz],
+    'empfaenger_ort' => ['s', (string) $empfaenger_ort],
+    'empfaenger_uid' => ['s', (string) $empfaenger_uid],
+    'total' => ['d', round((float) $total, 2)],
+    'gedruckt' => ['i', 0],
+    'druck_status' => ['s', 'pending'],
+    'druck_attempts' => ['i', 0],
+    'is_proforma' => ['i', 0],
+    'lines_json' => ['s', null],
 ];
-$vals = [
-    "'" . $rnEsc . "'", "'" . $cbEsc . "'", $fest_id_int, $tischnummerIns, $sammelIns, (int) $is_firma,
-    "'" . $enEsc . "'", "'" . $esEsc . "'", "'" . $epEsc . "'", "'" . $eoEsc . "'", "'" . $euEsc . "'",
-    $totalSql, 0, "'pending'", 0, 0, 'NULL'
-];
-
 if (isset($existingCols['kellner'])) {
-    $cols[] = 'kellner';
-    $vals[] = "'" . $cbEsc . "'";
+    $insCols['kellner'] = ['s', $created_by];
 }
 if (isset($existingCols['betrag'])) {
-    $cols[] = 'betrag';
-    $vals[] = $totalSql;
+    $insCols['betrag'] = ['d', round((float) $total, 2)];
 }
 
-$sqlIns = 'INSERT INTO rechnungen (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $vals) . ')';
+$sqlIns = 'INSERT INTO rechnungen (' . implode(', ', array_keys($insCols)) . ') VALUES ('
+    . implode(', ', array_fill(0, count($insCols), '?')) . ')';
+$insTypes = implode('', array_column($insCols, 0));
+$insParams = array_column($insCols, 1);
 
-if (!mysqli_query($conn, $sqlIns)) {
+if (!ff_db_query($conn, $sqlIns, $insTypes, $insParams)) {
     respond(false, 'DB Fehler: ' . mysqli_error($conn));
 }
-$rechnung_id = (int) mysqli_insert_id($conn);
+$rechnung_id = ff_db_insert_id();
 if ($rechnung_id <= 0) {
     respond(false, 'Rechnung konnte nicht gespeichert werden (keine ID).');
 }
 
 if ($isProforma === 1 && $linesSnapshot !== null) {
-    $esc = mysqli_real_escape_string($conn, $linesSnapshot);
-    @mysqli_query($conn, "UPDATE rechnungen SET is_proforma=1, lines_json='{$esc}' WHERE id=" . $rechnung_id);
+    ff_db_query($conn, 'UPDATE rechnungen SET is_proforma=1, lines_json=? WHERE id=?', 'si', [$linesSnapshot, (int)$rechnung_id]);
 } else {
     @mysqli_query($conn, "UPDATE rechnungen SET is_proforma=0, lines_json=NULL WHERE id=" . $rechnung_id);
 }

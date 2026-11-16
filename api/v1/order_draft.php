@@ -217,10 +217,10 @@ if ($method === 'POST') {
         mysqli_stmt_close($findOldStmt);
 
         if ($oldIds !== []) {
-            $oldIdList = implode(',', $oldIds);
-            mysqli_query($conn, "DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid IN ($oldIdList)");
-            mysqli_query($conn, "DELETE FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN ($oldIdList)");
-            mysqli_query($conn, "DELETE FROM bestellungen WHERE rowid IN ($oldIdList)");
+            [$oldIdList, $oldIdTypes, $oldIdVals] = ff_db_in_ints($oldIds);
+            ff_db_query($conn, "DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid IN ($oldIdList)", $oldIdTypes, $oldIdVals);
+            ff_db_query($conn, "DELETE FROM bestellung_rezeptur_snapshots WHERE bestellung_rowid IN ($oldIdList)", $oldIdTypes, $oldIdVals);
+            ff_db_query($conn, "DELETE FROM bestellungen WHERE rowid IN ($oldIdList)", $oldIdTypes, $oldIdVals);
         }
 
         // Wenn der Warenkorb geleert wurde:

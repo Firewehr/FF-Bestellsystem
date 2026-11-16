@@ -24,8 +24,7 @@ foreach ($PositionsListe as $row) {
     if ($rid <= 0) {
         continue;
     }
-    $sql = "INSERT INTO print (bestellungID,timestamp) VALUES (" . $rid . ",'" . mysqli_real_escape_string($conn, $timestamp) . "')";
-    if (!mysqli_query($conn, $sql)) {
+    if (!ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [$rid, (string) $timestamp])) {
         $ok = false;
     }
 }

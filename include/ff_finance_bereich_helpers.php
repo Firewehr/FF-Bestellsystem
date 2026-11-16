@@ -98,7 +98,8 @@ function ff_finance_current_fest_id(mysqli $conn): int
  */
 function ff_kellner_paid_breakdown(mysqli $conn, string $kellner, string $scope = 'kellner'): array
 {
-    $kEsc = mysqli_real_escape_string($conn, trim($kellner));
+    // Einziger Wert in den Bedingungen ist der Kellner-Login: jedes ? steht für ihn.
+    $k = trim($kellner);
     $amt = ff_finance_order_amount_expr('b', 'p');
     $paid = ff_finance_order_paid_base_sql('b');
     $festId = ff_finance_current_fest_id($conn);
@@ -110,8 +111,8 @@ function ff_kellner_paid_breakdown(mysqli $conn, string $kellner, string $scope 
         : "(ks.settlement_scope = 'kellner' OR ks.settlement_scope IS NULL OR ks.settlement_scope = '')";
     $settledExists = "EXISTS (SELECT 1 FROM kellner_settlements ks WHERE ks.id = b.settlement_id"
         . " AND (ks.voided_at IS NULL OR ks.voided_at = '0000-00-00 00:00:00') AND {$scopeKs})";
-    $baseKz = "{$paid} AND b.kellnerZahlung = '{$kEsc}'{$tisch}";
-    $scopeFest = "b.`delete` = 0 AND b.kellnerZahlung = '{$kEsc}'{$festCur}";
+    $baseKz = "{$paid} AND b.kellnerZahlung = ?{$tisch}";
+    $scopeFest = "b.`delete` = 0 AND b.kellnerZahlung = ?{$festCur}";
     $unpaidSql = "({$scopeFest} AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00'))";
     $gratisSql = "({$scopeFest} AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung <> '0000-00-00 00:00:00'"
         . ' AND COALESCE(b.is_gratis, 0) = 1)';
@@ -122,7 +123,7 @@ function ff_kellner_paid_breakdown(mysqli $conn, string $kellner, string $scope 
         'settled' => "{$baseKz} AND {$settledExists}",
         'open_current_fest' => "{$baseKz} AND b.settlement_id IS NULL{$festCur}",
         'open_other_fest' => "{$baseKz} AND b.settlement_id IS NULL{$festWrong}",
-        'paid_other_kellner' => "{$paid} AND b.kellner = '{$kEsc}' AND (b.kellnerZahlung IS NULL OR TRIM(b.kellnerZahlung) = '' OR b.kellnerZahlung <> '{$kEsc}')",
+        'paid_other_kellner' => "{$paid} AND b.kellner = ? AND (b.kellnerZahlung IS NULL OR TRIM(b.kellnerZahlung) = '' OR b.kellnerZahlung <> ?)",
         'excluded_unpaid' => $unpaidSql,
         'excluded_gratis' => $gratisSql,
         'excluded_schreibaus' => $schreibSql,
@@ -143,7 +144,8 @@ function ff_kellner_paid_breakdown(mysqli $conn, string $kellner, string $scope 
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
             WHERE {$where}";
-        $res = mysqli_query($conn, $sql);
+        $n = substr_count($where, '?');
+        $res = ff_db_query($conn, $sql, str_repeat('s', $n), array_fill(0, $n, $k));
         if ($res && ($row = mysqli_fetch_assoc($res))) {
             $out[$key] = [
                 'count' => (int) ($row['cnt'] ?? 0),
@@ -870,20 +872,21 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     ff_finance_ensure_schema($conn);
     ff_schreibaus_ensure_column($conn);
 
-    $vonEsc = '';
-    $bisEsc = '';
     $whereBez = '';
     $whereKasse = '';
     $whereBuch = '';
 
     $fest = ff_finance_fest_filter_sql($conn, 'b');
+    // Zeitraum als Parameter: jedes Fragment hat genau zwei Platzhalter
+    $rangeTypes = '';
+    $rangeParams = [];
     if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereBez = " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-        $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
+        $whereBez = ' AND b.timestampBezahlung >= ? AND b.timestampBezahlung <= ? ';
+        $whereKasse = ' AND s.closed_at >= ? AND s.closed_at <= ? ';
         $bt = ff_finance_buchung_timestamp_expr('bu');
-        $whereBuch = " AND {$bt} >= '{$vonEsc}' AND {$bt} <= '{$bisEsc}' ";
+        $whereBuch = " AND {$bt} >= ? AND {$bt} <= ? ";
+        $rangeTypes = 'ss';
+        $rangeParams = [(string)$range['von_sql'], (string)$range['bis_sql']];
     }
 
     $kassenUmsatz = 0.0;
@@ -894,7 +897,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     } elseif ($bereichId === 0 || $bereichId === ff_finance_bereich_id_kellner_direkt()) {
         $kasseSql .= ' AND 1=0';
     }
-    $resK = mysqli_query($conn, $kasseSql);
+    $resK = ff_db_query($conn, $kasseSql, $rangeTypes, $rangeParams);
     if ($resK && ($rk = mysqli_fetch_assoc($resK))) {
         $kassenUmsatz = (float) $rk['s'];
     }
@@ -918,7 +921,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
         {$joinPt}
         WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}
         {$whereBez} {$wherePt}";
-    $resU = mysqli_query($conn, $sqlU);
+    $resU = ff_db_query($conn, $sqlU, $rangeTypes, $rangeParams);
     if ($resU && ($ru = mysqli_fetch_assoc($resU))) {
         $verkauf = (float) $ru['s'];
     }
@@ -932,7 +935,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
             {$joinPt}
             WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}
             {$whereBez} {$wherePt}";
-        $resV = mysqli_query($conn, $sqlV);
+        $resV = ff_db_query($conn, $sqlV, $rangeTypes, $rangeParams);
         if ($resV && ($rv = mysqli_fetch_assoc($resV))) {
             $variableKosten = (float) $rv['s'];
         }
@@ -950,8 +953,8 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
 
     $fixEinnahmen = 0.0;
     $fixAusgaben = 0.0;
-    $resE = mysqli_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch} {$whereBuchBereich}");
-    $resA = mysqli_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch} {$whereBuchBereich}");
+    $resE = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch} {$whereBuchBereich}", $rangeTypes, $rangeParams);
+    $resA = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch} {$whereBuchBereich}", $rangeTypes, $rangeParams);
     if ($resE && ($re = mysqli_fetch_assoc($resE))) {
         $fixEinnahmen = (float) $re['s'];
     }

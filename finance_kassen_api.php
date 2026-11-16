@@ -111,7 +111,7 @@ if ($action === 'movement') {
         echo json_encode(['ok' => false, 'error' => 'bad_params']);
         exit;
     }
-    $chk = mysqli_query($conn, "SELECT id FROM kassen_sessions WHERE id = {$sessionId} AND status = 'open' LIMIT 1");
+    $chk = ff_db_query($conn, "SELECT id FROM kassen_sessions WHERE id = ? AND status = 'open' LIMIT 1", 'i', [(int)$sessionId]);
     if (!$chk || mysqli_num_rows($chk) === 0) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'session_not_open']);
@@ -182,18 +182,21 @@ if ($action === 'list_closed') {
     $bisRaw = trim((string) ($_GET['bis'] ?? ''));
     $range = ff_finance_parse_datetime_range($vonRaw, $bisRaw);
     $whereKasse = '';
+    $rangeTypes = '';
+    $rangeParams = [];
     if ($range !== null) {
-        $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-        $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-        $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
+        $whereKasse = ' AND s.closed_at >= ? AND s.closed_at <= ? ';
+        $rangeTypes = 'ss';
+        $rangeParams = [(string) $range['von_sql'], (string) $range['bis_sql']];
     }
     $rows = [];
     $sql = "SELECT s.*, b.name AS bereich_name FROM kassen_sessions s
         JOIN kassen_bereiche b ON b.id = s.bereich_id
         WHERE s.status = 'closed' {$whereKasse}
-        ORDER BY s.closed_at DESC LIMIT {$limit}";
-    $res = mysqli_query($conn, $sql);
+        ORDER BY s.closed_at DESC LIMIT ?";
+    $res = ff_db_query($conn, $sql, $rangeTypes . 'i', array_merge($rangeParams, [(int) $limit]));
     while ($res && ($s = mysqli_fetch_assoc($res))) {
+        $s = ff_db_row_text($s);
         $sid = (int) ($s['id'] ?? 0);
         $mov = ff_kassen_session_movements_sum($conn, $sid);
         $moves = [];

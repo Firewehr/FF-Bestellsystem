@@ -41,9 +41,12 @@ function ff_fest_kassen_closed_sessions(mysqli $conn, ?string $festDatumYmd = nu
     ff_finance_ensure_schema($conn);
 
     $where = "s.status = 'closed'";
+    $whereTypes = '';
+    $whereParams = [];
     if ($festDatumYmd !== null && $festDatumYmd !== '' && $festDatumYmd !== '0000-00-00') {
-        $dEsc = mysqli_real_escape_string($conn, $festDatumYmd);
-        $where .= " AND DATE(s.closed_at) >= '{$dEsc}'";
+        $where .= ' AND DATE(s.closed_at) >= ?';
+        $whereTypes = 's';
+        $whereParams = [(string) $festDatumYmd];
     }
 
     $rows = [];
@@ -51,7 +54,7 @@ function ff_fest_kassen_closed_sessions(mysqli $conn, ?string $festDatumYmd = nu
         JOIN kassen_bereiche b ON b.id = s.bereich_id
         WHERE {$where}
         ORDER BY s.closed_at ASC";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $whereTypes, $whereParams);
     while ($res && ($s = mysqli_fetch_assoc($res))) {
         $sid = (int) ($s['id'] ?? 0);
         $mov = ff_kassen_session_movements_sum($conn, $sid);

@@ -193,7 +193,7 @@ function ff_station_render_inline_summary(array $summary, string $titleHtml): vo
     echo '</div></div>';
 }
 
-function ff_station_bon_id_for_batch(mysqli $conn, string $batchKeyEsc, array $ctx): string
+function ff_station_bon_id_for_batch(mysqli $conn, string $batchKey, array $ctx): string
 {
     require_once __DIR__ . '/bestellung_batch_key_sql.php';
     $bkExpr = ff_sql_bestellung_batch_key('b');
@@ -202,16 +202,16 @@ function ff_station_bon_id_for_batch(mysqli $conn, string $batchKeyEsc, array $c
         $sql = "SELECT b.bon_id FROM bestellungen b INNER JOIN positionen po ON b.position = po.rowid "
             . "WHERE b.tischnummer=999999 AND b.delete=0 AND b.ausgeliefert=0 "
             . "AND (COALESCE(b.print_target, po.print_target) = {$pt}) "
-            . "AND {$bkExpr}='{$batchKeyEsc}' "
+            . "AND {$bkExpr}=? "
             . "AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 LIMIT 1";
     } else {
         $ptype = (int) ($ctx['position_type'] ?? 1);
         $sql = "SELECT b.bon_id FROM bestellungen b JOIN positionen p ON b.position=p.rowid "
             . "WHERE b.tischnummer=999999 AND b.`delete`=0 AND p.type={$ptype} "
             . "AND b.bon_id IS NOT NULL AND CHAR_LENGTH(TRIM(b.bon_id)) > 0 "
-            . "AND {$bkExpr}='{$batchKeyEsc}' ORDER BY b.zeitstempel DESC LIMIT 1";
+            . "AND {$bkExpr}=? ORDER BY b.zeitstempel DESC LIMIT 1";
     }
-    $bonRes = mysqli_query($conn, $sql);
+    $bonRes = ff_db_query($conn, $sql, 's', [$batchKey]);
     if ($bonRes && ($bonRow = mysqli_fetch_assoc($bonRes))) {
         return trim((string) ($bonRow['bon_id'] ?? ''));
     }
@@ -253,7 +253,6 @@ function ff_station_render_batches(mysqli $conn, array &$ctx): void
             'order_nrs' => implode(', ', array_map('strval', array_keys($batch['order_nrs'] ?? []))),
         ];
         $batch_key = (string) ($batch['batch_key'] ?? '');
-        $batch_key_esc = mysqli_real_escape_string($conn, $batch_key);
         $batchLines = $batch['lines'] ?? [];
         $derived = ff_kueche_batch_derive($batchLines, $druckzielMode);
         $printedLines = 0;
@@ -283,7 +282,7 @@ function ff_station_render_batches(mysqli $conn, array &$ctx): void
             echo '<div class="ui-block-a ' . $tischClass . '">';
 
             if ($curTisch === 999999) {
-                $bonId = ff_station_bon_id_for_batch($conn, $batch_key_esc, $ctx);
+                $bonId = ff_station_bon_id_for_batch($conn, $batch_key, $ctx);
                 if ($bonId !== '') {
                     $bonEsc = htmlspecialchars($bonId, ENT_QUOTES, 'UTF-8');
                     echo '<div class="ff-kueche-dv-bon-wrap" role="group" aria-label="Direktverkauf Abholbon"><span class="ff-kueche-dv-bon-label">Direktverkauf · Abholbon</span><span class="ff-kueche-dv-bon-nr">Bon ' . $bonEsc . '</span></div>';

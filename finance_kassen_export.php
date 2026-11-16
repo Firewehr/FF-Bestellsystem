@@ -22,10 +22,12 @@ if (!in_array($mode, ['detail', 'daily'], true)) {
 
 $range = ff_finance_parse_datetime_range($vonRaw, $bisRaw);
 $whereKasse = '';
+$rangeTypes = '';
+$rangeParams = [];
 if ($range !== null) {
-    $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-    $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-    $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
+    $whereKasse = ' AND s.closed_at >= ? AND s.closed_at <= ? ';
+    $rangeTypes = 'ss';
+    $rangeParams = [(string) $range['von_sql'], (string) $range['bis_sql']];
 }
 
 $fname = 'kassen_abschluesse_' . date('Y-m-d_His') . ($mode === 'daily' ? '_tages_summen' : '_detail') . '.csv';
@@ -47,18 +49,19 @@ if ($mode === 'daily') {
         WHERE s.status = 'closed' {$whereKasse}
         GROUP BY DATE(s.closed_at), s.bereich_id, b.name
         ORDER BY tag DESC, bereich_name ASC";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $rangeTypes, $rangeParams);
     while ($res && ($row = mysqli_fetch_assoc($res))) {
         $sidList = [];
         $day = $row['tag'] ?? '';
         $bname = $row['bereich_name'] ?? '';
         $ent = 0.0;
         $zuz = 0.0;
-        $q2 = mysqli_query(
+        $q2 = ff_db_query(
             $conn,
             "SELECT s.id FROM kassen_sessions s JOIN kassen_bereiche b ON b.id = s.bereich_id
-            WHERE s.status = 'closed' AND DATE(s.closed_at) = '" . mysqli_real_escape_string($conn, (string) $day) . "'
-            AND b.name = '" . mysqli_real_escape_string($conn, (string) $bname) . "'"
+            WHERE s.status = 'closed' AND DATE(s.closed_at) = ? AND b.name = ?",
+            'ss',
+            [(string) $day, (string) $bname]
         );
         while ($q2 && ($r2 = mysqli_fetch_assoc($q2))) {
             $mov = ff_kassen_session_movements_sum($conn, (int) $r2['id']);
@@ -89,7 +92,7 @@ $sql = "SELECT s.*, b.name AS bereich_name FROM kassen_sessions s
     JOIN kassen_bereiche b ON b.id = s.bereich_id
     WHERE s.status = 'closed' {$whereKasse}
     ORDER BY s.closed_at DESC";
-$res = mysqli_query($conn, $sql);
+$res = ff_db_query($conn, $sql, $rangeTypes, $rangeParams);
 while ($res && ($s = mysqli_fetch_assoc($res))) {
     $sid = (int) ($s['id'] ?? 0);
     $mov = ff_kassen_session_movements_sum($conn, $sid);

@@ -123,3 +123,87 @@ if (!function_exists('ff_mysqli_stmt_bind')) {
         return call_user_func_array([$stmt, 'bind_param'], $bind);
     }
 }
+/**
+ * Prepared Statement in einem Aufruf – Ersatz für mysqli_query() mit eingebetteten Werten.
+ *
+ *   ff_db_query($conn, 'SELECT * FROM tische WHERE tischnummer = ?', 'i', [$tn]);
+ *
+ * Rückgabe wie mysqli_query(): mysqli_result bei SELECT/SHOW, sonst true; false bei Fehler.
+ * Betroffene Zeilen und Insert-ID des Statements liefern ff_db_affected_rows() / ff_db_insert_id()
+ * (mysqli_affected_rows($conn) ist nach Prepared Statements nicht verlässlich).
+ *
+ * @param list<int|float|string|null> $params
+ * @return mysqli_result|bool
+ */
+if (!function_exists('ff_db_query')) {
+    function ff_db_query(mysqli $conn, string $sql, string $types = '', array $params = [])
+    {
+        $GLOBALS['__ff_db_last'] = ['affected' => -1, 'insert_id' => 0];
+        $stmt = mysqli_prepare($conn, $sql);
+        if (!$stmt) {
+            return false;
+        }
+        if (!ff_mysqli_stmt_bind($stmt, $types, $params) || !mysqli_stmt_execute($stmt)) {
+            mysqli_stmt_close($stmt);
+            return false;
+        }
+        $GLOBALS['__ff_db_last'] = [
+            'affected' => (int) mysqli_stmt_affected_rows($stmt),
+            'insert_id' => (int) mysqli_stmt_insert_id($stmt),
+        ];
+        $res = mysqli_stmt_get_result($stmt);
+        mysqli_stmt_close($stmt);
+
+        return $res instanceof mysqli_result ? $res : true;
+    }
+
+    function ff_db_affected_rows(): int
+    {
+        return (int) ($GLOBALS['__ff_db_last']['affected'] ?? -1);
+    }
+
+    function ff_db_insert_id(): int
+    {
+        return (int) ($GLOBALS['__ff_db_last']['insert_id'] ?? 0);
+    }
+
+    /**
+     * Ergebniszeile aus ff_db_query() wie bei mysqli_query(): Zahlen als Text.
+     *
+     * Prepared Statements liefern INT/DOUBLE als PHP-Zahlen, mysqli_query() als Strings.
+     * Wo ganze Zeilen weitergereicht werden (JSON, Vergleiche mit === '1'), hält diese
+     * Funktion das bisherige Verhalten. Bei einzeln gecasteten Feldern ist sie unnötig.
+     *
+     * @param array<string,mixed>|null $row
+     * @return array<string,mixed>|null
+     */
+    function ff_db_row_text(?array $row): ?array
+    {
+        if ($row === null) {
+            return null;
+        }
+        foreach ($row as $k => $v) {
+            if (is_int($v) || is_float($v)) {
+                $row[$k] = (string) $v;
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Platzhalter für IN (...): liefert ['?,?,?', 'iii', [1,2,3]] – nur positive Ganzzahlen.
+     *
+     * @param array<int|string> $ids
+     * @return array{0:string,1:string,2:list<int>}
+     */
+    function ff_db_in_ints(array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn (int $v): bool => $v > 0)));
+        if ($ids === []) {
+            return ['NULL', '', []];
+        }
+
+        return [implode(',', array_fill(0, count($ids), '?')), str_repeat('i', count($ids)), $ids];
+    }
+}

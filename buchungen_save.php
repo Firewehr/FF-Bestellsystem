@@ -14,7 +14,7 @@ ff_finance_ensure_schema($conn);
 $typ = isset($_POST['typ']) && in_array($_POST['typ'], ['einnahme', 'ausgabe']) ? $_POST['typ'] : '';
 $bezeichnung = trim($_POST['bezeichnung'] ?? '');
 $betrag = isset($_POST['betrag']) ? (float)str_replace([',', ' '], ['.', ''], $_POST['betrag']) : 0;
-$datum = !empty($_POST['datum']) ? mysqli_real_escape_string($conn, $_POST['datum']) : null;
+$datum = !empty($_POST['datum']) ? (string) $_POST['datum'] : null; // wird per Prepared Statement gebunden
 $kategorie = trim($_POST['kategorie'] ?? '') ?: null;
 $notiz = trim($_POST['notiz'] ?? '') ?: null;
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;

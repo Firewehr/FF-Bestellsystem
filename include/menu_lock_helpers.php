@@ -73,20 +73,20 @@ function menu_lock_get_status(mysqli $conn, int $positionId, int $positionType):
     $ptype = (int)$positionType;
 
     $sql = "SELECT id, reason, locked_until FROM menu_locks
-            WHERE scope='position' AND position_id={$pid}
+            WHERE scope='position' AND position_id=?
               AND (locked_until IS NULL OR locked_until > NOW()) LIMIT 1";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, 'i', [$pid]);
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         return menu_lock_format_row($row);
     }
 
     $sql2 = "SELECT l.id, l.reason, l.locked_until FROM menu_locks l
-             WHERE l.scope='type_all' AND l.menu_type={$ptype}
+             WHERE l.scope='type_all' AND l.menu_type=?
                AND (l.locked_until IS NULL OR l.locked_until > NOW()) LIMIT 1";
-    $res2 = mysqli_query($conn, $sql2);
+    $res2 = ff_db_query($conn, $sql2, 'i', [$ptype]);
     if ($res2 && ($lock = mysqli_fetch_assoc($res2))) {
         $lid = (int)$lock['id'];
-        $ex = mysqli_query($conn, "SELECT 1 FROM menu_lock_exceptions WHERE lock_id={$lid} AND position_id={$pid} LIMIT 1");
+        $ex = ff_db_query($conn, 'SELECT 1 FROM menu_lock_exceptions WHERE lock_id=? AND position_id=? LIMIT 1', 'ii', [$lid, $pid]);
         if ($ex && mysqli_fetch_row($ex)) {
             return null;
         }

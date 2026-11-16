@@ -56,20 +56,20 @@ function ff_rechnung_next_allocate(mysqli $conn): int
 {
     settings_ensure_table($conn);
 
-    $keyEsc = mysqli_real_escape_string($conn, FF_RECHNUNG_NEXT_KEY);
+    $key = FF_RECHNUNG_NEXT_KEY;
 
     // Sicherstellen, dass der Eintrag rechnung_next existiert (atomar ohne Race Condition)
     $v = settings_get($conn, FF_RECHNUNG_NEXT_KEY, null);
     if ($v === null || $v === '') {
         $initial = ff_rechnung_next_read($conn);
         $initVal = max(1, (int) $initial);
-        @mysqli_query($conn, "INSERT INTO settings (k, v) VALUES ('{$keyEsc}', '{$initVal}') ON DUPLICATE KEY UPDATE k = k");
+        ff_db_query($conn, 'INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE k = k', 'ss', [$key, (string) $initVal]);
     }
 
     // Atomar um 1 erhöhen und den neuen Wert über LAST_INSERT_ID abholen
-    $ok = mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(CAST(v AS UNSIGNED) + 1) WHERE k = '{$keyEsc}'");
+    $ok = ff_db_query($conn, 'UPDATE settings SET v = LAST_INSERT_ID(CAST(v AS UNSIGNED) + 1) WHERE k = ?', 's', [$key]);
     if ($ok) {
-        $nextPlusOne = (int) mysqli_insert_id($conn);
+        $nextPlusOne = ff_db_insert_id();
         // Falls mysqli_insert_id() treiberbedingt 0 liefert: SELECT LAST_INSERT_ID() abfragen
         if ($nextPlusOne <= 0) {
             $res = mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
@@ -87,7 +87,7 @@ function ff_rechnung_next_allocate(mysqli $conn): int
     // Fallback: Falls die Zeile unerwartet fehlte, anlegen und erneut atomar versuchen
     $initial = ff_rechnung_next_read($conn);
     $initVal = max(1, (int) $initial);
-    @mysqli_query($conn, "INSERT INTO settings (k, v) VALUES ('{$keyEsc}', '" . ($initVal + 1) . "') ON DUPLICATE KEY UPDATE v = LAST_INSERT_ID(CAST(v AS UNSIGNED) + 1)");
+    ff_db_query($conn, 'INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = LAST_INSERT_ID(CAST(v AS UNSIGNED) + 1)', 'ss', [$key, (string) ($initVal + 1)]);
     $res = mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
     if ($res && ($row = mysqli_fetch_assoc($res)) && (int) ($row['lid'] ?? 0) > 0) {
         $nextPlusOne = (int) $row['lid'];

@@ -294,7 +294,7 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
 
     ff_socket_printer_ensure_schema($conn);
 
-    $jRes = mysqli_query($conn, "SELECT * FROM printer_jobs WHERE id = {$jobId} LIMIT 1");
+    $jRes = ff_db_query($conn, 'SELECT * FROM printer_jobs WHERE id = ? LIMIT 1', 'i', [(int)$jobId]);
     if (!$jRes || mysqli_num_rows($jRes) === 0) {
         return ['attempted' => false, 'ok' => false, 'message' => 'Job nicht gefunden.'];
     }
@@ -308,7 +308,7 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
     }
     $targetId = (int) $m[1];
 
-    $ptRes = mysqli_query($conn, "SELECT * FROM print_targets WHERE print_target = {$targetId} LIMIT 1");
+    $ptRes = ff_db_query($conn, 'SELECT * FROM print_targets WHERE print_target = ? LIMIT 1', 'i', [$targetId]);
     if (!$ptRes || mysqli_num_rows($ptRes) === 0) {
         return ['attempted' => false, 'ok' => false, 'message' => 'Druckziel nicht gefunden.'];
     }
@@ -366,10 +366,11 @@ function ff_socket_printer_dispatch_job(mysqli $conn, int $jobId): array
     }
 
     // Bei Fehler: Job bleibt 'pending' für Python-Client Fallback
-    $errEsc = mysqli_real_escape_string($conn, (string) ($res['error'] ?? 'Socket-Verbindungsfehler'));
-    mysqli_query(
+    ff_db_query(
         $conn,
-        "UPDATE printer_jobs SET attempts = attempts + 1, error = 'Socket [{$ip}:{$port}]: {$errEsc}' WHERE id = {$jobId}"
+        'UPDATE printer_jobs SET attempts = attempts + 1, error = ? WHERE id = ?',
+        'si',
+        ['Socket [' . $ip . ':' . $port . ']: ' . (string) ($res['error'] ?? 'Socket-Verbindungsfehler'), (int) $jobId]
     );
 
     return [

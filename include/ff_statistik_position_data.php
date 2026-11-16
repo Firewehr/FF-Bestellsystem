@@ -88,17 +88,21 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
     $inkl_mitarbeiter = (int) ($in['inkl_mitarbeiter'] ?? 1) ? 1 : 0;
     $kellner_filter = trim((string) ($in['kellner_filter'] ?? ''));
 
+    // Bedingungen mit Platzhaltern; Parameter in derselben Reihenfolge wie im SQL (Datum, Uhrzeit, Kellner).
     $kellnerCondB = '';
     $kellnerCondMv = '';
+    $kellnerTypesB = $kellnerTypesMv = '';
+    $kellnerParamsB = $kellnerParamsMv = [];
     if ($kellner_filter !== '') {
-        $kf = mysqli_real_escape_string($conn, $kellner_filter);
-        $kellnerCondB = " AND (b.kellnerZahlung = '{$kf}' OR b.kellner = '{$kf}') ";
-        $kellnerCondMv = " AND IFNULL(v.created_by,'') = '{$kf}' ";
+        $kellnerCondB = ' AND (b.kellnerZahlung = ? OR b.kellner = ?) ';
+        $kellnerTypesB = 'ss';
+        $kellnerParamsB = [$kellner_filter, $kellner_filter];
+        $kellnerCondMv = " AND IFNULL(v.created_by,'') = ? ";
+        $kellnerTypesMv = 's';
+        $kellnerParamsMv = [$kellner_filter];
     }
 
     $noDateSpan = ($vonRaw === '' && $bisRaw === '');
-    $vonEsc = '';
-    $bisEsc = '';
     if (!$noDateSpan) {
         if ($vonRaw !== '' && $bisRaw === '') {
             $bisRaw = $vonRaw;
@@ -106,15 +110,17 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
         if ($bisRaw !== '' && $vonRaw === '') {
             $vonRaw = $bisRaw;
         }
-        $vonEsc = mysqli_real_escape_string($conn, $vonRaw);
-        $bisEsc = mysqli_real_escape_string($conn, $bisRaw);
     }
 
     $dateCondB = '';
     $dateCondMv = '';
+    $dateTypes = '';
+    $dateParams = [];
     if (!$noDateSpan) {
-        $dateCondB = " AND DATE({$eventTs}) >= '$vonEsc' AND DATE({$eventTs}) <= '$bisEsc' ";
-        $dateCondMv = " AND v.datum >= '$vonEsc' AND v.datum <= '$bisEsc' ";
+        $dateCondB = " AND DATE({$eventTs}) >= ? AND DATE({$eventTs}) <= ? ";
+        $dateCondMv = ' AND v.datum >= ? AND v.datum <= ? ';
+        $dateTypes = 'ss';
+        $dateParams = [$vonRaw, $bisRaw];
     }
 
     $position_name = 'Alle Positionen';
@@ -131,16 +137,24 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
 
     $timeCondB = '';
     $timeCondMv = '';
+    $timeTypes = '';
+    $timeParams = [];
     if ($uhrzeit_von !== '') {
-        $uv = mysqli_real_escape_string($conn, $uhrzeit_von);
-        $timeCondB .= " AND TIME({$eventTs}) >= '$uv' ";
-        $timeCondMv .= " AND TIME(v.created_at) >= '$uv' ";
+        $timeCondB .= " AND TIME({$eventTs}) >= ? ";
+        $timeCondMv .= ' AND TIME(v.created_at) >= ? ';
+        $timeTypes .= 's';
+        $timeParams[] = $uhrzeit_von;
     }
     if ($uhrzeit_bis !== '') {
-        $ub = mysqli_real_escape_string($conn, $uhrzeit_bis);
-        $timeCondB .= " AND TIME({$eventTs}) <= '$ub' ";
-        $timeCondMv .= " AND TIME(v.created_at) <= '$ub' ";
+        $timeCondB .= " AND TIME({$eventTs}) <= ? ";
+        $timeCondMv .= ' AND TIME(v.created_at) <= ? ';
+        $timeTypes .= 's';
+        $timeParams[] = $uhrzeit_bis;
     }
+    $condTypesB = $dateTypes . $timeTypes . $kellnerTypesB;
+    $condParamsB = array_merge($dateParams, $timeParams, $kellnerParamsB);
+    $condTypesMv = $dateTypes . $timeTypes . $kellnerTypesMv;
+    $condParamsMv = array_merge($dateParams, $timeParams, $kellnerParamsMv);
 
     $gast = [];
     if ($inkl_gast) {
@@ -154,7 +168,7 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
         $dateCondB
         $posCondB $timeCondB $kellnerCondB
         ORDER BY {$eventTs} ASC";
-        $resB = mysqli_query($conn, $sqlB);
+        $resB = ff_db_query($conn, $sqlB, $condTypesB, $condParamsB);
         if ($resB) {
             while ($row = mysqli_fetch_assoc($resB)) {
                 $rawKellner = trim((string) ($row['kellner'] ?? ''));
@@ -166,7 +180,7 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
                 $gast[] = [
                     'datum' => $ts !== '' && $ts !== '0000-00-00 00:00:00' ? date('d.m.Y', strtotime($ts)) : '',
                     'zeit' => $ts !== '' && $ts !== '0000-00-00 00:00:00' ? date('H:i', strtotime($ts)) : '',
-                    'tischnummer' => $row['tischnummer'],
+                    'tischnummer' => (string) $row['tischnummer'],
                     'menge' => 1,
                     'betrag' => round((float) ($row['line_betrag'] ?? 0), 2),
                     'is_gratis' => (int) ($row['is_gratis'] ?? 0),
@@ -195,7 +209,7 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
             WHERE 1=1 $dateCondMv
             $posCondMv $timeCondMv $kellnerCondMv
             ORDER BY v.created_at ASC";
-            $resMv = @mysqli_query($conn, $sqlMv);
+            $resMv = ff_db_query($conn, $sqlMv, $condTypesMv, $condParamsMv);
             if ($resMv) {
                 while ($row = mysqli_fetch_assoc($resMv)) {
                     $mitarbeiter[] = [
@@ -226,7 +240,7 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
         $dateCondB
         $posCondB $timeCondB $kellnerCondB
         ORDER BY b.zeitstempel ASC";
-        $resWait = mysqli_query($conn, $sqlWait);
+        $resWait = ff_db_query($conn, $sqlWait, $condTypesB, $condParamsB);
         if ($resWait) {
             while ($row = mysqli_fetch_assoc($resWait)) {
                 $sec = (int) ($row['wartesekunden'] ?? 0);

@@ -55,17 +55,13 @@ if ($payloadJson === false) {
 }
 
 $metaJson = json_encode(['rowids' => array_values(array_unique($bestellungIds))], JSON_UNESCAPED_UNICODE);
-$escPayload = mysqli_real_escape_string($conn, $payloadJson);
-$escMeta = mysqli_real_escape_string($conn, (string)$metaJson);
-
-$ins = "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at)
-        VALUES ('" . mysqli_real_escape_string($conn, $printerKey) . "', 'kellner_bon', '" . $escPayload . "', '" . $escMeta . "', 'pending', 0, NULL, NULL, NOW())";
-if (!mysqli_query($conn, $ins)) {
+$ins = "INSERT INTO printer_jobs (printer, type, payload, meta, status, attempts, reserved_at, reserved_by, created_at) VALUES (?, 'kellner_bon', ?, ?, 'pending', 0, NULL, NULL, NOW())";
+if (!ff_db_query($conn, $ins, 'sss', [$printerKey, $payloadJson, (string)$metaJson])) {
     echo json_encode(['ok' => false, 'error' => 'Warteschlange: ' . mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$newJobId = (int)mysqli_insert_id($conn);
+$newJobId = ff_db_insert_id();
 require_once __DIR__ . '/include/ff_socket_printer.php';
 $socketRes = ff_socket_printer_dispatch_job($conn, $newJobId);
 

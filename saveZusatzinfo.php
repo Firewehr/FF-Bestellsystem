@@ -25,9 +25,7 @@ $pid = (int)$pr['position'];
 $base = (float)$pr['Betrag'];
 $nb = ff_bestellung_line_betrag($conn, $pid, $base, $Zusatzinfo);
 
-$ziEsc = mysqli_real_escape_string($conn, $Zusatzinfo);
-
-if (mysqli_query($conn, "UPDATE `bestellungen` SET `Zusatzinfo`='" . $ziEsc . "', `betrag`=" . number_format($nb, 2, '.', '') . ' WHERE rowid=' . $rowid)) {
+if (ff_db_query($conn, 'UPDATE `bestellungen` SET `Zusatzinfo`=?, `betrag`=? WHERE rowid=?', 'sdi', [(string) $Zusatzinfo, round((float) $nb, 2), (int) $rowid])) {
     echo 'Record updated successfully';
 } else {
     echo 'Error updating record: ' . mysqli_error($conn);

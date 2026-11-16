@@ -10,10 +10,7 @@ $color = $_POST['color'];
 
 
 require_once '../include/db.php';
-$colorEsc = mysqli_real_escape_string($conn, (string) $color);
-$sql = "UPDATE `tische` SET `color`='" . $colorEsc . "' WHERE tischnummer=" . $tischnummer;
-
-if (mysqli_query($conn, $sql)) {
+if (ff_db_query($conn, 'UPDATE `tische` SET `color`=? WHERE tischnummer=?', 'si', [(string) $color, (int) $tischnummer])) {
     echo "Record updated successfully";
 } else {
     echo "Error updating record: " . mysqli_error($conn);

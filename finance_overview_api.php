@@ -29,42 +29,49 @@ $whereKasse = '';
 $whereSettle = '';
 $whereBuch = '';
 $fest = ff_finance_fest_filter_sql($conn, 'b');
+// Zeitraum als Parameter (Prepared Statements): jedes Fragment hat genau zwei Platzhalter
+$rangeTypes = '';
+$rangeParams = [];
 if ($range !== null) {
-    $vonEsc = mysqli_real_escape_string($conn, $range['von_sql']);
-    $bisEsc = mysqli_real_escape_string($conn, $range['bis_sql']);
-    $whereBez = " AND b.timestampBezahlung >= '{$vonEsc}' AND b.timestampBezahlung <= '{$bisEsc}' ";
-    $whereKasse = " AND s.closed_at >= '{$vonEsc}' AND s.closed_at <= '{$bisEsc}' ";
-    $whereSettle = " AND created_at >= '{$vonEsc}' AND created_at <= '{$bisEsc}' ";
+    $whereBez = ' AND b.timestampBezahlung >= ? AND b.timestampBezahlung <= ? ';
+    $whereKasse = ' AND s.closed_at >= ? AND s.closed_at <= ? ';
+    $whereSettle = ' AND created_at >= ? AND created_at <= ? ';
     $bt = ff_finance_buchung_timestamp_expr('bu');
-    $whereBuch = " AND {$bt} >= '{$vonEsc}' AND {$bt} <= '{$bisEsc}' ";
+    $whereBuch = " AND {$bt} >= ? AND {$bt} <= ? ";
+    $rangeTypes = 'ss';
+    $rangeParams = [(string)$range['von_sql'], (string)$range['bis_sql']];
 }
 
 $amt = ff_finance_order_amount_expr('b', 'p');
 
 $kassenUmsatz = 0.0;
 $kassenDetails = [];
-$resK = mysqli_query(
+$resK = ff_db_query(
     $conn,
-    "SELECT s.*, b.name FROM kassen_sessions s JOIN kassen_bereiche b ON b.id = s.bereich_id WHERE s.status = 'closed' {$whereKasse} ORDER BY s.closed_at DESC"
+    "SELECT s.*, b.name FROM kassen_sessions s JOIN kassen_bereiche b ON b.id = s.bereich_id WHERE s.status = 'closed' {$whereKasse} ORDER BY s.closed_at DESC",
+    $rangeTypes,
+    $rangeParams
 );
 while ($resK && ($row = mysqli_fetch_assoc($resK))) {
     $kassenUmsatz += (float) ($row['revenue_amount'] ?? 0);
-    $kassenDetails[] = $row;
+    $kassenDetails[] = ff_db_row_text($row);
 }
 
 $kellnerUmsatz = 0.0;
 $kellnerTrinkgeld = 0.0;
 $kellnerDetails = [];
-$resKel = mysqli_query(
+$resKel = ff_db_query(
     $conn,
     'SELECT * FROM kellner_settlements WHERE voided_at IS NULL '
     . " AND (settlement_scope = 'kellner' OR settlement_scope IS NULL OR settlement_scope = '') "
-    . $whereSettle . ' ORDER BY created_at DESC'
+    . $whereSettle . ' ORDER BY created_at DESC',
+    $rangeTypes,
+    $rangeParams
 );
 while ($resKel && ($row = mysqli_fetch_assoc($resKel))) {
     $kellnerUmsatz += (float) ($row['umsatz_soll'] ?? 0);
     $kellnerTrinkgeld += (float) ($row['trinkgeld'] ?? 0);
-    $kellnerDetails[] = $row;
+    $kellnerDetails[] = ff_db_row_text($row);
 }
 
 $kellnerProtokoll = round($kellnerUmsatz, 2);
@@ -74,8 +81,8 @@ $kellnerUmsatz = (float) ($kelAb['abgerechnet_alle'] ?? 0);
 
 $fixEinnahmen = 0.0;
 $fixAusgaben = 0.0;
-$resE = mysqli_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch}");
-$resA = mysqli_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch}");
+$resE = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='einnahme' {$whereBuch}", $rangeTypes, $rangeParams);
+$resA = ff_db_query($conn, "SELECT COALESCE(SUM(betrag),0) AS s FROM buchungen bu WHERE typ='ausgabe' {$whereBuch}", $rangeTypes, $rangeParams);
 if ($resE && ($r = mysqli_fetch_assoc($resE))) {
     $fixEinnahmen = (float) $r['s'];
 }
@@ -88,7 +95,7 @@ $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
 if ($chk && mysqli_num_rows($chk) > 0) {
     $sqlVar = "SELECT COALESCE(SUM(COALESCE(p.selbstkosten,0)),0) AS k FROM bestellungen b JOIN positionen p ON p.rowid=b.position
         WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereBez}";
-    $resV = mysqli_query($conn, $sqlVar);
+    $resV = ff_db_query($conn, $sqlVar, $rangeTypes, $rangeParams);
     if ($resV && ($rv = mysqli_fetch_assoc($resV))) {
         $variableKosten = (float) $rv['k'];
     }

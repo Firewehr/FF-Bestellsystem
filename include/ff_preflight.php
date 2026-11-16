@@ -156,7 +156,7 @@ function ff_preflight_check(mysqli $conn): array
 
     // Fest-spezifisches Präfix prüfen
     $festPrefix = '';
-    $fRes = mysqli_query($conn, "SELECT rechnung_prefix, name FROM feste WHERE id = {$currentFestId} LIMIT 1");
+    $fRes = ff_db_query($conn, 'SELECT rechnung_prefix, name FROM feste WHERE id = ? LIMIT 1', 'i', [(int)$currentFestId]);
     if ($fRes && ($fRow = mysqli_fetch_assoc($fRes))) {
         $festPrefix = trim((string) ($fRow['rechnung_prefix'] ?? ''));
     }

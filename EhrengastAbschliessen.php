@@ -39,7 +39,7 @@ if (!$trow || (int)($trow['is_ehrengast'] ?? 0) !== 1) {
     exit;
 }
 
-$kellner = mysqli_real_escape_string($conn, (string)($_SESSION['user']['username'] ?? ''));
+$kellner = (string)($_SESSION['user']['username'] ?? '');
 
 foreach ($myArray as $row) {
     $id = (int)$row;
@@ -50,12 +50,12 @@ foreach ($myArray as $row) {
         . "timestampBezahlung=current_timestamp, "
         . "kueche='1', "
         . "is_gratis=1, "
-        . "kellnerZahlung='" . $kellner . "' "
-        . "WHERE rowid=" . $id . " AND tischnummer=" . $tischnummer . " "
+        . "kellnerZahlung=? "
+        . "WHERE rowid=? AND tischnummer=? "
         . "AND `delete`=0 "
         . "AND (timestampBezahlung IS NULL OR timestampBezahlung='0000-00-00 00:00:00')";
 
-    @mysqli_query($conn, $sql);
+    ff_db_query($conn, $sql, 'sii', [$kellner, $id, (int) $tischnummer]);
 }
 
 // Wie bei Sammelrechnung nach Bezahlung: keine offenen Posten mehr → Tisch wieder „normal“ (Ehrengast-Flag weg)

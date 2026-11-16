@@ -26,15 +26,14 @@ if (!ff_position_mv_table_exists($conn)) {
     exit;
 }
 
-$escDatum = mysqli_real_escape_string($conn, $datum);
-$sel = mysqli_query(
+$sel = ff_db_query(
     $conn,
-    "SELECT id, menge FROM mitarbeiter_verpflegung
-     WHERE datum = '" . $escDatum . "'
-       AND bereich_id = " . $bereichId . '
-       AND position_id = ' . $positionId . '
+    'SELECT id, menge FROM mitarbeiter_verpflegung
+     WHERE datum = ? AND bereich_id = ? AND position_id = ?
      ORDER BY created_at DESC, id DESC
-     LIMIT 1'
+     LIMIT 1',
+    'sii',
+    [(string) $datum, (int) $bereichId, (int) $positionId]
 );
 if (!$sel || !($row = mysqli_fetch_assoc($sel))) {
     echo json_encode(['ok' => false, 'error' => 'Nichts zum Entfernen vorhanden'], JSON_UNESCAPED_UNICODE);

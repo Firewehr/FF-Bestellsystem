@@ -18,16 +18,16 @@ require_once __DIR__ . '/include/ff_direktverkauf_bon_helpers.php';
 
 ff_direktverkauf_clear_session_bon();
 
-$user = mysqli_real_escape_string($conn, (string) ($_SESSION['user']['username'] ?? ''));
+$user = (string) ($_SESSION['user']['username'] ?? '');
 if ($user === '') {
     http_response_code(403);
     echo 'no_user';
     exit;
 }
 
-$sql = "DELETE FROM bestellungen WHERE kellner LIKE '" . $user . "' AND tischnummer = 999999 AND timestampBezahlung='0000-00-00 00:00:00'";
+$sql = "DELETE FROM bestellungen WHERE kellner LIKE ? AND tischnummer = 999999 AND timestampBezahlung='0000-00-00 00:00:00'";
 
-if (mysqli_query($conn, $sql)) {
+if (ff_db_query($conn, $sql, 's', [$user])) {
     echo 'ok';
 } else {
     http_response_code(500);

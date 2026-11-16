@@ -142,27 +142,25 @@ if ($action === 'execute' || $action === 'schreibaus') {
     if (strlen($kz) > 200) {
         $kz = substr($kz, 0, 200);
     }
-    $kzEsc = mysqli_real_escape_string($conn, $kz);
-
     $ids = $col['ids'];
-    $in = implode(',', array_map('intval', $ids));
+    [$in, $inTypes, $inIds] = ff_db_in_ints($ids);
     $sql = "UPDATE bestellungen b
             SET b.timestampBezahlung = CURRENT_TIMESTAMP,
-                b.kellnerZahlung = '{$kzEsc}',
+                b.kellnerZahlung = ?,
                 b.schreibaus = 1
             WHERE b.rowid IN ({$in})
               AND b.`delete` = 0
               AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung='0000-00-00 00:00:00')
               AND IFNULL(b.schreibaus,0) = 0";
 
-    if (!mysqli_query($conn, $sql)) {
+    if (!ff_db_query($conn, $sql, 's' . $inTypes, array_merge([$kz], $inIds))) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
         mysqli_close($conn);
         exit;
     }
 
-    $aff = mysqli_affected_rows($conn);
+    $aff = ff_db_affected_rows();
     echo json_encode([
         'ok' => true,
         'affected' => (int)$aff,
