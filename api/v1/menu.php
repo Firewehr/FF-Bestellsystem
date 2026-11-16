@@ -156,15 +156,32 @@ if (!$posRes) {
     api_error('Konnte Speisekarte nicht abfragen: ' . mysqli_error($conn), 'db_error', 500);
 }
 
-$items = [];
+$posRows = [];
+$posIdsByType = [];
 while ($pRow = ff_db_row_text(mysqli_fetch_assoc($posRes))) {
+    $posRows[] = $pRow;
+    $posIdsByType[(int)$pRow['type']][] = (int)$pRow['rowid'];
+}
+mysqli_free_result($posRes);
+
+// Sperren und Rezeptur-Bestand einmal für alle Positionen laden statt je Position
+// (vorher rund 10 Abfragen pro Position). Der Snapshot gilt nur für diesen Request,
+// in dem nichts bestellt wird.
+$lockMap = [];
+foreach ($posIdsByType as $menuType => $typePosIds) {
+    $lockMap += ff_menu_batch_lock_map($conn, $typePosIds, (int)$menuType);
+}
+ff_position_stock_snapshot_begin($conn);
+
+$items = [];
+foreach ($posRows as $pRow) {
     $posId = (int)$pRow['rowid'];
     $posType = (int)$pRow['type'];
     $subId = (int)$pRow['subcategory_id'];
     $subTileBg = $subcategoriesMap[$subId]['tile_bg'] ?? null;
 
-    $isLocked = menu_lock_is_blocked($conn, $posId, $posType);
-    $lockInfo = $isLocked ? menu_lock_get_status($conn, $posId, $posType) : null;
+    $lockInfo = $lockMap[$posId] ?? null;
+    $isLocked = $lockInfo !== null;
 
     $maxOrderable = (int)$pRow['maxBestellbar'];
     $anzahlBestellt = (int)($globalCounts[$posId] ?? 0);
@@ -211,7 +228,6 @@ while ($pRow = ff_db_row_text(mysqli_fetch_assoc($posRes))) {
         'recipe_components' => $recipesByPos[$posId] ?? [],
     ];
 }
-mysqli_free_result($posRes);
 
 ff_pilot_linked_articles_ensure_schema($conn);
 $linksByParent = [];

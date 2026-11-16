@@ -2921,6 +2921,41 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return ff_st_expect_same('not_found', $res['code'], 'Fehlercode');
         });
 
+        $g = 'Speisekarte: Sperren';
+
+        $check($g, 'Sammel-Abfrage (Kellner-App) liefert dieselben Sperren wie die Einzelabfrage', function (mysqli $c) {
+            require_once __DIR__ . '/menu_lock_helpers.php';
+            require_once __DIR__ . '/menu_list_helpers.php';
+            // Eigener Typ 9, damit echte Kategorie-Sperren den Test nicht beeinflussen
+            $menuType = 9;
+            $free = ff_st_position($c, 1.00);
+            $own = ff_st_position($c, 1.00);
+            $except = ff_st_position($c, 1.00);
+            $ownAndExcept = ff_st_position($c, 1.00);
+            $ids = [$free, $own, $except, $ownAndExcept];
+            ff_st_exec($c, 'UPDATE positionen SET type = ? WHERE rowid IN (?, ?, ?, ?)', 'iiiii', array_merge([$menuType], $ids));
+            menu_lock_ensure_tables($c);
+            ff_st_exec($c, "INSERT INTO menu_locks (scope, position_id, reason, created_by) VALUES ('position', ?, 'ZZ_ST eigen', 'selftest')", 'i', [$own]);
+            ff_st_exec($c, "INSERT INTO menu_locks (scope, position_id, reason, created_by) VALUES ('position', ?, 'ZZ_ST eigen2', 'selftest')", 'i', [$ownAndExcept]);
+            $typeLock = ff_st_exec($c, "INSERT INTO menu_locks (scope, menu_type, reason, created_by) VALUES ('type_all', ?, 'ZZ_ST Kategorie', 'selftest')", 'i', [$menuType]);
+            ff_st_exec($c, 'INSERT INTO menu_lock_exceptions (lock_id, position_id) VALUES (?, ?), (?, ?)', 'iiii', [$typeLock, $except, $typeLock, $ownAndExcept]);
+            // Abgelaufene Sperre zählt nicht
+            ff_st_exec($c, "INSERT INTO menu_locks (scope, position_id, reason, locked_until, created_by) VALUES ('position', ?, 'ZZ_ST alt', DATE_SUB(NOW(), INTERVAL 1 MINUTE), 'selftest')", 'i', [$except]);
+
+            $batch = ff_menu_batch_lock_map($c, $ids, $menuType);
+            foreach ($ids as $pid) {
+                $single = menu_lock_get_status($c, $pid, $menuType);
+                $err = ff_st_expect_same($single['reason'] ?? null, $batch[$pid]['reason'] ?? null, 'Sperrgrund Position ' . $pid);
+                if ($err !== null) {
+                    return $err;
+                }
+            }
+            return ff_st_expect_same('ZZ_ST Kategorie', $batch[$free]['reason'] ?? null, 'freie Position bekommt Kategorie-Sperre')
+                ?? ff_st_expect_same('ZZ_ST eigen', $batch[$own]['reason'] ?? null, 'eigene Sperre vor Kategorie-Sperre')
+                ?? ff_st_expect_same(null, $batch[$except]['reason'] ?? null, 'Ausnahme')
+                ?? ff_st_expect_same('ZZ_ST eigen2', $batch[$ownAndExcept]['reason'] ?? null, 'eigene Sperre trotz Ausnahme');
+        });
+
         $g = 'Druckwarteschlange';
 
         $stJob = static function (mysqli $c, string $status, int $reservedMinAgo, int $createdMinAgo, int $attempts = 0): int {
