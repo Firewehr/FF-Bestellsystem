@@ -38,6 +38,21 @@ if (!function_exists('ff_auto_print_ensure_schema')) {
     }
 }
 
+if (!function_exists('ff_print_pending_cond_sql')) {
+    /**
+     * Bedingung „druckbereit, noch nicht gedruckt“ auf bestellungen (Alias b), wie sie
+     * print_target.php abholt. Gemeinsam genutzt, damit die Pre-Flight-Prüfung dieselben
+     * Zeilen zählt, die der Druck-Client drucken würde.
+     */
+    function ff_print_pending_cond_sql(bool $autoPrintCol): string
+    {
+        return "b.`delete` = 0 AND b.bestellt = 1 AND b.print_status = 0 AND "
+            . ($autoPrintCol
+                ? '((b.kueche = 1 AND b.print IN (2, 3)) OR b.auto_print = 1)'
+                : '(b.kueche = 1 AND b.print IN (2, 3))');
+    }
+}
+
 if (!function_exists('ff_auto_print_for_order')) {
     /**
      * Markiert die Zeilen einer frisch abgeschickten Bestellung pro Druckziel zum Sofortdruck,

@@ -8,12 +8,14 @@
  * 2. Alle Drucker online & Testbon erfolgreich gedruckt
  * 3. Rechnungsnummernkreis korrekt gesetzt
  * 4. Offline-Backup eingerichtet (Token + Datenbank-Backup höchstens 30 Minuten alt)
+ * 5. Keine liegengebliebenen Bons (druckbereit, aber seit über 30 Minuten nicht gedruckt)
  */
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/settings.php';
 require_once __DIR__ . '/ff_socket_printer.php';
+require_once __DIR__ . '/ff_auto_print.php';
 
 /**
  * Alter des jüngsten Datenbank-Backups (backups/db_*.sql.gz aus tools/db_backup.php).
@@ -58,6 +60,117 @@ function ff_preflight_db_backup_status(string $backupDir, int $now, int $maxAgeM
         'age_min' => $ageMin,
         'file' => $file,
     ];
+}
+
+/** Ab diesem Alter gilt ein ungedruckter Bon als liegengeblieben (Minuten). */
+const FF_PREFLIGHT_PRINT_STALE_MIN = 30;
+
+/**
+ * Zeitpunkt, ab dem eine Zeile druckbereit ist: fertig gemeldet (zeitKueche) oder bestellt
+ * (Sofortdruck). Der spätere von beiden zählt.
+ */
+function ff_preflight_print_ready_expr(): string
+{
+    return "GREATEST(b.zeitstempel, COALESCE(NULLIF(b.zeitKueche, '0000-00-00 00:00:00'), b.zeitstempel))";
+}
+
+/**
+ * Druckbereite, noch nicht gedruckte Zeilen je Druckziel (genau die, die print_target.php
+ * beim nächsten Abruf drucken würde). Liegen sie länger als $staleMin Minuten, läuft für das
+ * Ziel offenbar kein Druck-Client – beim nächsten Start kämen sie als alte Bons heraus.
+ *
+ * @return array{total_rows:int, stale_rows:int, stale_orders:int, oldest:?string, targets:list<array{print_target:int, name:string, rows:int, stale_rows:int, stale_orders:int, oldest:?string}>}
+ */
+function ff_preflight_print_backlog(mysqli $conn, int $staleMin = FF_PREFLIGHT_PRINT_STALE_MIN): array
+{
+    $pendingCond = ff_print_pending_cond_sql(ff_auto_print_ensure_schema($conn));
+    $readyExpr = ff_preflight_print_ready_expr();
+    $out = ['total_rows' => 0, 'stale_rows' => 0, 'stale_orders' => 0, 'oldest' => null, 'targets' => []];
+    $res = ff_db_query(
+        $conn,
+        "SELECT x.pt, COALESCE(MAX(t.name), '') AS name, COUNT(*) AS cnt,
+                SUM(x.stale) AS stale_cnt,
+                COUNT(DISTINCT CASE WHEN x.stale = 1 THEN CONCAT(x.tischnummer, '/', COALESCE(x.order_nr, x.zeitstempel)) END) AS stale_orders,
+                MIN(x.ready_at) AS oldest
+           FROM (
+                SELECT COALESCE(b.print_target, p.print_target, 11) AS pt, b.tischnummer, b.order_nr, b.zeitstempel,
+                       {$readyExpr} AS ready_at,
+                       ({$readyExpr} < NOW() - INTERVAL ? MINUTE) AS stale
+                  FROM bestellungen b
+                  JOIN positionen p ON p.rowid = b.position
+                 WHERE {$pendingCond}
+           ) x
+           LEFT JOIN print_targets t ON t.print_target = x.pt
+          GROUP BY x.pt
+          ORDER BY x.pt",
+        'i',
+        [$staleMin]
+    );
+    if (!$res) {
+        return $out;
+    }
+    while ($row = ff_db_row_text(mysqli_fetch_assoc($res))) {
+        $pt = (int) $row['pt'];
+        $target = [
+            'print_target' => $pt,
+            'name' => $row['name'] !== '' ? (string) $row['name'] : ('Druckziel ' . $pt),
+            'rows' => (int) $row['cnt'],
+            'stale_rows' => (int) $row['stale_cnt'],
+            'stale_orders' => (int) $row['stale_orders'],
+            'oldest' => $row['oldest'] !== null ? (string) $row['oldest'] : null,
+        ];
+        $out['targets'][] = $target;
+        $out['total_rows'] += $target['rows'];
+        $out['stale_rows'] += $target['stale_rows'];
+        $out['stale_orders'] += $target['stale_orders'];
+        if ($target['oldest'] !== null && ($out['oldest'] === null || $target['oldest'] < $out['oldest'])) {
+            $out['oldest'] = $target['oldest'];
+        }
+    }
+    mysqli_free_result($res);
+    return $out;
+}
+
+/**
+ * Markiert liegengebliebene Bons (älter als $staleMin Minuten) als gedruckt, damit ein
+ * Druck-Client sie nicht nachträglich ausdruckt. Bestellungen, Umsätze und Statistik bleiben
+ * unverändert. Läuft in der Transaktion des Aufrufers.
+ *
+ * @return array{rows:int, print_targets:list<int>}
+ */
+function ff_preflight_print_backlog_clear(mysqli $conn, int $staleMin = FF_PREFLIGHT_PRINT_STALE_MIN): array
+{
+    $pendingCond = ff_print_pending_cond_sql(ff_auto_print_ensure_schema($conn));
+    $readyExpr = ff_preflight_print_ready_expr();
+    $ids = [];
+    $targets = [];
+    $res = ff_db_query(
+        $conn,
+        "SELECT b.rowid, COALESCE(b.print_target, p.print_target, 11) AS pt
+           FROM bestellungen b
+           JOIN positionen p ON p.rowid = b.position
+          WHERE {$pendingCond} AND {$readyExpr} < NOW() - INTERVAL ? MINUTE
+          FOR UPDATE",
+        'i',
+        [$staleMin]
+    );
+    if ($res) {
+        while ($row = mysqli_fetch_assoc($res)) {
+            $ids[] = (int) $row['rowid'];
+            $targets[(int) $row['pt']] = true;
+        }
+        mysqli_free_result($res);
+    }
+    if ($ids === []) {
+        return ['rows' => 0, 'print_targets' => []];
+    }
+    $rows = 0;
+    foreach (array_chunk($ids, 500) as $chunk) {
+        [$inIds, $idT, $idV] = ff_db_in_ints($chunk);
+        ff_db_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE print_status = 0 AND rowid IN ($inIds)", $idT, $idV);
+        $rows += max(0, ff_db_affected_rows());
+    }
+    return ['rows' => $rows, 'print_targets' => array_keys($targets)];
 }
 
 function ff_preflight_check(mysqli $conn): array
@@ -240,7 +353,7 @@ function ff_preflight_check(mysqli $conn): array
         $checkBackupStatus = 'warning';
         $checkBackupBadge = 'Kein Token';
         $checkBackupDetails = 'Kein Offline-Backup-Token hinterlegt. Das automatische Ausfall-Backup via Skript ist nicht autorisiert.';
-        $overall = 'warning';
+        $overall = $overall === 'error' ? 'error' : 'warning';
     }
 
     // Datenbank-Backup (tools/db_backup.php per Cron): jüngster Stand darf höchstens 30 Minuten alt sein.
@@ -251,9 +364,36 @@ function ff_preflight_check(mysqli $conn): array
             $checkBackupStatus = 'warning';
             $checkBackupBadge = $dbBackup['badge'];
         }
-        $overall = 'warning';
+        $overall = $overall === 'error' ? 'error' : 'warning';
     } else {
         $checkBackupDetails .= ' ' . $dbBackup['details'];
+    }
+
+    // -------------------------------------------------------------
+    // Check 5: Liegengebliebene Bons
+    // -------------------------------------------------------------
+    $backlog = ff_preflight_print_backlog($conn);
+    $staleMin = FF_PREFLIGHT_PRINT_STALE_MIN;
+    $checkBacklogStatus = 'ok';
+    $checkBacklogBadge = 'Keine';
+    $checkBacklogDetails = 'Keine ungedruckten Bons, die älter als ' . $staleMin . ' Minuten sind.';
+    if ($backlog['total_rows'] > $backlog['stale_rows']) {
+        $checkBacklogDetails .= ' ' . ($backlog['total_rows'] - $backlog['stale_rows']) . ' Artikel warten gerade auf den Druck.';
+    }
+    if ($backlog['stale_rows'] > 0) {
+        $parts = [];
+        foreach ($backlog['targets'] as $t) {
+            if ($t['stale_rows'] > 0) {
+                $parts[] = $t['name'] . ': ' . $t['stale_orders'] . ' Bestellung(en), ' . $t['stale_rows'] . ' Artikel';
+            }
+        }
+        $oldestTs = $backlog['oldest'] !== null ? strtotime($backlog['oldest']) : false;
+        $checkBacklogStatus = 'warning';
+        $checkBacklogBadge = $backlog['stale_orders'] === 1 ? '1 alter Bon' : ($backlog['stale_orders'] . ' alte Bons');
+        $checkBacklogDetails = 'Druckbereit, aber seit über ' . $staleMin . ' Minuten nicht gedruckt (' . implode('; ', $parts) . ')'
+            . ($oldestTs ? ', älteste vom ' . date('d.m.Y H:i', $oldestTs) . ' Uhr' : '') . '. '
+            . 'Startet ein Druck-Client, druckt er sie alle aus. Mit „Alte Bons verwerfen“ werden sie als gedruckt markiert; Bestellungen und Umsätze bleiben unverändert.';
+        $overall = $overall === 'error' ? 'error' : 'warning';
     }
 
     return [
@@ -307,6 +447,18 @@ function ff_preflight_check(mysqli $conn): array
                 'db_backup_file' => $dbBackup['file'],
                 'action_page' => 'stammdaten-rechnungsdaten',
                 'action_label' => 'Backup-Token hinterlegen',
+            ],
+            'print_backlog' => [
+                'id' => 'print_backlog',
+                'title' => 'Keine liegengebliebenen Bons',
+                'status' => $checkBacklogStatus,
+                'badge' => $checkBacklogBadge,
+                'details' => $checkBacklogDetails,
+                'stale_min' => $staleMin,
+                'stale_rows' => $backlog['stale_rows'],
+                'stale_orders' => $backlog['stale_orders'],
+                'pending_rows' => $backlog['total_rows'],
+                'targets' => $backlog['targets'],
             ],
         ],
     ];

@@ -89,10 +89,7 @@ $sql = "
     JOIN positionen p ON p.rowid = b.position
     LEFT JOIN tische t ON t.tischnummer = b.tischnummer
     LEFT JOIN rechnungen r ON r.id = b.rechnung_id
-    WHERE b.`delete` = 0
-      AND b.bestellt = 1
-      AND " . ($ffAutoPrintCol ? "((b.kueche = 1 AND b.print IN (2, 3)) OR b.auto_print = 1)" : "(b.kueche = 1 AND b.print IN (2, 3))") . "
-      AND b.print_status = 0
+    WHERE " . ff_print_pending_cond_sql($ffAutoPrintCol) . "
       AND COALESCE(b.print_target, p.print_target, 11) = ?
     ORDER BY b.tischnummer ASC, b.zeitstempel ASC
     LIMIT 200

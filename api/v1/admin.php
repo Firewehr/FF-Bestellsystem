@@ -509,6 +509,27 @@ if ($action === 'preflight_check') {
     api_response(['ok' => true, 'preflight' => $res]);
 }
 
+if ($action === 'preflight_print_backlog_clear') {
+    if ($method !== 'POST') {
+        api_error('Nur per POST.', 'method_not_allowed', 405);
+    }
+    require_once __DIR__ . '/../../include/ff_preflight.php';
+    ff_auto_print_ensure_schema($conn);
+    mysqli_begin_transaction($conn);
+    try {
+        $cleared = ff_preflight_print_backlog_clear($conn);
+        mysqli_commit($conn);
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        api_error('Alte Bons konnten nicht verworfen werden.', 'db_error', 500);
+    }
+    if ($cleared['print_targets'] !== []) {
+        ff_station_events_publish($conn, $cleared['print_targets'], 'printed');
+    }
+    error_log('preflight: ' . $cleared['rows'] . ' alte Bon-Zeilen als gedruckt markiert von ' . (string)($user['username'] ?? '?'));
+    api_response(['ok' => true, 'cleared_rows' => $cleared['rows'], 'preflight' => ff_preflight_check($conn)]);
+}
+
 if ($action === 'stress_test_cleanup') {
     $tag = trim((string)($data['tag'] ?? ''));
     if ($tag === '' || !preg_match('/^STRESS_\d+_\d+$/', $tag)) {

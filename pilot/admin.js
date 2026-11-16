@@ -1135,6 +1135,27 @@ createApp({
       }
     }
 
+    const printBacklogClearing = ref(false);
+
+    async function clearPrintBacklog() {
+      const c = preflightData.value?.checks?.print_backlog;
+      if (!c || !c.stale_rows) return;
+      if (!confirm(`${c.stale_orders} alte Bestellung(en) mit ${c.stale_rows} Artikeln als gedruckt markieren? Es wird nichts gedruckt. Bestellungen und Umsätze bleiben unverändert.`)) return;
+      printBacklogClearing.value = true;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', {
+          method: 'POST',
+          body: { action: 'preflight_print_backlog_clear' },
+        });
+        if (res.preflight) preflightData.value = res.preflight;
+        showToast(`${res.cleared_rows || 0} Artikel als gedruckt markiert.`, 'success');
+      } catch (e) {
+        // Fehlermeldung zeigt apiRequest bereits an
+      } finally {
+        printBacklogClearing.value = false;
+      }
+    }
+
     // -------------------------------------------------------------------------
     // 4c. Speisekarte, Unterkategorien & Rezepturen
     // -------------------------------------------------------------------------
@@ -3300,6 +3321,8 @@ createApp({
       preflightData,
       preflightLoading,
       loadPreflight,
+      printBacklogClearing,
+      clearPrintBacklog,
       // Speisekarte & Rezepturen
       menuPositions,
       menuSubcategories,

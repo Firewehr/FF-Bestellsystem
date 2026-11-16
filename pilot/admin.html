@@ -521,7 +521,7 @@
             <div>
               <h3 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0;">✈️ Fest-Vorbereitungsassistent („Pre-Flight Checklist“)</h3>
               <p style="margin: 0; font-size: 0.85rem; color: var(--ff-text-muted);">
-                Sicherheitsüberprüfung vor Festbeginn: Testdaten bereinigt, Netzwerk-Bondrucker &amp; Stationen online, Rechnungsnummernkreis und Datensicherung.
+                Sicherheitsüberprüfung vor Festbeginn: Testdaten bereinigt, Netzwerk-Bondrucker &amp; Stationen online, Rechnungsnummernkreis, Datensicherung und keine alten, ungedruckten Bons.
               </p>
             </div>
             <button type="button" class="btn btn-primary btn-sm" :disabled="preflightLoading" @click="loadPreflight">
@@ -546,7 +546,7 @@
             </div>
           </div>
 
-          <!-- 4 Checks Grid -->
+          <!-- 5 Checks -->
           <div v-if="preflightData" style="display: flex; flex-direction: column; gap: 16px;">
             
             <!-- Check 1: Testdaten -->
@@ -669,6 +669,28 @@
                 <div style="display: flex; gap: 10px;">
                   <a href="../fest_offline_snapshot.php" class="btn btn-outline btn-sm" target="_blank">Offline-Snapshot herunterladen ↗</a>
                   <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'feste')">Feste &amp; Backups verwalten</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Check 5: Liegengebliebene Bons -->
+            <div class="admin-card">
+              <div class="card-header u-row-between">
+                <div class="u-row-center">
+                  <span class="u-fs-lg">{{ preflightData.checks?.print_backlog?.status === 'ok' ? '✅' : '⚠️' }}</span>
+                  <h4 class="u-title-sm">5. Keine liegengebliebenen Bons</h4>
+                </div>
+                <span class="badge" :class="preflightData.checks?.print_backlog?.status === 'ok' ? 'badge-success' : 'badge-warning'">
+                  {{ preflightData.checks?.print_backlog?.badge }}
+                </span>
+              </div>
+              <div class="card-body">
+                <p class="u-subtitle">{{ preflightData.checks?.print_backlog?.details }}</p>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button v-if="preflightData.checks?.print_backlog?.stale_rows > 0" type="button" class="btn btn-warning btn-sm" :disabled="printBacklogClearing" @click="clearPrintBacklog">
+                    {{ printBacklogClearing ? 'Verwirft…' : '🗑️ Alte Bons verwerfen' }}
+                  </button>
+                  <button type="button" class="btn btn-outline btn-sm" @click="switchSubTab('stammdaten', 'druckziele')">Druckziele</button>
                 </div>
               </div>
             </div>
@@ -3643,6 +3665,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261116_3"></script>
+  <script type="module" src="admin.js?v=20261116_4"></script>
 </body>
 </html>

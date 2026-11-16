@@ -2549,7 +2549,7 @@ function ffLoadPreflightCheck() {
             if (overall === 'ok') {
                 bannerClass = 'alert alert-success py-2 mb-3';
                 badgeClass = 'badge bg-success';
-                overallText = '✔ Alle 4 Kriterien erfüllt! Das System ist bereit für den Festbetrieb.';
+                overallText = '✔ Alle 5 Kriterien erfüllt! Das System ist bereit für den Festbetrieb.';
             } else if (overall === 'warning') {
                 bannerClass = 'alert alert-warning py-2 mb-3';
                 badgeClass = 'badge bg-warning text-dark';
@@ -2598,6 +2598,13 @@ function ffLoadPreflightCheck() {
             updateCard('printers', 'pfBadgePrinters', 'pfBadgePrinters2', 'pfDetailsPrinters', 'pfTextPrinters2', 'pfCardPrinters');
             updateCard('invoice_seq', 'pfBadgeSeq', 'pfBadgeSeq2', 'pfDetailsSeq', 'pfTextSeq2', 'pfCardSeq');
             updateCard('offline_backup', 'pfBadgeBackup', 'pfBadgeBackup2', 'pfDetailsBackup', 'pfTextBackup2', 'pfCardBackup');
+            updateCard('print_backlog', 'pfBadgeBacklog', 'pfBadgeBacklog2', 'pfDetailsBacklog', 'pfTextBacklog2', 'pfCardBacklog');
+            var backlog = checks['print_backlog'];
+            window.ffPreflightBacklog = backlog || null;
+            ['pfBacklogClearBtn', 'pfBacklogClearBtn2'].forEach(function(id) {
+                var btn = ffById(id);
+                if (btn) btn.classList.toggle('d-none', !(backlog && backlog.stale_rows > 0));
+            });
 
             var prCheck = checks['printers'];
             var prTableContainer = ffById('pfPrinterTableContainer');
@@ -2631,6 +2638,20 @@ function ffLoadPreflightCheck() {
         });
 }
 window.ffLoadPreflightCheck = ffLoadPreflightCheck;
+
+function ffPreflightClearPrintBacklog() {
+    var b = window.ffPreflightBacklog;
+    if (!b || !b.stale_rows) return;
+    if (!confirm(b.stale_orders + ' alte Bestellung(en) mit ' + b.stale_rows + ' Artikeln als gedruckt markieren? Es wird nichts gedruckt. Bestellungen und Umsätze bleiben unverändert.')) return;
+    fetchPost('admin_preflight_api.php', { action: 'print_backlog_clear' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (!d || !d.ok) { alert((d && d.error) || 'Fehler'); return; }
+            ffLoadPreflightCheck();
+        })
+        .catch(function() { alert('Alte Bons konnten nicht verworfen werden.'); });
+}
+window.ffPreflightClearPrintBacklog = ffPreflightClearPrintBacklog;
 
 function adminDashboardPrintPollSetup() {
     var cb = ffById('dashPrintNotifyEnable');

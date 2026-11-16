@@ -3005,7 +3005,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
         $g = 'Pre-Flight';
 
-        $check($g, 'Pre-Flight Checkliste: 4 Fest-Start Kernkriterien (include/ff_preflight.php)', function (mysqli $c) {
+        $check($g, 'Pre-Flight Checkliste: 5 Fest-Start Kernkriterien (include/ff_preflight.php)', function (mysqli $c) {
             require_once __DIR__ . '/ff_preflight.php';
             $res = ff_preflight_check($c);
 
@@ -3014,7 +3014,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             }
 
             $checks = $res['checks'] ?? [];
-            $required = ['orders', 'printers', 'invoice_seq', 'offline_backup'];
+            $required = ['orders', 'printers', 'invoice_seq', 'offline_backup', 'print_backlog'];
             foreach ($required as $reqKey) {
                 if (!isset($checks[$reqKey])) {
                     return "Kriterium '{$reqKey}' fehlt in preflight checks";
@@ -3025,6 +3025,61 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             }
 
             return null;
+        });
+
+        $check($g, 'Pre-Flight: alte ungedruckte Bons werden erkannt und verworfen, frische bleiben', function (mysqli $c) {
+            require_once __DIR__ . '/ff_preflight.php';
+            $pt = ff_st_print_target($c, 7791);
+            $pos = ff_st_position($c, 4.00);
+            // Zeitpunkte über die DB setzen (PHP- und DB-Zeitzone können abweichen)
+            $setTimes = static function (mysqli $c, int $id, int $orderedMinAgo, ?int $readyMinAgo): void {
+                if ($readyMinAgo === null) {
+                    ff_st_exec($c, 'UPDATE bestellungen SET zeitstempel = NOW() - INTERVAL ? MINUTE WHERE rowid = ?', 'ii', [$orderedMinAgo, $id]);
+                } else {
+                    ff_st_exec($c, 'UPDATE bestellungen SET zeitstempel = NOW() - INTERVAL ? MINUTE, zeitKueche = NOW() - INTERVAL ? MINUTE WHERE rowid = ?', 'iii', [$orderedMinAgo, $readyMinAgo, $id]);
+                }
+            };
+            $ready = ['pt' => $pt, 'ready_at' => '2000-01-01 00:00:00', 'print' => 2];
+            // Gestern fertig gemeldet, nie gedruckt → alt
+            $old1 = ff_st_flow_row($c, $pos, $ready + ['order_nr' => 1]);
+            $old2 = ff_st_flow_row($c, $pos, $ready + ['order_nr' => 1]);
+            $setTimes($c, $old1, 1500, 1490);
+            $setTimes($c, $old2, 1500, 1490);
+            // Sofortdruck vor 2 Stunden, nie gedruckt → alt
+            $oldAuto = ff_st_flow_row($c, $pos, ['pt' => $pt, 'order_nr' => 2, 'auto_print' => 1]);
+            $setTimes($c, $oldAuto, 120, null);
+            // Vor einer Stunde bestellt, aber eben erst fertig → frisch
+            $fresh = ff_st_flow_row($c, $pos, $ready + ['order_nr' => 3]);
+            $setTimes($c, $fresh, 60, 1);
+            // Alt, aber schon gedruckt bzw. storniert → zählt nicht
+            $printed = ff_st_flow_row($c, $pos, $ready + ['order_nr' => 4, 'print_status' => 1]);
+            $deleted = ff_st_flow_row($c, $pos, $ready + ['order_nr' => 5, 'deleted' => true]);
+            $setTimes($c, $printed, 1500, 1490);
+            $setTimes($c, $deleted, 1500, 1490);
+
+            $target = null;
+            foreach (ff_preflight_print_backlog($c)['targets'] as $t) {
+                if ($t['print_target'] === $pt) {
+                    $target = $t;
+                }
+            }
+            if ($target === null) {
+                return 'Testdruckziel fehlt in der Auswertung';
+            }
+            $err = ff_st_expect_same(4, $target['rows'], 'druckbereite Zeilen')
+                ?? ff_st_expect_same(3, $target['stale_rows'], 'alte Zeilen')
+                ?? ff_st_expect_same(2, $target['stale_orders'], 'alte Bestellungen');
+            if ($err !== null) {
+                return $err;
+            }
+            $res = ff_preflight_print_backlog_clear($c);
+            $ps = static fn (int $id): int => (int) ff_st_order_row($c, $id)['print_status'];
+            return (in_array($pt, $res['print_targets'], true) ? null : 'Druckziel fehlt in der Rückgabe')
+                ?? ff_st_expect_same(1, $ps($old1), 'alt 1 verworfen')
+                ?? ff_st_expect_same(1, $ps($old2), 'alt 2 verworfen')
+                ?? ff_st_expect_same(1, $ps($oldAuto), 'alter Sofortdruck verworfen')
+                ?? ff_st_expect_same(0, $ps($fresh), 'frischer Bon bleibt druckbereit')
+                ?? ff_st_expect_same(0, $ps($deleted), 'stornierte Zeile unverändert');
         });
 
         $check($g, 'Pre-Flight: Datenbank-Backup fehlt / veraltet / aktuell (Grenze 30 Minuten)', function (mysqli $c) {

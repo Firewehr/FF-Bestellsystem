@@ -635,51 +635,63 @@ function BenutzerNeu() {
                                 <span id="ffPreflightSummaryText">Lade Pre-Flight Status…</span>
                             </div>
                             <div class="row g-3" id="ffPreflightGrid">
-                                <div class="col-md-6 col-lg-3">
+                                <div class="col-md-6 col-lg">
                                     <div class="card h-100 border" id="pfCardOrders">
                                         <div class="card-body p-2 d-flex flex-column">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <span class="fw-bold small">1. Testdaten & Queues</span>
                                                 <span class="badge bg-secondary" id="pfBadgeOrders">…</span>
                                             </div>
-                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsOrders">Wird geprüft…</p>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsOrders">Wird geprüft…</p>
                                             <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Bereinigen</button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 col-lg-3">
+                                <div class="col-md-6 col-lg">
                                     <div class="card h-100 border" id="pfCardPrinters">
                                         <div class="card-body p-2 d-flex flex-column">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <span class="fw-bold small">2. Drucker & Testbon</span>
                                                 <span class="badge bg-secondary" id="pfBadgePrinters">…</span>
                                             </div>
-                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsPrinters">Wird geprüft…</p>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsPrinters">Wird geprüft…</p>
                                             <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-druckziele">Drucker & Testbon</button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 col-lg-3">
+                                <div class="col-md-6 col-lg">
                                     <div class="card h-100 border" id="pfCardSeq">
                                         <div class="card-body p-2 d-flex flex-column">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <span class="fw-bold small">3. Rechnungsnummern</span>
                                                 <span class="badge bg-secondary" id="pfBadgeSeq">…</span>
                                             </div>
-                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsSeq">Wird geprüft…</p>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsSeq">Wird geprüft…</p>
                                             <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-nummern">Nummernkreis</button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 col-lg-3">
+                                <div class="col-md-6 col-lg">
                                     <div class="card h-100 border" id="pfCardBackup">
                                         <div class="card-body p-2 d-flex flex-column">
                                             <div class="d-flex justify-content-between align-items-center mb-1">
                                                 <span class="fw-bold small">4. Offline-Backup</span>
                                                 <span class="badge bg-secondary" id="pfBadgeBackup">…</span>
                                             </div>
-                                            <p class="small text-muted mb-2 flex-grow-1" id="pfDetailsBackup">Wird geprüft…</p>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsBackup">Wird geprüft…</p>
                                             <button type="button" class="btn btn-sm btn-outline-primary mt-auto ff-admin-page-link" data-ff-page="stammdaten-rechnungsdaten">Backup-Token</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-lg">
+                                    <div class="card h-100 border" id="pfCardBacklog">
+                                        <div class="card-body p-2 d-flex flex-column">
+                                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                                <span class="fw-bold small">5. Alte Bons</span>
+                                                <span class="badge bg-secondary" id="pfBadgeBacklog">…</span>
+                                            </div>
+                                            <p class="small text-muted mb-2 flex-grow-1 text-break" id="pfDetailsBacklog">Wird geprüft…</p>
+                                            <button type="button" class="btn btn-sm btn-outline-warning mt-auto d-none" id="pfBacklogClearBtn" onclick="ffPreflightClearPrintBacklog();">Alte Bons verwerfen</button>
                                         </div>
                                     </div>
                                 </div>
@@ -743,7 +755,7 @@ function BenutzerNeu() {
                 <button type="button" class="btn btn-sm btn-outline-light py-0" onclick="ffLoadPreflightCheck();">🔄 Neu prüfen</button>
             </div>
             <div class="card-body">
-                <p class="text-muted small mb-3">Prüft vor dem Festbeginn alle vier kritischen Betriebsfaktoren. Erst wenn alle Punkte grün sind, ist das System optimal für den Festbetrieb vorbereitet.</p>
+                <p class="text-muted small mb-3">Prüft vor dem Festbeginn alle fünf kritischen Betriebsfaktoren. Erst wenn alle Punkte grün sind, ist das System optimal für den Festbetrieb vorbereitet.</p>
                 <div id="ffPreflightDetailBanner" class="alert alert-secondary py-2 mb-3">Prüfe Systemzustand…</div>
 
                 <div class="list-group mb-4" id="ffPreflightDetailList">
@@ -787,6 +799,15 @@ function BenutzerNeu() {
                         </div>
                         <p class="mb-2 text-muted small" id="pfTextBackup2">Prüft, ob der Offline-Backup-Token hinterlegt ist und Notfall-Snapshots angelegt werden.</p>
                         <button type="button" class="btn btn-sm btn-outline-primary ff-admin-page-link" data-ff-page="stammdaten-rechnungsdaten">Backup-Token hinterlegen</button>
+                    </div>
+
+                    <div class="list-group-item p-3" id="pfDetailRowBacklog">
+                        <div class="d-flex w-100 justify-content-between align-items-center">
+                            <h6 class="mb-1 fw-bold">5. Keine liegengebliebenen Bons</h6>
+                            <span class="badge bg-secondary" id="pfBadgeBacklog2">Wird geprüft…</span>
+                        </div>
+                        <p class="mb-2 text-muted small" id="pfTextBacklog2">Prüft, ob druckbereite Bons seit über 30 Minuten nicht gedruckt wurden. Ein Druck-Client würde sie beim nächsten Start alle ausdrucken.</p>
+                        <button type="button" class="btn btn-sm btn-outline-warning d-none" id="pfBacklogClearBtn2" onclick="ffPreflightClearPrintBacklog();">Alte Bons verwerfen</button>
                     </div>
                 </div>
 
