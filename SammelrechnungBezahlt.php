@@ -148,24 +148,24 @@ $tables_text = implode(',', $tables);
 $created_by = (string) (isset($_SESSION['user']['username']) ? $_SESSION['user']['username'] : '');
 // Spaltennamen stammen aus festen Literalen (Schema-abhängig), Werte als Parameter
 $insCols = [];
-$insVals = [];
+$insValuesSql = []; // nur '?' und feste SQL-Ausdrücke (1, CURRENT_TIMESTAMP)
 $insTypes = '';
 $insParams = [];
 if (ff_sr_has_column($conn, 'created_by')) {
     $insCols[] = 'created_by';
-    $insVals[] = '?';
+    $insValuesSql[] = '?';
     $insTypes .= 's';
     $insParams[] = $created_by;
 }
 if (ff_sr_has_column($conn, 'umsatz_zustaendig')) {
     $insCols[] = 'umsatz_zustaendig';
-    $insVals[] = '?';
+    $insValuesSql[] = '?';
     $insTypes .= 's';
     $insParams[] = $umsatzUser;
 }
 if (ff_sr_has_column($conn, 'tables_text')) {
     $insCols[] = 'tables_text';
-    $insVals[] = '?';
+    $insValuesSql[] = '?';
     $insTypes .= 's';
     $insParams[] = $tables_text;
 }
@@ -177,22 +177,22 @@ if (ff_sr_has_column($conn, 'total_amount')) {
 }
 if ($amountCol !== null) {
     $insCols[] = $amountCol;
-    $insVals[] = '?';
+    $insValuesSql[] = '?';
     $insTypes .= 'd';
     $insParams[] = round((float) $total, 2);
 }
 if (ff_sr_has_column($conn, 'bezahlt')) {
     $insCols[] = 'bezahlt';
-    $insVals[] = '1';
+    $insValuesSql[] = '1';
 }
 if (ff_sr_has_column($conn, 'bezahlt_at')) {
     $insCols[] = 'bezahlt_at';
-    $insVals[] = 'CURRENT_TIMESTAMP';
+    $insValuesSql[] = 'CURRENT_TIMESTAMP';
 }
 if ($insCols === []) {
     ff_sr_json_error(500, 'schema', 'Tabelle sammelrechnungen: keine passenden Spalten (created_by / tables_text / total_amount). Bitte SQL-Migration ausführen.');
 }
-$sqlIns = 'INSERT INTO sammelrechnungen (' . implode(', ', $insCols) . ') VALUES (' . implode(', ', $insVals) . ')';
+$sqlIns = 'INSERT INTO sammelrechnungen (' . implode(', ', $insCols) . ') VALUES (' . implode(', ', $insValuesSql) . ')';
 if (!ff_db_query($conn, $sqlIns, $insTypes, $insParams)) {
     ff_sr_json_error(500, 'insert_failed', 'Sammelrechnung konnte nicht gespeichert werden: ' . mysqli_error($conn));
 }

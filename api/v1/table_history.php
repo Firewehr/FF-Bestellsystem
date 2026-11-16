@@ -47,18 +47,20 @@ $histSql = "SELECT b.rowid, b.tischnummer, b.position,
                    COALESCE(p.type, 1) AS pos_type
             FROM bestellungen b
             LEFT JOIN positionen p ON p.rowid = b.position
-            WHERE b.tischnummer = {$tischnummer}";
+            WHERE b.tischnummer = ?";
 
 $rowsById = [];
 $merge = static function ($res) use (&$rowsById): void {
     if (!$res) return;
     while ($r = mysqli_fetch_assoc($res)) {
+        // Prepared Statement liefert Zahlen als PHP-Zahlen: Zeile wie bisher als Text weiterreichen
+        $r = ff_db_row_text($r);
         $rowsById[(int)($r['rowid'] ?? 0)] = $r;
     }
 };
 
-$merge(mysqli_query($conn, $histSql . " AND b.`delete` = 0 ORDER BY b.zeitstempel DESC LIMIT 70"));
-$merge(mysqli_query($conn, $histSql . " AND b.`delete` = 1 ORDER BY b.zeitstempel DESC LIMIT 30"));
+$merge(ff_db_query($conn, $histSql . " AND b.`delete` = 0 ORDER BY b.zeitstempel DESC LIMIT 70", 'i', [$tischnummer]));
+$merge(ff_db_query($conn, $histSql . " AND b.`delete` = 1 ORDER BY b.zeitstempel DESC LIMIT 30", 'i', [$tischnummer]));
 
 $rows = array_values($rowsById);
 usort($rows, static function (array $a, array $b): int {

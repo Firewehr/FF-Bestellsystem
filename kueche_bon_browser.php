@@ -28,7 +28,7 @@ if ($liste === [] || $tischnummer <= 0) {
     exit;
 }
 
-[$ids, $idsT, $idsV] = ff_db_in_ints($liste);
+[$inIds, $idsT, $idsV] = ff_db_in_ints($liste);
 $sql = "SELECT b.rowid, b.tischnummer, b.kellner, b.zeitstempel, b.zeitKueche, b.Zusatzinfo,
         COALESCE(b.betrag, p.Betrag) AS betrag_zeile, b.order_nr,
         p.rowid AS position_id, p.Positionsname, p.Betrag AS betrag_katalog, t.tischname,
@@ -38,7 +38,7 @@ $sql = "SELECT b.rowid, b.tischnummer, b.kellner, b.zeitstempel, b.zeitKueche, b
         JOIN tische t ON t.tischnummer = b.tischnummer
         LEFT JOIN rechnungen r ON r.id = b.rechnung_id
         WHERE b.`delete` = 0 AND b.tischnummer = ?
-          AND b.rowid IN (" . $ids . ")
+          AND b.rowid IN (" . $inIds . ")
         ORDER BY p.Positionsname ASC, b.rowid ASC";
 
 $res = ff_db_query($conn, $sql, 'i' . $idsT, array_merge([(int) $tischnummer], $idsV));

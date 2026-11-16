@@ -382,8 +382,8 @@ function festio_export_sales_for_fest(PDO $pdo, int $fest_id, array &$tables): v
     $bidList = array_values(array_unique(array_filter($bidList)));
 
     if ($bidList !== [] && festio_table_exists($pdo, 'print')) {
-        $inb = implode(',', array_fill(0, count($bidList), '?'));
-        $tables['print'] = festio_fetch_all($pdo, "SELECT * FROM print WHERE bestellungID IN ($inb)", $bidList);
+        $inPrint = implode(',', array_fill(0, count($bidList), '?'));
+        $tables['print'] = festio_fetch_all($pdo, "SELECT * FROM print WHERE bestellungID IN ($inPrint)", $bidList);
     } elseif (festio_table_exists($pdo, 'print')) {
         $tables['print'] = [];
     }
@@ -398,19 +398,19 @@ function festio_export_sales_for_fest(PDO $pdo, int $fest_id, array &$tables): v
     if (festio_table_exists($pdo, 'sammelrechnungen')) {
         if (festio_has_column($pdo, 'sammelrechnungen', 'fest_id')) {
             if ($srIds !== []) {
-                $inu = implode(',', array_fill(0, count($srIds), '?'));
+                $inSr = implode(',', array_fill(0, count($srIds), '?'));
                 $params = array_merge([$fest_id], $srIds);
                 $tables['sammelrechnungen'] = festio_fetch_all(
                     $pdo,
-                    "SELECT * FROM sammelrechnungen WHERE fest_id = ? OR id IN ($inu)",
+                    "SELECT * FROM sammelrechnungen WHERE fest_id = ? OR id IN ($inSr)",
                     $params
                 );
             } else {
                 $tables['sammelrechnungen'] = festio_fetch_all($pdo, 'SELECT * FROM sammelrechnungen WHERE fest_id=?', [$fest_id]);
             }
         } elseif ($srIds !== []) {
-            $inu = implode(',', array_fill(0, count($srIds), '?'));
-            $tables['sammelrechnungen'] = festio_fetch_all($pdo, "SELECT * FROM sammelrechnungen WHERE id IN ($inu)", $srIds);
+            $inSr = implode(',', array_fill(0, count($srIds), '?'));
+            $tables['sammelrechnungen'] = festio_fetch_all($pdo, "SELECT * FROM sammelrechnungen WHERE id IN ($inSr)", $srIds);
         } else {
             $tables['sammelrechnungen'] = [];
         }

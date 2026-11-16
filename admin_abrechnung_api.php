@@ -45,8 +45,12 @@ function ff_abrechnung_umsatz_heute(mysqli $conn): float {
  */
 function ff_schreibaus_collect(mysqli $conn, string $openCond, string $scope, int $tableId, bool $includeDirekt): array {
     $tischFilter = '';
+    $types = '';
+    $params = [];
     if ($scope === 'table' && $tableId > 0) {
-        $tischFilter = ' AND b.tischnummer = ' . $tableId;
+        $tischFilter = ' AND b.tischnummer = ?';
+        $types = 'i';
+        $params = [$tableId];
     } elseif ($scope === 'all_tables' && !$includeDirekt) {
         $tischFilter = ' AND b.tischnummer <> 999999';
     }
@@ -54,7 +58,7 @@ function ff_schreibaus_collect(mysqli $conn, string $openCond, string $scope, in
             FROM bestellungen b
             JOIN positionen p ON p.rowid = b.position
             WHERE {$openCond}{$tischFilter}";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_db_query($conn, $sql, $types, $params);
     $ids = [];
     $sum = 0.0;
     if ($res) {

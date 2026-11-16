@@ -131,7 +131,7 @@ $blockedByTisch_Timestamp   = [];     // [tisch][timestampBestellung] => true
 $blockedByTisch_FiveMinKeys = [];     // [tisch] => [bucketKey => true]
 
 if (!empty($tischNummern) && !empty($rows)) {
-    [$tischIds, $tischIdsT, $tischIdsV] = ff_db_in_ints(array_keys($tischNummern));
+    [$inTische, $tischIdsT, $tischIdsV] = ff_db_in_ints(array_keys($tischNummern));
     $sibSql = "
         SELECT b2.tischnummer,
                b2.bon_id,
@@ -142,7 +142,7 @@ if (!empty($tischNummern) && !empty($rows)) {
         WHERE b2.`delete` = 0
           AND b2.bestellt = 1
           AND b2.kueche = 0
-          AND b2.tischnummer IN ($tischIds)
+          AND b2.tischnummer IN ($inTische)
           AND COALESCE(b2.print_target, p2.print_target, 11) = ?
     ";
     $sibRes = ff_db_query($conn, $sibSql, $tischIdsT . 'i', array_merge($tischIdsV, [(int) $print_target]));
@@ -317,8 +317,8 @@ unset($tischRef);
 
 // Als gedruckt markieren (außer Preview-Modus)
 if (!$preview && count($bestellungIds) > 0) {
-    [$ids, $idTypes, $idList] = ff_db_in_ints($bestellungIds);
-    ff_db_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE rowid IN ($ids)", $idTypes, $idList);
+    [$inIds, $idTypes, $idList] = ff_db_in_ints($bestellungIds);
+    ff_db_query($conn, "UPDATE bestellungen SET print_status = 1 WHERE rowid IN ($inIds)", $idTypes, $idList);
     // Stationsansicht sofort aktualisieren ("Bon gedruckt"-Markierung)
     ff_station_events_publish($conn, [$print_target], 'printed');
 }

@@ -117,7 +117,8 @@ function ff_kellner_paid_breakdown(mysqli $conn, string $kellner, string $scope 
     $paid = ff_finance_order_paid_base_sql('b');
     $festId = ff_finance_current_fest_id($conn);
     $festCur = ff_finance_fest_filter_sql($conn, 'b');
-    $festWrong = $festId > 0 ? " AND b.fest_id IS NOT NULL AND b.fest_id <> {$festId}" : '';
+    // @ff_fest_id setzt ff_finance_fest_filter_sql() oben (gleiche Fest-ID, per Prepared Statement)
+    $festWrong = $festId > 0 ? ' AND b.fest_id IS NOT NULL AND b.fest_id <> @ff_fest_id' : '';
     $tisch = $scope === 'dv' ? ' AND b.tischnummer = 999999 ' : ' AND b.tischnummer <> 999999 ';
     $scopeKs = $scope === 'dv'
         ? "ks.settlement_scope = 'direktverkauf'"

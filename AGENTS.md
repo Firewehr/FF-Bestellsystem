@@ -161,7 +161,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
   * Vorbereitungsassistent vor Festbeginn (`admin_preflight_api.php`, `include/ff_preflight.php`): Automatische Prüfung der 4 kritischen Faktoren (Testdaten bereinigt, Drucker online/Testbon, Rechnungsnummernkreis, Offline-Backup).
   * Simulierter Stresstest-Runner (`tools/stress_test.py`): CLI-Tool zur Simulation von bis zu 500 Bestellungen in 60 Sekunden mit 20 Kellnern und Latenz-/Throughput-Analyse.
 * **Automatisierte Tests (`stammdaten-tests`):**
-  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 102) und visualisiert Fehler.
+  * Integrierter Test-Runner im Admin-Bereich (`admin_selftest_api.php`): Führt alle Selbsttests aus (aktuell 103) und visualisiert Fehler.
 * **Abrechnung & Sicherheit (`stammdaten-abrechnung`):**
   * **Schreibaus-Funktion:** Fachliches Schließen verwaister Bestellungen (Gäste gegangen, Tischreste) ohne Datensätze zu löschen (saubere steuerliche Abgrenzung).
   * **Fest-Start vorbereiten:** Bereinigung aller Test-Verkäufe, Bestellungen, Kassenstände, Queues und Zähler vor Festbeginn (nur Super-Admin, Bestätigungswort `FEST-START`).
@@ -250,6 +250,7 @@ Das Administrationsmenü gliedert sich in fünf logische Hauptgruppen mit spezia
    - Achtung Typen: Prepared Statements liefern INT/DOUBLE-Spalten als PHP-Zahlen, `mysqli_query()` als Strings. Werden ganze Zeilen weitergereicht (JSON-Ausgabe, `=== '1'`-Vergleiche), die Zeile mit `ff_db_row_text($row)` umwandeln, damit sich das Verhalten nicht ändert.
    - SQL-Bausteine, die über Funktionen oder Dateien weitergereicht werden (Filter für Kellner, Zeitraum, Bon), sind Arrays `[sql, types, params]` aus `ff_db_frag()`, nie fertige SQL-Strings mit Werten. Zusammensetzen mit `ff_db_frag_concat()`, ausführen mit `ff_db_query_parts($conn, 'SELECT …', $baustein, ' GROUP BY …')` (Teile in SQL-Reihenfolge).
    - Einzige Ausnahme: **Tabellen- und Spaltennamen** in Schema-Befehlen (`SHOW COLUMNS FROM`, `ALTER TABLE`, `SHOW TABLES LIKE`). MySQL erlaubt dort keine Parameter. Diese Namen dürfen nur aus fest codierten Listen im Code stammen, nie aus Request-Daten.
+   - Der Selbsttest „Keine Werte direkt im SQL“ (`include/ff_sql_lint.php`) meldet Variablen an Werte-Positionen (`= ' . $x`, `'{$x}'`, `LIMIT ' . $n`, `VALUES (` / `IN (` mit Variablen). Platzhalterlisten und SQL-Bausteine benennen: `$in…`/`$ph`/`…List` für `?,?,?`, `…Sql`/`…Expr`/`…Cond`/`…Filter`/`…Where` für feste Ausdrücke. Bewusste Ausnahmen in derselben Anweisung mit `// sql-lint: ok (Grund)` markieren.
 3. **Idempotente Schema-Updates & Schema-Cache:**
    - Schema-Erweiterungen müssen abwärtskompatibel sein (z. B. via `ff_table_has_column()` oder `ff_schema_helpers.php`).
    - Bei Spalten-/Tabellenanpassungen muss der Cache geleert werden (`admin_schema_cache_clear.php` bzw. `include/.cache/schema_columns.json`).
@@ -280,7 +281,7 @@ Nach jeder Codeänderung **müssen** die internen Selbsttests ausgeführt werden
 php -r "require_once 'include/db.php'; require_once 'include/ff_selftests.php'; \$res = ff_selftests_run(\$conn, 'unit'); if (!empty(\$res['failed'])) { echo 'FAILED: ' . \$res['failed']; exit(1); } echo 'OK: ' . \$res['passed'] . ' tests passed';"
 ```
 
-* **Alle Selbsttests (aktuell 102 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
+* **Alle Selbsttests (aktuell 103 Tests) müssen fehlerfrei durchlaufen (`exit code 0`).**
 * Bei Änderungen an Kellner-App, Station oder Pilot-Admin zusätzlich den Browser-Smoke-Test ausführen (speichert nichts, alle POSTs werden abgefangen; Zugangsdaten nur per Umgebungsvariable):
   ```bash
   FF_UI_USER=... FF_UI_PASS=... python3 tools/ui_smoke_test.py [--shots /pfad/zu/screenshots]

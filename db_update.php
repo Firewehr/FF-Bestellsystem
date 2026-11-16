@@ -1255,15 +1255,24 @@ function ff_migration_run_seeds(mysqli $conn, array &$log): void {
             }
             @mysqli_free_result($ucRes);
         }
+        // Spaltennamen fest im Code, Werte als Parameter
         $fields = ['`username`', '`password`', '`admin`'];
-        $values = ["'admin'", "'{$pwHash}'", "2"];
-        if (isset($uCols['can_finance'])) { $fields[] = '`can_finance`'; $values[] = '1'; }
-        if (isset($uCols['can_direktverkauf'])) { $fields[] = '`can_direktverkauf`'; $values[] = '1'; }
-        if (isset($uCols['start_page'])) { $fields[] = '`start_page`'; $values[] = "'menu'"; }
-        if (isset($uCols['force_password_change'])) { $fields[] = '`force_password_change`'; $values[] = '1'; }
+        $types = 'ssi';
+        $params = ['admin', $pwHash, 2];
+        if (isset($uCols['can_finance'])) { $fields[] = '`can_finance`'; $types .= 'i'; $params[] = 1; }
+        if (isset($uCols['can_direktverkauf'])) { $fields[] = '`can_direktverkauf`'; $types .= 'i'; $params[] = 1; }
+        if (isset($uCols['start_page'])) { $fields[] = '`start_page`'; $types .= 's'; $params[] = 'menu'; }
+        if (isset($uCols['force_password_change'])) { $fields[] = '`force_password_change`'; $types .= 'i'; $params[] = 1; }
+        $inValues = implode(', ', array_fill(0, count($fields), '?'));
 
         try {
-            @mysqli_query($conn, "INSERT INTO `users` (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $values) . ")");
+            // db_update.php lädt include/db.php nicht immer (Setup/CLI): natives Prepared Statement
+            $insAdmin = mysqli_prepare($conn, "INSERT INTO `users` (" . implode(', ', $fields) . ") VALUES ({$inValues})");
+            if ($insAdmin) {
+                mysqli_stmt_bind_param($insAdmin, $types, ...$params);
+                @mysqli_stmt_execute($insAdmin);
+                mysqli_stmt_close($insAdmin);
+            }
             $log[] = ['type' => 'warning', 'msg' => 'Sicherheit: Kein Benutzer vorhanden -> Standard-Admin angelegt (Benutzer: admin / Kennwort: ' . $initialPw . '). Kennwort jetzt notieren und nach dem Login sofort ändern!'];
         } catch (\Throwable $e) {
             $log[] = ['type' => 'warning', 'msg' => 'Hinweis bei Standard-Admin: ' . $e->getMessage()];

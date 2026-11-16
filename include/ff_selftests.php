@@ -2058,7 +2058,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 $p = ff_st_position($c, 1.0, 3);
                 // Dynamisch eventuelle Legacy-Pflichtfelder wie mitarbeiter_name berücksichtigen
                 $fields = ['`datum`', '`bereich_id`', '`position_id`', '`menge`'];
-                $vals = ['CURDATE()', '0', (string) $p, '2'];
+                $valsSql = ['CURDATE()', '0', '?', '2']; // Position als Parameter, Rest feste Ausdrücke
                 $cCols = @mysqli_query($c, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
                 if ($cCols) {
                     while ($col = mysqli_fetch_assoc($cCols)) {
@@ -2069,12 +2069,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                         if (!$isNullable && !$hasDefault && !$isAuto && !in_array('`' . $col['Field'] . '`', $fields, true)) {
                             $fields[] = "`" . $col['Field'] . "`";
                             $t = (string) $col['Type'];
-                            $vals[] = (stripos($t, 'int') !== false || stripos($t, 'decimal') !== false) ? '0' : "'Test'";
+                            $valsSql[] = (stripos($t, 'int') !== false || stripos($t, 'decimal') !== false) ? '0' : "'Test'";
                         }
                     }
                     mysqli_free_result($cCols);
                 }
-                ff_st_exec($c, 'INSERT INTO `mitarbeiter_verpflegung` (' . implode(', ', $fields) . ') VALUES (' . implode(', ', $vals) . ')');
+                ff_st_exec($c, 'INSERT INTO `mitarbeiter_verpflegung` (' . implode(', ', $fields) . ') VALUES (' . implode(', ', $valsSql) . ')', 'i', [(int) $p]);
                 $r = ff_position_check_capacity($c, $p, 3, 2);
                 return ff_st_expect_same('max_cap', $r['error'] ?? null, 'Fehlercode')
                     ?? ff_st_expect_same(1, $r['rest'] ?? null, 'Rest');
@@ -2084,7 +2084,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Bestandteil-Kapazität begrenzt die Position (knappster Bestandteil)', function (mysqli $c) {
             $p = ff_st_position($c, 1.0, -1);
             $bName = 'ZZ_ST_CAP_' . mt_rand(10000, 99999);
-            $b = ff_st_exec($c, "INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order) VALUES ('{$bName}', 'Stk', 10, 1, 9999)");
+            $b = ff_st_exec($c, "INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order) VALUES (?, 'Stk', 10, 1, 9999)", 's', [$bName]);
             ff_st_exec($c, 'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, reihenfolge) VALUES (?, ?, 2, 0)', 'ii', [$p, $b]);
             $fresh = ff_position_check_capacity($c, $p, -1, 5);
             for ($i = 0; $i < 4; $i++) {
@@ -2104,7 +2104,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Anzeige-Kapazität (Rest) folgt dem Bestandteil-Verbrauch', function (mysqli $c) {
             $p = ff_st_position($c, 1.0, -1);
             $bName = 'ZZ_ST_DISP_' . mt_rand(10000, 99999);
-            $b = ff_st_exec($c, "INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order) VALUES ('{$bName}', 'Stk', 9, 1, 9999)");
+            $b = ff_st_exec($c, "INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order) VALUES (?, 'Stk', 9, 1, 9999)", 's', [$bName]);
             ff_st_exec($c, 'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, reihenfolge) VALUES (?, ?, 3, 0)', 'ii', [$p, $b]);
             ff_st_order($c, $p);
             $d = ff_position_display_capacity($c, $p, -1, 1);
@@ -2242,8 +2242,8 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             @mysqli_query($c, 'INSERT INTO tische (tischnummer, tischname) VALUES (7125, "H-P1")');
             $pFood = ff_st_position($c, 9.50);
             $pDrink = ff_st_position($c, 4.20);
-            mysqli_query($c, 'UPDATE positionen SET type = 1, print_target = 11, Positionsname = "Pilot Schnitzel" WHERE rowid = ' . $pFood);
-            mysqli_query($c, 'UPDATE positionen SET type = 2, print_target = 12, Positionsname = "Pilot Zwickl" WHERE rowid = ' . $pDrink);
+            ff_db_query($c, 'UPDATE positionen SET type = 1, print_target = 11, Positionsname = "Pilot Schnitzel" WHERE rowid = ?', 'i', [$pFood]);
+            ff_db_query($c, 'UPDATE positionen SET type = 2, print_target = 12, Positionsname = "Pilot Zwickl" WHERE rowid = ?', 'i', [$pDrink]);
 
             // 2 Positionen bestellen
             $insFood = mysqli_prepare($c, 'INSERT INTO bestellungen (tischnummer, position, zeitstempel, zeitKueche, bestellt, kueche, ausgeliefert, print, print_status, `delete`, order_nr, kellner, print_target, betrag) VALUES (?, ?, NOW(), "0000-00-00 00:00:00", 1, 0, 0, 0, 0, 0, 7711, "pilot_tester", 11, 9.50)');
@@ -2259,28 +2259,28 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             mysqli_stmt_close($insDrink);
 
             // 1. Fertig markieren (item_done)
-            mysqli_query($c, "UPDATE bestellungen SET zeitKueche = CURRENT_TIMESTAMP, kueche = 1, print = 0 WHERE rowid = {$rowFood}");
+            ff_db_query($c, 'UPDATE bestellungen SET zeitKueche = CURRENT_TIMESTAMP, kueche = 1, print = 0 WHERE rowid = ?', 'i', [$rowFood]);
             $chkFood = ff_st_fetch_one($c, 'SELECT kueche, zeitKueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
             if ((int)($chkFood['kueche'] ?? 0) !== 1) {
                 return 'Position Food sollte nach Fertigstellung kueche=1 sein';
             }
 
             // 2. Undo (undo_done)
-            mysqli_query($c, "UPDATE bestellungen SET zeitKueche = '0000-00-00 00:00:00', kueche = 0, print = 0 WHERE rowid = {$rowFood}");
+            ff_db_query($c, "UPDATE bestellungen SET zeitKueche = '0000-00-00 00:00:00', kueche = 0, print = 0 WHERE rowid = ?", 'i', [$rowFood]);
             $chkFoodUndo = ff_st_fetch_one($c, 'SELECT kueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
             if ((int)($chkFoodUndo['kueche'] ?? 0) !== 0) {
                 return 'Position Food sollte nach Undo wieder kueche=0 sein';
             }
 
             // 3. Bestellung abschließen (complete_order mit Druck)
-            mysqli_query($c, "UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid IN ({$rowFood}, {$rowDrink})");
+            ff_db_query($c, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid IN (?, ?)', 'ii', [$rowFood, $rowDrink]);
             $closedRows = ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM bestellungen WHERE rowid IN (?, ?) AND ausgeliefert = 1', 'ii', [$rowFood, $rowDrink]);
             if ((int)($closedRows['c'] ?? 0) !== 2) {
                 return 'Erwartet genau 2 ausgelieferte Positionen nach complete_order';
             }
 
             // 4. Reopen (Undo Complete aus Historie)
-            mysqli_query($c, "UPDATE bestellungen SET ausgeliefert = 0, timestampAuslieferung = '0000-00-00 00:00:00', kueche = 1, zeitKueche = CURRENT_TIMESTAMP WHERE rowid = {$rowFood}");
+            ff_db_query($c, "UPDATE bestellungen SET ausgeliefert = 0, timestampAuslieferung = '0000-00-00 00:00:00', kueche = 1, zeitKueche = CURRENT_TIMESTAMP WHERE rowid = ?", 'i', [$rowFood]);
             $reopenRow = ff_st_fetch_one($c, 'SELECT ausgeliefert, kueche FROM bestellungen WHERE rowid = ?', 'i', [$rowFood]);
             $isReopened = ((int)($reopenRow['ausgeliefert'] ?? 1) === 0 && (int)($reopenRow['kueche'] ?? 0) === 1);
 
@@ -2292,7 +2292,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $oldSession = $_SESSION ?? [];
             try {
                 $uName = 'zz_st_api_admin';
-                mysqli_query($c, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES ('{$uName}', 'hash', 2, 0, 1) ON DUPLICATE KEY UPDATE admin=2, auth_rev=0, is_active=1");
+                ff_db_query($c, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES (?, 'hash', 2, 0, 1) ON DUPLICATE KEY UPDATE admin=2, auth_rev=0, is_active=1", 's', [$uName]);
                 $dbRow = ff_st_fetch_one($c, "SELECT id FROM users WHERE username = ?", 's', [$uName]);
                 $expectedId = (int)($dbRow['id'] ?? 0);
 
@@ -2323,10 +2323,10 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         $check($g, 'Visueller Raumplan: Layout-Verschiebung (Drag & Drop), SR/EG-Umschaltung und Tisch-Einstellungen', function (mysqli $c) {
             $t1 = 7191;
             $t2 = 7192;
-            mysqli_query($c, "INSERT INTO tische (tischnummer, tischname, color, x, y, is_sammelrechnung, is_ehrengast) 
-                              VALUES ({$t1}, 'Test-Tisch 1', '#112233', 1, 2, 0, 0), 
-                                     ({$t2}, 'Test-Tisch 2', '#445566', 3, 4, 0, 0)
-                              ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), x=VALUES(x), y=VALUES(y), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast)");
+            ff_db_query($c, "INSERT INTO tische (tischnummer, tischname, color, x, y, is_sammelrechnung, is_ehrengast) 
+                              VALUES (?, 'Test-Tisch 1', '#112233', 1, 2, 0, 0), 
+                                     (?, 'Test-Tisch 2', '#445566', 3, 4, 0, 0)
+                              ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), x=VALUES(x), y=VALUES(y), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast)", 'ii', [$t1, $t2]);
 
             // 1. Drag & Drop Swap: Tausche Positionen (t1 -> 3,4; t2 -> 1,2)
             $stmt = mysqli_prepare($c, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
@@ -2345,14 +2345,14 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             }
 
             // 2. SR Flag setzen -> Ehrengast muss 0 sein
-            mysqli_query($c, "UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = {$t1}");
+            ff_db_query($c, 'UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = ?', 'i', [$t1]);
             $srCheck = ff_st_fetch_one($c, 'SELECT is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer = ?', 'i', [$t1]);
             if ((int)($srCheck['is_sammelrechnung'] ?? 0) !== 1 || (int)($srCheck['is_ehrengast'] ?? 0) !== 0) {
                 return 'SR-Flag setzen fehlgeschlagen';
             }
 
             // 3. EG Flag setzen -> Sammelrechnung muss automatisch 0 werden (gegenseitiger Ausschluss)
-            mysqli_query($c, "UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = {$t1}");
+            ff_db_query($c, 'UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = ?', 'i', [$t1]);
             $egCheck = ff_st_fetch_one($c, 'SELECT is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer = ?', 'i', [$t1]);
             if ((int)($egCheck['is_ehrengast'] ?? 0) !== 1 || (int)($egCheck['is_sammelrechnung'] ?? 0) !== 0) {
                 return 'EG-Flag setzen mit gegenseitigem Ausschluss fehlgeschlagen';
@@ -2484,14 +2484,14 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             }
 
             // Cleanup
-            mysqli_query($c, 'DELETE FROM print_targets WHERE print_target = ' . $ptId);
-            mysqli_query($c, 'DELETE FROM printer_jobs WHERE id = ' . (int)$job['id']);
+            ff_db_query($c, 'DELETE FROM print_targets WHERE print_target = ?', 'i', [$ptId]);
+            ff_db_query($c, 'DELETE FROM printer_jobs WHERE id = ?', 'i', [(int) $job['id']]);
             return null;
         });
 
         $check($g, 'Admin-Pilot API: Tische & Table-Tokens (tables_list und table_tokens Generierung)', function (mysqli $c) {
             $tNr = 7185;
-            mysqli_query($c, "INSERT INTO tische (tischnummer, tischname, color, x, y) VALUES ({$tNr}, 'Test Token Tisch', '#334455', 2, 3) ON DUPLICATE KEY UPDATE tischname=VALUES(tischname)");
+            ff_db_query($c, "INSERT INTO tische (tischnummer, tischname, color, x, y) VALUES (?, 'Test Token Tisch', '#334455', 2, 3) ON DUPLICATE KEY UPDATE tischname=VALUES(tischname)", 'i', [$tNr]);
             
             $testToken = 'test_token_' . bin2hex(random_bytes(8));
             $stTok = mysqli_prepare($c, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE token=VALUES(token), active=1');
@@ -2508,20 +2508,20 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 return 'Table-Token Verknüpfung fehlgeschlagen: ' . json_encode($row);
             }
 
-            mysqli_query($c, 'DELETE FROM table_tokens WHERE table_number = ' . $tNr);
-            mysqli_query($c, 'DELETE FROM tische WHERE tischnummer = ' . $tNr);
+            ff_db_query($c, 'DELETE FROM table_tokens WHERE table_number = ?', 'i', [$tNr]);
+            ff_db_query($c, 'DELETE FROM tische WHERE tischnummer = ?', 'i', [$tNr]);
             return null;
         });
 
         $check($g, 'Admin-Pilot API: Mitarbeiter-Verpflegung (Bereiche & Konsumationen erfassen/auslesen)', function (mysqli $c) {
             // Test-Bereich
             $bName = 'ZZ_Selftest_Bereich_' . mt_rand(1000, 9999);
-            mysqli_query($c, "INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES ('{$bName}', 99)");
+            ff_db_query($c, 'INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES (?, 99)', 's', [$bName]);
             $bId = (int)mysqli_insert_id($c);
 
             // Test-Position
             $posId = ff_st_position($c, 5.00);
-            mysqli_query($c, "UPDATE positionen SET Positionsname = 'ZZ MV Schnitzel' WHERE rowid = {$posId}");
+            ff_db_query($c, "UPDATE positionen SET Positionsname = 'ZZ MV Schnitzel' WHERE rowid = ?", 'i', [$posId]);
 
             // Verpflegung buchen
             $datum = date('Y-m-d');
@@ -2544,15 +2544,15 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 return 'Abfrage Mitarbeiterverpflegung fehlerhaft: ' . json_encode($qRow);
             }
 
-            mysqli_query($c, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ' . $mvId);
-            mysqli_query($c, 'DELETE FROM mitarbeiter_bereiche WHERE id = ' . $bId);
-            mysqli_query($c, 'DELETE FROM positionen WHERE rowid = ' . $posId);
+            ff_db_query($c, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ?', 'i', [$mvId]);
+            ff_db_query($c, 'DELETE FROM mitarbeiter_bereiche WHERE id = ?', 'i', [$bId]);
+            ff_db_query($c, 'DELETE FROM positionen WHERE rowid = ?', 'i', [$posId]);
             return null;
         });
 
         $check($g, 'Admin-Pilot API: Artikel-Statistik (statistics_articles mit Positionsname/Kategorie/Druckziel)', function (mysqli $c) {
             $posFood = ff_st_position($c, 12.00);
-            mysqli_query($c, "UPDATE positionen SET Positionsname = 'ZZ Gourmet Burger', type = 1, print_target = 11 WHERE rowid = {$posFood}");
+            ff_db_query($c, "UPDATE positionen SET Positionsname = 'ZZ Gourmet Burger', type = 1, print_target = 11 WHERE rowid = ?", 'i', [$posFood]);
 
             // Bestellung und Bezahlung erfassen
             $orderId = ff_st_order($c, $posFood, ['betrag' => 12.00, 'paid' => true]);
@@ -2576,8 +2576,8 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 return 'Artikel-Statistik Query liefert falsches Ergebnis: ' . json_encode($row);
             }
 
-            mysqli_query($c, 'DELETE FROM bestellungen WHERE rowid = ' . $orderId);
-            mysqli_query($c, 'DELETE FROM positionen WHERE rowid = ' . $posFood);
+            ff_db_query($c, 'DELETE FROM bestellungen WHERE rowid = ?', 'i', [$orderId]);
+            ff_db_query($c, 'DELETE FROM positionen WHERE rowid = ?', 'i', [$posFood]);
             return null;
         });
 
@@ -2664,7 +2664,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                     return 'Reihenfolge der Unterkategorien stimmt nicht: ' . json_encode([$rowA, $rowB]);
                 }
             } finally {
-                mysqli_query($c, 'DELETE FROM position_subcategories WHERE id IN (' . $idA . ',' . $idB . ')');
+                ff_db_query($c, 'DELETE FROM position_subcategories WHERE id IN (?, ?)', 'ii', [$idA, $idB]);
             }
 
             return null;
@@ -2894,6 +2894,21 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 }
             }
             return $hits === [] ? null : 'Externe Einbindung gefunden: ' . implode(' | ', array_slice($hits, 0, 5));
+        });
+
+        $check($g, 'Keine Werte direkt im SQL (Platzhalter verwenden, include/ff_sql_lint.php)', function (mysqli $c) {
+            require_once __DIR__ . '/ff_sql_lint.php';
+            // Wächter selbst prüfen: ein bekannter Verstoß muss erkannt werden
+            $probe = tempnam(sys_get_temp_dir(), 'ffsql');
+            file_put_contents($probe, '<?php $r = mysqli_query($conn, "SELECT * FROM t WHERE id = " . $id);' . "\n"
+                . '$r = ff_db_query($conn, "SELECT * FROM t WHERE id IN ($in) AND x = ?", $t, $p);');
+            $probeHits = ff_sql_lint_file($probe);
+            @unlink($probe);
+            if (count($probeHits) !== 1) {
+                return 'Wächter erkennt Testfall nicht (Treffer: ' . count($probeHits) . ')';
+            }
+            $hits = ff_sql_lint_project(dirname(__DIR__));
+            return $hits === [] ? null : count($hits) . ' Stelle(n): ' . implode(' | ', array_slice($hits, 0, 5));
         });
     } finally {
         mysqli_rollback($conn);

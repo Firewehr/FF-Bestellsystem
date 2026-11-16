@@ -166,7 +166,7 @@ test_step('Übersicht: Allgemeine Einstellungen speichern (save_settings)', func
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'Fehler bei save_settings';
     $rSaved = mysqli_fetch_assoc(mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'app_title'"));
     $saved = (string)($rSaved['v'] ?? '');
-    mysqli_query($GLOBALS['conn'], "UPDATE settings SET v = '" . mysqli_real_escape_string($GLOBALS['conn'], $origTitle) . "' WHERE k = 'app_title'");
+    ff_db_query($GLOBALS['conn'], "UPDATE settings SET v = ? WHERE k = 'app_title'", 's', [$origTitle]);
     if ($saved !== 'Pilot Test Fest 2026') return "app_title nicht gespeichert, war: {$saved}";
     return true;
 });
@@ -622,9 +622,9 @@ test_step('Rechnungen: Test-Rechnung erzeugen & Detail abrufen (invoices_list, i
     $now = date('Y-m-d H:i:s');
     $rNr = 'E2E-R' . mt_rand(1000, 9999);
     $lines = json_encode([['pos_name' => 'E2E Schnitzel', 'qty' => 1, 'price' => 10.50]]);
-    mysqli_query($GLOBALS['conn'], "INSERT INTO rechnungen (rechnungsnummer, created_at, created_by, total, is_firma, empfaenger_name, lines_json) 
-                                   VALUES ('{$rNr}', '{$now}', 'admin', 10.50, 0, 'Test Gast', '" . mysqli_real_escape_string($GLOBALS['conn'], $lines) . "')");
-    $testInvoiceId = (int)mysqli_insert_id($GLOBALS['conn']);
+    ff_db_query($GLOBALS['conn'], "INSERT INTO rechnungen (rechnungsnummer, created_at, created_by, total, is_firma, empfaenger_name, lines_json) 
+                                   VALUES (?, ?, 'admin', 10.50, 0, 'Test Gast', ?)", 'sss', [$rNr, $now, $lines]);
+    $testInvoiceId = ff_db_insert_id();
     if ($testInvoiceId <= 0) return 'Testrechnung konnte nicht angelegt werden';
 
     $resList = run_admin_api('GET', ['action' => 'invoices_list', 'q' => $rNr]);
@@ -659,7 +659,7 @@ test_step('Rechnungen: Thermo-Nachdruck einreihen (invoice_reprint)', function (
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'invoice_reprint fehlgeschlagen';
     $jobId = (int)($res['job_id'] ?? 0);
     if ($jobId > 0) {
-        mysqli_query($GLOBALS['conn'], 'DELETE FROM printer_jobs WHERE id = ' . $jobId);
+        ff_db_query($GLOBALS['conn'], 'DELETE FROM printer_jobs WHERE id = ?', 'i', [$jobId]);
     }
     return true;
 });
@@ -671,7 +671,7 @@ test_step('Rechnungen: Rechnungs-Storno mit Protokollierung (invoice_storno)', f
         'reason' => 'E2E Fehlbuchung'
     ]);
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'invoice_storno fehlgeschlagen';
-    mysqli_query($GLOBALS['conn'], 'DELETE FROM rechnungen WHERE id = ' . $testInvoiceId);
+    ff_db_query($GLOBALS['conn'], 'DELETE FROM rechnungen WHERE id = ?', 'i', [$testInvoiceId]);
     return true;
 });
 
@@ -692,7 +692,7 @@ test_step('Kellner: Umsatz-Report & Zwischenentnahme erfassen (kellner_sales_rep
     if (empty($resMov['ok'])) return $resMov['error'] ?? 'kellner_movement_save fehlgeschlagen';
     $mId = (int)($resMov['id'] ?? 0);
     if ($mId > 0) {
-        mysqli_query($GLOBALS['conn'], 'DELETE FROM kellner_bewegungen WHERE id = ' . $mId);
+        ff_db_query($GLOBALS['conn'], 'DELETE FROM kellner_bewegungen WHERE id = ?', 'i', [$mId]);
     }
     return true;
 });
