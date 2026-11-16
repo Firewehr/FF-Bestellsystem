@@ -6,8 +6,12 @@ declare(strict_types=1);
  *
  * Nur Datenbank-Änderungen. Station-Events, Druck-Wecksignal, Push-Auswertung und Auto-Druck-Nachrücken
  * lösen die Endpunkte danach selbst aus (bestellung_abschliessen.php, kueche_fertig.php,
- * station_teillieferung_druck.php, api/v1/station.php). So sind die Abläufe in den Selbsttests prüfbar
- * und lassen sich später in eine Transaktion legen.
+ * station_teillieferung_druck.php, api/v1/station.php). So sind die Abläufe in den Selbsttests prüfbar.
+ *
+ * Transaktionen: Abschließen besteht aus mehreren Anweisungen und läuft über ff_order_close_rows_tx()
+ * (BEGIN … FOR UPDATE … COMMIT). Fertig melden, zurücknehmen, Teillieferung und wieder öffnen sind je
+ * ein einzelnes UPDATE mit Bedingungen; InnoDB führt das atomar aus und prüft die Bedingungen unter der
+ * Zeilensperre neu, eine eigene Transaktion bringt dort nichts.
  *
  * Voraussetzung: include/db.php ist geladen (ff_db_query, ff_db_in_ints).
  */
@@ -114,19 +118,57 @@ if (!function_exists('ff_order_rowids')) {
      * ohne Druck: nur ausliefern; $setOrderedWithoutPrint setzt zusätzlich bestellt=1, kueche=1
      *            (Station-API). bestellung_abschliessen.php setzt bestellt dabei nicht.
      *
+     * Sperrt die Zeilen mit FOR UPDATE und schließt nur Zeilen ab, die noch nicht ausgeliefert sind.
+     * Ein zweites Abschließen derselben Zeilen (Doppelklick, zwei Geräte) ändert nichts mehr und stellt
+     * keinen zweiten Bon in die Queue. Die Sperre wirkt nur innerhalb einer Transaktion: Endpunkte
+     * rufen ff_order_close_rows_tx() auf; die Selbsttests laufen ohnehin in einer Transaktion.
+     *
      * @param int[] $rowids
      * @return array{closed:int, printed_rowids:int[]}
+     * @throws RuntimeException bei einem Datenbankfehler (Aufrufer rollt zurück)
      */
     function ff_order_close_rows(mysqli $conn, array $rowids, bool $mitDruck, bool $setOrderedWithoutPrint = false): array
     {
+        $rowids = ff_order_rowids($rowids);
         if ($rowids === []) {
             return ['closed' => 0, 'printed_rowids' => []];
         }
         [$in, $inT, $inV] = ff_db_in_ints($rowids);
 
-        // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren; vorhandene Fertig-Zeit bleibt
-        ff_db_query(
+        $lock = ff_db_query(
             $conn,
+            "SELECT rowid, COALESCE(print_status, 0) AS ps FROM bestellungen WHERE rowid IN ($in) AND ausgeliefert = 0 FOR UPDATE",
+            $inT,
+            $inV
+        );
+        if (!$lock) {
+            throw new RuntimeException('Positionen konnten nicht gesperrt werden: ' . mysqli_error($conn));
+        }
+        $openIds = [];
+        $alreadyPrinted = [];
+        while ($r = mysqli_fetch_assoc($lock)) {
+            $id = (int) $r['rowid'];
+            $openIds[$id] = $id;
+            if ((int) $r['ps'] === 1) {
+                $alreadyPrinted[$id] = true;
+            }
+        }
+        mysqli_free_result($lock);
+        // Eingabereihenfolge beibehalten (Reihenfolge der print-Einträge)
+        $openIds = array_values(array_filter($rowids, static fn (int $id): bool => isset($openIds[$id])));
+        if ($openIds === []) {
+            return ['closed' => 0, 'printed_rowids' => []];
+        }
+
+        $run = static function (string $sql, string $types, array $params) use ($conn): void {
+            if (!ff_db_query($conn, $sql, $types, $params)) {
+                throw new RuntimeException('Abschließen fehlgeschlagen: ' . mysqli_error($conn));
+            }
+        };
+
+        [$in, $inT, $inV] = ff_db_in_ints($openIds);
+        // Offene Positionen (Ein-Klick) ebenfalls als fertig markieren; vorhandene Fertig-Zeit bleibt
+        $run(
             "UPDATE bestellungen SET kueche = 1, zeitKueche = IF(zeitKueche IS NULL OR zeitKueche IN ('0000-00-00 00:00:00','1970-01-01 00:00:00'), CURRENT_TIMESTAMP, zeitKueche) WHERE rowid IN ($in)",
             $inT,
             $inV
@@ -134,29 +176,54 @@ if (!function_exists('ff_order_rowids')) {
 
         $printedRowIds = [];
         if ($mitDruck) {
-            $timestamp = date('Y-m-d H:i:s');
-            foreach ($rowids as $rowid) {
-                $chk = ff_db_query($conn, 'SELECT COALESCE(print_status, 0) AS ps FROM bestellungen WHERE rowid = ? LIMIT 1', 'i', [$rowid]);
-                $alreadyPrinted = false;
-                if ($chk && ($cr = mysqli_fetch_assoc($chk))) {
-                    $alreadyPrinted = ((int) ($cr['ps'] ?? 0) === 1);
+            $toPrint = array_values(array_filter($openIds, static fn (int $id): bool => !isset($alreadyPrinted[$id])));
+            $skipPrint = array_values(array_filter($openIds, static fn (int $id): bool => isset($alreadyPrinted[$id])));
+            if ($skipPrint !== []) {
+                [$inS, $inST, $inSV] = ff_db_in_ints($skipPrint);
+                $run("UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid IN ($inS)", $inST, $inSV);
+            }
+            if ($toPrint !== []) {
+                [$inP, $inPT, $inPV] = ff_db_in_ints($toPrint);
+                $run("UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid IN ($inP)", $inPT, $inPV);
+                $timestamp = date('Y-m-d H:i:s');
+                foreach ($toPrint as $rowid) {
+                    $run('INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [$rowid, $timestamp]);
                 }
-                if ($alreadyPrinted) {
-                    ff_db_query($conn, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1 WHERE rowid = ?', 'i', [$rowid]);
-                } else {
-                    ff_db_query($conn, 'UPDATE bestellungen SET ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1, print = 2, print_status = 0 WHERE rowid = ?', 'i', [$rowid]);
-                    ff_db_query($conn, 'INSERT INTO print (bestellungID, timestamp) VALUES (?, ?)', 'is', [$rowid, $timestamp]);
-                    $printedRowIds[] = $rowid;
-                }
+                $printedRowIds = $toPrint;
             }
         } else {
-            $set = $setOrderedWithoutPrint
+            $setSql = $setOrderedWithoutPrint
                 ? 'ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP, bestellt = 1, kueche = 1'
                 : 'ausgeliefert = 1, timestampAuslieferung = CURRENT_TIMESTAMP';
-            ff_db_query($conn, "UPDATE bestellungen SET {$set} WHERE rowid IN ($in)", $inT, $inV);
+            $run("UPDATE bestellungen SET {$setSql} WHERE rowid IN ($in)", $inT, $inV);
         }
 
-        return ['closed' => count($rowids), 'printed_rowids' => $printedRowIds];
+        return ['closed' => count($openIds), 'printed_rowids' => $printedRowIds];
+    }
+
+    /**
+     * ff_order_close_rows() in einer eigenen Transaktion (BEGIN … FOR UPDATE … COMMIT).
+     * Station-Events, Druck-Wecksignal und Auto-Druck löst der Aufrufer erst danach aus.
+     *
+     * @param int[] $rowids
+     * @return array{closed:int, printed_rowids:int[]}
+     * @throws RuntimeException wenn die Transaktion nicht durchläuft (dann ist nichts geändert)
+     */
+    function ff_order_close_rows_tx(mysqli $conn, array $rowids, bool $mitDruck, bool $setOrderedWithoutPrint = false): array
+    {
+        if (!mysqli_begin_transaction($conn)) {
+            throw new RuntimeException('Transaktion konnte nicht gestartet werden: ' . mysqli_error($conn));
+        }
+        try {
+            $res = ff_order_close_rows($conn, $rowids, $mitDruck, $setOrderedWithoutPrint);
+            if (!mysqli_commit($conn)) {
+                throw new RuntimeException('Abschließen konnte nicht gespeichert werden: ' . mysqli_error($conn));
+            }
+            return $res;
+        } catch (Throwable $e) {
+            mysqli_rollback($conn);
+            throw $e;
+        }
     }
 
     /**

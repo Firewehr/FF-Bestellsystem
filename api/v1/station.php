@@ -116,7 +116,13 @@ if ($method === 'POST') {
         }
         $mitDruck = !empty($data['mit_druck']);
         $tischnummer = (int) ($data['tischnummer'] ?? 0);
-        $closeRes = ff_order_close_rows($conn, $rowids, $mitDruck, true);
+        try {
+            // BEGIN … FOR UPDATE … COMMIT; Events und Auto-Druck erst nach dem Commit
+            $closeRes = ff_order_close_rows_tx($conn, $rowids, $mitDruck, true);
+        } catch (Throwable $e) {
+            error_log('api/v1/station.php complete_order: ' . $e->getMessage());
+            api_error('Abschließen fehlgeschlagen, bitte erneut versuchen.', 'db_error', 500);
+        }
         $printed = count($closeRes['printed_rowids']);
         if ($closeRes['printed_rowids'] !== []) {
             ff_print_events_publish($conn, ff_order_rows_print_targets($conn, $closeRes['printed_rowids']));
@@ -135,7 +141,7 @@ if ($method === 'POST') {
         api_response([
             'ok' => true,
             'action' => 'complete_order',
-            'closed' => count($rowids),
+            'closed' => $closeRes['closed'], // 0, wenn ein anderes Gerät schon abgeschlossen hat
             'mit_druck' => $mitDruck,
             'queued_print' => $printed,
             'csrf_token' => ff_csrf_token(),

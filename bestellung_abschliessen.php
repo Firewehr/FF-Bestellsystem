@@ -32,7 +32,15 @@ if ($tischnummer <= 0 || !is_array($PositionsListe) || empty($PositionsListe)) {
 }
 
 $rowids = ff_order_rowids($PositionsListe);
-$res = ff_order_close_rows($conn, $rowids, $mitDruck, false);
+try {
+    // BEGIN … FOR UPDATE … COMMIT; Events und Auto-Druck erst danach
+    $res = ff_order_close_rows_tx($conn, $rowids, $mitDruck, false);
+} catch (Throwable $e) {
+    error_log('bestellung_abschliessen.php: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'db_error', 'message' => 'Abschließen fehlgeschlagen, bitte erneut versuchen.']);
+    exit;
+}
 $closed = $res['closed'];
 $printed = count($res['printed_rowids']);
 

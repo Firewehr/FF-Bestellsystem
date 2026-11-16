@@ -30,41 +30,14 @@ mysqli_set_charset($conn, 'utf8mb4');
 mysqli_report(MYSQLI_REPORT_OFF);
 
 require_once __DIR__ . '/include/ff_schema_helpers.php';
+require_once __DIR__ . '/include/ff_sammelrechnung.php';
 
-/** Hat die Tabelle sammelrechnungen die Spalte? (war seit Commit 3c55c6c versehentlich entfernt) */
-function ff_sr_has_column($conn, $name)
-{
-    static $cache = [];
-    if (!array_key_exists($name, $cache)) {
-        $res = ff_db_query(
-            $conn,
-            'SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1',
-            'ss',
-            ['sammelrechnungen', (string) $name]
-        );
-        $cache[$name] = $res instanceof mysqli_result && mysqli_num_rows($res) > 0;
-    }
-    return $cache[$name];
-}
-
-function ff_sr_ensure_schema($conn)
-{
-    ff_ensure_table($conn, 'sammelrechnungen', 'CREATE TABLE IF NOT EXISTS sammelrechnungen (id INT AUTO_INCREMENT PRIMARY KEY)');
-    ff_ensure_column($conn, 'sammelrechnungen', 'created_at', 'ALTER TABLE sammelrechnungen ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
-    ff_ensure_column($conn, 'sammelrechnungen', 'created_by', 'ALTER TABLE sammelrechnungen ADD COLUMN created_by VARCHAR(255) NULL DEFAULT NULL');
-    ff_ensure_column($conn, 'sammelrechnungen', 'tables_text', 'ALTER TABLE sammelrechnungen ADD COLUMN tables_text TEXT NULL');
-    ff_ensure_column($conn, 'sammelrechnungen', 'total_amount', 'ALTER TABLE sammelrechnungen ADD COLUMN total_amount DECIMAL(10,2) NULL DEFAULT 0.00');
-    ff_ensure_column($conn, 'sammelrechnungen', 'umsatz_zustaendig', 'ALTER TABLE sammelrechnungen ADD COLUMN umsatz_zustaendig VARCHAR(255) NULL DEFAULT NULL');
-    ff_ensure_column($conn, 'sammelrechnungen', 'bezahlt', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt TINYINT(1) NOT NULL DEFAULT 0');
-    ff_ensure_column($conn, 'sammelrechnungen', 'bezahlt_at', 'ALTER TABLE sammelrechnungen ADD COLUMN bezahlt_at TIMESTAMP NULL DEFAULT NULL');
-}
-
-ff_sr_ensure_schema($conn);
-ff_ensure_column($conn, 'bestellungen', 'sammelrechnung_id', 'ALTER TABLE bestellungen ADD COLUMN sammelrechnung_id INT NULL');
+// Schema-Prüfungen vor BEGIN: ein ALTER TABLE würde die Transaktion vorzeitig festschreiben
+ff_sammelrechnung_ensure_schema($conn);
 
 $rows = isset($_POST['listePositionen']) ? $_POST['listePositionen'] : (isset($_REQUEST['listePositionen']) ? $_REQUEST['listePositionen'] : []);
 $tables = isset($_POST['tables']) ? $_POST['tables'] : (isset($_REQUEST['tables']) ? $_REQUEST['tables'] : []);
-$umsatzUser = isset($_POST['umsatz_zustaendig']) ? trim((string) $_POST['umsatz_zustaendig']) : trim((string) (isset($_REQUEST['umsatz_zustaendig']) ? $_REQUEST['umsatz_zustaendig'] : ''));
+$umsatzUser = isset($_POST['umsatz_zustaendig']) ? (string) $_POST['umsatz_zustaendig'] : (string) (isset($_REQUEST['umsatz_zustaendig']) ? $_REQUEST['umsatz_zustaendig'] : '');
 
 if (!is_array($rows)) {
     $rows = $rows !== '' && $rows !== null ? [(int) $rows] : [];
@@ -72,156 +45,28 @@ if (!is_array($rows)) {
 if (!is_array($tables)) {
     $tables = $tables !== '' && $tables !== null ? [(int) $tables] : [];
 }
+$createdBy = (string) (isset($_SESSION['user']['username']) ? $_SESSION['user']['username'] : '');
 
-$rows = array_values(array_filter(array_map('intval', $rows), function ($id) {
-    return $id > 0;
-}));
-$tables = array_values(array_filter(array_map('intval', $tables), function ($id) {
-    return $id > 0;
-}));
-
-if (count($rows) === 0 || count($tables) === 0) {
-    ff_sr_json_error(400, 'missing', 'Keine Positionen oder Tische übermittelt. Bitte Seite neu laden.');
+// BEGIN → Tische und Positionen mit FOR UPDATE sperren → anlegen/bezahlen → COMMIT
+if (!mysqli_begin_transaction($conn)) {
+    ff_sr_json_error(500, 'db', 'Transaktion konnte nicht gestartet werden.');
 }
-
-$chkSm = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
-if ($chkSm && mysqli_num_rows($chkSm) === 0) {
-    @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
-}
-
-[$inTables, $inTablesTypes, $inTablesIds] = ff_db_in_ints($tables);
-$allowedTisch = [];
-$qT = ff_db_query($conn, "SELECT tischnummer FROM tische WHERE tischnummer IN ($inTables) AND IFNULL(is_sammelrechnung,0)=1", $inTablesTypes, $inTablesIds);
-if ($qT) {
-    while ($tr = mysqli_fetch_assoc($qT)) {
-        $allowedTisch[(int) $tr['tischnummer']] = true;
+try {
+    $res = ff_sammelrechnung_pay($conn, $rows, $tables, $umsatzUser, $createdBy);
+    if (!mysqli_commit($conn)) {
+        throw new FfSammelrechnungError(500, 'db', 'Sammelrechnung konnte nicht gespeichert werden: ' . mysqli_error($conn));
     }
+} catch (FfSammelrechnungError $e) {
+    mysqli_rollback($conn);
+    ff_sr_json_error($e->getCode(), $e->errorKey, $e->getMessage());
+} catch (Throwable $e) {
+    mysqli_rollback($conn);
+    error_log('SammelrechnungBezahlt.php: ' . $e->getMessage());
+    ff_sr_json_error(500, 'db', 'Sammelrechnung konnte nicht gespeichert werden.');
 }
-foreach ($tables as $tn) {
-    if (empty($allowedTisch[(int) $tn])) {
-        ff_sr_json_error(400, 'not_sammelrechnung_tisch', 'Mindestens ein gewählter Tisch ist nicht als Sammelrechnung gekennzeichnet.');
-    }
-}
-
-[$inRows, $inRowsTypes, $inRowsIds] = ff_db_in_ints($rows);
-$sqlCheck = "SELECT COUNT(*) AS c FROM bestellungen b
-    INNER JOIN tische t ON t.tischnummer = b.tischnummer
-    WHERE b.rowid IN ($inRows)
-      AND b.tischnummer IN ($inTables)
-      AND IFNULL(t.is_sammelrechnung,0)=1
-      AND b.`delete`=0";
-$resCheck = ff_db_query($conn, $sqlCheck, $inRowsTypes . $inTablesTypes, array_merge($inRowsIds, $inTablesIds));
-if (!$resCheck) {
-    ff_sr_json_error(500, 'db', 'Datenbankfehler (Prüfung): ' . mysqli_error($conn));
-}
-$matchCnt = 0;
-if ($rc = mysqli_fetch_assoc($resCheck)) {
-    $matchCnt = (int) ($rc['c'] ?? 0);
-}
-if ($matchCnt !== count($rows)) {
-    ff_sr_json_error(400, 'position_tisch_mismatch', 'Nicht alle Positionen gehören zu den gewählten Sammelrechnungs-Tischen. Bitte Seite neu laden.');
-}
-
-if ($umsatzUser === '') {
-    ff_sr_json_error(400, 'missing_zustaendig', 'Bitte einen Benutzer für die Umsatz-Zuordnung wählen.');
-}
-
-$uq = ff_db_query($conn, 'SELECT username FROM users WHERE username = ? LIMIT 1', 's', [$umsatzUser]);
-if (!$uq || !mysqli_fetch_assoc($uq)) {
-    ff_sr_json_error(400, 'invalid_user', 'Ungültiger Benutzer.');
-}
-
-$sqlSum = "SELECT SUM(COALESCE(NULLIF(b.betrag, 0), p.Betrag)) AS total
-    FROM bestellungen b
-    JOIN positionen p ON p.rowid=b.position
-    WHERE b.rowid IN ($inRows)";
-$resSum = ff_db_query($conn, $sqlSum, $inRowsTypes, $inRowsIds);
-if (!$resSum) {
-    ff_sr_json_error(500, 'db', 'Datenbankfehler (Summe): ' . mysqli_error($conn));
-}
-$total = 0.0;
-if ($rSum = mysqli_fetch_assoc($resSum)) {
-    $total = (float) ($rSum['total'] ?? 0);
-}
-
-$tables_text = implode(',', $tables);
-$created_by = (string) (isset($_SESSION['user']['username']) ? $_SESSION['user']['username'] : '');
-// Spaltennamen stammen aus festen Literalen (Schema-abhängig), Werte als Parameter
-$insCols = [];
-$insValuesSql = []; // nur '?' und feste SQL-Ausdrücke (1, CURRENT_TIMESTAMP)
-$insTypes = '';
-$insParams = [];
-if (ff_sr_has_column($conn, 'created_by')) {
-    $insCols[] = 'created_by';
-    $insValuesSql[] = '?';
-    $insTypes .= 's';
-    $insParams[] = $created_by;
-}
-if (ff_sr_has_column($conn, 'umsatz_zustaendig')) {
-    $insCols[] = 'umsatz_zustaendig';
-    $insValuesSql[] = '?';
-    $insTypes .= 's';
-    $insParams[] = $umsatzUser;
-}
-if (ff_sr_has_column($conn, 'tables_text')) {
-    $insCols[] = 'tables_text';
-    $insValuesSql[] = '?';
-    $insTypes .= 's';
-    $insParams[] = $tables_text;
-}
-$amountCol = null;
-if (ff_sr_has_column($conn, 'total_amount')) {
-    $amountCol = 'total_amount';
-} elseif (ff_sr_has_column($conn, 'betrag')) {
-    $amountCol = 'betrag';
-}
-if ($amountCol !== null) {
-    $insCols[] = $amountCol;
-    $insValuesSql[] = '?';
-    $insTypes .= 'd';
-    $insParams[] = round((float) $total, 2);
-}
-if (ff_sr_has_column($conn, 'bezahlt')) {
-    $insCols[] = 'bezahlt';
-    $insValuesSql[] = '1';
-}
-if (ff_sr_has_column($conn, 'bezahlt_at')) {
-    $insCols[] = 'bezahlt_at';
-    $insValuesSql[] = 'CURRENT_TIMESTAMP';
-}
-if ($insCols === []) {
-    ff_sr_json_error(500, 'schema', 'Tabelle sammelrechnungen: keine passenden Spalten (created_by / tables_text / total_amount). Bitte SQL-Migration ausführen.');
-}
-$sqlIns = 'INSERT INTO sammelrechnungen (' . implode(', ', $insCols) . ') VALUES (' . implode(', ', $insValuesSql) . ')';
-if (!ff_db_query($conn, $sqlIns, $insTypes, $insParams)) {
-    ff_sr_json_error(500, 'insert_failed', 'Sammelrechnung konnte nicht gespeichert werden: ' . mysqli_error($conn));
-}
-$sammel_id = ff_db_insert_id();
-if ($sammel_id <= 0) {
-    ff_sr_json_error(500, 'insert_failed', 'Sammelrechnung-ID fehlt nach dem Speichern.');
-}
-
-// Nur Zahlung/Umsatz – kueche/zeitKueche setzt weiterhin nur Küche/Schank („Fertig“),
-// wie bei BestellungBezahlt.php. kueche=1 hier war irreführend (History: „Auslieferung“ ohne Gesamt fertig).
-[$inRowsSql, $inRowsTypes, $inRowsIds] = ff_db_in_ints($rows);
-$sqlUpd = "UPDATE bestellungen SET
-    timestampBezahlung=CURRENT_TIMESTAMP,
-    kellnerZahlung=?,
-    kellner=?,
-    sammelrechnung_id=?
-    WHERE rowid IN ($inRowsSql) AND `delete`=0";
-if (!ff_db_query($conn, $sqlUpd, 'ssi' . $inRowsTypes, array_merge([$umsatzUser, $umsatzUser, $sammel_id], $inRowsIds))) {
-    ff_sr_json_error(500, 'update_failed', 'Bezahlen fehlgeschlagen: ' . mysqli_error($conn));
-}
-$affected = ff_db_affected_rows();
-if ($affected < 1) {
-    ff_sr_json_error(500, 'update_failed', 'Es wurden keine Bestellzeilen aktualisiert. Bitte Seite neu laden.');
-}
-
-ff_db_query($conn, "UPDATE tische SET is_sammelrechnung=0 WHERE tischnummer IN ($inTables)", $inTablesTypes, $inTablesIds);
 
 echo json_encode([
     'ok' => true,
-    'sammelrechnung_id' => $sammel_id,
-    'affected' => $affected,
+    'sammelrechnung_id' => $res['sammelrechnung_id'],
+    'affected' => $res['affected'],
 ], JSON_UNESCAPED_UNICODE);

@@ -24,6 +24,8 @@ require_once __DIR__ . '/ff_auto_print.php';
 require_once __DIR__ . '/ff_payment.php';
 require_once __DIR__ . '/ff_rechnungen_ensure_columns.php';
 require_once __DIR__ . '/ff_bestellung_verschieben.php';
+require_once __DIR__ . '/ff_schema_helpers.php';
+require_once __DIR__ . '/ff_sammelrechnung.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
@@ -162,6 +164,20 @@ function ff_st_flow_row(mysqli $conn, int $positionId, array $o = []): int
     }
 
     return $id;
+}
+
+/** Testtisch (7781–7789) anlegen bzw. Sammelrechnungs-Flag setzen; wird mit der Test-Transaktion verworfen. */
+function ff_st_flow_table(mysqli $conn, int $tischnummer, int $isSammelrechnung = 0): int
+{
+    ff_st_exec(
+        $conn,
+        "INSERT INTO tische (tischnummer, tischname, x, y, is_sammelrechnung) VALUES (?, 'ZZ_SELFTEST', 0, 0, ?)
+         ON DUPLICATE KEY UPDATE is_sammelrechnung = VALUES(is_sammelrechnung)",
+        'ii',
+        [$tischnummer, $isSammelrechnung]
+    );
+
+    return $tischnummer;
 }
 
 /** Ausgewählte Felder einer Bestellzeile als int (Zeitfelder als 'leer'/'gesetzt'). */
@@ -1580,6 +1596,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
     ff_rechnungen_ensure_extra_columns($conn);
     ff_bestellungen_ensure_rechnung_id_column($conn);
     ff_feste_ensure_rechnung_prefix_column($conn);
+    ff_sammelrechnung_ensure_schema($conn);
     settings_ensure_table($conn);
     setting_get($conn, FF_RECHNUNG_NEXT_KEY, '');
 
@@ -3046,6 +3063,27 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 ?? ff_st_expect_same(0, ff_st_print_rows($c, $legacy) + ff_st_print_rows($c, $api), 'print-Einträge');
         });
 
+        $check($g, 'Zweites Abschließen (Doppelklick, zwei Geräte): nichts mehr ändern, kein zweiter Bon', function (mysqli $c) {
+            $pt = ff_st_print_target($c, 7791);
+            $p = ff_st_position($c, 5.0);
+            $a = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00']);
+            $b = ff_st_flow_row($c, $p, ['pt' => $pt, 'ready_at' => '2026-01-01 10:00:00']);
+            $first = ff_order_close_rows($c, [$a, $b, $a], true);
+            ff_st_exec($c, "UPDATE bestellungen SET timestampAuslieferung = '2026-01-01 11:00:00' WHERE rowid IN (?, ?)", 'ii', [$a, $b]);
+            $again = ff_order_close_rows($c, [$a, $b], true);
+            $againNoPrint = ff_order_close_rows($c, [$a], false, true);
+            $late = ff_st_flow_row($c, $p, ['pt' => $pt]);
+            $mixed = ff_order_close_rows($c, [$a, $late], true);
+            return ff_st_expect_same(2, $first['closed'], 'erstes Abschließen (doppelte ID zählt einmal)')
+                ?? ff_st_expect_same(['closed' => 0, 'printed_rowids' => []], $again, 'zweites Abschließen mit Druck')
+                ?? ff_st_expect_same(['closed' => 0, 'printed_rowids' => []], $againNoPrint, 'zweites Abschließen ohne Druck')
+                ?? ff_st_expect_same(1, ff_st_print_rows($c, $a), 'print-Einträge Zeile a')
+                ?? ff_st_expect_same(1, ff_st_print_rows($c, $b), 'print-Einträge Zeile b')
+                ?? ff_st_expect_same('2026-01-01 11:00:00', (string) ff_st_order_row($c, $a)['timestampAuslieferung'], 'Auslieferzeit bleibt')
+                ?? ff_st_expect_same(['closed' => 1, 'printed_rowids' => [$late]], $mixed, 'nur die neue Zeile')
+                ?? ff_st_expect_same(1, ff_st_print_rows($c, $late), 'print-Eintrag neue Zeile');
+        });
+
         $check($g, 'Teillieferung: nur fertige, ungedruckte, offene Zeilen; Tischfilter des alten Endpunkts', function (mysqli $c) {
             $pt = ff_st_print_target($c, 7791);
             $p = ff_st_position($c, 5.0);
@@ -3194,6 +3232,74 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return ff_st_expect_same('leer', ff_st_flow_state($c, $open)['bezahlt'], 'offene Zeile bleibt unbezahlt')
                 ?? ff_st_expect_same('leer', ff_st_flow_state($c, $foreign)['bezahlt'], 'fremder Tisch unberührt')
                 ?? ff_st_expect_same($seqBefore, $seqAfter, 'keine Rechnungsnummer verbraucht');
+        });
+
+        $g = 'Abläufe: Sammelrechnung';
+
+        $check($g, 'Sammelrechnung bezahlen: Positionen bezahlt und verknüpft, Summe stimmt, Tische freigegeben', function (mysqli $c) {
+            $user = (string) (ff_st_fetch_one($c, 'SELECT username FROM users ORDER BY username LIMIT 1', '', [])['username'] ?? '');
+            $t1 = ff_st_flow_table($c, 7786, 1);
+            $t2 = ff_st_flow_table($c, 7787, 1);
+            $p = ff_st_position($c, 4.0);
+            $a = ff_st_flow_row($c, $p, ['tisch' => $t1, 'betrag' => 4.5]);
+            $b = ff_st_flow_row($c, $p, ['tisch' => $t2, 'betrag' => 0.0]); // ohne Zeilenpreis → Positionspreis
+            $other = ff_st_flow_row($c, $p, ['tisch' => $t1, 'betrag' => 9.0]); // nicht ausgewählt
+            $res = ff_sammelrechnung_pay($c, [$a, $b], [$t1, $t2], $user, 'zz_selftest_sr');
+            $sid = $res['sammelrechnung_id'];
+            $linked = (int) (ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM bestellungen WHERE rowid IN (?, ?) AND sammelrechnung_id = ? AND kellnerZahlung = ?', 'iisi', [$a, $b, $sid, $user])['c'] ?? 0);
+            $flags = (int) (ff_st_fetch_one($c, 'SELECT SUM(is_sammelrechnung) AS s FROM tische WHERE tischnummer IN (?, ?)', 'ii', [$t1, $t2])['s'] ?? -1);
+            return ff_st_expect_same(true, $user !== '', 'Vorbedingung: ein Benutzer')
+                ?? ff_st_expect_same(2, $res['affected'], 'affected')
+                ?? ff_st_expect_same(8.5, $res['total'], 'Summe')
+                ?? ff_st_expect_same(2, $linked, 'Positionen bezahlt und verknüpft')
+                ?? ff_st_expect_same('leer', ff_st_flow_state($c, $other)['bezahlt'], 'nicht ausgewählte Position bleibt offen')
+                ?? ff_st_expect_same(0, $flags, 'Tische freigegeben');
+        });
+
+        $check($g, 'Sammelrechnung zweimal bezahlen wird abgelehnt, keine zweite Sammelrechnung', function (mysqli $c) {
+            $user = (string) (ff_st_fetch_one($c, 'SELECT username FROM users ORDER BY username LIMIT 1', '', [])['username'] ?? '');
+            $t = ff_st_flow_table($c, 7788, 1);
+            $p = ff_st_position($c, 4.0);
+            $a = ff_st_flow_row($c, $p, ['tisch' => $t]);
+            ff_sammelrechnung_pay($c, [$a], [$t], $user, 'zz_selftest_sr');
+            $count = static fn (): int => (int) (ff_st_fetch_one($c, 'SELECT COUNT(*) AS c FROM sammelrechnungen', '', [])['c'] ?? 0);
+            $before = $count();
+            $errors = [];
+            // a) wie die zweite Anfrage nach der Sperre: Tisch ist schon freigegeben
+            // b) Tisch inzwischen wieder als Sammelrechnung markiert: Position ist schon bezahlt
+            foreach ([0, 1] as $flag) {
+                ff_st_flow_table($c, $t, $flag);
+                try {
+                    ff_sammelrechnung_pay($c, [$a], [$t], $user, 'zz_selftest_sr');
+                    $errors[] = 'kein Abbruch';
+                } catch (FfSammelrechnungError $e) {
+                    $errors[] = $e->errorKey;
+                }
+            }
+            return ff_st_expect_same(['not_sammelrechnung_tisch', 'already_paid'], $errors, 'Abbruchgründe')
+                ?? ff_st_expect_same($before, $count(), 'keine weitere Sammelrechnung');
+        });
+
+        $check($g, 'Sammelrechnung lehnt Positionen anderer Tische und stornierte Positionen ab', function (mysqli $c) {
+            $user = (string) (ff_st_fetch_one($c, 'SELECT username FROM users ORDER BY username LIMIT 1', '', [])['username'] ?? '');
+            $t = ff_st_flow_table($c, 7789, 1);
+            $plain = ff_st_flow_table($c, 7785, 0);
+            $p = ff_st_position($c, 4.0);
+            $own = ff_st_flow_row($c, $p, ['tisch' => $t]);
+            $foreign = ff_st_flow_row($c, $p, ['tisch' => $plain]);
+            $deleted = ff_st_flow_row($c, $p, ['tisch' => $t, 'deleted' => true]);
+            $errors = [];
+            foreach ([[[$own, $foreign], [$t]], [[$own, $deleted], [$t]], [[$own], [$t, $plain]], [[$own], [$t], '']] as $case) {
+                try {
+                    ff_sammelrechnung_pay($c, $case[0], $case[1], $case[2] ?? $user, 'zz_selftest_sr');
+                    $errors[] = 'kein Abbruch';
+                } catch (FfSammelrechnungError $e) {
+                    $errors[] = $e->errorKey;
+                }
+            }
+            return ff_st_expect_same(['position_tisch_mismatch', 'position_tisch_mismatch', 'not_sammelrechnung_tisch', 'missing_zustaendig'], $errors, 'Abbruchgründe')
+                ?? ff_st_expect_same('leer', ff_st_flow_state($c, $own)['bezahlt'], 'eigene Position bleibt offen')
+                ?? ff_st_expect_same(1, (int) (ff_st_fetch_one($c, 'SELECT is_sammelrechnung AS s FROM tische WHERE tischnummer = ?', 'i', [$t])['s'] ?? 0), 'Tisch bleibt Sammelrechnung');
         });
 
         $g = 'Abläufe: Tisch verschieben';
