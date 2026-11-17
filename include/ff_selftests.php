@@ -2936,6 +2936,21 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $scriptZip = dirname(__DIR__) . '/fest_steuerpaket_zip.php';
             $scriptExport = dirname(__DIR__) . '/fest_export.php';
 
+            // Die Endpunkte senden Header und beenden mit exit → Aufruf als eigener PHP-Prozess. Auf Shared
+            // Hosting (FastCGI) ist shell_exec meist gesperrt bzw. es gibt kein php-CLI: dann im Prozess prüfen,
+            // was beide Endpunkte brauchen (zip-Erweiterung, festio_export), statt einen falschen Fehler zu melden.
+            $disabled = array_map('trim', explode(',', (string) ini_get('disable_functions')));
+            $canSpawn = function_exists('shell_exec') && !in_array('shell_exec', $disabled, true)
+                && trim((string) @shell_exec('php -r ' . escapeshellarg('echo "ff_ok";') . ' 2>/dev/null')) === 'ff_ok';
+            if (!$canSpawn) {
+                if (!class_exists('ZipArchive')) {
+                    return 'PHP-Erweiterung zip fehlt – das Steuerberater-Paket (fest_steuerpaket_zip.php) kann nicht erzeugt werden.';
+                }
+                require_once __DIR__ . '/fest_io.php';
+                $payload = festio_export($fid, 'full');
+                return ff_st_expect_same('FBS_FEST_EXPORT', $payload['format'] ?? null, 'festio_export-Format (ohne Unterprozess geprüft)');
+            }
+
             // 1. fest_steuerpaket_zip.php mit ?fest_id=
             $cmdZip1 = sprintf(
                 'php -r %s',
