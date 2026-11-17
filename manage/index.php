@@ -71,9 +71,6 @@ $initialView = isset($_GET['view']) ? (string)$_GET['view'] : '';
     </nav>
 
     <div class="manage-sidebar-footer">
-      <a href="index_legacy.php" class="btn-clean btn-outline-clean" style="color:#94a3b8; font-size:0.8rem; border-color:#334155;" title="Zurück zur klassischen Verwaltung">
-        <span>🔄 Klassische Ansicht</span>
-      </a>
       <a href="../index.php" class="btn-clean btn-outline-clean" style="color:#94a3b8; font-size:0.8rem; border-color:#334155;">
         <span>← Zum Hauptmenü</span>
       </a>

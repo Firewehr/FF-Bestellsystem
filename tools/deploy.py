@@ -157,6 +157,13 @@ def build_lftp_preamble(env: dict) -> str:
     return "\n".join(lines)
 
 
+def mask_credentials(text: str) -> str:
+    """Zugangsdaten in lftp-Ausgaben unkenntlich machen (ftp://user:pass@host → ftp://***@host)."""
+    import re
+
+    return re.sub(r"((?:s?ftps?|https?)://)[^/@\s]+@", r"\1***@", text)
+
+
 def test_connection(env_key: str, env: dict) -> bool:
     print_step(f"Verbindungstest zu '{env.get('name', env_key)}'")
     preamble = build_lftp_preamble(env)
@@ -174,7 +181,7 @@ bye;
             print_ok(f"Verbindung zu '{env.get('host')}' ({remote_dir}) erfolgreich hergestellt!")
             return True
         else:
-            print_err(f"Verbindungsfehler: {proc.stderr.strip() or proc.stdout.strip()}")
+            print_err(f"Verbindungsfehler: {mask_credentials(proc.stderr.strip() or proc.stdout.strip())}")
             return False
     except Exception as e:
         print_err(f"LFTP Fehler: {e}")
@@ -202,7 +209,7 @@ bye;
     try:
         proc = subprocess.run(["lftp", "-c", lftp_script], capture_output=True, text=True)
         if proc.returncode != 0:
-            print_warn(f"Backup-Warnung beim Spiegeln: {proc.stderr.strip() or proc.stdout.strip()}")
+            print_warn(f"Backup-Warnung beim Spiegeln: {mask_credentials(proc.stderr.strip() or proc.stdout.strip())}")
 
         # Packen als tar.gz
         print(f"Komprimiere Backup nach '{tar_path.name}'...")
@@ -274,7 +281,9 @@ bye;
 """
     print(f"Starte Upload (nur neue & geänderte Dateien)...")
     try:
-        proc = subprocess.run(["lftp", "-c", lftp_script], text=True)
+        # lftp gibt bei --dry-run/--verbose URLs mit Benutzer:Passwort aus → vor der Anzeige maskieren
+        proc = subprocess.run(["lftp", "-c", lftp_script], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        print(mask_credentials(proc.stdout or ""), end="")
         if proc.returncode == 0:
             if dry_run:
                 print_ok(f"Dry-Run für '{env_name}' abgeschlossen! Keine Dateien geändert.")
@@ -287,6 +296,148 @@ bye;
     except Exception as e:
         print_err(f"Fehler beim Deployment: {e}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# Verwaiste Dateien auf dem Server
+# ---------------------------------------------------------------------------
+# Das Deployment lädt nur hoch (mirror --reverse ohne --delete). Dateien, die lokal umbenannt,
+# gelöscht oder einmal von Hand in einen falschen Ordner kopiert wurden, bleiben auf dem Server
+# liegen – per URL aufrufbar, mit altem Code. Der Abgleich listet sie auf und löscht auf Wunsch
+# nur Code-Dateien; alles, was absichtlich nur auf dem Server liegt, ist geschützt.
+
+ORPHAN_CODE_EXT = {
+    ".php", ".phtml", ".inc", ".js", ".mjs", ".css", ".html", ".htm", ".py", ".md", ".sh", ".ps1",
+    ".bat", ".cmd", ".ino", ".h", ".cpp", ".txt", ".webmanifest",
+}
+ORPHAN_PROTECTED_GLOBS = [
+    "uploads/*", "backups*", "*/.cache/*", ".cache/*", "include/.cache*",
+    "db.php", "include/db.php", "*db.local.php", "*.local.php", "deploy.config*.json",
+    ".ff-debug", ".ff-setup-allow", ".well-known/*", "cgi-bin/*", "*.log", "error_log", "*/error_log",
+    ".htpasswd", "*/.htpasswd", ".user.ini", "php.ini",
+    "*config*.php",  # Server-Konfiguration (z. B. include/web_push_config.php) – nie automatisch löschen
+]
+
+
+def _deploy_excluded(rel: str, excludes: list[str]) -> bool:
+    """Gleiche Regeln wie deploy_environment(): wird diese lokale Datei NICHT hochgeladen?"""
+    import fnmatch
+    import re
+
+    for rx in (r"(^|/)(\.git|\.vscode|\.idea|__pycache__|\.cache|backups)(/|$)", r"(^|/)(include/)?db(\.local)?\.php$"):
+        if re.search(rx, rel):
+            return True
+    name = rel.rsplit("/", 1)[-1]
+    for g in list(excludes) + [".git*", "*.pyc", "deploy.config*.json", "backups*", "*db.php", "*.local.php"]:
+        if fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(name, g):
+            return True
+        if g.endswith("*") and "/" in g and rel.startswith(g.rstrip("*")):
+            return True  # z. B. include/.cache* trifft alles darunter
+    # Fehler in diesen Regeln wirken nur in die sichere Richtung: „ausgeschlossen“ = auf dem Server geschützt.
+    return False
+
+
+def local_deploy_files(excludes: list[str]) -> set[str]:
+    files: set[str] = set()
+    for root, dirs, names in os.walk(BASE_DIR):
+        rel_root = os.path.relpath(root, BASE_DIR)
+        rel_root = "" if rel_root == "." else rel_root.replace(os.sep, "/") + "/"
+        dirs[:] = [d for d in dirs if not _deploy_excluded(rel_root + d + "/", excludes)]
+        for n in names:
+            rel = rel_root + n
+            if not _deploy_excluded(rel, excludes):
+                files.add(rel)
+    return files
+
+
+def remote_files(env: dict) -> list[str] | None:
+    preamble = build_lftp_preamble(env)
+    remote_dir = env.get("remote_dir", "/")
+    lftp_script = f"""
+{preamble}
+cd "{remote_dir}";
+find .;
+bye;
+"""
+    proc = subprocess.run(["lftp", "-c", lftp_script], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print_err(f"Dateiliste konnte nicht geladen werden: {mask_credentials(proc.stderr.strip() or proc.stdout.strip())}")
+        return None
+    out = []
+    for line in proc.stdout.splitlines():
+        line = line.strip()
+        if not line or line.endswith("/"):
+            continue  # Ordner
+        out.append(line[2:] if line.startswith("./") else line)
+    return out
+
+
+def find_orphans(env_key: str, env: dict, excludes: list[str], keep: list[str] | None = None) -> dict | None:
+    import fnmatch
+
+    print_step(f"Abgleich: verwaiste Dateien auf '{env.get('name', env_key)}'")
+    remote = remote_files(env)
+    if remote is None:
+        return None
+    local = local_deploy_files(excludes)
+    res = {"code": [], "other": [], "protected": 0}
+    for rel in sorted(set(remote) - local):
+        name = rel.rsplit("/", 1)[-1]
+        protected = any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(name, g) for g in ORPHAN_PROTECTED_GLOBS)
+        protected = protected or _deploy_excluded(rel, excludes)  # absichtlich nie hochgeladen → gehört dem Server
+        protected = protected or any(fnmatch.fnmatch(rel, g) for g in (keep or []))  # --keep
+        if protected:
+            res["protected"] += 1
+        elif os.path.splitext(name)[1].lower() in ORPHAN_CODE_EXT or name == ".htaccess":
+            res["code"].append(rel)
+        else:
+            res["other"].append(rel)
+    print(f"Server: {len(remote)} Dateien, lokal (deploybar): {len(local)}")
+    print(f"Geschützt (nur auf dem Server, z. B. uploads/, Logs, db.php, Konfiguration, --keep): {res['protected']}")
+    if res["code"]:
+        print_warn(f"{len(res['code'])} verwaiste Code-Datei(en) – gibt es lokal nicht (mehr):")
+        for rel in res["code"]:
+            print(f"   {rel}")
+    else:
+        print_ok("Keine verwaisten Code-Dateien.")
+    if res["other"]:
+        print_warn(f"{len(res['other'])} sonstige Datei(en) nur auf dem Server (werden nie gelöscht, bitte selbst prüfen):")
+        for rel in res["other"]:
+            print(f"   {rel}")
+    return res
+
+
+def delete_orphans(env_key: str, env: dict, excludes: list[str], skip_backup: bool = False, assume_yes: bool = False, keep: list[str] | None = None) -> bool:
+    res = find_orphans(env_key, env, excludes, keep)
+    if res is None:
+        return False
+    paths = [p for p in res["code"] if '"' not in p and "\n" not in p]
+    if not paths:
+        return True
+    if not assume_yes:
+        answer = input(f"\n{len(paths)} Code-Datei(en) auf '{env.get('name', env_key)}' löschen? Zum Bestätigen LOESCHEN eingeben: ").strip()
+        if answer != "LOESCHEN":
+            print_warn("Abgebrochen, nichts gelöscht.")
+            return False
+    if not skip_backup:
+        if not backup_remote(env_key, env):
+            print_err("Backup fehlgeschlagen – es wird nichts gelöscht.")
+            return False
+    preamble = build_lftp_preamble(env)
+    remote_dir = env.get("remote_dir", "/")
+    rm_lines = "\n".join(f'rm "{p}";' for p in paths)
+    lftp_script = f"""
+{preamble}
+cd "{remote_dir}";
+{rm_lines}
+bye;
+"""
+    proc = subprocess.run(["lftp", "-c", lftp_script], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print_err(f"Löschen teilweise fehlgeschlagen: {mask_credentials(proc.stderr.strip() or proc.stdout.strip())}")
+        return False
+    print_ok(f"{len(paths)} verwaiste Datei(en) gelöscht.")
+    return True
 
 
 def push_to_github(config: dict, commit_msg: str | None = None) -> bool:
@@ -343,16 +494,17 @@ def interactive_menu(config: dict):
         print("[4] Verbindung zum Zielserver testen")
         print("[5] Code zu GitHub pushen")
         print("[6] Lokale Selbsttests ausführen")
+        print("[7] Verwaiste Dateien auf dem Server suchen / löschen")
         print("[0] Beenden")
 
-        choice = input("\nAuswahl [1-6, 0]: ").strip()
+        choice = input("\nAuswahl [1-7, 0]: ").strip()
         if choice == "0":
             break
         elif choice == "6":
             run_selftests()
         elif choice == "5":
             push_to_github(config)
-        elif choice in ("1", "2", "3", "4"):
+        elif choice in ("1", "2", "3", "4", "7"):
             if not envs:
                 print_warn("Keine Umgebungen in 'deploy.config.json' konfiguriert!")
                 continue
@@ -382,7 +534,12 @@ def interactive_menu(config: dict):
 
             for t in targets:
                 env = envs[t]
-                if choice == "4":
+                if choice == "7":
+                    res = find_orphans(t, env, excludes)
+                    if res and res["code"]:
+                        if input("Diese Code-Dateien löschen? (j/N): ").strip().lower() in ("j", "ja", "y", "yes"):
+                            delete_orphans(t, env, excludes)
+                elif choice == "4":
                     test_connection(t, env)
                 elif choice == "3":
                     backup_remote(t, env)
@@ -412,6 +569,10 @@ def main():
     parser.add_argument("--test-conn", help="Nur Verbindung testen")
     parser.add_argument("--git-push", action="store_true", help="Änderungen zu GitHub pushen")
     parser.add_argument("-m", "--message", help="Commit-Nachricht für GitHub Push")
+    parser.add_argument("--orphans", help="Verwaiste Dateien auf dem Zielserver auflisten (Name der Umgebung)")
+    parser.add_argument("--delete", action="store_true", help="Mit --orphans: verwaiste Code-Dateien löschen (Backup + Bestätigung)")
+    parser.add_argument("--yes", action="store_true", help="Mit --orphans --delete: ohne Rückfrage löschen")
+    parser.add_argument("--keep", action="append", default=[], help="Mit --orphans: Datei/Muster nicht löschen (mehrfach möglich)")
 
     args = parser.parse_args()
 
@@ -433,6 +594,18 @@ def main():
             sys.exit(1)
         test_connection(args.test_conn, env)
         return
+
+    if args.orphans:
+        env = config.get("environments", {}).get(args.orphans)
+        if not env:
+            print_err(f"Umgebung '{args.orphans}' nicht in deploy.config.json gefunden.")
+            sys.exit(1)
+        excludes = config.get("exclude", [])
+        if args.delete:
+            ok = delete_orphans(args.orphans, env, excludes, skip_backup=args.skip_backup, assume_yes=args.yes, keep=args.keep)
+        else:
+            ok = find_orphans(args.orphans, env, excludes, args.keep) is not None
+        sys.exit(0 if ok else 1)
 
     if args.backup_only:
         env = config.get("environments", {}).get(args.backup_only)

@@ -310,6 +310,13 @@ Du kannst deine Änderungen live testen. Das aktuelle Verzeichnis ist live unter
   ```bash
   ./deploy.sh --target server1 --dry-run
   ```
+* **Verwaiste Dateien auf dem Server** (das Deployment lädt nur hoch und löscht nie; alte oder falsch abgelegte Dateien bleiben sonst per URL erreichbar und lassen die Selbsttests auf dem Server fehlschlagen):
+  ```bash
+  ./deploy.sh --orphans server1                     # nur auflisten
+  ./deploy.sh --orphans server1 --delete            # Backup, Bestätigung „LOESCHEN“, dann nur Code-Dateien löschen
+  ./deploy.sh --orphans server1 --delete --keep 'pfad/datei.php'   # einzelne Dateien behalten
+  ```
+  Nie gelöscht: `uploads/`, `backups/`, `.cache`, `db.php`/`*.local.php`, `*config*.php`, Logs und alles aus `exclude` in `deploy.config.json`. Ausgaben von `lftp` werden maskiert (keine Zugangsdaten im Terminal).
 * **Datenbank-Backup (Cron alle 15 Minuten, Vorlage `tools/cron/ff-db-backup.cron`):**
   ```bash
   sudo -u www-data php tools/db_backup.php [--copy-to=/media/usb/ff-backups]
