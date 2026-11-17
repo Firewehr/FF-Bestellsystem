@@ -30,14 +30,14 @@ if ($targetUserId <= 0) {
     exit;
 }
 
-$st = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 if (!$st) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $targetUserId);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);
@@ -68,14 +68,14 @@ if (!$allow) {
 }
 
 if ($newVal === null) {
-    $upd = mysqli_prepare($conn, 'UPDATE users SET display_name = NULL WHERE id = ? LIMIT 1');
+    $upd = ff_mysqli_prepare($conn, 'UPDATE users SET display_name = NULL WHERE id = ? LIMIT 1');
     mysqli_stmt_bind_param($upd, 'i', $targetUserId);
 } else {
-    $upd = mysqli_prepare($conn, 'UPDATE users SET display_name = ? WHERE id = ? LIMIT 1');
+    $upd = ff_mysqli_prepare($conn, 'UPDATE users SET display_name = ? WHERE id = ? LIMIT 1');
     mysqli_stmt_bind_param($upd, 'si', $newVal, $targetUserId);
 }
 
-if (!$upd || !mysqli_stmt_execute($upd)) {
+if (!$upd || !ff_mysqli_stmt_execute($upd)) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'update_failed'], JSON_UNESCAPED_UNICODE);
     exit;

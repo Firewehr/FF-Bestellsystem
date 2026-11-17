@@ -18,7 +18,7 @@ function menu_lock_ensure_tables(mysqli $conn): void
     if ($ready) {
         return;
     }
-    $res = @mysqli_query(
+    $res = ff_mysqli_query(
         $conn,
         "SELECT COUNT(*) FROM information_schema.TABLES
           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('menu_locks', 'menu_lock_exceptions')"
@@ -32,7 +32,7 @@ function menu_lock_ensure_tables(mysqli $conn): void
         return;
     }
 
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `menu_locks` (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `menu_locks` (
       `id` INT(11) NOT NULL AUTO_INCREMENT,
       `scope` ENUM('position','type_all') NOT NULL DEFAULT 'position',
       `position_id` INT(11) NULL DEFAULT NULL,
@@ -47,7 +47,7 @@ function menu_lock_ensure_tables(mysqli $conn): void
       KEY `idx_until` (`locked_until`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `menu_lock_exceptions` (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `menu_lock_exceptions` (
       `id` INT(11) NOT NULL AUTO_INCREMENT,
       `lock_id` INT(11) NOT NULL,
       `position_id` INT(11) NOT NULL,
@@ -68,10 +68,10 @@ function menu_lock_cleanup_expired(mysqli $conn): void
     }
     $done = true;
     menu_lock_ensure_tables($conn);
-    @mysqli_query($conn, "DELETE e FROM `menu_lock_exceptions` e
+    ff_mysqli_query($conn, "DELETE e FROM `menu_lock_exceptions` e
         INNER JOIN `menu_locks` l ON l.id = e.lock_id
         WHERE l.locked_until IS NOT NULL AND l.locked_until <= NOW()");
-    @mysqli_query($conn, "DELETE FROM `menu_locks` WHERE locked_until IS NOT NULL AND locked_until <= NOW()");
+    ff_mysqli_query($conn, "DELETE FROM `menu_locks` WHERE locked_until IS NOT NULL AND locked_until <= NOW()");
 }
 
 /**

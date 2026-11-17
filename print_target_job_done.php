@@ -31,7 +31,7 @@ $errValue = ($newStatus === 'error' && $errorMsg !== '') ? mb_substr($errorMsg, 
 $sql = "UPDATE printer_jobs SET status = ?, attempts = attempts + 1, error = ?
          WHERE id = ? AND type IN ('kellner_bon', 'rechnung_thermo')"
     . ($assignedTarget > 0 ? ' AND printer = ?' : '');
-$stmt = mysqli_prepare($conn, $sql);
+$stmt = ff_mysqli_prepare($conn, $sql);
 if (!$stmt) {
     echo json_encode(['ok' => false, 'error' => 'Datenbankfehler'], JSON_UNESCAPED_UNICODE);
     exit;
@@ -42,7 +42,7 @@ if ($assignedTarget > 0) {
 } else {
     mysqli_stmt_bind_param($stmt, 'ssi', $finalStatus, $errValue, $jobId);
 }
-if (!mysqli_stmt_execute($stmt)) {
+if (!ff_mysqli_stmt_execute($stmt)) {
     mysqli_stmt_close($stmt);
     echo json_encode(['ok' => false, 'error' => 'Datenbankfehler'], JSON_UNESCAPED_UNICODE);
     exit;

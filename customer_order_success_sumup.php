@@ -30,7 +30,7 @@ if (!$tischnummer || $tischnummer <= 0) {
 
 $tischname = '';
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT tischname
      FROM tische
@@ -46,7 +46,7 @@ if ($stmt) {
         $tischnummer
     );
 
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
 
     $result = mysqli_stmt_get_result($stmt);
 
@@ -66,7 +66,7 @@ $displayTischLabel = ff_format_table_label($tischname, $tischnummer);
 */
 
 if (!$orderNr || $orderNr <= 0) {
-    $findLatestStmt = mysqli_prepare(
+    $findLatestStmt = ff_mysqli_prepare(
         $conn,
         "SELECT order_nr
          FROM bestellungen
@@ -79,7 +79,7 @@ if (!$orderNr || $orderNr <= 0) {
     );
     if ($findLatestStmt) {
         mysqli_stmt_bind_param($findLatestStmt, 'i', $tischnummer);
-        mysqli_stmt_execute($findLatestStmt);
+        ff_mysqli_stmt_execute($findLatestStmt);
         $findLatestRes = mysqli_stmt_get_result($findLatestStmt);
         if ($flRow = mysqli_fetch_assoc($findLatestRes)) {
             $orderNr = (int)$flRow['order_nr'];

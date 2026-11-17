@@ -30,14 +30,14 @@ require_once __DIR__ . '/ff_login_throttle.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array
 {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         throw new RuntimeException('Prepare fehlgeschlagen: ' . mysqli_error($conn));
     }
     if ($params !== []) {
         mysqli_stmt_bind_param($stmt, $types, ...$params);
     }
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         $err = mysqli_stmt_error($stmt);
         mysqli_stmt_close($stmt);
         throw new RuntimeException('Abfrage fehlgeschlagen: ' . $err);
@@ -51,14 +51,14 @@ function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $p
 
 function ff_st_exec(mysqli $conn, string $sql, string $types = '', array $params = []): int
 {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         throw new RuntimeException('Prepare fehlgeschlagen: ' . mysqli_error($conn));
     }
     if ($params !== []) {
         mysqli_stmt_bind_param($stmt, $types, ...$params);
     }
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         $err = mysqli_stmt_error($stmt);
         mysqli_stmt_close($stmt);
         throw new RuntimeException('Ausführung fehlgeschlagen: ' . $err);
@@ -1218,7 +1218,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
     }
 
     // 1. Vorhandene Tabellen und Engines ermitteln
-    $tRes = @mysqli_query($conn, 'SELECT TABLE_NAME, ENGINE FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()');
+    $tRes = ff_mysqli_query($conn, 'SELECT TABLE_NAME, ENGINE FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()');
     $existingTables = [];
     if ($tRes) {
         while ($row = mysqli_fetch_assoc($tRes)) {
@@ -1231,7 +1231,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
     }
 
     // 2. Vorhandene Spalten ermitteln
-    $cRes = @mysqli_query($conn, 'SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE()');
+    $cRes = ff_mysqli_query($conn, 'SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE()');
     $existingCols = [];
     if ($cRes) {
         while ($row = mysqli_fetch_assoc($cRes)) {
@@ -1246,7 +1246,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
     }
 
     // 3. Vorhandene Primärschlüssel ermitteln
-    $pkRes = @mysqli_query($conn, "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY'");
+    $pkRes = ff_mysqli_query($conn, "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY'");
     $existingPks = [];
     if ($pkRes) {
         while ($row = mysqli_fetch_assoc($pkRes)) {
@@ -1278,7 +1278,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
 
         // Fall A: Tabelle fehlt komplett
         if (!isset($existingTables[$lowerTable])) {
-            $created = @mysqli_query($conn, $createSql);
+            $created = ff_mysqli_query($conn, $createSql);
             if ($created) {
                 $repairs[] = "Tabelle '{$tableNameStr}' erfolgreich neu angelegt (" . count($expectedCols) . " Spalten, InnoDB).";
                 // Als vorhanden markieren
@@ -1298,7 +1298,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
 
         // Fall B: Falsche Engine (z. B. MyISAM -> InnoDB)
         if (strcasecmp($currentEngine, 'InnoDB') !== 0) {
-            $conv = @mysqli_query($conn, "ALTER TABLE `{$realTableName}` ENGINE=InnoDB");
+            $conv = ff_mysqli_query($conn, "ALTER TABLE `{$realTableName}` ENGINE=InnoDB");
             if ($conv) {
                 $repairs[] = "Tabelle '{$realTableName}' von Engine '{$currentEngine}' auf 'InnoDB' umgestellt.";
                 $existingTables[$lowerTable]['engine'] = 'InnoDB';
@@ -1313,7 +1313,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
             $colNameStr = (string) $colName;
             if (!isset($tableCols[strtolower($colNameStr)])) {
                 $alterSql = "ALTER TABLE `{$realTableName}` ADD COLUMN `{$colNameStr}` {$colDef}";
-                $altered = @mysqli_query($conn, $alterSql);
+                $altered = ff_mysqli_query($conn, $alterSql);
                 if ($altered) {
                     $repairs[] = "Tabelle '{$realTableName}': Spalte '{$colNameStr}' erfolgreich ergänzt.";
                     $existingCols[$lowerTable][strtolower($colNameStr)] = true;
@@ -1328,7 +1328,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
         if (empty($currentPks) && !empty($expectedPk)) {
             $pkColsStr = implode(', ', array_map(static fn($k) => "`{$k}`", $expectedPk));
             $pkSql = "ALTER TABLE `{$realTableName}` ADD PRIMARY KEY ({$pkColsStr})";
-            $pkRes = @mysqli_query($conn, $pkSql);
+            $pkRes = ff_mysqli_query($conn, $pkSql);
             if ($pkRes) {
                 $repairs[] = "Tabelle '{$realTableName}': Primärschlüssel ({$pkColsStr}) erfolgreich ergänzt.";
                 foreach ($expectedPk as $k) {
@@ -1341,7 +1341,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
     }
 
     // Eventuelle alte Pflichtfelder ohne Default in mitarbeiter_verpflegung bereinigen
-    $mvColsRes = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
+    $mvColsRes = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
     if ($mvColsRes) {
         while ($colRow = mysqli_fetch_assoc($mvColsRes)) {
             $fieldName = (string) $colRow['Field'];
@@ -1351,7 +1351,10 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
             if (!$isNullable && !$hasDefault && !$isAutoInc && $fieldName !== 'id') {
                 $type = (string) $colRow['Type'];
                 $defVal = (stripos($type, 'int') !== false || stripos($type, 'decimal') !== false || stripos($type, 'float') !== false || stripos($type, 'double') !== false) ? '0' : "''";
-                $mod = @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
+                if (preg_match('/^(date|time|year)/i', $type)) {
+                    $defVal = 'NULL'; // '' ist für DATE/DATETIME kein gültiger Default (#1067)
+                }
+                $mod = ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
                 if ($mod) {
                     $repairs[] = "Tabelle 'mitarbeiter_verpflegung': Altes Pflichtfeld '{$fieldName}' mit sicherem DEFAULT versehen.";
                 }
@@ -1361,7 +1364,7 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
     }
 
     // Eventuelle alte Pflichtfelder ohne Default in rechnungen bereinigen (z. B. kellner)
-    $rnColsRes = @mysqli_query($conn, "SHOW COLUMNS FROM `rechnungen`");
+    $rnColsRes = ff_mysqli_query($conn, "SHOW COLUMNS FROM `rechnungen`");
     if ($rnColsRes) {
         while ($colRow = mysqli_fetch_assoc($rnColsRes)) {
             $fieldName = (string) $colRow['Field'];
@@ -1371,7 +1374,10 @@ function ff_selftests_repair_database(mysqli $conn, ?string $onlyTable = null): 
             if (!$isNullable && !$hasDefault && !$isAutoInc && $fieldName !== 'id') {
                 $type = (string) $colRow['Type'];
                 $defVal = (stripos($type, 'int') !== false || stripos($type, 'decimal') !== false || stripos($type, 'float') !== false || stripos($type, 'double') !== false) ? '0' : "''";
-                $mod = @mysqli_query($conn, "ALTER TABLE `rechnungen` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
+                if (preg_match('/^(date|time|year)/i', $type)) {
+                    $defVal = 'NULL'; // '' ist für DATE/DATETIME kein gültiger Default (#1067)
+                }
+                $mod = ff_mysqli_query($conn, "ALTER TABLE `rechnungen` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
                 if ($mod) {
                     $repairs[] = "Tabelle 'rechnungen': Altes Pflichtfeld '{$fieldName}' mit sicherem DEFAULT versehen.";
                 }
@@ -1402,7 +1408,7 @@ function ff_selftests_check_database_schema(mysqli $conn): array
     $expectedSchema = ff_selftests_expected_schema();
 
     // 1. Tabellen und Storage Engine abfragen
-    $tRes = @mysqli_query($conn, 'SELECT TABLE_NAME, ENGINE FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()');
+    $tRes = ff_mysqli_query($conn, 'SELECT TABLE_NAME, ENGINE FROM information_schema.tables WHERE TABLE_SCHEMA = DATABASE()');
     if (!$tRes) {
         return [
             [
@@ -1424,7 +1430,7 @@ function ff_selftests_check_database_schema(mysqli $conn): array
     mysqli_free_result($tRes);
 
     // 2. Alle Spalten abfragen
-    $cRes = @mysqli_query($conn, 'SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION');
+    $cRes = ff_mysqli_query($conn, 'SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION');
     if (!$cRes) {
         return [
             [
@@ -1447,7 +1453,7 @@ function ff_selftests_check_database_schema(mysqli $conn): array
     mysqli_free_result($cRes);
 
     // 3. Primärschlüssel abfragen
-    $pkRes = @mysqli_query($conn, "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY TABLE_NAME, ORDINAL_POSITION");
+    $pkRes = ff_mysqli_query($conn, "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY TABLE_NAME, ORDINAL_POSITION");
     $existingPks = [];
     if ($pkRes) {
         while ($row = mysqli_fetch_assoc($pkRes)) {
@@ -1575,7 +1581,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
     // DDL (implizites COMMIT) vor der Test-Transaktion erledigen.
     ff_rezepturen_ensure_schema($conn);
-    @mysqli_query(
+    ff_mysqli_query(
         $conn,
         "CREATE TABLE IF NOT EXISTS `beilagen` (
           `rowid` INT(11) NOT NULL AUTO_INCREMENT,
@@ -1608,7 +1614,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
     if ($hasMv) {
         $needed[] = 'mitarbeiter_verpflegung';
         // Eventuelle alte Pflichtfelder ohne Default (z. B. mitarbeiter_name, positionsname) entschärfen
-        $mvColsRes = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
+        $mvColsRes = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
         if ($mvColsRes) {
             while ($colRow = mysqli_fetch_assoc($mvColsRes)) {
                 $fieldName = (string) $colRow['Field'];
@@ -1618,7 +1624,10 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 if (!$isNullable && !$hasDefault && !$isAutoInc && $fieldName !== 'id') {
                     $type = (string) $colRow['Type'];
                     $defVal = (stripos($type, 'int') !== false || stripos($type, 'decimal') !== false || stripos($type, 'float') !== false || stripos($type, 'double') !== false) ? '0' : "''";
-                    @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
+                    if (preg_match('/^(date|time|year)/i', $type)) {
+                        $defVal = 'NULL'; // '' ist für DATE/DATETIME kein gültiger Default (#1067)
+                    }
+                    ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` MODIFY `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
                 }
             }
             mysqli_free_result($mvColsRes);
@@ -1648,7 +1657,11 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         }
     }
 
-    $check = static function (string $group, string $name, callable $fn) use (&$results, $conn): void {
+    // Läuft die Test-Transaktion (ab mysqli_begin_transaction unten)? MariaDB meldet über @@in_transaction,
+    // ob ein Test sie vorzeitig festgeschrieben hat (CREATE/ALTER, eigenes COMMIT) – dann blieben Testdaten in der DB.
+    $txActive = false;
+    $txCheckable = stripos((string) mysqli_get_server_info($conn), 'mariadb') !== false;
+    $check = static function (string $group, string $name, callable $fn) use (&$results, &$txActive, $txCheckable, $conn): void {
         try {
             $r = $fn($conn);
             $ok = $r === null || $r === true;
@@ -1656,6 +1669,15 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         } catch (Throwable $e) {
             $ok = false;
             $detail = 'Ausnahme: ' . $e->getMessage();
+        }
+        if ($txActive && $txCheckable) {
+            $txRes = ff_mysqli_query($conn, 'SELECT @@in_transaction');
+            $txRow = $txRes ? mysqli_fetch_row($txRes) : null;
+            if ($txRow && (string) $txRow[0] === '0') {
+                $ok = false;
+                $detail = 'Test hat die Test-Transaktion festgeschrieben (Schema-Befehl oder COMMIT) – Testdaten bis hierher sind in der Datenbank geblieben und müssen aufgeräumt werden. ' . $detail;
+                mysqli_begin_transaction($conn); // weitere Tests wieder zurückrollbar
+            }
         }
         $results[] = ['group' => $group, 'name' => $name, 'ok' => $ok, 'detail' => $detail];
     };
@@ -1767,7 +1789,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $_SESSION['login'] = true;
             $_SESSION['user'] = ['username' => 'test_auth_check'];
             unset($_SESSION['auth_rev']);
-            mysqli_query($conn, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES ('test_auth_check', 'hash', 1, 0, 1) ON DUPLICATE KEY UPDATE auth_rev=0, is_active=1");
+            ff_mysqli_query($conn, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES ('test_auth_check', 'hash', 1, 0, 1) ON DUPLICATE KEY UPDATE auth_rev=0, is_active=1");
             $err = ff_auth_check_session_user($conn, true);
             if ($err !== null) {
                 return 'Fehler bei Session ohne auth_rev: ' . $err;
@@ -1776,7 +1798,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 return 'auth_rev wurde nicht auf 0 initialisiert in Session.';
             }
         } finally {
-            mysqli_query($conn, "DELETE FROM users WHERE username = 'test_auth_check'");
+            ff_mysqli_query($conn, "DELETE FROM users WHERE username = 'test_auth_check'");
             $_SESSION = $savedSession;
         }
         return true;
@@ -1788,19 +1810,39 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $_SESSION['login'] = true;
             $_SESSION['user'] = ['username' => 'test_auth_mismatch'];
             $_SESSION['auth_rev'] = 0;
-            mysqli_query($conn, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES ('test_auth_mismatch', 'hash', 1, 1, 1) ON DUPLICATE KEY UPDATE auth_rev=1, is_active=1");
+            ff_mysqli_query($conn, "INSERT INTO users (username, password, admin, auth_rev, is_active) VALUES ('test_auth_mismatch', 'hash', 1, 1, 1) ON DUPLICATE KEY UPDATE auth_rev=1, is_active=1");
             $err = ff_auth_check_session_user($conn, true);
             if ($err === null) {
                 return 'Erwarteter Mismatch-Fehler trat nicht auf.';
             }
         } finally {
-            mysqli_query($conn, "DELETE FROM users WHERE username = 'test_auth_mismatch'");
+            ff_mysqli_query($conn, "DELETE FROM users WHERE username = 'test_auth_mismatch'");
             $_SESSION = $savedSession;
         }
         return true;
     });
 
+    // Passt der Schema-Merker nicht (direkt nach einer Code-Änderung an Schema-Dateien), führen ensure-Funktionen
+    // in den Tests echte CREATE/ALTER aus. Das schreibt die Test-Transaktion vorzeitig fest und alle Testdaten
+    // bleiben in der Datenbank. Deshalb zuerst den Migrationslauf (wie beim ersten Admin-Aufruf nach einem Deploy).
+    require_once __DIR__ . '/ff_schema_migrate.php';
+    if (!ff_schema_is_current($conn)) {
+        $mig = ff_schema_migrate($conn);
+        if (!ff_schema_is_current($conn)) {
+            $results[] = [
+                'group' => 'Schema-Migration',
+                'name' => 'Schema aktuell vor den schreibenden Tests',
+                'ok' => false,
+                'detail' => 'Migrationslauf nicht erfolgreich, schreibende Tests übersprungen (sie würden Testdaten festschreiben): '
+                    . ($mig['message'] ?? '') . ' ' . implode(' | ', array_slice(array_merge($mig['errors'] ?? [], $mig['missing'] ?? []), 0, 5)),
+            ];
+            $passed = count(array_filter($results, static fn (array $r): bool => $r['ok']));
+            return ['ok' => true, 'results' => $results, 'passed' => $passed, 'failed' => count($results) - $passed];
+        }
+    }
+
     mysqli_begin_transaction($conn);
+    $txActive = true;
     try {
         $g = 'Pilot verknüpfte Artikel';
 
@@ -1900,9 +1942,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             if (!$reg['ok']) {
                 return 'Registrierung fehlgeschlagen.';
             }
-            $stmt = mysqli_prepare($c, 'SELECT token_hash, pair_code FROM printer_devices WHERE id = ?');
+            $stmt = ff_mysqli_prepare($c, 'SELECT token_hash, pair_code FROM printer_devices WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $reg['id']);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             mysqli_stmt_bind_result($stmt, $hash, $pair);
             mysqli_stmt_fetch($stmt);
             mysqli_stmt_close($stmt);
@@ -1964,9 +2006,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $b = ff_st_exec($c, "INSERT INTO feste (name, code, payment_mode, aktiv) VALUES ('ZZ_ST_Fest_B', 'zz_st_b', 'after', 0)");
             try {
                 $ok = ff_fest_set_current($c, $b);
-                $activeCount = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT COUNT(*) FROM feste WHERE aktiv = 1'))[0];
-                $activeId = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1'))[0];
-                $stillInTx = (int)mysqli_fetch_row(mysqli_query($c, 'SELECT @@in_transaction'))[0];
+                $activeCount = (int)mysqli_fetch_row(ff_mysqli_query($c, 'SELECT COUNT(*) FROM feste WHERE aktiv = 1'))[0];
+                $activeId = (int)mysqli_fetch_row(ff_mysqli_query($c, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1'))[0];
+                $stillInTx = (int)mysqli_fetch_row(ff_mysqli_query($c, 'SELECT @@in_transaction'))[0];
                 $mode = ff_aktiver_payment_mode($c);
                 $current = (int)setting_get($c, 'current_fest_id', '0');
                 $unknown = ff_fest_set_current($c, 999999999);
@@ -2082,7 +2124,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             ff_settings_cache($c, ['v' => ff_schema_fingerprint()], 'schema_fingerprint');
             ff_schema_is_current($c, true);
             $questions = static function () use ($c): int {
-                $r = mysqli_query($c, "SHOW SESSION STATUS LIKE 'Questions'");
+                $r = ff_mysqli_query($c, "SHOW SESSION STATUS LIKE 'Questions'");
                 $row = $r ? mysqli_fetch_row($r) : null;
                 return (int) ($row[1] ?? 0);
             };
@@ -2365,7 +2407,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 // Dynamisch eventuelle Legacy-Pflichtfelder wie mitarbeiter_name berücksichtigen
                 $fields = ['`datum`', '`bereich_id`', '`position_id`', '`menge`'];
                 $valsSql = ['CURDATE()', '0', '?', '2']; // Position als Parameter, Rest feste Ausdrücke
-                $cCols = @mysqli_query($c, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
+                $cCols = ff_mysqli_query($c, "SHOW COLUMNS FROM `mitarbeiter_verpflegung`");
                 if ($cCols) {
                     while ($col = mysqli_fetch_assoc($cCols)) {
                         $f = strtolower((string) $col['Field']);
@@ -2432,12 +2474,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $draftSql = 'INSERT INTO `bestellungen` 
                 (`tischnummer`, `position`, `timestampBestellung`, `zeitKueche`, `kueche`, `kellner`, `betrag`, `ausgeliefert`, `bestellt`, `order_nr`, `print_target`, `Zusatzinfo`, `fest_id`, `is_gratis`, `timestampBezahlung`, `kellnerZahlung`)
                 VALUES (?, ?, "0000-00-00 00:00:00", "0000-00-00 00:00:00", 0, ?, ?, 0, 0, 0, ?, ?, ?, ?, "0000-00-00 00:00:00", "")';
-            $draftStmt = mysqli_prepare($c, $draftSql);
+            $draftStmt = ff_mysqli_prepare($c, $draftSql);
             if (!$draftStmt) {
                 return 'Prepare draftSql fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($draftStmt, 'iisdisii', $tischnummer, $p, $kellner, $betrag, $printTarget, $zInfo, $festId, $isGratis);
-            if (!mysqli_stmt_execute($draftStmt)) {
+            if (!ff_mysqli_stmt_execute($draftStmt)) {
                 $err = mysqli_stmt_error($draftStmt);
                 mysqli_stmt_close($draftStmt);
                 return 'Execute draftStmt fehlgeschlagen: ' . $err;
@@ -2461,12 +2503,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                          AND `kellner` = ?
                          AND (`bestellt` IS NULL OR `bestellt` = 0)
                          AND `delete` = 0';
-            $updStmt = mysqli_prepare($c, $updSql);
+            $updStmt = ff_mysqli_prepare($c, $updSql);
             if (!$updStmt) {
                 return 'Prepare updSql fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($updStmt, 'iiis', $testOrderNr, $festId, $tischnummer, $kellner);
-            if (!mysqli_stmt_execute($updStmt)) {
+            if (!ff_mysqli_stmt_execute($updStmt)) {
                 $err = mysqli_stmt_error($updStmt);
                 mysqli_stmt_close($updStmt);
                 return 'Execute updStmt fehlgeschlagen: ' . $err;
@@ -2490,12 +2532,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $insSql = 'INSERT INTO `bestellungen` 
                 (`tischnummer`, `position`, `timestampBestellung`, `zeitKueche`, `kueche`, `kellner`, `betrag`, `ausgeliefert`, `bestellt`, `order_nr`, `print_target`, `Zusatzinfo`, `fest_id`, `is_gratis`, `timestampBezahlung`, `kellnerZahlung`)
                 VALUES (?, ?, "0000-00-00 00:00:00", "0000-00-00 00:00:00", 0, "kellner_pilot", 8.50, 0, 0, 0, 11, "extra kross", 1, 0, "0000-00-00 00:00:00", "")';
-            $insStmt = mysqli_prepare($c, $insSql);
+            $insStmt = ff_mysqli_prepare($c, $insSql);
             if (!$insStmt) {
                 return 'Prepare fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($insStmt, 'ii', $t, $p);
-            mysqli_stmt_execute($insStmt);
+            ff_mysqli_stmt_execute($insStmt);
             $rowId = (int)mysqli_insert_id($c);
             mysqli_stmt_close($insStmt);
 
@@ -2524,12 +2566,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             // 3. FORCE Bestellung wie im Original (bestellung_abschicken.php)
             $forcedOrderNr = 99123;
             $forceSql = 'UPDATE bestellungen SET bestellt = 1, timestampBestellung = NOW(), order_nr = ? WHERE tischnummer = ? AND (bestellt IS NULL OR bestellt = 0) AND `delete` = 0';
-            $fStmt = mysqli_prepare($c, $forceSql);
+            $fStmt = ff_mysqli_prepare($c, $forceSql);
             if (!$fStmt) {
                 return 'Force Prepare fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($fStmt, 'ii', $forcedOrderNr, $t);
-            mysqli_stmt_execute($fStmt);
+            ff_mysqli_stmt_execute($fStmt);
             $affected = mysqli_stmt_affected_rows($fStmt);
             mysqli_stmt_close($fStmt);
 
@@ -2545,22 +2587,22 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
         $check($g, 'Stations-Pilot API: Universelle Stationsverwaltung & Aktionen (Küche/Schank)', function (mysqli $c) {
             $t = 7125;
-            @mysqli_query($c, 'INSERT INTO tische (tischnummer, tischname) VALUES (7125, "H-P1")');
+            ff_mysqli_query($c, 'INSERT INTO tische (tischnummer, tischname, x, y) VALUES (7125, "H-P1", 0, 0)');
             $pFood = ff_st_position($c, 9.50);
             $pDrink = ff_st_position($c, 4.20);
             ff_db_query($c, 'UPDATE positionen SET type = 1, print_target = 11, Positionsname = "Pilot Schnitzel" WHERE rowid = ?', 'i', [$pFood]);
             ff_db_query($c, 'UPDATE positionen SET type = 2, print_target = 12, Positionsname = "Pilot Zwickl" WHERE rowid = ?', 'i', [$pDrink]);
 
             // 2 Positionen bestellen
-            $insFood = mysqli_prepare($c, 'INSERT INTO bestellungen (tischnummer, position, zeitstempel, zeitKueche, bestellt, kueche, ausgeliefert, print, print_status, `delete`, order_nr, kellner, print_target, betrag) VALUES (?, ?, NOW(), "0000-00-00 00:00:00", 1, 0, 0, 0, 0, 0, 7711, "pilot_tester", 11, 9.50)');
+            $insFood = ff_mysqli_prepare($c, 'INSERT INTO bestellungen (tischnummer, position, zeitstempel, zeitKueche, bestellt, kueche, ausgeliefert, print, print_status, `delete`, order_nr, kellner, print_target, betrag) VALUES (?, ?, NOW(), "0000-00-00 00:00:00", 1, 0, 0, 0, 0, 0, 7711, "pilot_tester", 11, 9.50)');
             mysqli_stmt_bind_param($insFood, 'ii', $t, $pFood);
-            mysqli_stmt_execute($insFood);
+            ff_mysqli_stmt_execute($insFood);
             $rowFood = (int)mysqli_insert_id($c);
             mysqli_stmt_close($insFood);
 
-            $insDrink = mysqli_prepare($c, 'INSERT INTO bestellungen (tischnummer, position, zeitstempel, zeitKueche, bestellt, kueche, ausgeliefert, print, print_status, `delete`, order_nr, kellner, print_target, betrag) VALUES (?, ?, NOW(), "0000-00-00 00:00:00", 1, 0, 0, 0, 0, 0, 7711, "pilot_tester", 12, 4.20)');
+            $insDrink = ff_mysqli_prepare($c, 'INSERT INTO bestellungen (tischnummer, position, zeitstempel, zeitKueche, bestellt, kueche, ausgeliefert, print, print_status, `delete`, order_nr, kellner, print_target, betrag) VALUES (?, ?, NOW(), "0000-00-00 00:00:00", 1, 0, 0, 0, 0, 0, 7711, "pilot_tester", 12, 4.20)');
             mysqli_stmt_bind_param($insDrink, 'ii', $t, $pDrink);
-            mysqli_stmt_execute($insDrink);
+            ff_mysqli_stmt_execute($insDrink);
             $rowDrink = (int)mysqli_insert_id($c);
             mysqli_stmt_close($insDrink);
 
@@ -2621,7 +2663,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 }
                 return null;
             } finally {
-                mysqli_query($c, "DELETE FROM users WHERE username = 'zz_st_api_admin'");
+                ff_mysqli_query($c, "DELETE FROM users WHERE username = 'zz_st_api_admin'");
                 $_SESSION = $oldSession;
             }
         });
@@ -2635,13 +2677,13 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                               ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), x=VALUES(x), y=VALUES(y), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast)", 'ii', [$t1, $t2]);
 
             // 1. Drag & Drop Swap: Tausche Positionen (t1 -> 3,4; t2 -> 1,2)
-            $stmt = mysqli_prepare($c, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($c, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
             $x1 = 3; $y1 = 4;
             mysqli_stmt_bind_param($stmt, 'iii', $x1, $y1, $t1);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             $x2 = 1; $y2 = 2;
             mysqli_stmt_bind_param($stmt, 'iii', $x2, $y2, $t2);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
 
             $r1 = ff_st_fetch_one($c, 'SELECT x, y FROM tische WHERE tischnummer = ?', 'i', [$t1]);
@@ -2669,11 +2711,11 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $newColor = '#ff5500';
             $newX = 5;
             $newY = 6;
-            $stmtSave = mysqli_prepare($c, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast, x, y) 
+            $stmtSave = ff_mysqli_prepare($c, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast, x, y) 
                                             VALUES (?, ?, ?, 1, 0, ?, ?) 
                                             ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast), x=VALUES(x), y=VALUES(y)');
             mysqli_stmt_bind_param($stmtSave, 'issii', $t1, $newName, $newColor, $newX, $newY);
-            mysqli_stmt_execute($stmtSave);
+            ff_mysqli_stmt_execute($stmtSave);
             mysqli_stmt_close($stmtSave);
 
             $saveCheck = ff_st_fetch_one($c, 'SELECT tischname, color, x, y, is_sammelrechnung, is_ehrengast FROM tische WHERE tischnummer = ?', 'i', [$t1]);
@@ -2695,12 +2737,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $fAktiv = 1;
             $fPrefix = 'R26';
 
-            $stmtIns = mysqli_prepare($c, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, ?, ?)');
+            $stmtIns = ff_mysqli_prepare($c, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, ?, ?)');
             if (!$stmtIns) {
                 return 'Prepare INSERT feste fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($stmtIns, 'ssssis', $fName, $fCode, $fDatum, $fMode, $fAktiv, $fPrefix);
-            if (!mysqli_stmt_execute($stmtIns)) {
+            if (!ff_mysqli_stmt_execute($stmtIns)) {
                 $err = mysqli_stmt_error($stmtIns);
                 mysqli_stmt_close($stmtIns);
                 return 'INSERT feste fehlgeschlagen: ' . $err;
@@ -2721,12 +2763,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             // 3. Fest aktualisieren
             $fNameUpd = 'Feuerwehrfest Test 2026 Aktualisiert';
             $fDatumUpd = '2026-10-29';
-            $stmtUpd = mysqli_prepare($c, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, aktiv = ?, rechnung_prefix = ? WHERE id = ?');
+            $stmtUpd = ff_mysqli_prepare($c, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, aktiv = ?, rechnung_prefix = ? WHERE id = ?');
             if (!$stmtUpd) {
                 return 'Prepare UPDATE feste fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($stmtUpd, 'ssssisi', $fNameUpd, $fCode, $fDatumUpd, $fMode, $fAktiv, $fPrefix, $festId);
-            if (!mysqli_stmt_execute($stmtUpd)) {
+            if (!ff_mysqli_stmt_execute($stmtUpd)) {
                 $err = mysqli_stmt_error($stmtUpd);
                 mysqli_stmt_close($stmtUpd);
                 return 'UPDATE feste fehlgeschlagen: ' . $err;
@@ -2739,9 +2781,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             }
 
             // 4. Löschen
-            $stmtDel = mysqli_prepare($c, 'DELETE FROM feste WHERE id = ?');
+            $stmtDel = ff_mysqli_prepare($c, 'DELETE FROM feste WHERE id = ?');
             mysqli_stmt_bind_param($stmtDel, 'i', $festId);
-            mysqli_stmt_execute($stmtDel);
+            ff_mysqli_stmt_execute($stmtDel);
             mysqli_stmt_close($stmtDel);
 
             $fCheck = ff_st_fetch_one($c, 'SELECT id FROM feste WHERE id = ?', 'i', [$festId]);
@@ -2760,12 +2802,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             $autoLimit = 5;
 
             // 1. Druckziel speichern
-            $stmt = mysqli_prepare($c, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit)');
+            $stmt = ff_mysqli_prepare($c, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit)');
             if (!$stmt) {
                 return 'Prepare print_targets fehlgeschlagen: ' . mysqli_error($c);
             }
             mysqli_stmt_bind_param($stmt, 'isiii', $ptId, $ptName, $sort, $active, $autoLimit);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 $err = mysqli_stmt_error($stmt);
                 mysqli_stmt_close($stmt);
                 return 'INSERT print_targets fehlgeschlagen: ' . $err;
@@ -2800,9 +2842,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             ff_db_query($c, "INSERT INTO tische (tischnummer, tischname, color, x, y) VALUES (?, 'Test Token Tisch', '#334455', 2, 3) ON DUPLICATE KEY UPDATE tischname=VALUES(tischname)", 'i', [$tNr]);
             
             $testToken = 'test_token_' . bin2hex(random_bytes(8));
-            $stTok = mysqli_prepare($c, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE token=VALUES(token), active=1');
+            $stTok = ff_mysqli_prepare($c, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1) ON DUPLICATE KEY UPDATE token=VALUES(token), active=1');
             mysqli_stmt_bind_param($stTok, 'is', $tNr, $testToken);
-            mysqli_stmt_execute($stTok);
+            ff_mysqli_stmt_execute($stTok);
             mysqli_stmt_close($stTok);
 
             // Query wie in tables_list
@@ -2831,12 +2873,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
             // Verpflegung buchen
             $datum = date('Y-m-d');
-            $stMv = mysqli_prepare($c, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
+            $stMv = ff_mysqli_prepare($c, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
             $menge = 3;
             $notiz = 'Selftest Notiz';
             $by = 'admin_st';
             mysqli_stmt_bind_param($stMv, 'siiiss', $datum, $bId, $posId, $menge, $notiz, $by);
-            mysqli_stmt_execute($stMv);
+            ff_mysqli_stmt_execute($stMv);
             $mvId = (int)mysqli_insert_id($c);
             mysqli_stmt_close($stMv);
 
@@ -2946,21 +2988,21 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
         $check($g, 'Admin-Pilot API: Unterkategorien Drag & Drop Reordering (manage/api.php reorder_subcategories)', function (mysqli $c) {
             // Test-Unterkategorien anlegen
-            mysqli_query($c, "INSERT INTO position_subcategories (type, name, sort_order) VALUES (1, 'ZZ Subcat A', 10)");
+            ff_mysqli_query($c, "INSERT INTO position_subcategories (type, name, sort_order) VALUES (1, 'ZZ Subcat A', 10)");
             $idA = (int)mysqli_insert_id($c);
-            mysqli_query($c, "INSERT INTO position_subcategories (type, name, sort_order) VALUES (1, 'ZZ Subcat B', 20)");
+            ff_mysqli_query($c, "INSERT INTO position_subcategories (type, name, sort_order) VALUES (1, 'ZZ Subcat B', 20)");
             $idB = (int)mysqli_insert_id($c);
 
             try {
                 // Reorder via Prepared Statement wie in manage/api.php
-                $stmt = mysqli_prepare($c, "UPDATE position_subcategories SET sort_order = ?, type = COALESCE(?, type) WHERE id = ?");
+                $stmt = ff_mysqli_prepare($c, "UPDATE position_subcategories SET sort_order = ?, type = COALESCE(?, type) WHERE id = ?");
                 $sort1 = 15; $type1 = 1;
                 mysqli_stmt_bind_param($stmt, 'iii', $sort1, $type1, $idA);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
 
                 $sort2 = 5; $type2 = 1;
                 mysqli_stmt_bind_param($stmt, 'iii', $sort2, $type2, $idB);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
                 mysqli_stmt_close($stmt);
 
                 $rowA = ff_st_fetch_one($c, 'SELECT sort_order FROM position_subcategories WHERE id = ?', 'i', [$idA]);
@@ -2981,7 +3023,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             ff_socket_printer_ensure_schema($c);
 
             // Prüfe Schema
-            $r = mysqli_query($c, "SHOW COLUMNS FROM print_targets LIKE 'connection_type'");
+            $r = ff_mysqli_query($c, "SHOW COLUMNS FROM print_targets LIKE 'connection_type'");
             if (!$r || mysqli_num_rows($r) === 0) {
                 return 'Spalte connection_type fehlt in print_targets';
             }
@@ -3752,11 +3794,73 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
             return strpos($boot, 'ff_db_helpers.php') !== false ? null : 'runtime_bootstrap.php lädt ff_db_helpers.php nicht';
         });
 
+        $check($g, 'DB-Fehler werden protokolliert (ff_mysqli_query & Co., include/ff_db_errors.php)', function (mysqli $c) {
+            $GLOBALS['ff_db_errors_capture'] = [];
+            try {
+                $r1 = ff_mysqli_query($c, 'SELECT ff_selftest_gibt_es_nicht FROM tische LIMIT 1');
+                $st = ff_mysqli_prepare($c, 'SELECT ff_selftest_gibt_es_nicht FROM tische WHERE tischnummer = ?');
+                $r3 = ff_db_query($c, 'SELECT ff_selftest_gibt_es_nicht FROM tische WHERE tischnummer = ?', 'i', [1]);
+                // Erwartet und daher still: Existenzprüfung, doppelte Spalte bei idempotenter Migration
+                ff_mysqli_query($c, "SHOW COLUMNS FROM `ff_selftest_gibt_es_nicht`");
+                $ok = ff_mysqli_query($c, 'SELECT 1');
+                $got = $GLOBALS['ff_db_errors_capture'];
+            } finally {
+                unset($GLOBALS['ff_db_errors_capture']);
+            }
+            $err = ff_st_expect_same(false, $r1, 'ff_mysqli_query liefert false')
+                ?? ff_st_expect_same(false, $st, 'ff_mysqli_prepare liefert false')
+                ?? ff_st_expect_same(false, $r3, 'ff_db_query liefert false')
+                ?? ff_st_expect_same(true, $ok instanceof mysqli_result, 'gültige Abfrage liefert Ergebnis')
+                ?? ff_st_expect_same(3, count($got), 'Anzahl protokollierter Fehler (SHOW zählt nicht)');
+            if ($err !== null) {
+                return $err;
+            }
+            foreach ($got as $g1) {
+                if ((int) $g1['n'] !== 1054 || strpos((string) $g1['w'], 'include/ff_selftests.php:') !== 0) {
+                    return 'Falscher Eintrag: #' . $g1['n'] . ' ' . $g1['w'];
+                }
+            }
+            return ff_st_expect_same(true, ff_db_error_is_expected(1060, 'ALTER TABLE x ADD COLUMN y INT'), 'doppelte Spalte gilt als erwartet')
+                ?? ff_st_expect_same(false, ff_db_error_is_expected(1205, 'UPDATE x SET y = 1'), 'Sperr-Timeout wird gemeldet');
+        });
+
+        $check($g, 'Abfragen laufen über ff_mysqli_query/-prepare/-stmt_execute (Fehler sichtbar)', function (mysqli $c) {
+            // Direkte mysqli_query()/mysqli_prepare()/mysqli_stmt_execute() scheitern mit MYSQLI_REPORT_OFF still.
+            $root = dirname(__DIR__);
+            $allowed = ['include/ff_db_errors.php', 'include/ff_db_helpers.php', 'include/db.php', 'include/db.local.php', 'db_update.php'];
+            $skipDirs = ['.git', '.agents', 'documentation', 'archiv', 'backups', 'uploads', 'Client-Print-Skripte', 'esp8266_grillhuhn_client', 'node_modules', 'assets'];
+            $hits = [];
+            $it = new RecursiveIteratorIterator(
+                new RecursiveCallbackFilterIterator(
+                    new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                    static function (SplFileInfo $f) use ($skipDirs): bool {
+                        return !$f->isDir() || !in_array($f->getFilename(), $skipDirs, true);
+                    }
+                )
+            );
+            foreach ($it as $f) {
+                if (strtolower($f->getExtension()) !== 'php') {
+                    continue;
+                }
+                $rel = str_replace('\\', '/', substr($f->getPathname(), strlen($root) + 1));
+                if (in_array($rel, $allowed, true)) {
+                    continue;
+                }
+                $src = (string) @file_get_contents($f->getPathname());
+                if (preg_match_all('~(?<![\w>$\\\\])@?mysqli_(?:query|prepare|stmt_execute)\(\s*\$~', $src, $m, PREG_OFFSET_CAPTURE)) {
+                    foreach ($m[0] as $hit) {
+                        $hits[] = $rel . ':' . (substr_count($src, "\n", 0, $hit[1]) + 1);
+                    }
+                }
+            }
+            return $hits === [] ? null : count($hits) . ' direkte Aufrufe, bitte ff_mysqli_query()/ff_mysqli_prepare()/ff_mysqli_stmt_execute() verwenden: ' . implode(' | ', array_slice($hits, 0, 5));
+        });
+
         $check($g, 'Keine Werte direkt im SQL (Platzhalter verwenden, include/ff_sql_lint.php)', function (mysqli $c) {
             require_once __DIR__ . '/ff_sql_lint.php';
             // Wächter selbst prüfen: ein bekannter Verstoß muss erkannt werden
             $probe = tempnam(sys_get_temp_dir(), 'ffsql');
-            file_put_contents($probe, '<?php $r = mysqli_query($conn, "SELECT * FROM t WHERE id = " . $id);' . "\n"
+            file_put_contents($probe, '<?php $r = ff_mysqli_query($conn, "SELECT * FROM t WHERE id = " . $id);' . "\n"
                 . '$r = ff_db_query($conn, "SELECT * FROM t WHERE id IN ($in) AND x = ?", $t, $p);');
             $probeHits = ff_sql_lint_file($probe);
             @unlink($probe);

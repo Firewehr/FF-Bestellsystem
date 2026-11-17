@@ -110,7 +110,7 @@ function ff_fest_table_to_csv(mysqli $conn, $sql, array $headerFromFirstRow = nu
 $csvRechnungen = ff_fest_table_to_csv($conn, ff_db_frag('SELECT * FROM rechnungen WHERE fest_id=? ORDER BY id', 'i', [(int) $fest_id]));
 
 $hasFestSr = false;
-$csr = @mysqli_query($conn, "SHOW COLUMNS FROM sammelrechnungen LIKE 'fest_id'");
+$csr = ff_mysqli_query($conn, "SHOW COLUMNS FROM sammelrechnungen LIKE 'fest_id'");
 if ($csr && mysqli_num_rows($csr) > 0) {
     $hasFestSr = true;
 }
@@ -141,7 +141,7 @@ foreach (ff_fest_kassen_closed_sessions($conn, $festDatumFilter) as $kr) {
 $csvKassen = ff_fest_stream_to_string($fhK);
 
 $csvBuchungen = '';
-$tbB = @mysqli_query($conn, "SHOW TABLES LIKE 'buchungen'");
+$tbB = ff_mysqli_query($conn, "SHOW TABLES LIKE 'buchungen'");
 if ($tbB && mysqli_num_rows($tbB) > 0) {
     $csvBuchungen = ff_fest_table_to_csv($conn, 'SELECT * FROM buchungen ORDER BY id');
 } else {

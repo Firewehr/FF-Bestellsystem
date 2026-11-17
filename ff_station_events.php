@@ -18,7 +18,7 @@ if (!function_exists('ff_station_events_ensure_schema')) {
             KEY idx_station_events_target_id (print_target, id),
             KEY idx_station_events_created (created_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-        $ready = mysqli_query($conn, $sql) === true;
+        $ready = ff_mysqli_query($conn, $sql) === true;
         if (!$ready) {
             error_log('ff_station_events_ensure_schema: ' . mysqli_error($conn));
         }
@@ -37,7 +37,7 @@ if (!function_exists('ff_station_events_publish')) {
         }
 
         $eventType = preg_match('/^[a-z0-9_-]{1,32}$/', $eventType) ? $eventType : 'station_update';
-        $stmt = mysqli_prepare($conn, 'INSERT INTO ff_station_events (print_target, event_type) VALUES (?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO ff_station_events (print_target, event_type) VALUES (?, ?)');
         if (!$stmt) {
             error_log('ff_station_events_publish: ' . mysqli_error($conn));
             return false;
@@ -52,7 +52,7 @@ if (!function_exists('ff_station_events_publish')) {
             }
             $seen[$printTarget] = true;
             mysqli_stmt_bind_param($stmt, 'is', $printTarget, $eventType);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 error_log('ff_station_events_publish: ' . mysqli_stmt_error($stmt));
                 $ok = false;
             }
@@ -60,7 +60,7 @@ if (!function_exists('ff_station_events_publish')) {
         mysqli_stmt_close($stmt);
 
         if ($ok) {
-            if (!mysqli_query($conn, 'DELETE FROM ff_station_events WHERE created_at < NOW() - INTERVAL 2 DAY')) {
+            if (!ff_mysqli_query($conn, 'DELETE FROM ff_station_events WHERE created_at < NOW() - INTERVAL 2 DAY')) {
                 error_log('ff_station_events_publish cleanup: ' . mysqli_error($conn));
             }
         }

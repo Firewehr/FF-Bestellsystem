@@ -24,9 +24,9 @@ $currentUser = (string)$user['username'];
 $paymentMode = ff_aktiver_payment_mode($conn);
 
 // Tisch-Name holen
-$tStmt = mysqli_prepare($conn, 'SELECT tischname, is_ehrengast, is_sammelrechnung FROM tische WHERE tischnummer = ? LIMIT 1');
+$tStmt = ff_mysqli_prepare($conn, 'SELECT tischname, is_ehrengast, is_sammelrechnung FROM tische WHERE tischnummer = ? LIMIT 1');
 mysqli_stmt_bind_param($tStmt, 'i', $tischnummer);
-mysqli_stmt_execute($tStmt);
+ff_mysqli_stmt_execute($tStmt);
 $tRes = mysqli_stmt_get_result($tStmt);
 $tRow = $tRes ? mysqli_fetch_assoc($tRes) : null;
 mysqli_stmt_close($tStmt);
@@ -180,7 +180,7 @@ foreach ($groupOrder as $bk) {
 }
 
 $printTargets = [];
-$printRes = mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+$printRes = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
 if ($printRes) {
     while ($printRow = mysqli_fetch_assoc($printRes)) {
         $printTargets[] = ['id' => (int)$printRow['print_target'], 'name' => (string)$printRow['name']];

@@ -19,13 +19,13 @@ if (!function_exists('ff_server_env')) {
     function ff_server_checks(mysqli $conn): array
     {
         $out = [];
-        $ping = @mysqli_query($conn, 'SELECT 1');
+        $ping = ff_mysqli_query($conn, 'SELECT 1');
         $out[] = ['label' => 'DB-Verbindung', 'value' => $ping ? 'OK' : 'fehlgeschlagen: ' . mysqli_error($conn), 'level' => $ping ? 'ok' : 'warn'];
         if (!$ping) {
             return $out;
         }
         $have = [];
-        $res = mysqli_query($conn, 'SHOW TABLES');
+        $res = ff_mysqli_query($conn, 'SHOW TABLES');
         while ($res && ($row = mysqli_fetch_row($res))) {
             $have[strtolower((string) $row[0])] = true;
         }
@@ -90,12 +90,12 @@ if (!function_exists('ff_server_env')) {
         $add('Gesperrte Funktionen (relevant)', $relevant ? implode(', ', $relevant) : 'keine', $relevant ? 'warn' : 'ok');
 
         $vars = [];
-        $vr = mysqli_query($conn, 'SELECT @@max_connections AS max_connections, @@max_user_connections AS max_user_connections, @@wait_timeout AS wait_timeout');
+        $vr = ff_mysqli_query($conn, 'SELECT @@max_connections AS max_connections, @@max_user_connections AS max_user_connections, @@wait_timeout AS wait_timeout');
         if ($vr && ($row = mysqli_fetch_assoc($vr))) {
             $vars = $row;
         }
         $status = [];
-        $sr = mysqli_query($conn, "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected', 'Max_used_connections')");
+        $sr = ff_mysqli_query($conn, "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected', 'Max_used_connections')");
         while ($sr && ($row = mysqli_fetch_row($sr))) {
             $status[(string) $row[0]] = (int) $row[1];
         }

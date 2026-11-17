@@ -178,20 +178,20 @@ function ff_preflight_check(mysqli $conn): array
     // -------------------------------------------------------------
     $orderCount = 0;
     $unpaidCount = 0;
-    $res = mysqli_query($conn, 'SELECT COUNT(*) AS c, SUM(CASE WHEN timestampBezahlung IS NULL OR timestampBezahlung = "0000-00-00 00:00:00" THEN 1 ELSE 0 END) AS unpaid FROM bestellungen WHERE `delete` = 0');
+    $res = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c, SUM(CASE WHEN timestampBezahlung IS NULL OR timestampBezahlung = "0000-00-00 00:00:00" THEN 1 ELSE 0 END) AS unpaid FROM bestellungen WHERE `delete` = 0');
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         $orderCount = (int) ($row['c'] ?? 0);
         $unpaidCount = (int) ($row['unpaid'] ?? 0);
     }
 
     $pendingPrintJobs = 0;
-    $res = mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_jobs WHERE status IN ('pending', 'reserved')");
+    $res = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_jobs WHERE status IN ('pending', 'reserved')");
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         $pendingPrintJobs = (int) ($row['c'] ?? 0);
     }
 
     $pendingKitchenPrints = 0;
-    $res = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM print');
+    $res = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM print');
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         $pendingKitchenPrints = (int) ($row['c'] ?? 0);
     }
@@ -220,7 +220,7 @@ function ff_preflight_check(mysqli $conn): array
     // -------------------------------------------------------------
     // Check 2: Alle Drucker online & Testbon
     // -------------------------------------------------------------
-    $ptRes = mysqli_query($conn, 'SELECT print_target, name, active, connection_type, ip_address, port FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+    $ptRes = ff_mysqli_query($conn, 'SELECT print_target, name, active, connection_type, ip_address, port FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
     $targets = [];
     $allPrintersOk = true;
     $offlineCount = 0;

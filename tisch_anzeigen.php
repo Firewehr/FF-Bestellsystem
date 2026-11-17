@@ -71,11 +71,11 @@ if ($openUnpaidCount > 0) {
 $unsentCnt = ff_tisch_count_unsent($conn, (int) $Tischnummer);
 $hasOpenToSend = $unsentCnt > 0;
 $unsentTotal = 0.0;
-$utq = @mysqli_prepare($conn, "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag, 0)), 0) FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position WHERE b.tischnummer = ? AND b.delete = 0 AND (b.bestellt IS NULL OR b.bestellt = 0)");
+$utq = ff_mysqli_prepare($conn, "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag, 0)), 0) FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position WHERE b.tischnummer = ? AND b.delete = 0 AND (b.bestellt IS NULL OR b.bestellt = 0)");
 if ($utq) {
     $utqTisch = (int) $Tischnummer;
     mysqli_stmt_bind_param($utq, 'i', $utqTisch);
-    mysqli_stmt_execute($utq);
+    ff_mysqli_stmt_execute($utq);
     mysqli_stmt_bind_result($utq, $utqVal);
     if (mysqli_stmt_fetch($utq)) {
         $unsentTotal = (float) $utqVal;
@@ -95,7 +95,7 @@ $showSammelrechnungPick = (ff_user_is_fest_admin() && $isSammelrechnung === 1);
 
 // Wartezeit je Standard-Druckziel (Getränke=Schank 12, Speisen=Küche 11)
 $ffPtNames = [11 => 'Küche', 12 => 'Schank'];
-$ptRes = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE print_target IN (11,12)');
+$ptRes = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE print_target IN (11,12)');
 if ($ptRes) {
     while ($ptRow = mysqli_fetch_assoc($ptRes)) {
         $ptId = (int)($ptRow['print_target'] ?? 0);
@@ -110,7 +110,7 @@ if ($ptRes) {
 }
 
 $ffWaitByTarget = [11 => '', 12 => ''];
-$wq = @mysqli_query(
+$wq = ff_mysqli_query(
     $conn,
     "SELECT print_target, UNIX_TIMESTAMP(MIN(zeitstempel)) AS oldest_unix
        FROM bestellungen

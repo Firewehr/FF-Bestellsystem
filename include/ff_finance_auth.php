@@ -24,12 +24,12 @@ function ff_finance_user_can(mysqli $conn, ?array $session = null): bool
         return false;
     }
     ff_finance_ensure_schema($conn);
-    $st = mysqli_prepare($conn, 'SELECT COALESCE(can_finance, 0) AS cf FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT COALESCE(can_finance, 0) AS cf FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -71,12 +71,12 @@ function ff_finance_has_can_finance_flag(mysqli $conn, ?array $session = null): 
         return false;
     }
     ff_finance_ensure_schema($conn);
-    $st = mysqli_prepare($conn, 'SELECT COALESCE(can_finance, 0) AS cf FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT COALESCE(can_finance, 0) AS cf FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -121,12 +121,12 @@ function ff_finance_session_refresh(mysqli $conn, string $username): void
 {
     ff_finance_ensure_schema($conn);
     ff_users_ensure_direktverkauf_column($conn);
-    $st = mysqli_prepare($conn, 'SELECT admin, COALESCE(can_finance, 0) AS can_finance, COALESCE(can_direktverkauf, 0) AS can_direktverkauf FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT admin, COALESCE(can_finance, 0) AS can_finance, COALESCE(can_direktverkauf, 0) AS can_direktverkauf FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return;
     }
     mysqli_stmt_bind_param($st, 's', $username);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);

@@ -23,7 +23,7 @@ function json_out(array $a, int $code = 200): void
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     menu_lock_cleanup_expired($conn);
     $locks = [];
-    $q = mysqli_query($conn, "SELECT l.*, 
+    $q = ff_mysqli_query($conn, "SELECT l.*, 
         (SELECT GROUP_CONCAT(e.position_id ORDER BY e.position_id) FROM menu_lock_exceptions e WHERE e.lock_id = l.id) AS exceptions
         FROM menu_locks l
         ORDER BY l.created_at DESC");
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
     $positions = [];
-    $pq = mysqli_query($conn, "SELECT rowid, Positionsname, type, print_target FROM positionen ORDER BY type, reihenfolge, Positionsname");
+    $pq = ff_mysqli_query($conn, "SELECT rowid, Positionsname, type, print_target FROM positionen ORDER BY type, reihenfolge, Positionsname");
     if ($pq) {
         while ($r = mysqli_fetch_assoc($pq)) {
             $positions[] = [

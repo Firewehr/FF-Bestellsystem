@@ -27,14 +27,14 @@ if ($bonId === '' || strlen($bonId) > 32) {
 mysqli_set_charset($conn, 'utf8mb4');
 
 $uname = (string)($_SESSION['user']['username'] ?? '');
-$stUser = mysqli_prepare($conn, 'SELECT id, admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
+$stUser = ff_mysqli_prepare($conn, 'SELECT id, admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
 if (!$stUser) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($stUser, 's', $uname);
-mysqli_stmt_execute($stUser);
+ff_mysqli_stmt_execute($stUser);
 $ur = mysqli_stmt_get_result($stUser);
 $userRow = $ur ? mysqli_fetch_assoc($ur) : null;
 mysqli_stmt_close($stUser);
@@ -71,9 +71,9 @@ if ($built === null) {
 
 [$payload, $bestellungIds] = $built;
 
-$chk = @mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
+$chk = ff_mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
 if (!$chk || mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS printer_jobs (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS printer_jobs (
       id INT(11) NOT NULL AUTO_INCREMENT,
       printer VARCHAR(32) NOT NULL,
       type VARCHAR(32) DEFAULT 'invoice',

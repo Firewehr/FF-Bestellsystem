@@ -32,7 +32,7 @@ if (!$tischnummer || $tischnummer <= 0) {
 
 $tischname = '';
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT tischname
      FROM tische
@@ -48,7 +48,7 @@ if ($stmt) {
         $tischnummer
     );
 
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
 
     $result = mysqli_stmt_get_result($stmt);
 
@@ -68,7 +68,7 @@ $displayTischLabel = ff_format_table_label($tischname, $tischnummer);
 */
 
 if (!$orderNr || $orderNr <= 0) {
-    $findLatestStmt = mysqli_prepare(
+    $findLatestStmt = ff_mysqli_prepare(
         $conn,
         "SELECT order_nr
          FROM bestellungen
@@ -81,7 +81,7 @@ if (!$orderNr || $orderNr <= 0) {
     );
     if ($findLatestStmt) {
         mysqli_stmt_bind_param($findLatestStmt, 'i', $tischnummer);
-        mysqli_stmt_execute($findLatestStmt);
+        ff_mysqli_stmt_execute($findLatestStmt);
         $findLatestRes = mysqli_stmt_get_result($findLatestStmt);
         if ($flRow = mysqli_fetch_assoc($findLatestRes)) {
             $orderNr = (int)$flRow['order_nr'];
@@ -129,7 +129,7 @@ if (!$orderNr || $orderNr <= 0) {
 |--------------------------------------------------------------------------
 */
 $otherOrdersForTable = [];
-$otherOrdersStmt = mysqli_prepare(
+$otherOrdersStmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         order_nr,
@@ -148,7 +148,7 @@ $otherOrdersStmt = mysqli_prepare(
 );
 if ($otherOrdersStmt) {
     mysqli_stmt_bind_param($otherOrdersStmt, 'i', $tischnummer);
-    mysqli_stmt_execute($otherOrdersStmt);
+    ff_mysqli_stmt_execute($otherOrdersStmt);
     $resOthers = mysqli_stmt_get_result($otherOrdersStmt);
     while ($oRow = mysqli_fetch_assoc($resOthers)) {
         $otherOrdersForTable[] = $oRow;
@@ -176,7 +176,7 @@ $allDelivered = true;
 $allKitchenDone = true;
 $anyInKitchen = false;
 
-$itemsStmt = mysqli_prepare(
+$itemsStmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         p.Positionsname,
@@ -198,7 +198,7 @@ $itemsStmt = mysqli_prepare(
 
 if ($itemsStmt) {
     mysqli_stmt_bind_param($itemsStmt, 'ii', $tischnummer, $orderNr);
-    mysqli_stmt_execute($itemsStmt);
+    ff_mysqli_stmt_execute($itemsStmt);
     $itemsRes = mysqli_stmt_get_result($itemsStmt);
     while ($row = mysqli_fetch_assoc($itemsRes)) {
         $menge = (int)$row['menge'];

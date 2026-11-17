@@ -42,7 +42,7 @@ if (!$tischnummer || $tischnummer <= 0 || $token === '') {
 |--------------------------------------------------------------------------
 */
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         t.tischnummer,
@@ -73,7 +73,7 @@ mysqli_stmt_bind_param(
     $token
 );
 
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 
 $result = mysqli_stmt_get_result($stmt);
 
@@ -100,7 +100,7 @@ $displayTischLabel = ff_format_table_label($rawTischname, $tischnummer);
 |--------------------------------------------------------------------------
 */
 
-$festResult = mysqli_query(
+$festResult = ff_mysqli_query(
     $conn,
     "SELECT id
      FROM feste
@@ -261,7 +261,7 @@ $sql .= "
 ";
 
 
-$result = mysqli_query(
+$result = ff_mysqli_query(
     $conn,
     $sql
 );

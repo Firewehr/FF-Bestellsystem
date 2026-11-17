@@ -17,7 +17,7 @@ try {
     $batchKeyExpr = ff_sql_bestellung_batch_key('bestellungen');
 
     $sql = "SELECT MAX(`positionen`.`type`) AS type, MAX(tische.tischname) AS tischname, bestellungen.tischnummer, {$batchKeyExpr} AS batch_key, COUNT(*) AS cnt, MAX(bestellungen.kellner) AS kellner FROM bestellungen, positionen, tische WHERE tische.tischnummer=bestellungen.tischnummer AND bestellungen.position=positionen.rowid AND `delete`=0 AND `kueche`=0 AND `type`=2 GROUP BY bestellungen.tischnummer, {$batchKeyExpr} ORDER BY MIN(bestellungen.zeitstempel) ASC LIMIT 500";
-    $result = mysqli_query($conn, $sql);
+    $result = ff_mysqli_query($conn, $sql);
     while ($row = mysqli_fetch_assoc($result)) {
         $counter = 0;
         $Bestellungen = "";

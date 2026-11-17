@@ -22,7 +22,7 @@ if ($action === 'list_print_targets') {
     ff_finance_ensure_kellner_direkt_print_targets($conn);
     $rows = [];
     $fixed = [];
-    $res = mysqli_query($conn, 'SELECT print_target, name, COALESCE(finance_bereich_id, 0) AS finance_bereich_id FROM print_targets ORDER BY sort_order, name');
+    $res = ff_mysqli_query($conn, 'SELECT print_target, name, COALESCE(finance_bereich_id, 0) AS finance_bereich_id FROM print_targets ORDER BY sort_order, name');
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $name = (string) $r['name'];
         $isFixed = ff_finance_print_target_is_kellner_direkt_fixed($name);
@@ -56,10 +56,10 @@ if ($action === 'save_print_mapping') {
         exit;
     }
     ff_finance_ensure_schema($conn);
-    $stName = mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? LIMIT 1');
+    $stName = ff_mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? LIMIT 1');
     if ($stName) {
         mysqli_stmt_bind_param($stName, 'i', $pt);
-        mysqli_stmt_execute($stName);
+        ff_mysqli_stmt_execute($stName);
         $resName = mysqli_stmt_get_result($stName);
         $rowName = $resName ? mysqli_fetch_assoc($resName) : null;
         mysqli_stmt_close($stName);
@@ -75,13 +75,13 @@ if ($action === 'save_print_mapping') {
     }
     $nullBid = $bid > 0 ? $bid : null;
     if ($nullBid === null) {
-        $st = mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE print_target = ? LIMIT 1');
+        $st = ff_mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE print_target = ? LIMIT 1');
         mysqli_stmt_bind_param($st, 'i', $pt);
     } else {
-        $st = mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = ? WHERE print_target = ? LIMIT 1');
+        $st = ff_mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = ? WHERE print_target = ? LIMIT 1');
         mysqli_stmt_bind_param($st, 'ii', $bid, $pt);
     }
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     mysqli_stmt_close($st);
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
     exit;

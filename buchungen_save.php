@@ -28,7 +28,7 @@ if ($typ === '' || $bezeichnung === '') {
 
 $created_by = $_SESSION['user']['username'] ?? '';
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS buchungen (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS buchungen (
     id INT(11) NOT NULL AUTO_INCREMENT,
     typ ENUM('einnahme','ausgabe') NOT NULL,
     bezeichnung VARCHAR(255) NOT NULL,
@@ -42,16 +42,16 @@ $created_by = $_SESSION['user']['username'] ?? '';
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 if ($id > 0) {
-    $stmt = mysqli_prepare($conn, 'UPDATE buchungen SET typ=?, bezeichnung=?, betrag=?, datum=?, kategorie=?, notiz=?, bereich_id=? WHERE id=?');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE buchungen SET typ=?, bezeichnung=?, betrag=?, datum=?, kategorie=?, notiz=?, bereich_id=? WHERE id=?');
     $dt = $datum ?: null;
     mysqli_stmt_bind_param($stmt, 'ssdsssii', $typ, $bezeichnung, $betrag, $dt, $kategorie, $notiz, $bereichId, $id);
 } else {
-    $stmt = mysqli_prepare($conn, 'INSERT INTO buchungen (typ, bezeichnung, betrag, datum, kategorie, notiz, bereich_id, created_by) VALUES (?,?,?,?,?,?,?,?)');
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO buchungen (typ, bezeichnung, betrag, datum, kategorie, notiz, bereich_id, created_by) VALUES (?,?,?,?,?,?,?,?)');
     $dt = $datum ?: null;
     mysqli_stmt_bind_param($stmt, 'ssdsssis', $typ, $bezeichnung, $betrag, $dt, $kategorie, $notiz, $bereichId, $created_by);
 }
 
-if (mysqli_stmt_execute($stmt)) {
+if (ff_mysqli_stmt_execute($stmt)) {
     echo json_encode(['ok' => true, 'id' => $id ?: mysqli_insert_id($conn)]);
 } else {
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);

@@ -45,7 +45,7 @@ if (!$tischnummer || $tischnummer <= 0 || $token === '') {
 |--------------------------------------------------------------------------
 */
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         t.tischnummer,
@@ -76,7 +76,7 @@ mysqli_stmt_bind_param(
     $token
 );
 
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 
 $result = mysqli_stmt_get_result($stmt);
 
@@ -103,7 +103,7 @@ $displayTischLabel = ff_format_table_label($rawTischname, $tischnummer);
 |--------------------------------------------------------------------------
 */
 
-$festResult = mysqli_query(
+$festResult = ff_mysqli_query(
     $conn,
     "SELECT id
      FROM feste
@@ -371,7 +371,7 @@ $sql .= "
 ";
 
 
-$result = mysqli_query(
+$result = ff_mysqli_query(
     $conn,
     $sql
 );
@@ -406,7 +406,7 @@ unset($position);
 
 $verbrauchtePositionen = [];
 
-$verbrauchResult = mysqli_query(
+$verbrauchResult = ff_mysqli_query(
     $conn,
     "SELECT position, COUNT(*) AS verbraucht
      FROM bestellungen
@@ -423,7 +423,7 @@ if ($verbrauchResult) {
     }
 }
 
-$mitarbeiterVerbrauchResult = mysqli_query(
+$mitarbeiterVerbrauchResult = ff_mysqli_query(
     $conn,
     "SELECT position_id, COALESCE(SUM(menge), 0) AS verbraucht
      FROM mitarbeiter_verpflegung
@@ -583,7 +583,7 @@ function h(?string $value): string
 
 $verkaeuferName = 'FF-Obritzberg';
 
-$verkaeuferResult = mysqli_query(
+$verkaeuferResult = ff_mysqli_query(
     $conn,
     "SELECT v
      FROM settings

@@ -27,7 +27,7 @@ $data = api_get_request_data();
 ff_rezepturen_ensure_schema($conn);
 ff_position_kassa_ensure_schema($conn);
 if (!ff_schema_is_current($conn)) {
-    @mysqli_query(
+    ff_mysqli_query(
         $conn,
         "CREATE TABLE IF NOT EXISTS print_targets (
             print_target INT(11) NOT NULL,
@@ -251,7 +251,7 @@ $posType = (int) ($data['type'] ?? $data['pos_type'] ?? 0);
 
 // Fest / Zahlungsmodus laden
 $paymentMode = 'after';
-$fres = @mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
+$fres = ff_mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
     $paymentMode = $frow['payment_mode'] ?: 'after';
 }
@@ -353,7 +353,7 @@ $targets = [
     ]
 ];
 
-$allTargetsRes = mysqli_query($conn, 'SELECT print_target, name, active, sort_order FROM print_targets WHERE active = 1 ORDER BY sort_order ASC');
+$allTargetsRes = ff_mysqli_query($conn, 'SELECT print_target, name, active, sort_order FROM print_targets WHERE active = 1 ORDER BY sort_order ASC');
 $totalWaitingAll = 0;
 if ($allTargetsRes) {
     while ($ptRow = mysqli_fetch_assoc($allTargetsRes)) {

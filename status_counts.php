@@ -20,20 +20,20 @@ try {
         $open = ff_druckziel_waiting_count($conn, $printTarget);
         $stationRev = ff_druckziel_station_revision($conn, $printTarget);
     } else {
-        $qk = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen b INNER JOIN positionen p ON b.position = p.rowid '
+        $qk = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen b INNER JOIN positionen p ON b.position = p.rowid '
             . 'WHERE p.type = 1 AND b.delete = 0 AND b.kueche = 0');
         if ($qk && ($rk = mysqli_fetch_assoc($qk))) {
             $k = (int) $rk['c'];
         }
 
-        $qs = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen b INNER JOIN positionen p ON b.position = p.rowid '
+        $qs = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM bestellungen b INNER JOIN positionen p ON b.position = p.rowid '
             . 'WHERE p.type = 2 AND b.delete = 0 AND b.kueche = 0');
         if ($qs && ($rs = mysqli_fetch_assoc($qs))) {
             $s = (int) $rs['c'];
         }
     }
 
-    $ql = mysqli_query($conn, 'SELECT MAX(zeitstempel) AS m FROM bestellungen');
+    $ql = ff_mysqli_query($conn, 'SELECT MAX(zeitstempel) AS m FROM bestellungen');
     if ($ql && ($rl = mysqli_fetch_assoc($ql)) && !empty($rl['m'])) {
         $last = $rl['m'];
     }
@@ -41,7 +41,7 @@ try {
     // Höchste vergebene Bestellnummer: ändert sich bei jeder neuen abgeschickten Runde
     // und erzwingt damit einen vollständigen Reload der Stationsansicht (neue Runde sofort sichtbar).
     $lastOrder = 0;
-    $qo = mysqli_query($conn, 'SELECT MAX(order_nr) AS o FROM bestellungen WHERE `delete` = 0');
+    $qo = ff_mysqli_query($conn, 'SELECT MAX(order_nr) AS o FROM bestellungen WHERE `delete` = 0');
     if ($qo && ($ro = mysqli_fetch_assoc($qo)) && $ro['o'] !== null) {
         $lastOrder = (int) $ro['o'];
     }

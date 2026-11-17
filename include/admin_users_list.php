@@ -14,7 +14,7 @@ if (!function_exists('out')) {
 
 echo '<div class="ff-users-toolbar d-flex flex-wrap align-items-center gap-2 mb-3">';
 $userCount = 0;
-$ucRes = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
+$ucRes = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
 if ($ucRes && ($ucRow = mysqli_fetch_assoc($ucRes))) {
     $userCount = (int) ($ucRow['c'] ?? 0);
 }
@@ -30,7 +30,7 @@ echo '</ul></div></div>';
 echo '<div id="myUsers" class="ff-users-grid">';
 
 $sql = 'SELECT * FROM `users` ORDER BY username LIMIT 100';
-$result = mysqli_query($conn, $sql);
+$result = ff_mysqli_query($conn, $sql);
 while ($row = mysqli_fetch_assoc($result)) {
     $uid = (int) $row['id'];
     $ulevel = (int) $row['admin'];

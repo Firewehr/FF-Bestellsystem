@@ -14,10 +14,10 @@ require_once __DIR__ . '/ff_schema_gate.php';
 function ff_dv_abholbon_list_active_targets(mysqli $conn): array
 {
     if (!ff_schema_is_current($conn)) {
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
     $out = [];
-    $q = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+    $q = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
     if ($q) {
         while ($row = mysqli_fetch_assoc($q)) {
             $out[] = [
@@ -41,14 +41,14 @@ function ff_dv_abholbon_target_is_valid(mysqli $conn, int $id): bool
         return false;
     }
     if (!ff_schema_is_current($conn)) {
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     }
-    $st = mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 'i', $id);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $ok = $res && mysqli_fetch_row($res);
     mysqli_stmt_close($st);
@@ -111,10 +111,10 @@ function ff_dv_abholbon_auto_label(mysqli $conn, string $startPage, ?int $startP
 {
     $id = ff_dv_abholbon_default_from_start($conn, $startPage, $startPrintTarget);
     $name = '';
-    $st = mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? LIMIT 1');
     if ($st) {
         mysqli_stmt_bind_param($st, 'i', $id);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         $res = mysqli_stmt_get_result($st);
         if ($res && ($r = mysqli_fetch_assoc($res))) {
             $name = (string)$r['name'];

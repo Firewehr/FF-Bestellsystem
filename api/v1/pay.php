@@ -39,12 +39,12 @@ if (in_array($action, $protectedPilotActions, true)) {
 }
 
 // Tisch-Flags prüfen
-$tStmt = mysqli_prepare($conn, 'SELECT is_ehrengast, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, tischname FROM tische WHERE tischnummer = ? LIMIT 1');
+$tStmt = ff_mysqli_prepare($conn, 'SELECT is_ehrengast, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, tischname FROM tische WHERE tischnummer = ? LIMIT 1');
 if (!$tStmt) {
     api_error('Datenbankfehler: ' . mysqli_error($conn), 'db_error', 500);
 }
 mysqli_stmt_bind_param($tStmt, 'i', $tischnummer);
-mysqli_stmt_execute($tStmt);
+ff_mysqli_stmt_execute($tStmt);
 $tRes = mysqli_stmt_get_result($tStmt);
 $tableRow = $tRes ? mysqli_fetch_assoc($tRes) : null;
 mysqli_stmt_close($tStmt);
@@ -59,7 +59,7 @@ ff_pilot_orders_ensure_schema($conn);
 
 // Aktives Fest
 $activeFestId = null;
-$festRes = mysqli_query($conn, 'SELECT id, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
+$festRes = ff_mysqli_query($conn, 'SELECT id, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($festRes && ($fRow = mysqli_fetch_assoc($festRes))) {
     $activeFestId = (int)$fRow['id'];
 }
@@ -101,14 +101,14 @@ if ($action === 'ehrengast') {
             $types .= str_repeat('i', count($rawIds));
             $params = array_merge($params, $rawIds);
         }
-        $lock = mysqli_prepare(
+        $lock = ff_mysqli_prepare(
             $conn,
             "SELECT rowid FROM bestellungen WHERE tischnummer = ? AND `delete` = 0
              AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00'){$whereIds} FOR UPDATE"
         );
         if (!$lock) throw new RuntimeException('Ehrengast-Positionen konnten nicht gesperrt werden.');
         mysqli_stmt_bind_param($lock, $types, ...$params);
-        if (!mysqli_stmt_execute($lock)) {
+        if (!ff_mysqli_stmt_execute($lock)) {
             $error = mysqli_stmt_error($lock);
             mysqli_stmt_close($lock);
             throw new RuntimeException('Ehrengast-Positionen konnten nicht gesperrt werden: ' . $error);
@@ -120,7 +120,7 @@ if ($action === 'ehrengast') {
         if ($rowids === []) throw new RuntimeException('Keine offenen Positionen zum Abschließen.');
 
         $marks = implode(',', array_fill(0, count($rowids), '?'));
-        $update = mysqli_prepare(
+        $update = ff_mysqli_prepare(
             $conn,
             "UPDATE bestellungen SET timestampBezahlung = CURRENT_TIMESTAMP, kueche = 1, is_gratis = 1, kellnerZahlung = ?
              WHERE tischnummer = ? AND `delete` = 0 AND rowid IN ({$marks})
@@ -128,7 +128,7 @@ if ($action === 'ehrengast') {
         );
         if (!$update) throw new RuntimeException('Ehrengast-Positionen konnten nicht aktualisiert werden.');
         mysqli_stmt_bind_param($update, 'si' . str_repeat('i', count($rowids)), $username, $tischnummer, ...$rowids);
-        if (!mysqli_stmt_execute($update)) {
+        if (!ff_mysqli_stmt_execute($update)) {
             $error = mysqli_stmt_error($update);
             mysqli_stmt_close($update);
             throw new RuntimeException('Konnte Ehrengast-Positionen nicht abschließen: ' . $error);
@@ -136,13 +136,13 @@ if ($action === 'ehrengast') {
         $affected = mysqli_stmt_affected_rows($update);
         mysqli_stmt_close($update);
 
-        $stillOpenStmt = mysqli_prepare(
+        $stillOpenStmt = ff_mysqli_prepare(
             $conn,
             "SELECT COUNT(*) AS c FROM bestellungen WHERE `delete` = 0 AND tischnummer = ?
              AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')"
         );
         mysqli_stmt_bind_param($stillOpenStmt, 'i', $tischnummer);
-        if (!mysqli_stmt_execute($stillOpenStmt)) {
+        if (!ff_mysqli_stmt_execute($stillOpenStmt)) {
             $error = mysqli_stmt_error($stillOpenStmt);
             mysqli_stmt_close($stillOpenStmt);
             throw new RuntimeException('Offene Ehrengast-Positionen konnten nicht geprüft werden: ' . $error);
@@ -152,9 +152,9 @@ if ($action === 'ehrengast') {
         mysqli_stmt_close($stillOpenStmt);
         $stillOpen = (int)($stillOpenRow['c'] ?? 0);
         if ($stillOpen === 0) {
-            $clear = mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ? LIMIT 1');
+            $clear = ff_mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ? LIMIT 1');
             mysqli_stmt_bind_param($clear, 'i', $tischnummer);
-            if (!mysqli_stmt_execute($clear)) {
+            if (!ff_mysqli_stmt_execute($clear)) {
                 $error = mysqli_stmt_error($clear);
                 mysqli_stmt_close($clear);
                 throw new RuntimeException('Ehrengast-Markierung konnte nicht zurückgesetzt werden: ' . $error);
@@ -314,12 +314,12 @@ if ($action === 'sumup_prepare' || $action === 'sumup_confirm') {
             $marks = implode(',', array_fill(0, count($rawIds), '?'));
             $types = 'i' . str_repeat('i', count($rawIds));
             $params = array_merge([$tischnummer], $rawIds);
-            $stmt = mysqli_prepare($conn, "SELECT rowid, COALESCE(betrag, 0) AS betrag FROM bestellungen WHERE tischnummer = ? AND `delete` = 0 AND bestellt = 1 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND rowid IN ({$marks}) FOR UPDATE");
+            $stmt = ff_mysqli_prepare($conn, "SELECT rowid, COALESCE(betrag, 0) AS betrag FROM bestellungen WHERE tischnummer = ? AND `delete` = 0 AND bestellt = 1 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND rowid IN ({$marks}) FOR UPDATE");
             if (!$stmt) {
                 throw new RuntimeException('SumUp-Positionen konnten nicht gesperrt werden.');
             }
             mysqli_stmt_bind_param($stmt, $types, ...$params);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 $error = mysqli_stmt_error($stmt);
                 mysqli_stmt_close($stmt);
                 throw new RuntimeException('SumUp-Positionen konnten nicht gesperrt werden: ' . $error);
@@ -340,12 +340,12 @@ if ($action === 'sumup_prepare' || $action === 'sumup_confirm') {
             }
             $intent = bin2hex(random_bytes(32));
             $json = json_encode($locked);
-            $insert = mysqli_prepare($conn, 'INSERT INTO pilot_sumup_requests (intent_token, username, tischnummer, rowids_json, amount) VALUES (?, ?, ?, ?, ?)');
+            $insert = ff_mysqli_prepare($conn, 'INSERT INTO pilot_sumup_requests (intent_token, username, tischnummer, rowids_json, amount) VALUES (?, ?, ?, ?, ?)');
             if (!$insert || $json === false) {
                 throw new RuntimeException('SumUp-Vorgang konnte nicht gespeichert werden.');
             }
             mysqli_stmt_bind_param($insert, 'ssisd', $intent, $username, $tischnummer, $json, $amount);
-            if (!mysqli_stmt_execute($insert)) {
+            if (!ff_mysqli_stmt_execute($insert)) {
                 $error = mysqli_stmt_error($insert);
                 mysqli_stmt_close($insert);
                 throw new RuntimeException('SumUp-Vorgang konnte nicht gespeichert werden: ' . $error);
@@ -393,10 +393,10 @@ if ($action === 'sumup_prepare' || $action === 'sumup_confirm') {
                 api_response($replay);
             }
         }
-        $intentStmt = mysqli_prepare($conn, 'SELECT rowids_json, amount, status FROM pilot_sumup_requests WHERE intent_token = ? AND username = ? AND tischnummer = ? FOR UPDATE');
+        $intentStmt = ff_mysqli_prepare($conn, 'SELECT rowids_json, amount, status FROM pilot_sumup_requests WHERE intent_token = ? AND username = ? AND tischnummer = ? FOR UPDATE');
         if (!$intentStmt) throw new RuntimeException('SumUp-Vorgang konnte nicht gesperrt werden.');
         mysqli_stmt_bind_param($intentStmt, 'ssi', $intent, $username, $tischnummer);
-        if (!mysqli_stmt_execute($intentStmt)) {
+        if (!ff_mysqli_stmt_execute($intentStmt)) {
             $error = mysqli_stmt_error($intentStmt);
             mysqli_stmt_close($intentStmt);
             throw new RuntimeException('SumUp-Vorgang konnte nicht geladen werden: ' . $error);
@@ -419,10 +419,10 @@ if ($action === 'sumup_prepare' || $action === 'sumup_confirm') {
         $marks = implode(',', array_fill(0, count($ids), '?'));
         $types = 'i' . str_repeat('i', count($ids));
         $params = array_merge([$tischnummer], $ids);
-        $check = mysqli_prepare($conn, "SELECT rowid FROM bestellungen WHERE tischnummer = ? AND `delete` = 0 AND bestellt = 1 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND rowid IN ({$marks}) FOR UPDATE");
+        $check = ff_mysqli_prepare($conn, "SELECT rowid FROM bestellungen WHERE tischnummer = ? AND `delete` = 0 AND bestellt = 1 AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00') AND rowid IN ({$marks}) FOR UPDATE");
         if (!$check) throw new RuntimeException('SumUp-Positionen konnten nicht gesperrt werden.');
         mysqli_stmt_bind_param($check, $types, ...$params);
-        if (!mysqli_stmt_execute($check)) {
+        if (!ff_mysqli_stmt_execute($check)) {
             $error = mysqli_stmt_error($check);
             mysqli_stmt_close($check);
             throw new RuntimeException('SumUp-Positionen konnten nicht geprüft werden: ' . $error);
@@ -431,19 +431,19 @@ if ($action === 'sumup_prepare' || $action === 'sumup_confirm') {
         $count = $checkRes ? mysqli_num_rows($checkRes) : 0;
         mysqli_stmt_close($check);
         if ($count !== count($ids)) throw new RuntimeException('Eine SumUp-Position wurde bereits anders abgerechnet.');
-        $update = mysqli_prepare($conn, "UPDATE bestellungen SET timestampBezahlung = CURRENT_TIMESTAMP, kellnerZahlung = ? WHERE rowid IN ({$marks})");
+        $update = ff_mysqli_prepare($conn, "UPDATE bestellungen SET timestampBezahlung = CURRENT_TIMESTAMP, kellnerZahlung = ? WHERE rowid IN ({$marks})");
         if (!$update) throw new RuntimeException('SumUp-Zahlung konnte nicht vorbereitet werden.');
         mysqli_stmt_bind_param($update, 's' . str_repeat('i', count($ids)), $username, ...$ids);
-        if (!mysqli_stmt_execute($update) || mysqli_stmt_affected_rows($update) !== count($ids)) {
+        if (!ff_mysqli_stmt_execute($update) || mysqli_stmt_affected_rows($update) !== count($ids)) {
             $error = mysqli_stmt_error($update);
             mysqli_stmt_close($update);
             throw new RuntimeException('SumUp-Zahlung konnte nicht gespeichert werden: ' . $error);
         }
         mysqli_stmt_close($update);
-        $done = mysqli_prepare($conn, "UPDATE pilot_sumup_requests SET status = 'confirmed', confirmed_at = NOW() WHERE intent_token = ?");
+        $done = ff_mysqli_prepare($conn, "UPDATE pilot_sumup_requests SET status = 'confirmed', confirmed_at = NOW() WHERE intent_token = ?");
         if (!$done) throw new RuntimeException('SumUp-Status konnte nicht vorbereitet werden.');
         mysqli_stmt_bind_param($done, 's', $intent);
-        if (!mysqli_stmt_execute($done) || mysqli_stmt_affected_rows($done) !== 1) {
+        if (!ff_mysqli_stmt_execute($done) || mysqli_stmt_affected_rows($done) !== 1) {
             $error = mysqli_stmt_error($done);
             mysqli_stmt_close($done);
             throw new RuntimeException('SumUp-Status konnte nicht gespeichert werden: ' . $error);

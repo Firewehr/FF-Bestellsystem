@@ -38,12 +38,12 @@ require_once dirname(__DIR__) . '/include/ff_rechnung_seq.php';
 require_once dirname(__DIR__) . '/api/v1/bootstrap.php';
 
 function ff_st_fetch_one(mysqli $conn, string $sql, string $types = '', array $params = []): ?array {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) return null;
     if ($params !== []) {
         mysqli_stmt_bind_param($stmt, $types, ...$params);
     }
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($stmt);
@@ -81,11 +81,11 @@ register_shutdown_function(static function () use ($conn, $ffSuiteOrigFest): voi
 });
 
 // Vorab-Bereinigung von Testdaten aus Vorläufen
-mysqli_query($conn, "DELETE FROM users WHERE username = 'e2e_pilot_user'");
-mysqli_query($conn, "DELETE FROM mitarbeiter_bereiche WHERE name = 'E2E Jugendgruppe'");
-mysqli_query($conn, "DELETE FROM feste WHERE code = 'fest2026E2E'");
-mysqli_query($conn, "DELETE FROM tische WHERE tischnummer = 8881");
-mysqli_query($conn, "DELETE FROM table_tokens WHERE table_number = 8881");
+ff_mysqli_query($conn, "DELETE FROM users WHERE username = 'e2e_pilot_user'");
+ff_mysqli_query($conn, "DELETE FROM mitarbeiter_bereiche WHERE name = 'E2E Jugendgruppe'");
+ff_mysqli_query($conn, "DELETE FROM feste WHERE code = 'fest2026E2E'");
+ff_mysqli_query($conn, "DELETE FROM tische WHERE tischnummer = 8881");
+ff_mysqli_query($conn, "DELETE FROM table_tokens WHERE table_number = 8881");
 
 function run_admin_api(string $method, array $data = []): array {
     $script = dirname(__DIR__) . '/api/v1/admin.php';
@@ -157,14 +157,14 @@ test_step('Übersicht: Live-KPI Dashboard & Stammdaten laden (overview)', functi
 });
 
 test_step('Übersicht: Allgemeine Einstellungen speichern (save_settings)', function () {
-    $rOrig = mysqli_fetch_assoc(mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'app_title'"));
+    $rOrig = mysqli_fetch_assoc(ff_mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'app_title'"));
     $origTitle = (string)($rOrig['v'] ?? '');
     $res = run_admin_api('POST', [
         'action' => 'save_settings',
         'settings' => ['app_title' => 'Pilot Test Fest 2026', 'kellner_nur_eigene' => '1']
     ]);
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'Fehler bei save_settings';
-    $rSaved = mysqli_fetch_assoc(mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'app_title'"));
+    $rSaved = mysqli_fetch_assoc(ff_mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'app_title'"));
     $saved = (string)($rSaved['v'] ?? '');
     ff_db_query($GLOBALS['conn'], "UPDATE settings SET v = ? WHERE k = 'app_title'", 's', [$origTitle]);
     if ($saved !== 'Pilot Test Fest 2026') return "app_title nicht gespeichert, war: {$saved}";
@@ -230,7 +230,7 @@ test_step('Feste: Feste-Liste abrufen und neues Fest verifizieren (feste_list)',
 test_step('Feste: Aktives Fest wechseln (fest_set_current)', function () use (&$createdFestId) {
     $res = run_admin_api('POST', ['action' => 'fest_set_current', 'fest_id' => $createdFestId]);
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'fest_set_current fehlgeschlagen';
-    $cRow = mysqli_fetch_assoc(mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'current_fest_id'"));
+    $cRow = mysqli_fetch_assoc(ff_mysqli_query($GLOBALS['conn'], "SELECT v FROM settings WHERE k = 'current_fest_id'"));
     $curr = (int)($cRow['v'] ?? 0);
     if ($curr !== $createdFestId) return "current_fest_id={$curr}, erwartet {$createdFestId}";
     return true;
@@ -464,7 +464,7 @@ test_step('Tische: Tisch-Liste abrufen inkl. Tokens und Summen (tables_list)', f
 test_step('Tische: Tisch wieder löschen (table_delete)', function () {
     $res = run_admin_api('POST', ['action' => 'table_delete', 'tischnummer' => 8881]);
     if (empty($res['ok'])) return $res['message'] ?? $res['error'] ?? 'table_delete fehlgeschlagen';
-    mysqli_query($GLOBALS['conn'], 'DELETE FROM table_tokens WHERE table_number = 8881');
+    ff_mysqli_query($GLOBALS['conn'], 'DELETE FROM table_tokens WHERE table_number = 8881');
     return true;
 });
 

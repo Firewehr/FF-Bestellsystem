@@ -13,7 +13,7 @@ function ff_forecast_json_response(array $payload, int $status = 200): void
 }
 
 try {
-    $positionResult = mysqli_query(
+    $positionResult = ff_mysqli_query(
         $conn,
         'SELECT p.rowid, p.Positionsname, p.print_target, p.subcategory_id, s.name AS subcategory '
         . 'FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id '
@@ -37,7 +37,7 @@ try {
     }
     mysqli_free_result($positionResult);
 
-    $componentOptionResult = mysqli_query(
+    $componentOptionResult = ff_mysqli_query(
         $conn,
         'SELECT b.position, b.name, p.Positionsname '
         . 'FROM beilagen b INNER JOIN positionen p ON p.rowid = b.position '
@@ -167,7 +167,7 @@ try {
         exit;
     }
 
-    $orderResult = mysqli_query(
+    $orderResult = ff_mysqli_query(
         $conn,
         "SELECT CASE WHEN b.order_nr IS NULL THEN CONCAT('legacy-', MIN(b.rowid)) "
         . "ELSE CONCAT('order-', b.order_nr) END AS order_key, "
@@ -222,12 +222,12 @@ try {
     }
     $currentFestId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($currentFestId > 0) {
-        $festStmt = mysqli_prepare($conn, 'SELECT name, fest_datum FROM feste WHERE id = ? LIMIT 1');
+        $festStmt = ff_mysqli_prepare($conn, 'SELECT name, fest_datum FROM feste WHERE id = ? LIMIT 1');
         if (!$festStmt) {
             throw new RuntimeException('Aktuelle Veranstaltung konnte nicht geladen werden.');
         }
         mysqli_stmt_bind_param($festStmt, 'i', $currentFestId);
-        if (!mysqli_stmt_execute($festStmt)) {
+        if (!ff_mysqli_stmt_execute($festStmt)) {
             mysqli_stmt_close($festStmt);
             throw new RuntimeException('Aktuelle Veranstaltung konnte nicht geladen werden.');
         }
@@ -248,14 +248,14 @@ try {
                     . 'AND COALESCE(b.print_target, p.print_target) = 11 '
                     . 'GROUP BY f.id, f.name, f.fest_datum, p.Positionsname, COALESCE(b.Zusatzinfo, \'\'), time_epoch '
                     . 'ORDER BY f.fest_datum, time_epoch, p.Positionsname';
-                $historyStmt = mysqli_prepare($conn, $historySql);
+                $historyStmt = ff_mysqli_prepare($conn, $historySql);
                 if (!$historyStmt) {
                     throw new RuntimeException('Historische Veranstaltungsdaten konnten nicht geladen werden.');
                 }
                 $festName = (string) $currentFest['name'];
                 $festDate = (string) ($currentFest['fest_datum'] ?? date('Y-m-d'));
                 mysqli_stmt_bind_param($historyStmt, 'iss', $currentFestId, $festName, $festDate);
-                if (!mysqli_stmt_execute($historyStmt)) {
+                if (!ff_mysqli_stmt_execute($historyStmt)) {
                     mysqli_stmt_close($historyStmt);
                     throw new RuntimeException('Historische Veranstaltungsdaten konnten nicht geladen werden.');
                 }
@@ -294,7 +294,7 @@ try {
                 mysqli_stmt_close($historyStmt);
             }
 
-            $currentSql = "SELECT p.Positionsname AS product_name, COALESCE(b.Zusatzinfo, \'\') AS Zusatzinfo, "
+            $currentSql = "SELECT p.Positionsname AS product_name, COALESCE(b.Zusatzinfo, '') AS Zusatzinfo, "
                 . 'FLOOR(UNIX_TIMESTAMP(COALESCE(NULLIF(b.timestampBestellung, \'0000-00-00 00:00:00\'), b.zeitstempel)) / 900) * 900 AS time_epoch, '
                 . 'COUNT(*) AS quantity '
                 . 'FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position '
@@ -302,12 +302,12 @@ try {
                 . 'WHERE b.fest_id = ? AND p.type = 1 AND b.`delete` = 0 AND b.bestellt = 1 '
                 . 'AND COALESCE(b.print_target, p.print_target) = 11 '
                 . 'GROUP BY p.Positionsname, COALESCE(b.Zusatzinfo, \'\'), time_epoch ORDER BY time_epoch, p.Positionsname';
-            $currentStmt = mysqli_prepare($conn, $currentSql);
+            $currentStmt = ff_mysqli_prepare($conn, $currentSql);
             if (!$currentStmt) {
                 throw new RuntimeException('Aktuelle Bestelleingänge konnten nicht geladen werden.');
             }
             mysqli_stmt_bind_param($currentStmt, 'i', $currentFestId);
-            if (!mysqli_stmt_execute($currentStmt)) {
+            if (!ff_mysqli_stmt_execute($currentStmt)) {
                 mysqli_stmt_close($currentStmt);
                 throw new RuntimeException('Aktuelle Bestelleingänge konnten nicht geladen werden.');
             }

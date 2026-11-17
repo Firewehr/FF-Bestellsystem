@@ -21,9 +21,9 @@ if ($userId <= 0) {
     exit;
 }
 
-$stmt = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$stmt = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 mysqli_stmt_bind_param($stmt, 'i', $userId);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($stmt);

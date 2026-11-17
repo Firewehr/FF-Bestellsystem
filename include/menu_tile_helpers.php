@@ -12,7 +12,7 @@ function ff_menu_ensure_schema(mysqli $conn): void
     if (ff_schema_session_ok()) {
         return;
     }
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `position_subcategories` (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `position_subcategories` (
       `id` INT(11) NOT NULL AUTO_INCREMENT,
       `type` TINYINT(4) NOT NULL COMMENT '1=Speise 2=Getränk',
       `name` VARCHAR(128) NOT NULL,
@@ -23,17 +23,17 @@ function ff_menu_ensure_schema(mysqli $conn): void
       KEY `idx_type_sort` (`type`, `sort_order`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'subcategory_id'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'subcategory_id'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `subcategory_id` INT(11) NULL DEFAULT NULL");
+        ff_mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `subcategory_id` INT(11) NULL DEFAULT NULL");
     }
-    $chk2 = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'tile_bg'");
+    $chk2 = ff_mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'tile_bg'");
     if ($chk2 && mysqli_num_rows($chk2) === 0) {
-        @mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `tile_bg` VARCHAR(32) NULL DEFAULT NULL");
+        ff_mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `tile_bg` VARCHAR(32) NULL DEFAULT NULL");
     }
-    $chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'selbstkosten'");
+    $chkSk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'selbstkosten'");
     if ($chkSk && mysqli_num_rows($chkSk) === 0) {
-        @mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `selbstkosten` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'EK pro Stück'");
+        ff_mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `selbstkosten` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'EK pro Stück'");
     }
     $kassaHelpers = __DIR__ . '/ff_position_kassa_helpers.php';
     if (is_readable($kassaHelpers)) {

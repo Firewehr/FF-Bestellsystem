@@ -20,14 +20,14 @@ if ($userid <= 0) {
 
 ff_users_ensure_status_columns($conn);
 
-$st = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 if (!$st) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db']);
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $userid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);
@@ -58,10 +58,10 @@ $untilInPost = array_key_exists('active_until', $_POST);
 $fromVal = $fromInPost ? ff_user_status_parse_dt($_POST['active_from'] ?? null) : null;
 $untilVal = $untilInPost ? ff_user_status_parse_dt($_POST['active_until'] ?? null) : null;
 if (!$fromInPost || !$untilInPost) {
-    $stKeep = mysqli_prepare($conn, 'SELECT active_from, active_until FROM users WHERE id = ? LIMIT 1');
+    $stKeep = ff_mysqli_prepare($conn, 'SELECT active_from, active_until FROM users WHERE id = ? LIMIT 1');
     if ($stKeep) {
         mysqli_stmt_bind_param($stKeep, 'i', $userid);
-        mysqli_stmt_execute($stKeep);
+        ff_mysqli_stmt_execute($stKeep);
         $resKeep = mysqli_stmt_get_result($stKeep);
         $rowKeep = $resKeep ? mysqli_fetch_assoc($resKeep) : null;
         mysqli_stmt_close($stKeep);
@@ -82,14 +82,14 @@ if ($fromVal !== null && $untilVal !== null && strtotime($untilVal) < strtotime(
     exit;
 }
 
-$up = mysqli_prepare($conn, 'UPDATE users SET is_active = ?, active_from = ?, active_until = ? WHERE id = ?');
+$up = ff_mysqli_prepare($conn, 'UPDATE users SET is_active = ?, active_from = ?, active_until = ? WHERE id = ?');
 if (!$up) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db']);
     exit;
 }
 mysqli_stmt_bind_param($up, 'issi', $isActive, $fromVal, $untilVal, $userid);
-$ok = mysqli_stmt_execute($up);
+$ok = ff_mysqli_stmt_execute($up);
 mysqli_stmt_close($up);
 
 if (!$ok) {

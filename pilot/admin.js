@@ -686,7 +686,7 @@ createApp({
     const mcpTokenShow = ref(false);
 
     // Diagnose: DB, Tabellen, Server-Umgebung und Live-Test (wie ../diagnose.php)
-    const diagnose = ref({ loaded: false, loading: false, checks: [], env: [], sse: 'wird geprüft …', sseLevel: 'info' });
+    const diagnose = ref({ loaded: false, loading: false, checks: [], env: [], dbErrors: {}, sse: 'wird geprüft …', sseLevel: 'info' });
     let diagnoseSse = null;
 
     function runSseTest() {
@@ -722,7 +722,7 @@ createApp({
       diagnose.value.loading = true;
       try {
         const res = await apiRequest('../api/v1/admin.php?action=server_env');
-        diagnose.value = { ...diagnose.value, checks: res.checks || [], env: res.env || [], loaded: true, loading: false };
+        diagnose.value = { ...diagnose.value, checks: res.checks || [], env: res.env || [], dbErrors: res.db_errors || {}, loaded: true, loading: false };
       } catch (e) {
         diagnose.value.loading = false;
       }
@@ -732,7 +732,20 @@ createApp({
     const diagnoseText = computed(() => [...diagnose.value.checks, ...diagnose.value.env]
       .map(r => `${r.label}: ${r.value}`)
       .concat([`Live-Test (SSE): ${diagnose.value.sse}`])
+      .concat([`Fehler 15 Min / 24 Std: ${diagnose.value.dbErrors.count_15m || 0} / ${diagnose.value.dbErrors.count_24h || 0}`])
+      .concat((diagnose.value.dbErrors.last || []).slice(0, 10)
+        .map(r => `  ${new Date(r.t * 1000).toLocaleString('de-AT')} ${r.w} ${r.n ? '#' + r.n + ' ' : ''}${r.e}`))
       .join('\n'));
+
+    async function clearDbErrors() {
+      if (!confirm('Fehlerprotokoll leeren? Neue Fehler fallen danach sofort auf.')) return;
+      try {
+        const res = await apiRequest('../api/v1/admin.php', { method: 'POST', body: { action: 'db_errors_clear' } });
+        diagnose.value = { ...diagnose.value, dbErrors: res.db_errors || {} };
+        if (overview.value?.stats) overview.value.stats.db_errors = res.db_errors || {};
+        showToast(res.ok ? 'Fehlerprotokoll geleert.' : 'Protokoll konnte nicht vollständig geleert werden (Dateirechte).', res.ok ? 'success' : 'warning');
+      } catch (e) {}
+    }
 
     async function copyDiagnose() {
       try {
@@ -3515,6 +3528,7 @@ createApp({
       diagnose,
       diagnoseText,
       loadDiagnose,
+      clearDbErrors,
       copyDiagnose,
       security,
       loadSecurity,

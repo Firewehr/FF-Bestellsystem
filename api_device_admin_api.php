@@ -20,7 +20,7 @@ function ff_api_device_cfg_defaults(): array
 function ff_api_device_cfg_print_targets(mysqli $conn): array
 {
     $out = [];
-    $res = mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order ASC, name ASC");
+    $res = ff_mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order ASC, name ASC");
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $pt = (int)($r['print_target'] ?? 0);

@@ -28,7 +28,7 @@ include __DIR__ . '/../include/db.php';
 		  AND IFNULL(b.is_gratis, 0) = 0 AND IFNULL(b.schreibaus, 0) = 0
 		GROUP BY b.tischnummer, t.tischname
 		ORDER BY summe DESC";
-	$Result = mysqli_query($conn, $Requete);
+	$Result = ff_mysqli_query($conn, $Requete);
 	$tischnr=""; $summe="";
 	while ($row = mysqli_fetch_array ($Result))
 	{

@@ -83,7 +83,7 @@ function ff_schema_migrate(mysqli $conn): array
     $out = ['ok' => false, 'ran' => false, 'message' => '', 'duration_ms' => 0, 'errors' => [], 'missing' => [], 'fingerprint' => ff_schema_fingerprint()];
 
     // Sperre pro Datenbank (GET_LOCK gilt serverweit, der DB-Server kann geteilt sein)
-    $lockRes = @mysqli_query($conn, "SELECT GET_LOCK(CONCAT('ff_schema_migrate_', DATABASE()), 0)");
+    $lockRes = ff_mysqli_query($conn, "SELECT GET_LOCK(CONCAT('ff_schema_migrate_', DATABASE()), 0)");
     $lockRow = $lockRes ? mysqli_fetch_row($lockRes) : null;
     if (!$lockRow || (int) $lockRow[0] !== 1) {
         $out['message'] = 'Migration läuft bereits in einer anderen Anfrage.';
@@ -133,7 +133,7 @@ function ff_schema_migrate(mysqli $conn): array
     }
     ff_schema_is_current($conn, true);
 
-    @mysqli_query($conn, "SELECT RELEASE_LOCK(CONCAT('ff_schema_migrate_', DATABASE()))");
+    ff_mysqli_query($conn, "SELECT RELEASE_LOCK(CONCAT('ff_schema_migrate_', DATABASE()))");
     $out['duration_ms'] = (int) round((microtime(true) - $t0) * 1000);
     return $out;
 }

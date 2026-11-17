@@ -34,7 +34,7 @@ function ff_operations_table_exists(mysqli $conn, string $table): bool
         return false;
     }
 
-    $result = @mysqli_query($conn, $queries[$table]);
+    $result = ff_mysqli_query($conn, $queries[$table]);
     $exists = $result instanceof mysqli_result && mysqli_num_rows($result) > 0;
     if ($result instanceof mysqli_result) {
         mysqli_free_result($result);
@@ -53,7 +53,7 @@ function ff_operations_table_has_column(mysqli $conn, string $table, string $col
         return false;
     }
 
-    $result = @mysqli_query($conn, $queries[$key]);
+    $result = ff_mysqli_query($conn, $queries[$key]);
     $exists = $result instanceof mysqli_result && mysqli_num_rows($result) > 0;
     if ($result instanceof mysqli_result) {
         mysqli_free_result($result);
@@ -93,7 +93,7 @@ $queue = [
     'failed' => null,
 ];
 if (ff_operations_table_exists($conn, 'printer_jobs') && ff_operations_table_has_column($conn, 'printer_jobs', 'status')) {
-    $result = @mysqli_query($conn, "SELECT
+    $result = ff_mysqli_query($conn, "SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
         SUM(CASE WHEN status = 'reserved' THEN 1 ELSE 0 END) AS reserved,
         SUM(CASE WHEN status IN ('failed', 'error') THEN 1 ELSE 0 END) AS failed
@@ -122,7 +122,7 @@ $realtime = [
     'last_event_age_sec' => null,
 ];
 if (ff_operations_table_exists($conn, 'ff_station_events') && ff_operations_table_has_column($conn, 'ff_station_events', 'created_at')) {
-    $result = @mysqli_query($conn, "SELECT
+    $result = ff_mysqli_query($conn, "SELECT
         COUNT(*) AS recent_count,
         MAX(created_at) AS last_event_at,
         TIMESTAMPDIFF(SECOND, MAX(created_at), NOW()) AS last_event_age_sec

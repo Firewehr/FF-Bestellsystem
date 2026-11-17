@@ -13,9 +13,9 @@ function ff_bestellungen_ensure_rechnung_id_column(mysqli $conn): void
         return;
     }
     $done = true;
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'rechnung_id'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'rechnung_id'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN rechnung_id INT NULL');
+        ff_mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN rechnung_id INT NULL');
     }
 }
 
@@ -32,9 +32,9 @@ function ff_rechnungen_ensure_extra_columns(mysqli $conn): void
 
     $ensure = static function (mysqli $conn, string $column, string $alterSql): void {
         $esc = mysqli_real_escape_string($conn, $column);
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE '{$esc}'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE '{$esc}'");
         if ($chk && mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, $alterSql);
+            ff_mysqli_query($conn, $alterSql);
         }
     };
 
@@ -51,7 +51,7 @@ function ff_rechnungen_ensure_extra_columns(mysqli $conn): void
 
     // Alle Spalten an rechnungen prüfen: Jede Spalte ohne DEFAULT und NOT NULL (außer PK/Auto-Increment)
     // auf NULL DEFAULT korrigieren, damit MySQL Strict Mode bei INSERTs (z. B. kellner, betrag) niemals abbricht.
-    $resCols = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
+    $resCols = ff_mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
     if ($resCols) {
         while ($col = mysqli_fetch_assoc($resCols)) {
             $fieldName = (string)($col['Field'] ?? '');
@@ -63,7 +63,7 @@ function ff_rechnungen_ensure_extra_columns(mysqli $conn): void
             if (!$isNullable && !$hasDefault && !$isAutoInc && !$isKey) {
                 $type = (string)($col['Type'] ?? 'varchar(255)');
                 $defVal = (stripos($type, 'int') !== false || stripos($type, 'decimal') !== false || stripos($type, 'float') !== false || stripos($type, 'double') !== false) ? '0' : "''";
-                @mysqli_query($conn, "ALTER TABLE rechnungen MODIFY COLUMN `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
+                ff_mysqli_query($conn, "ALTER TABLE rechnungen MODIFY COLUMN `{$fieldName}` {$type} NULL DEFAULT {$defVal}");
             }
         }
         mysqli_free_result($resCols);
@@ -82,15 +82,15 @@ function ff_rechnungen_ensure_unique_rechnungsnummer(mysqli $conn): void
     $done = true;
 
     // Prüfen, ob bereits ein UNIQUE-Index auf rechnungsnummer existiert
-    $res = @mysqli_query($conn, "SHOW INDEX FROM rechnungen WHERE Column_name = 'rechnungsnummer' AND Non_unique = 0");
+    $res = ff_mysqli_query($conn, "SHOW INDEX FROM rechnungen WHERE Column_name = 'rechnungsnummer' AND Non_unique = 0");
     if ($res && mysqli_num_rows($res) > 0) {
         return;
     }
 
     // Prüfen, ob Duplikate vorliegen, bevor UNIQUE hinzugefügt wird
-    $dupChk = @mysqli_query($conn, "SELECT rechnungsnummer, COUNT(*) AS c FROM rechnungen WHERE rechnungsnummer IS NOT NULL AND rechnungsnummer != '' GROUP BY rechnungsnummer HAVING c > 1");
+    $dupChk = ff_mysqli_query($conn, "SELECT rechnungsnummer, COUNT(*) AS c FROM rechnungen WHERE rechnungsnummer IS NOT NULL AND rechnungsnummer != '' GROUP BY rechnungsnummer HAVING c > 1");
     if ($dupChk && mysqli_num_rows($dupChk) === 0) {
-        @mysqli_query($conn, "ALTER TABLE rechnungen ADD UNIQUE INDEX uq_rechnungsnummer (rechnungsnummer)");
+        ff_mysqli_query($conn, "ALTER TABLE rechnungen ADD UNIQUE INDEX uq_rechnungsnummer (rechnungsnummer)");
     }
 }
 
@@ -104,9 +104,9 @@ function ff_bestellungen_ensure_is_gratis_column(mysqli $conn): void
         return;
     }
     $done = true;
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'is_gratis'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'is_gratis'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN is_gratis TINYINT(1) NOT NULL DEFAULT 0');
+        ff_mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN is_gratis TINYINT(1) NOT NULL DEFAULT 0');
     }
 }
 
@@ -123,9 +123,9 @@ function ff_rechnungen_ensure_print_columns(mysqli $conn): void
 
     $ensure = static function (mysqli $conn, string $column, string $alterSql): void {
         $esc = mysqli_real_escape_string($conn, $column);
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE '{$esc}'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE '{$esc}'");
         if ($chk && mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, $alterSql);
+            ff_mysqli_query($conn, $alterSql);
         }
     };
 

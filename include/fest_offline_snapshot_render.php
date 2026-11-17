@@ -21,23 +21,23 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
     };
 
     $festName = 'Fest';
-    $fr = @mysqli_query($conn, 'SELECT name FROM feste WHERE aktiv=1 LIMIT 1');
+    $fr = ff_mysqli_query($conn, 'SELECT name FROM feste WHERE aktiv=1 LIMIT 1');
     if ($fr && ($r = mysqli_fetch_assoc($fr)) && !empty($r['name'])) {
         $festName = (string) $r['name'];
     }
 
     $paymentMode = 'after';
-    $fres = @mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
+    $fres = ff_mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
     if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
         $paymentMode = $frow['payment_mode'] ?: 'after';
     }
     $kuecheFilterUnpaid = ($paymentMode === 'after') ? ' AND b.kueche=1 ' : '';
 
-    @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'print_target'");
-    @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_target'");
+    ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'print_target'");
+    ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_target'");
 
     $targets = [];
-    $ptRes = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name, print_target');
+    $ptRes = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name, print_target');
     if ($ptRes) {
         while ($pt = mysqli_fetch_assoc($ptRes)) {
             $targets[] = $pt;
@@ -122,7 +122,7 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
             . 'WHERE bestellungen.delete=0 AND bestellungen.ausgeliefert=0 ' . $ptFilter . $kassaStationSql
             . "GROUP BY bestellungen.tischnummer, {$batchKeyExpr} ORDER BY MIN(bestellungen.zeitstempel) ASC LIMIT 100";
 
-        $result = mysqli_query($conn, $sql);
+        $result = ff_mysqli_query($conn, $sql);
         if (!$result) {
             echo '<p class="err">Datenbankfehler: ' . $h((string) mysqli_error($conn)) . '</p></section>';
             continue;
@@ -248,7 +248,7 @@ function ff_render_offline_snapshot_html(mysqli $conn): string
             . 'WHERE b.delete=0 AND b.bestellt=1 AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung=\'0000-00-00 00:00:00\') '
             . $kuecheFilterUnpaid
             . 'ORDER BY t.tischnummer ASC, b.zeitstempel ASC LIMIT 400';
-        $ru = mysqli_query($conn, $sqlU);
+        $ru = ff_mysqli_query($conn, $sqlU);
         if ($ru && mysqli_num_rows($ru) > 0) {
             $curT = null;
             while ($u = mysqli_fetch_assoc($ru)) {

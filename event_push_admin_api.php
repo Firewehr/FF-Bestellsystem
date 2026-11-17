@@ -25,23 +25,23 @@ try {
         if ($festId <= 0) {
             ff_push_api_respond(['ok' => false, 'error' => 'fest_id'], 400);
         }
-        $stmt = mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $festId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $fest = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
         mysqli_stmt_close($stmt);
         if (!$fest) {
             ff_push_api_respond(['ok' => false, 'error' => 'not_found'], 404);
         }
 
-        $stmt = mysqli_prepare($conn, 'SELECT enabled FROM ff_fest_push_settings WHERE fest_id = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT enabled FROM ff_fest_push_settings WHERE fest_id = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $festId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $settings = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
         mysqli_stmt_close($stmt);
-        $stmt = mysqli_prepare($conn, 'SELECT resource_type, resource_id, threshold_value FROM ff_fest_push_rules WHERE fest_id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT resource_type, resource_id, threshold_value FROM ff_fest_push_rules WHERE fest_id = ?');
         mysqli_stmt_bind_param($stmt, 'i', $festId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         $rules = [];
         while ($row = mysqli_fetch_assoc($result)) {
@@ -105,9 +105,9 @@ try {
         if ($enabled === 1 && $validated === []) {
             ff_push_api_respond(['ok' => false, 'error' => 'rules_required'], 400);
         }
-        $stmt = mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $festId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $exists = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
         mysqli_stmt_close($stmt);
         if (!$exists) {
@@ -118,39 +118,39 @@ try {
             throw new RuntimeException('Push-Regeln konnten nicht gespeichert werden (Transaktion).');
         }
         try {
-            $stmt = mysqli_prepare(
+            $stmt = ff_mysqli_prepare(
                 $conn,
                 'INSERT INTO ff_fest_push_settings (fest_id, enabled) VALUES (?, ?)
                  ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)'
             );
             mysqli_stmt_bind_param($stmt, 'ii', $festId, $enabled);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 throw new RuntimeException(mysqli_stmt_error($stmt));
             }
             mysqli_stmt_close($stmt);
 
-            $stmt = mysqli_prepare($conn, 'DELETE FROM ff_fest_push_rules WHERE fest_id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'DELETE FROM ff_fest_push_rules WHERE fest_id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $festId);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 throw new RuntimeException(mysqli_stmt_error($stmt));
             }
             mysqli_stmt_close($stmt);
 
-            $stmt = mysqli_prepare(
+            $stmt = ff_mysqli_prepare(
                 $conn,
                 'INSERT INTO ff_fest_push_rules (fest_id, resource_type, resource_id, threshold_value) VALUES (?, ?, ?, ?)'
             );
             foreach ($validated as [$type, $resourceId, $threshold]) {
                 mysqli_stmt_bind_param($stmt, 'isii', $festId, $type, $resourceId, $threshold);
-                if (!mysqli_stmt_execute($stmt)) {
+                if (!ff_mysqli_stmt_execute($stmt)) {
                     throw new RuntimeException(mysqli_stmt_error($stmt));
                 }
             }
             mysqli_stmt_close($stmt);
 
-            $stmt = mysqli_prepare($conn, 'DELETE FROM ff_fest_push_state WHERE fest_id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'DELETE FROM ff_fest_push_state WHERE fest_id = ?');
             mysqli_stmt_bind_param($stmt, 'i', $festId);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 throw new RuntimeException(mysqli_stmt_error($stmt));
             }
             mysqli_stmt_close($stmt);

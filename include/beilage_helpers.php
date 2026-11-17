@@ -30,12 +30,12 @@ function ff_beilagen_surcharge_for_hint(mysqli $conn, int $positionId, string $h
         return 0.0;
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT name, betrag FROM beilagen WHERE position = ?');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT name, betrag FROM beilagen WHERE position = ?');
     if (!$stmt) {
         return 0.0;
     }
     mysqli_stmt_bind_param($stmt, 'i', $positionId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_bind_result($stmt, $bname, $bbetrag);
     $map = [];
     while (mysqli_stmt_fetch($stmt)) {
@@ -78,10 +78,10 @@ function ff_beilagen_list_for_position(mysqli $conn, int $positionId): array
         return $cache[$positionId];
     }
     $out = [];
-    $stmt = mysqli_prepare($conn, 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC');
     if ($stmt) {
         mysqli_stmt_bind_param($stmt, 'i', $positionId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $res = mysqli_stmt_get_result($stmt);
         while ($res && ($row = mysqli_fetch_assoc($res))) {
             $name = trim((string) ($row['name'] ?? ''));

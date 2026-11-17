@@ -19,9 +19,9 @@ if ($id <= 0) {
     exit;
 }
 
-$stmt = mysqli_prepare($conn, "SELECT * FROM rechnungen WHERE id = ?");
+$stmt = ff_mysqli_prepare($conn, "SELECT * FROM rechnungen WHERE id = ?");
 mysqli_stmt_bind_param($stmt, 'i', $id);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $row = mysqli_fetch_assoc($result);
 

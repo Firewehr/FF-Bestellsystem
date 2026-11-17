@@ -36,7 +36,7 @@ if ($recipeRaw !== null) {
     }
 }
 
-$stmt = mysqli_prepare($conn, 'UPDATE `bestellungen` SET `Zusatzinfo`=?, `betrag`=? WHERE rowid=? AND `delete`=0');
+$stmt = ff_mysqli_prepare($conn, 'UPDATE `bestellungen` SET `Zusatzinfo`=?, `betrag`=? WHERE rowid=? AND `delete`=0');
 if (!$stmt) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'prepare_failed'], JSON_UNESCAPED_UNICODE);
@@ -51,7 +51,7 @@ if (!mysqli_begin_transaction($conn)) {
     exit;
 }
 try {
-    $orderLookup = mysqli_prepare(
+    $orderLookup = ff_mysqli_prepare(
         $conn,
         "SELECT b.position, p.Betrag
          FROM bestellungen b
@@ -77,7 +77,7 @@ try {
         }
 
         mysqli_stmt_bind_param($orderLookup, 'i', $rid);
-        if (!mysqli_stmt_execute($orderLookup)) {
+        if (!ff_mysqli_stmt_execute($orderLookup)) {
             throw new RuntimeException('order_lookup_failed');
         }
         $posRes = mysqli_stmt_get_result($orderLookup);
@@ -93,7 +93,7 @@ try {
         $nb = ff_bestellung_line_betrag($conn, $pid, $base, $zi);
 
         mysqli_stmt_bind_param($stmt, 'sdi', $zi, $nb, $rid);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             throw new RuntimeException('update_failed');
         }
 

@@ -17,7 +17,7 @@ if (!isset($_SESSION['admin']) || (int)$_SESSION['admin'] < 1) {
     exit;
 }
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `beilagen` (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `beilagen` (
   `rowid` INT(11) NOT NULL AUTO_INCREMENT,
   `timestamp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `name` VARCHAR(255) NOT NULL,
@@ -36,9 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         exit;
     }
     $rows = [];
-    $stmt = mysqli_prepare($conn, 'SELECT rowid, name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT rowid, name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC');
     mysqli_stmt_bind_param($stmt, 'i', $position);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $r = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($r)) {
         $rows[] = [
@@ -56,10 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $freetextAgg = [];
     $ziSql = 'SELECT TRIM(COALESCE(Zusatzinfo, \'\')) AS zi, COUNT(*) AS c FROM bestellungen WHERE `delete`=0 AND position = ? AND TRIM(COALESCE(Zusatzinfo, \'\')) <> \'\' GROUP BY zi';
-    $ziStmt = mysqli_prepare($conn, $ziSql);
+    $ziStmt = ff_mysqli_prepare($conn, $ziSql);
     if ($ziStmt) {
         mysqli_stmt_bind_param($ziStmt, 'i', $position);
-        mysqli_stmt_execute($ziStmt);
+        ff_mysqli_stmt_execute($ziStmt);
         $ziRes = mysqli_stmt_get_result($ziStmt);
         while ($ziRes && ($zrow = mysqli_fetch_assoc($ziRes))) {
             $zi = (string)($zrow['zi'] ?? '');
@@ -111,9 +111,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['ok' => false, 'error' => 'bad_rowid'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $stmt = mysqli_prepare($conn, 'DELETE FROM beilagen WHERE rowid = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM beilagen WHERE rowid = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $rowid);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
         exit;
@@ -131,9 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        $chk = mysqli_prepare($conn, 'SELECT 1 FROM positionen WHERE rowid = ? LIMIT 1');
+        $chk = ff_mysqli_prepare($conn, 'SELECT 1 FROM positionen WHERE rowid = ? LIMIT 1');
         mysqli_stmt_bind_param($chk, 'i', $position);
-        mysqli_stmt_execute($chk);
+        ff_mysqli_stmt_execute($chk);
         $exists = mysqli_stmt_get_result($chk);
         $okPos = $exists && mysqli_fetch_row($exists);
         mysqli_stmt_close($chk);
@@ -149,9 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $name = substr($name, 0, 255);
         }
 
-        $stmt = mysqli_prepare($conn, 'INSERT INTO beilagen (name, position, betrag) VALUES (?, ?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO beilagen (name, position, betrag) VALUES (?, ?, ?)');
         mysqli_stmt_bind_param($stmt, 'sid', $name, $position, $betrag);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             http_response_code(500);
             echo json_encode(['ok' => false, 'error' => 'insert_failed'], JSON_UNESCAPED_UNICODE);
@@ -178,9 +178,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo json_encode(['ok' => false, 'error' => 'bad_fields'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        $stmt = mysqli_prepare($conn, 'UPDATE beilagen SET betrag = ? WHERE rowid = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE beilagen SET betrag = ? WHERE rowid = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'di', $betrag, $rowid);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             http_response_code(500);
             echo json_encode(['ok' => false, 'error' => 'update_failed'], JSON_UNESCAPED_UNICODE);

@@ -50,12 +50,12 @@ $getraenke = ff_manage_norm_rowids($getraenke);
 function ff_manage_db_ids_for_type(mysqli $conn, int $type): array
 {
     $ids = [];
-    $st = mysqli_prepare($conn, 'SELECT rowid FROM positionen WHERE type = ? ORDER BY rowid');
+    $st = ff_mysqli_prepare($conn, 'SELECT rowid FROM positionen WHERE type = ? ORDER BY rowid');
     if (!$st) {
         return [];
     }
     mysqli_stmt_bind_param($st, 'i', $type);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     while ($r = mysqli_fetch_assoc($res)) {
         $ids[] = (int) $r['rowid'];
@@ -80,7 +80,7 @@ if ($s1 !== $dbSpeisen || $s2 !== $dbGetraenke) {
 
 mysqli_begin_transaction($conn);
 try {
-    $u = mysqli_prepare($conn, 'UPDATE positionen SET reihenfolge = ? WHERE rowid = ? AND type = ?');
+    $u = ff_mysqli_prepare($conn, 'UPDATE positionen SET reihenfolge = ? WHERE rowid = ? AND type = ?');
     if (!$u) {
         throw new RuntimeException('prepare');
     }
@@ -89,14 +89,14 @@ try {
         $rid = $speisen[$i];
         $typ = 1;
         mysqli_stmt_bind_param($u, 'iii', $ord, $rid, $typ);
-        mysqli_stmt_execute($u);
+        ff_mysqli_stmt_execute($u);
     }
     for ($i = 0; $i < count($getraenke); $i++) {
         $ord = $i;
         $rid = $getraenke[$i];
         $typ = 2;
         mysqli_stmt_bind_param($u, 'iii', $ord, $rid, $typ);
-        mysqli_stmt_execute($u);
+        ff_mysqli_stmt_execute($u);
     }
     mysqli_stmt_close($u);
     mysqli_commit($conn);

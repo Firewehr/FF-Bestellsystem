@@ -36,7 +36,7 @@ if ($targetName === '') {
 $targetNameEsc = htmlspecialchars($targetName, ENT_QUOTES, 'UTF-8');
 
 $paymentMode = 'after';
-$fres = @mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
+$fres = ff_mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
     $paymentMode = $frow['payment_mode'] ?: 'after';
 }

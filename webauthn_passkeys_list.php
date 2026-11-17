@@ -23,9 +23,9 @@ if ($userId <= 0) {
     exit;
 }
 
-$stmt = mysqli_prepare($conn, 'SELECT id, label, created_at, last_used_at FROM user_passkeys WHERE user_id = ? ORDER BY created_at DESC');
+$stmt = ff_mysqli_prepare($conn, 'SELECT id, label, created_at, last_used_at FROM user_passkeys WHERE user_id = ? ORDER BY created_at DESC');
 mysqli_stmt_bind_param($stmt, 'i', $userId);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $list = [];
 while ($row = mysqli_fetch_assoc($res)) {

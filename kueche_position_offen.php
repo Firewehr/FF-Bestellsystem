@@ -33,7 +33,7 @@ if (empty($ids)) {
 [$in, $inT, $inV] = ff_db_in_ints(array_keys($ids));
 
 $printStatusSql = '';
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
 if ($chk && mysqli_num_rows($chk) > 0) {
     $printStatusSql = ', print_status = 0';
 }

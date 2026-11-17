@@ -7,13 +7,13 @@ require_once('auth.php');
 require_once 'include/db.php';
 
 // Best-effort Schema-Erweiterung (nur wenn Spalte noch nicht existiert)
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'is_gratis'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'is_gratis'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN is_gratis TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN is_gratis TINYINT(1) NOT NULL DEFAULT 0");
 }
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0");
 }
 
 header('Content-Type: text/plain; charset=utf-8');

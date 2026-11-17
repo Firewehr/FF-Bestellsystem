@@ -21,22 +21,22 @@ $message = null;
 $recent = [];
 $error = '';
 try {
-    if (!mysqli_query($conn, ff_admin_messages_table_sql())) {
+    if (!ff_mysqli_query($conn, ff_admin_messages_table_sql())) {
         throw new RuntimeException(mysqli_error($conn));
     }
     if ($id > 0) {
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'SELECT m.id, m.title, m.body, m.created_at, m.tag, f.name AS fest_name
              FROM ff_admin_messages m LEFT JOIN feste f ON f.id = m.fest_id
              WHERE m.id = ? LIMIT 1'
         );
         mysqli_stmt_bind_param($stmt, 'i', $id);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $message = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt)) ?: null;
         mysqli_stmt_close($stmt);
     }
-    $result = mysqli_query($conn, 'SELECT id, title, body, created_at FROM ff_admin_messages ORDER BY id DESC LIMIT 20');
+    $result = ff_mysqli_query($conn, 'SELECT id, title, body, created_at FROM ff_admin_messages ORDER BY id DESC LIMIT 20');
     while ($result && ($row = mysqli_fetch_assoc($result))) {
         $recent[] = $row;
     }

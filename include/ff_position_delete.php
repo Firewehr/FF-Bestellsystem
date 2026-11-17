@@ -18,12 +18,12 @@ if (!function_exists('ff_position_delete_table_exists')) {
         if (array_key_exists($table, $cache)) {
             return $cache[$table];
         }
-        $stmt = mysqli_prepare($conn, 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? LIMIT 1');
         if (!$stmt) {
             return $cache[$table] = false;
         }
         mysqli_stmt_bind_param($stmt, 's', $table);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $res = mysqli_stmt_get_result($stmt);
         $exists = $res && mysqli_fetch_row($res) !== null;
         mysqli_stmt_close($stmt);
@@ -39,12 +39,12 @@ function ff_position_delete_count(mysqli $conn, string $table, string $column, i
         return 0;
     }
     // Tabellen-/Spaltenname stammen ausschließlich aus fest codierten Listen in dieser Datei.
-    $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) FROM `' . $table . '` WHERE `' . $column . '` = ?');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT COUNT(*) FROM `' . $table . '` WHERE `' . $column . '` = ?');
     if (!$stmt) {
         return 0;
     }
     mysqli_stmt_bind_param($stmt, 'i', $positionId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $row = $res ? mysqli_fetch_row($res) : null;
     mysqli_stmt_close($stmt);
@@ -78,7 +78,7 @@ function ff_position_delete_guarded(mysqli $conn, int $positionId): array
 
     // Laufende (äußere) Transaktion mitbenutzen, z. B. in den Selbsttests.
     $inTx = false;
-    $txRes = mysqli_query($conn, 'SELECT @@in_transaction');
+    $txRes = ff_mysqli_query($conn, 'SELECT @@in_transaction');
     if ($txRes && ($txRow = mysqli_fetch_row($txRes))) {
         $inTx = (int)$txRow[0] === 1;
     }
@@ -94,12 +94,12 @@ function ff_position_delete_guarded(mysqli $conn, int $positionId): array
     };
 
     // Zeile sperren, damit parallel keine Bestellung auf eine halb gelöschte Position läuft.
-    $stmt = mysqli_prepare($conn, 'SELECT rowid, Positionsname FROM positionen WHERE rowid = ? FOR UPDATE');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT rowid, Positionsname FROM positionen WHERE rowid = ? FOR UPDATE');
     if (!$stmt) {
         return $fail(['ok' => false, 'http' => 500, 'code' => 'db_error', 'message' => mysqli_error($conn)]);
     }
     mysqli_stmt_bind_param($stmt, 'i', $positionId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $pos = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($stmt);
@@ -141,12 +141,12 @@ function ff_position_delete_guarded(mysqli $conn, int $positionId): array
         if (!ff_position_delete_table_exists($conn, $table)) {
             continue;
         }
-        $del = mysqli_prepare($conn, 'DELETE FROM `' . $table . '` WHERE `' . $column . '` = ?');
+        $del = ff_mysqli_prepare($conn, 'DELETE FROM `' . $table . '` WHERE `' . $column . '` = ?');
         if (!$del) {
             return $fail(['ok' => false, 'http' => 500, 'code' => 'db_error', 'message' => mysqli_error($conn)]);
         }
         mysqli_stmt_bind_param($del, 'i', $positionId);
-        if (!mysqli_stmt_execute($del)) {
+        if (!ff_mysqli_stmt_execute($del)) {
             $err = mysqli_stmt_error($del);
             mysqli_stmt_close($del);
             return $fail(['ok' => false, 'http' => 500, 'code' => 'db_error', 'message' => $err]);

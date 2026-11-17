@@ -32,10 +32,10 @@ $preselectIds = array_keys($preselectMap);
 
 $fromTischLabel = '';
 if ($fromTisch > 0) {
-    $stFrom = mysqli_prepare($conn, 'SELECT tischname FROM tische WHERE tischnummer = ? LIMIT 1');
+    $stFrom = ff_mysqli_prepare($conn, 'SELECT tischname FROM tische WHERE tischnummer = ? LIMIT 1');
     if ($stFrom) {
         mysqli_stmt_bind_param($stFrom, 'i', $fromTisch);
-        mysqli_stmt_execute($stFrom);
+        ff_mysqli_stmt_execute($stFrom);
         $resFrom = mysqli_stmt_get_result($stFrom);
         if ($resFrom && ($rowFrom = mysqli_fetch_assoc($resFrom))) {
             $fromTischLabel = trim((string) ($rowFrom['tischname'] ?? ''));
@@ -49,7 +49,7 @@ if ($fromTisch > 0) {
 
 // Payment Mode ermitteln
 $paymentMode = 'after';
-$fres = mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
+$fres = ff_mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
     $paymentMode = $frow['payment_mode'] ?: 'after';
 }
@@ -63,7 +63,7 @@ if ($paymentMode === 'instant') {
 }
 
 $sql = "SELECT t.tischnummer, t.tischname, IFNULL(t.is_ehrengast,0) as is_ehrengast, IFNULL(t.is_sammelrechnung,0) as is_sammelrechnung, (SELECT COUNT(*) FROM bestellungen b WHERE b.delete=0 AND b.timestampBezahlung='0000-00-00 00:00:00' AND $kuecheFilter AND b.tischnummer=t.tischnummer) as open_cnt FROM tische t ORDER BY t.tischnummer";
-$res = mysqli_query($conn, $sql);
+$res = ff_mysqli_query($conn, $sql);
 ?>
 <!DOCTYPE html>
 <html lang="de">

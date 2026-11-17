@@ -18,19 +18,19 @@ if ($name === '') {
     exit;
 }
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 $nameEsc = (string) $name; // Prepared Statement – zusätzliches Escaping würde Apostrophe verfälschen
 
 if ($id > 0) {
-    $stmt = mysqli_prepare($conn, "UPDATE mitarbeiter_bereiche SET name = ?, sort_order = ? WHERE id = ?");
+    $stmt = ff_mysqli_prepare($conn, "UPDATE mitarbeiter_bereiche SET name = ?, sort_order = ? WHERE id = ?");
     mysqli_stmt_bind_param($stmt, 'sii', $nameEsc, $sort_order, $id);
 } else {
-    $stmt = mysqli_prepare($conn, "INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES (?, ?)");
+    $stmt = ff_mysqli_prepare($conn, "INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES (?, ?)");
     mysqli_stmt_bind_param($stmt, 'si', $nameEsc, $sort_order);
 }
 
-if (mysqli_stmt_execute($stmt)) {
+if (ff_mysqli_stmt_execute($stmt)) {
     echo json_encode(['ok' => true, 'id' => $id ?: mysqli_insert_id($conn)]);
 } else {
     echo json_encode(['ok' => false, 'error' => mysqli_error($conn)]);

@@ -27,7 +27,7 @@ $username = (string)$user['username'];
 
 // Aktives Fest ermitteln
 $activeFestId = 0;
-$fRes = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
+$fRes = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($fRes && ($fRow = mysqli_fetch_assoc($fRes))) {
     $activeFestId = (int)$fRow['id'];
 }
@@ -56,18 +56,18 @@ if ($method === 'GET') {
               AND b.kellner = ?
             ORDER BY b.rowid ASC';
 
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         api_error('Datenbankfehler: ' . mysqli_error($conn), 'db_error', 500);
     }
     mysqli_stmt_bind_param($stmt, 'is', $tischnummer, $username);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
 
     $grouped = [];
     $totalCount = 0;
 
-    $rcStmt = mysqli_prepare($conn, 'SELECT bestandteil_id FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid = ? AND selected = 1 ORDER BY bestandteil_id ASC');
+    $rcStmt = ff_mysqli_prepare($conn, 'SELECT bestandteil_id FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid = ? AND selected = 1 ORDER BY bestandteil_id ASC');
 
     while ($row = mysqli_fetch_assoc($res)) {
         $rowid = (int)$row['rowid'];
@@ -83,7 +83,7 @@ if ($method === 'GET') {
         $recipeCompIds = [];
         if ($rcStmt) {
             mysqli_stmt_bind_param($rcStmt, 'i', $rowid);
-            mysqli_stmt_execute($rcStmt);
+            ff_mysqli_stmt_execute($rcStmt);
             $rcRes = mysqli_stmt_get_result($rcStmt);
             while ($rcRow = mysqli_fetch_assoc($rcRes)) {
                 $recipeCompIds[] = (int)$rcRow['bestandteil_id'];
@@ -170,12 +170,12 @@ if ($method === 'POST') {
     }
 
     // Tisch prüfen
-    $tStmt = mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer = ? LIMIT 1');
+    $tStmt = ff_mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer = ? LIMIT 1');
     if (!$tStmt) {
         api_error('Datenbankfehler beim Prüfen des Tisches.', 'db_error', 500);
     }
     mysqli_stmt_bind_param($tStmt, 'i', $tischnummer);
-    mysqli_stmt_execute($tStmt);
+    ff_mysqli_stmt_execute($tStmt);
     $tRes = mysqli_stmt_get_result($tStmt);
     $tableRow = $tRes ? mysqli_fetch_assoc($tRes) : null;
     mysqli_stmt_close($tStmt);
@@ -198,12 +198,12 @@ if ($method === 'POST') {
 
     try {
         // 1. Vorherige unbestätigte Zeilen für diesen Tisch & diesen Kellner ermitteln und löschen
-        $findOldStmt = mysqli_prepare($conn, 'SELECT rowid, COALESCE(print_target, 11) AS print_target FROM bestellungen WHERE tischnummer = ? AND (bestellt IS NULL OR bestellt = 0) AND `delete` = 0 AND kellner = ?');
+        $findOldStmt = ff_mysqli_prepare($conn, 'SELECT rowid, COALESCE(print_target, 11) AS print_target FROM bestellungen WHERE tischnummer = ? AND (bestellt IS NULL OR bestellt = 0) AND `delete` = 0 AND kellner = ?');
         if (!$findOldStmt) {
             throw new RuntimeException('Alte Entwürfe Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($findOldStmt, 'is', $tischnummer, $username);
-        mysqli_stmt_execute($findOldStmt);
+        ff_mysqli_stmt_execute($findOldStmt);
         $oldRes = mysqli_stmt_get_result($findOldStmt);
         $oldIds = [];
         $affectedTargets = [];
@@ -240,7 +240,7 @@ if ($method === 'POST') {
         }
 
         // 2. Positionen für Entwurf aufbereiten und einfügen
-        $posStmt = mysqli_prepare($conn, 'SELECT rowid, Positionsname, Betrag, type, COALESCE(print_target, 11) AS print_target, COALESCE(maxBestellbar, 0) AS maxBestellbar, COALESCE(kassa_only, 0) AS kassa_only FROM positionen WHERE rowid = ? LIMIT 1');
+        $posStmt = ff_mysqli_prepare($conn, 'SELECT rowid, Positionsname, Betrag, type, COALESCE(print_target, 11) AS print_target, COALESCE(maxBestellbar, 0) AS maxBestellbar, COALESCE(kassa_only, 0) AS kassa_only FROM positionen WHERE rowid = ? LIMIT 1');
         if (!$posStmt) {
             throw new RuntimeException('Positionen Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
@@ -248,7 +248,7 @@ if ($method === 'POST') {
         $insSql = 'INSERT INTO `bestellungen` 
             (`tischnummer`, `position`, `timestampBestellung`, `zeitKueche`, `kueche`, `kellner`, `betrag`, `ausgeliefert`, `bestellt`, `order_nr`, `print_target`, `Zusatzinfo`, `fest_id`, `is_gratis`, `timestampBezahlung`, `kellnerZahlung`)
             VALUES (?, ?, "0000-00-00 00:00:00", "0000-00-00 00:00:00", 0, ?, ?, 0, 0, 0, ?, ?, ?, ?, "0000-00-00 00:00:00", "")';
-        $insStmt = mysqli_prepare($conn, $insSql);
+        $insStmt = ff_mysqli_prepare($conn, $insSql);
         if (!$insStmt) {
             mysqli_stmt_close($posStmt);
             throw new RuntimeException('Draft Insert Prepare fehlgeschlagen: ' . mysqli_error($conn));
@@ -276,7 +276,7 @@ if ($method === 'POST') {
             }
 
             mysqli_stmt_bind_param($posStmt, 'i', $posId);
-            mysqli_stmt_execute($posStmt);
+            ff_mysqli_stmt_execute($posStmt);
             $pRes = mysqli_stmt_get_result($posStmt);
             $pos = $pRes ? mysqli_fetch_assoc($pRes) : null;
 
@@ -333,7 +333,7 @@ if ($method === 'POST') {
                     $isGratis
                 );
 
-                if (!mysqli_stmt_execute($insStmt)) {
+                if (!ff_mysqli_stmt_execute($insStmt)) {
                     throw new RuntimeException('Draft Insert Ausführung fehlgeschlagen: ' . mysqli_stmt_error($insStmt));
                 }
 

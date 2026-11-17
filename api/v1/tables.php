@@ -22,7 +22,7 @@ if ($sumupAppId === '') {
 }
 
 $activeFest = null;
-$festRes = mysqli_query($conn, 'SELECT id, name, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
+$festRes = ff_mysqli_query($conn, 'SELECT id, name, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($festRes && ($fRow = mysqli_fetch_assoc($festRes))) {
     $activeFest = [
         'id' => (int)$fRow['id'],
@@ -33,7 +33,7 @@ if ($festRes && ($fRow = mysqli_fetch_assoc($festRes))) {
 
 // Wartezeiten für Küche und Schank berechnen
 $waitTimes = ['drink' => 0, 'food' => 0];
-$wq = @mysqli_query(
+$wq = ff_mysqli_query(
     $conn,
     "SELECT print_target, UNIX_TIMESTAMP(MIN(zeitstempel)) AS oldest_unix
        FROM bestellungen

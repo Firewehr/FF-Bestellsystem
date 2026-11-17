@@ -22,7 +22,7 @@ if (!isset($conn) || !($conn instanceof mysqli)) {
     $message['error'] = 'Datenbankverbindung fehlt ($conn). Prüfe include/db.php.';
 } else {
     ff_users_ensure_landing_columns($conn);
-    $res = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
+    $res = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
     if ($res) {
         $rowc = mysqli_fetch_assoc($res);
         $setup_required = ((int) ($rowc['c'] ?? 0) === 0);
@@ -53,12 +53,12 @@ if ($setup_required) {
         } else {
             $hash = password_hash($p1, PASSWORD_BCRYPT);
 
-            $stmt = mysqli_prepare($conn, 'INSERT INTO users (username, password, admin) VALUES (?, ?, 2)');
+            $stmt = ff_mysqli_prepare($conn, 'INSERT INTO users (username, password, admin) VALUES (?, ?, 2)');
             if (!$stmt) {
                 $message['error'] = 'Konnte Benutzer nicht anlegen: ' . mysqli_error($conn);
             } else {
                 mysqli_stmt_bind_param($stmt, 'ss', $u, $hash);
-                if (mysqli_stmt_execute($stmt)) {
+                if (ff_mysqli_stmt_execute($stmt)) {
 
                     $newUserId = (int) mysqli_insert_id($conn);
                     $_SESSION = [];
@@ -203,7 +203,7 @@ if (!empty($_POST)) {
             ff_login_throttle_ensure_schema($conn);
             $ffLoginIp = ff_login_throttle_ip();
             $ffLoginLock = ff_login_throttle_status($conn, $user, $ffLoginIp);
-            $stmt = $ffLoginLock['locked'] ? null : mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
+            $stmt = $ffLoginLock['locked'] ? null : ff_mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
             if ($ffLoginLock['locked']) {
                 // Gesperrt: Passwort gar nicht erst prüfen (auch ein richtiges nicht)
                 $message['error'] = ff_login_throttle_message($ffLoginLock['retry_after']);
@@ -211,7 +211,7 @@ if (!empty($_POST)) {
                 $message['error'] = 'Datenbankfehler: ' . mysqli_error($conn);
             } else {
                 mysqli_stmt_bind_param($stmt, 's', $user);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
 
                 $result = mysqli_stmt_get_result($stmt);
                 $row = $result ? mysqli_fetch_assoc($result) : null;
@@ -226,10 +226,10 @@ if (!empty($_POST)) {
 
                         if (password_needs_rehash($row['password'], PASSWORD_BCRYPT)) {
                             $newHash = password_hash($pass, PASSWORD_BCRYPT);
-                            $ustmt = mysqli_prepare($conn, 'UPDATE users SET password=? WHERE username=?');
+                            $ustmt = ff_mysqli_prepare($conn, 'UPDATE users SET password=? WHERE username=?');
                             if ($ustmt) {
                                 mysqli_stmt_bind_param($ustmt, 'ss', $newHash, $row['username']);
-                                mysqli_stmt_execute($ustmt);
+                                ff_mysqli_stmt_execute($ustmt);
                                 mysqli_stmt_close($ustmt);
                             }
                         }

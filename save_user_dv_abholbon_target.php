@@ -30,12 +30,12 @@ if ($raw !== '' && $raw !== 'auto') {
 
 function ff_save_dv_bon_load_user(mysqli $conn, int $id): ?array
 {
-    $st = mysqli_prepare($conn, 'SELECT id, username, admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE id = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT id, username, admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE id = ? LIMIT 1');
     if (!$st) {
         return null;
     }
     mysqli_stmt_bind_param($st, 'i', $id);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -43,14 +43,14 @@ function ff_save_dv_bon_load_user(mysqli $conn, int $id): ?array
 }
 
 if ($targetUserId <= 0) {
-    $st = mysqli_prepare($conn, 'SELECT id FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT id FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
         exit;
     }
     mysqli_stmt_bind_param($st, 's', $sessionUser);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $self = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -85,14 +85,14 @@ if (!$allow) {
 }
 
 if ($newVal === null) {
-    $upd = mysqli_prepare($conn, 'UPDATE users SET dv_abholbon_print_target = NULL WHERE id = ? LIMIT 1');
+    $upd = ff_mysqli_prepare($conn, 'UPDATE users SET dv_abholbon_print_target = NULL WHERE id = ? LIMIT 1');
     mysqli_stmt_bind_param($upd, 'i', $targetUserId);
 } else {
-    $upd = mysqli_prepare($conn, 'UPDATE users SET dv_abholbon_print_target = ? WHERE id = ? LIMIT 1');
+    $upd = ff_mysqli_prepare($conn, 'UPDATE users SET dv_abholbon_print_target = ? WHERE id = ? LIMIT 1');
     mysqli_stmt_bind_param($upd, 'ii', $newVal, $targetUserId);
 }
 
-if (!$upd || !mysqli_stmt_execute($upd)) {
+if (!$upd || !ff_mysqli_stmt_execute($upd)) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'update_failed'], JSON_UNESCAPED_UNICODE);
     exit;

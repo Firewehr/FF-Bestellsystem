@@ -31,11 +31,11 @@ ff_rezepturen_ensure_schema($conn);
  */
 function manage_db_exec(mysqli $conn, string $sql, string $types = '', array $params = [])
 {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         return false;
     }
-    if (!ff_mysqli_stmt_bind($stmt, $types, $params) || !mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_bind($stmt, $types, $params) || !ff_mysqli_stmt_execute($stmt)) {
         mysqli_stmt_close($stmt);
         return false;
     }
@@ -73,7 +73,7 @@ if ($method === 'POST') {
 if ($action === 'init') {
     // Print targets
     $printTargets = [];
-    $ptRes = mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name");
+    $ptRes = ff_mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name");
     if ($ptRes) {
         while ($r = mysqli_fetch_assoc($ptRes)) {
             $printTargets[] = [
@@ -85,7 +85,7 @@ if ($action === 'init') {
 
     // Feste
     $feste = [];
-    $fRes = mysqli_query($conn, "SELECT id, name, code, aktiv FROM feste ORDER BY aktiv DESC, created_at DESC, name ASC");
+    $fRes = ff_mysqli_query($conn, "SELECT id, name, code, aktiv FROM feste ORDER BY aktiv DESC, created_at DESC, name ASC");
     if ($fRes) {
         while ($r = mysqli_fetch_assoc($fRes)) {
             $feste[] = [
@@ -99,7 +99,7 @@ if ($action === 'init') {
 
     // Unterkategorien
     $subcategories = [];
-    $subRes = mysqli_query($conn, "SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name");
+    $subRes = ff_mysqli_query($conn, "SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name");
     if ($subRes) {
         while ($r = mysqli_fetch_assoc($subRes)) {
             $subcategories[] = [
@@ -115,7 +115,7 @@ if ($action === 'init') {
 
     // Beilagen-Counts pro Position
     $beilagenCounts = [];
-    $bRes = mysqli_query($conn, "SELECT position, COUNT(*) AS cnt FROM beilagen GROUP BY position");
+    $bRes = ff_mysqli_query($conn, "SELECT position, COUNT(*) AS cnt FROM beilagen GROUP BY position");
     if ($bRes) {
         while ($r = mysqli_fetch_assoc($bRes)) {
             $beilagenCounts[(int)$r['position']] = (int)$r['cnt'];
@@ -124,7 +124,7 @@ if ($action === 'init') {
 
     // Rezeptur-Counts pro Position
     $rezCounts = [];
-    $rzRes = mysqli_query($conn, "SELECT position_id, COUNT(*) AS cnt FROM position_rezepturen GROUP BY position_id");
+    $rzRes = ff_mysqli_query($conn, "SELECT position_id, COUNT(*) AS cnt FROM position_rezepturen GROUP BY position_id");
     if ($rzRes) {
         while ($r = mysqli_fetch_assoc($rzRes)) {
             $rezCounts[(int)$r['position_id']] = (int)$r['cnt'];
@@ -133,9 +133,9 @@ if ($action === 'init') {
 
     // Verknüpfte-Artikel-Counts pro Position (Tabelle ist optional, kein DDL hier)
     $linkCounts = [];
-    $lkChk = mysqli_query($conn, "SHOW TABLES LIKE 'pilot_position_links'");
+    $lkChk = ff_mysqli_query($conn, "SHOW TABLES LIKE 'pilot_position_links'");
     if ($lkChk && mysqli_num_rows($lkChk) > 0) {
-        $lkRes = mysqli_query($conn, "SELECT parent_position_id, COUNT(*) AS cnt FROM pilot_position_links GROUP BY parent_position_id");
+        $lkRes = ff_mysqli_query($conn, "SELECT parent_position_id, COUNT(*) AS cnt FROM pilot_position_links GROUP BY parent_position_id");
         if ($lkRes) {
             while ($r = mysqli_fetch_assoc($lkRes)) {
                 $linkCounts[(int)$r['parent_position_id']] = (int)$r['cnt'];
@@ -146,7 +146,7 @@ if ($action === 'init') {
     // Aktive Locks
     menu_lock_cleanup_expired($conn);
     $activeLocks = [];
-    $lRes = mysqli_query($conn, "SELECT position_id, reason, locked_until FROM menu_locks WHERE scope = 'position'");
+    $lRes = ff_mysqli_query($conn, "SELECT position_id, reason, locked_until FROM menu_locks WHERE scope = 'position'");
     if ($lRes) {
         while ($r = mysqli_fetch_assoc($lRes)) {
             $activeLocks[(int)$r['position_id']] = [
@@ -164,7 +164,7 @@ if ($action === 'init') {
                LEFT JOIN print_targets pt ON pt.print_target = p.print_target
                LEFT JOIN feste f ON f.id = p.fest_id
                ORDER BY p.type, p.reihenfolge, p.Positionsname";
-    $pRes = mysqli_query($conn, $posSql);
+    $pRes = ff_mysqli_query($conn, $posSql);
     if ($pRes) {
         while ($r = mysqli_fetch_assoc($pRes)) {
             $pid = (int)$r['rowid'];
@@ -198,10 +198,10 @@ if ($action === 'init') {
 
     // Tische
     $tables = [];
-    $tRes = mysqli_query($conn, "SELECT t.*, COALESCE(t.is_sammelrechnung, 0) AS is_sammelrechnung, COALESCE(t.is_ehrengast, 0) AS is_ehrengast, f.name AS fest_name
+    $tRes = ff_mysqli_query($conn, "SELECT t.*, COALESCE(t.is_sammelrechnung, 0) AS is_sammelrechnung, COALESCE(t.is_ehrengast, 0) AS is_ehrengast, f.name AS fest_name
                                  FROM tische t
                                  LEFT JOIN feste f ON f.id = t.fest_id
-                                 ORDER BY t.sort_order ASC, t.tischnummer ASC");
+                                 ORDER BY t.tischnummer ASC"); // tische hat keine Spalte sort_order (lieferte bisher still eine leere Liste)
     if ($tRes) {
         while ($r = mysqli_fetch_assoc($tRes)) {
             $tables[] = [
@@ -269,7 +269,7 @@ if ($action === 'save_position') {
             $reihenfolge = (int)$rm['n'];
         }
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "INSERT INTO positionen (Positionsname, Kurzbezeichnung, Betrag, selbstkosten, type, subcategory_id, print_target, kassa_only, color, tile_bg, fest_id, maxBestellbar, reihenfolge)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -291,7 +291,7 @@ if ($action === 'save_position') {
             $maxBestellbar,
             $reihenfolge
         );
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
         $newRowid = mysqli_insert_id($conn);
@@ -300,7 +300,7 @@ if ($action === 'save_position') {
         api_out(['ok' => true, 'rowid' => $newRowid, 'message' => 'Position erfolgreich angelegt.']);
     } else {
         // Aktualisieren
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "UPDATE positionen SET
                 Positionsname = ?,
@@ -334,7 +334,7 @@ if ($action === 'save_position') {
             $maxBestellbar,
             $rowid
         );
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
         mysqli_stmt_close($stmt);
@@ -374,12 +374,12 @@ if ($action === 'reorder_positions') {
     mysqli_begin_transaction($conn);
     try {
         $idx = 1;
-        $stmt = mysqli_prepare($conn, "UPDATE positionen SET reihenfolge = ? WHERE rowid = ?");
+        $stmt = ff_mysqli_prepare($conn, "UPDATE positionen SET reihenfolge = ? WHERE rowid = ?");
         foreach ($order as $item) {
             $rid = is_array($item) ? (int)($item['rowid'] ?? $item['id'] ?? 0) : (int)$item;
             if ($rid > 0) {
                 mysqli_stmt_bind_param($stmt, 'ii', $idx, $rid);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
                 $idx++;
             }
         }
@@ -427,13 +427,13 @@ if ($action === 'save_table') {
             }
         }
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "INSERT INTO tische (tischnummer, tischname, color, x, y, sort_order, is_sammelrechnung, is_ehrengast)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         );
         mysqli_stmt_bind_param($stmt, 'issiiiii', $tischnummer, $tischname, $color, $x, $y, $sortOrder, $isSammelrechnung, $isEhrengast);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
         if ($tischnummer <= 0) {
@@ -447,7 +447,7 @@ if ($action === 'save_table') {
             api_out(['ok' => false, 'error' => 'Ungültige Tischnummer.'], 400);
         }
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "UPDATE tische SET
                 tischname = ?,
@@ -460,7 +460,7 @@ if ($action === 'save_table') {
              WHERE tischnummer = ?"
         );
         mysqli_stmt_bind_param($stmt, 'ssiiiiii', $tischname, $color, $x, $y, $sortOrder, $isSammelrechnung, $isEhrengast, $tischnummer);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
         }
         mysqli_stmt_close($stmt);
@@ -479,9 +479,9 @@ if ($action === 'delete_table') {
         api_out(['ok' => false, 'error' => 'Ungültige Tischnummer.'], 400);
     }
 
-    $stmt = mysqli_prepare($conn, "DELETE FROM tische WHERE tischnummer = ? LIMIT 1");
+    $stmt = ff_mysqli_prepare($conn, "DELETE FROM tische WHERE tischnummer = ? LIMIT 1");
     mysqli_stmt_bind_param($stmt, 'i', $tischnummer);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         api_out(['ok' => false, 'error' => mysqli_error($conn)], 500);
     }
     mysqli_stmt_close($stmt);
@@ -498,7 +498,7 @@ if ($action === 'tables_layout_save') {
     if (!is_array($layout)) {
         api_out(['ok' => false, 'error' => 'Ungültiges Layout-Format.'], 400);
     }
-    $stmt = mysqli_prepare($conn, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
     $updated = 0;
     foreach ($layout as $item) {
         $nr = (int)($item['tischnummer'] ?? 0);
@@ -506,7 +506,7 @@ if ($action === 'tables_layout_save') {
         $y = max(0, (int)($item['y'] ?? 0));
         if ($nr > 0) {
             mysqli_stmt_bind_param($stmt, 'iii', $x, $y, $nr);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             $updated++;
         }
     }
@@ -529,21 +529,21 @@ if ($action === 'table_flag_toggle') {
 
     if ($flag === 'sr' || $flag === 'is_sammelrechnung') {
         if ($val === 1) {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = ?');
         } else {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 0 WHERE tischnummer = ?');
         }
     } elseif ($flag === 'eg' || $flag === 'is_ehrengast') {
         if ($val === 1) {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = ?');
         } else {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ?');
         }
     } else {
         api_out(['ok' => false, 'error' => 'Ungültiges Flag.'], 400);
     }
     mysqli_stmt_bind_param($stmt, 'i', $nr);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_out(['ok' => true, 'message' => 'Status aktualisiert.']);
@@ -569,9 +569,9 @@ if ($action === 'toggle_lock') {
         // Sperre setzen
         $user = $_SESSION['user']['username'] ?? 'admin';
         $reason = trim((string)($_POST['reason'] ?? 'Ausverkauft'));
-        $stmt = mysqli_prepare($conn, "INSERT INTO menu_locks (scope, position_id, reason, created_by) VALUES ('position', ?, ?, ?)");
+        $stmt = ff_mysqli_prepare($conn, "INSERT INTO menu_locks (scope, position_id, reason, created_by) VALUES ('position', ?, ?, ?)");
         mysqli_stmt_bind_param($stmt, 'iss', $positionId, $reason, $user);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         api_out(['ok' => true, 'is_locked' => true, 'message' => 'Artikel als ausverkauft markiert.']);
     }
@@ -593,16 +593,16 @@ if ($action === 'save_subcategory') {
     $kassaOnly = !empty($_POST['kassa_only']) ? 1 : 0;
 
     if ($id <= 0) {
-        $stmt = mysqli_prepare($conn, "INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)");
+        $stmt = ff_mysqli_prepare($conn, "INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)");
         mysqli_stmt_bind_param($stmt, 'isisi', $type, $name, $sortOrder, $tileBg, $kassaOnly);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $newId = mysqli_insert_id($conn);
         mysqli_stmt_close($stmt);
         api_out(['ok' => true, 'id' => $newId, 'message' => 'Unterkategorie angelegt.']);
     } else {
-        $stmt = mysqli_prepare($conn, "UPDATE position_subcategories SET type = ?, name = ?, sort_order = ?, tile_bg = ?, kassa_only = ? WHERE id = ?");
+        $stmt = ff_mysqli_prepare($conn, "UPDATE position_subcategories SET type = ?, name = ?, sort_order = ?, tile_bg = ?, kassa_only = ? WHERE id = ?");
         mysqli_stmt_bind_param($stmt, 'isisii', $type, $name, $sortOrder, $tileBg, $kassaOnly, $id);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         api_out(['ok' => true, 'id' => $id, 'message' => 'Unterkategorie aktualisiert.']);
     }
@@ -621,14 +621,14 @@ if ($action === 'reorder_subcategories') {
     mysqli_begin_transaction($conn);
     try {
         $idx = 10;
-        $stmt = mysqli_prepare($conn, "UPDATE position_subcategories SET sort_order = ?, type = COALESCE(?, type) WHERE id = ?");
+        $stmt = ff_mysqli_prepare($conn, "UPDATE position_subcategories SET sort_order = ?, type = COALESCE(?, type) WHERE id = ?");
         foreach ($order as $item) {
             $sid = is_array($item) ? (int)($item['id'] ?? $item['subcategory_id'] ?? 0) : (int)$item;
             $type = is_array($item) && isset($item['type']) ? (int)$item['type'] : null;
             $sort = is_array($item) && isset($item['sort_order']) ? (int)$item['sort_order'] : $idx;
             if ($sid > 0) {
                 mysqli_stmt_bind_param($stmt, 'iii', $sort, $type, $sid);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
                 $idx += 10;
             }
         }

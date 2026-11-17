@@ -57,7 +57,7 @@ if ($hashNew === false) {
 
 // update (inkl. Einmalpasswort-Flag zurücksetzen, falls Spalte existiert)
 $hasForceCol = false;
-$colChk = @mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'force_password_change'");
+$colChk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'force_password_change'");
 if ($colChk) {
     $hasForceCol = mysqli_num_rows($colChk) > 0;
     mysqli_free_result($colChk);

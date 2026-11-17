@@ -80,7 +80,7 @@ $umsatz = (float) ($rev['umsatz_gesamt_kombiniert'] ?? 0);
 
 
 
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
 
 $hasSelbstkosten = ($chk && mysqli_num_rows($chk) > 0);
 
@@ -110,7 +110,7 @@ if ($hasSelbstkosten) {
 
 
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS buchungen (id INT(11) NOT NULL AUTO_INCREMENT, typ ENUM('einnahme','ausgabe') NOT NULL, bezeichnung VARCHAR(255) NOT NULL, betrag DECIMAL(10,2) NOT NULL, datum DATE NULL, kategorie VARCHAR(100) NULL, notiz TEXT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id))");
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS buchungen (id INT(11) NOT NULL AUTO_INCREMENT, typ ENUM('einnahme','ausgabe') NOT NULL, bezeichnung VARCHAR(255) NOT NULL, betrag DECIMAL(10,2) NOT NULL, datum DATE NULL, kategorie VARCHAR(100) NULL, notiz TEXT NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id))");
 
 $sqlEinnahmen = "SELECT COALESCE(SUM(betrag), 0) AS s FROM buchungen WHERE typ='einnahme' " . $whereBuchung[0];
 

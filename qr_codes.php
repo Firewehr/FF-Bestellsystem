@@ -60,7 +60,7 @@ $createTableSql = "
 ";
 
 try {
-    mysqli_query($conn, $createTableSql);
+    ff_mysqli_query($conn, $createTableSql);
 } catch (mysqli_sql_exception $e) {
     http_response_code(500);
     die(
@@ -96,7 +96,7 @@ $sql = "
 ";
 
 try {
-    $result = mysqli_query($conn, $sql);
+    $result = ff_mysqli_query($conn, $sql);
 } catch (mysqli_sql_exception $e) {
     http_response_code(500);
     die(
@@ -127,10 +127,10 @@ while ($row = mysqli_fetch_assoc($result)) {
      */
     if ($token === '') {
         $token = rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
-        $ins = mysqli_prepare($conn, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1)');
+        $ins = ff_mysqli_prepare($conn, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1)');
         if ($ins) {
             mysqli_stmt_bind_param($ins, 'is', $tischnummer, $token);
-            mysqli_stmt_execute($ins);
+            ff_mysqli_stmt_execute($ins);
             mysqli_stmt_close($ins);
         }
         $active = 1;

@@ -36,7 +36,7 @@ function ff_substation_load_config(mysqli $conn): array
 /** @return list<array{id:int,name:string,type:int,subcategory:string}> */
 function ff_substation_all_positions(mysqli $conn): array
 {
-    $res = mysqli_query(
+    $res = ff_mysqli_query(
         $conn,
         'SELECT p.rowid, p.Positionsname, p.type, s.name AS subcategory '
         . 'FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id '
@@ -62,7 +62,7 @@ function ff_substation_all_positions(mysqli $conn): array
 function ff_substation_all_components(mysqli $conn): array
 {
     $rows = [];
-    $res = @mysqli_query($conn, 'SELECT id, name FROM bestandteile WHERE aktiv = 1 ORDER BY sort_order, name');
+    $res = ff_mysqli_query($conn, 'SELECT id, name FROM bestandteile WHERE aktiv = 1 ORDER BY sort_order, name');
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $rows[] = ['id' => (int) $r['id'], 'name' => (string) $r['name']];
     }

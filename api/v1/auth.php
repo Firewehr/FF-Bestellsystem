@@ -50,12 +50,12 @@ if ($method === 'POST') {
             api_error(ff_login_throttle_message($lock['retry_after']), 'too_many_attempts', 429);
         }
 
-        $stmt = mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, COALESCE(is_active,1) AS is_active, active_from, active_until, COALESCE(force_password_change,0) AS force_password_change, COALESCE(auth_rev,0) AS auth_rev FROM users WHERE username = ? LIMIT 1');
         if (!$stmt) {
             api_error('Datenbankfehler bei der Anmeldung.', 'db_error', 500);
         }
         mysqli_stmt_bind_param($stmt, 's', $username);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $res = mysqli_stmt_get_result($stmt);
         $user = $res ? mysqli_fetch_assoc($res) : null;
         mysqli_stmt_close($stmt);
@@ -76,10 +76,10 @@ if ($method === 'POST') {
 
         if (password_needs_rehash($user['password'], PASSWORD_BCRYPT)) {
             $newHash = password_hash($password, PASSWORD_BCRYPT);
-            $ustmt = mysqli_prepare($conn, 'UPDATE users SET password=? WHERE username=?');
+            $ustmt = ff_mysqli_prepare($conn, 'UPDATE users SET password=? WHERE username=?');
             if ($ustmt) {
                 mysqli_stmt_bind_param($ustmt, 'ss', $newHash, $user['username']);
-                mysqli_stmt_execute($ustmt);
+                ff_mysqli_stmt_execute($ustmt);
                 mysqli_stmt_close($ustmt);
             }
         }

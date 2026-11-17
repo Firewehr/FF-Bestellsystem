@@ -10,6 +10,9 @@
  * Alle Funktionen sind mit function_exists() abgesichert (ältere db.php-Stände definieren einige selbst).
  */
 
+// Fehlgeschlagene Abfragen protokollieren (ff_mysqli_query(), Auswertung im Admin-Dashboard)
+require_once __DIR__ . '/ff_db_errors.php';
+
 /** PDO (z. B. fest_io, Rechnungsjobs) – gleiche Zugangsdaten wie $conn */
 if (!function_exists('db')) {
     function db(): PDO
@@ -99,11 +102,18 @@ if (!function_exists('ff_db_query')) {
     function ff_db_query(mysqli $conn, string $sql, string $types = '', array $params = [])
     {
         $GLOBALS['__ff_db_last'] = ['affected' => -1, 'insert_id' => 0];
-        $stmt = mysqli_prepare($conn, $sql);
+        $stmt = @mysqli_prepare($conn, $sql);
         if (!$stmt) {
+            ff_db_error_report((int) mysqli_errno($conn), (string) mysqli_error($conn), $sql);
             return false;
         }
-        if (!ff_mysqli_stmt_bind($stmt, $types, $params) || !mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_bind($stmt, $types, $params)) {
+            ff_db_error_report(-1, 'Parameter passen nicht zu den Platzhaltern (' . strlen($types) . ' Typen, ' . count($params) . ' Werte)', $sql);
+            mysqli_stmt_close($stmt);
+            return false;
+        }
+        if (!@mysqli_stmt_execute($stmt)) {
+            ff_db_error_report((int) mysqli_stmt_errno($stmt), (string) mysqli_stmt_error($stmt), $sql);
             mysqli_stmt_close($stmt);
             return false;
         }

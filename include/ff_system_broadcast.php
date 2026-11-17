@@ -40,7 +40,7 @@ function ff_system_broadcast_bump_all_non_super(mysqli $conn): int
     require_once __DIR__ . '/ff_user_status.php';
     ff_users_ensure_auth_rev_column($conn);
 
-    $res = mysqli_query($conn, 'SELECT id FROM users WHERE admin <> 2');
+    $res = ff_mysqli_query($conn, 'SELECT id FROM users WHERE admin <> 2');
     if (!$res) {
         return 0;
     }

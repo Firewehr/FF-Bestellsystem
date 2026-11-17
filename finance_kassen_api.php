@@ -21,7 +21,7 @@ function ff_kassen_calc_revenue(float $closing, float $opening, float $entnahmen
 
 if ($action === 'list_bereiche') {
     $rows = [];
-    $r = mysqli_query($conn, 'SELECT * FROM kassen_bereiche ORDER BY is_active DESC, name ASC');
+    $r = ff_mysqli_query($conn, 'SELECT * FROM kassen_bereiche ORDER BY is_active DESC, name ASC');
     while ($r && ($x = mysqli_fetch_assoc($r))) {
         $rows[] = $x;
     }
@@ -36,9 +36,9 @@ if ($action === 'save_bereich') {
     $active = isset($_POST['is_active']) && (string) $_POST['is_active'] !== '0' ? 1 : 0;
     $kontrolleOnly = isset($_POST['kontrolle_only']) && (string) $_POST['kontrolle_only'] !== '0' ? 1 : 0;
     if ($id > 0 && $name === '') {
-        $stCur = mysqli_prepare($conn, 'SELECT name FROM kassen_bereiche WHERE id = ? LIMIT 1');
+        $stCur = ff_mysqli_prepare($conn, 'SELECT name FROM kassen_bereiche WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($stCur, 'i', $id);
-        mysqli_stmt_execute($stCur);
+        ff_mysqli_stmt_execute($stCur);
         $resCur = mysqli_stmt_get_result($stCur);
         $rowCur = $resCur ? mysqli_fetch_assoc($resCur) : null;
         mysqli_stmt_close($stCur);
@@ -53,14 +53,14 @@ if ($action === 'save_bereich') {
         $name = mb_substr($name, 0, 128, 'UTF-8');
     }
     if ($id > 0) {
-        $st = mysqli_prepare($conn, 'UPDATE kassen_bereiche SET name = ?, is_active = ?, kontrolle_only = ? WHERE id = ? LIMIT 1');
+        $st = ff_mysqli_prepare($conn, 'UPDATE kassen_bereiche SET name = ?, is_active = ?, kontrolle_only = ? WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($st, 'siii', $name, $active, $kontrolleOnly, $id);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         mysqli_stmt_close($st);
     } else {
-        $st = mysqli_prepare($conn, 'INSERT INTO kassen_bereiche (name, is_active, kontrolle_only) VALUES (?, ?, ?)');
+        $st = ff_mysqli_prepare($conn, 'INSERT INTO kassen_bereiche (name, is_active, kontrolle_only) VALUES (?, ?, ?)');
         mysqli_stmt_bind_param($st, 'sii', $name, $active, $kontrolleOnly);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         $id = (int) mysqli_insert_id($conn);
         mysqli_stmt_close($st);
     }
@@ -92,9 +92,9 @@ if ($action === 'open') {
         echo json_encode(['ok' => false, 'error' => 'already_open']);
         exit;
     }
-    $st = mysqli_prepare($conn, 'INSERT INTO kassen_sessions (bereich_id, status, opening_amount, opened_at, opened_by) VALUES (?, \'open\', ?, NOW(), ?)');
+    $st = ff_mysqli_prepare($conn, 'INSERT INTO kassen_sessions (bereich_id, status, opening_amount, opened_at, opened_by) VALUES (?, \'open\', ?, NOW(), ?)');
     mysqli_stmt_bind_param($st, 'ids', $bereichId, $opening, $by);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $sid = (int) mysqli_insert_id($conn);
     mysqli_stmt_close($st);
     echo json_encode(['ok' => true, 'session_id' => $sid], JSON_UNESCAPED_UNICODE);
@@ -117,9 +117,9 @@ if ($action === 'movement') {
         echo json_encode(['ok' => false, 'error' => 'session_not_open']);
         exit;
     }
-    $st = mysqli_prepare($conn, 'INSERT INTO kassen_bewegungen (session_id, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
+    $st = ff_mysqli_prepare($conn, 'INSERT INTO kassen_bewegungen (session_id, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
     mysqli_stmt_bind_param($st, 'isdss', $sessionId, $typ, $betrag, $notiz, $by);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     mysqli_stmt_close($st);
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
     exit;
@@ -142,12 +142,12 @@ if ($action === 'close') {
     }
     $mov = ff_kassen_session_movements_sum($conn, $sessionId);
     $revenue = ff_kassen_calc_revenue($closing, (float) $sess['opening_amount'], $mov['entnahmen'], $mov['zuzahlungen']);
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'UPDATE kassen_sessions SET status = \'closed\', closing_amount = ?, revenue_amount = ?, closed_at = NOW(), closed_by = ? WHERE id = ? LIMIT 1'
     );
     mysqli_stmt_bind_param($st, 'dssi', $closing, $revenue, $by, $sessionId);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     mysqli_stmt_close($st);
     echo json_encode([
         'ok' => true,
@@ -217,7 +217,7 @@ if ($action === 'list_closed') {
 
 // status: Bereiche + offene Sessions + letzte Bewegungen
 $out = ['bereiche' => [], 'open_sessions' => [], 'recent_closed' => []];
-$r1 = mysqli_query($conn, 'SELECT b.*, s.id AS session_id, s.opening_amount, s.opened_at, s.opened_by FROM kassen_bereiche b LEFT JOIN kassen_sessions s ON s.bereich_id = b.id AND s.status = \'open\' WHERE b.is_active = 1 ORDER BY b.name');
+$r1 = ff_mysqli_query($conn, 'SELECT b.*, s.id AS session_id, s.opening_amount, s.opened_at, s.opened_by FROM kassen_bereiche b LEFT JOIN kassen_sessions s ON s.bereich_id = b.id AND s.status = \'open\' WHERE b.is_active = 1 ORDER BY b.name');
 if ($r1) {
     while ($row = mysqli_fetch_assoc($r1)) {
         $out['bereiche'][] = $row;
@@ -238,7 +238,7 @@ if ($r1) {
         }
     }
 }
-$r2 = mysqli_query(
+$r2 = ff_mysqli_query(
     $conn,
     'SELECT s.*, b.name AS bereich_name FROM kassen_sessions s JOIN kassen_bereiche b ON b.id = s.bereich_id WHERE s.status = \'closed\' ORDER BY s.closed_at DESC LIMIT 20'
 );

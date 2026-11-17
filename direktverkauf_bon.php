@@ -13,10 +13,10 @@ require_once __DIR__ . '/include/ff_direktverkauf_bon_helpers.php';
 header('Content-Type: application/json; charset=utf-8');
 
 // Spalte bon_id in bestellungen anlegen falls nicht vorhanden
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'bon_id'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'bon_id'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN bon_id VARCHAR(10) NULL DEFAULT NULL");
-    @mysqli_query($conn, "CREATE INDEX idx_bon_id ON bestellungen (bon_id)");
+    ff_mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN bon_id VARCHAR(10) NULL DEFAULT NULL");
+    ff_mysqli_query($conn, "CREATE INDEX idx_bon_id ON bestellungen (bon_id)");
 }
 
 ff_direktverkauf_clear_session_bon();

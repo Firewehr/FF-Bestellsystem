@@ -29,7 +29,7 @@ if (!is_array($incoming)) {
 
 ff_users_ensure_menu_permissions_column($conn);
 
-$st = mysqli_prepare(
+$st = ff_mysqli_prepare(
     $conn,
     'SELECT id, username, admin, start_page, start_print_target, can_finance, can_direktverkauf, menu_permissions'
     . ' FROM users WHERE id = ? LIMIT 1'
@@ -40,7 +40,7 @@ if (!$st) {
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $userid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);
@@ -60,10 +60,10 @@ if ((int) ($row['admin'] ?? 0) === 2) {
 $myId = 0;
 $me = trim((string) ($_SESSION['user']['username'] ?? ''));
 if ($me !== '') {
-    $ms = mysqli_prepare($conn, 'SELECT id, admin FROM users WHERE username = ? LIMIT 1');
+    $ms = ff_mysqli_prepare($conn, 'SELECT id, admin FROM users WHERE username = ? LIMIT 1');
     if ($ms) {
         mysqli_stmt_bind_param($ms, 's', $me);
-        mysqli_stmt_execute($ms);
+        ff_mysqli_stmt_execute($ms);
         $mr = mysqli_stmt_get_result($ms);
         $mrow = $mr ? mysqli_fetch_assoc($mr) : null;
         mysqli_stmt_close($ms);

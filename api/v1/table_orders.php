@@ -21,12 +21,12 @@ if ($tischnummer <= 0) {
 }
 
 // 1. Tisch-Stammdaten abfragen
-$tStmt = mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast, COALESCE(color,"") AS color FROM tische WHERE tischnummer = ? LIMIT 1');
+$tStmt = ff_mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast, COALESCE(color,"") AS color FROM tische WHERE tischnummer = ? LIMIT 1');
 if (!$tStmt) {
     api_error('Datenbankfehler: ' . mysqli_error($conn), 'db_error', 500);
 }
 mysqli_stmt_bind_param($tStmt, 'i', $tischnummer);
-mysqli_stmt_execute($tStmt);
+ff_mysqli_stmt_execute($tStmt);
 $tRes = mysqli_stmt_get_result($tStmt);
 $table = $tRes ? mysqli_fetch_assoc($tRes) : null;
 mysqli_stmt_close($tStmt);
@@ -43,7 +43,7 @@ $paymentMode = ff_aktiver_payment_mode($conn);
 
 // 3. Wartezeiten für Küche und Schank berechnen
 $waitTimes = ['drink' => 0, 'food' => 0];
-$wq = @mysqli_query(
+$wq = ff_mysqli_query(
     $conn,
     "SELECT print_target, UNIX_TIMESTAMP(MIN(zeitstempel)) AS oldest_unix
        FROM bestellungen
@@ -79,7 +79,7 @@ if ($sumupAppId === '') {
 
 // 5. Druckziele für Thermobondruck
 $printTargets = [];
-$ptRes = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
+$ptRes = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
 if ($ptRes) {
     while ($ptRow = mysqli_fetch_assoc($ptRes)) {
         $printTargets[] = [
@@ -105,12 +105,12 @@ $openSql = "SELECT b.rowid, b.position, COALESCE(b.betrag, p.Betrag) AS betrag,
               AND (b.timestampBezahlung IS NULL OR b.timestampBezahlung = '0000-00-00 00:00:00')
             ORDER BY b.timestampBestellung ASC, b.rowid ASC";
 
-$openStmt = mysqli_prepare($conn, $openSql);
+$openStmt = ff_mysqli_prepare($conn, $openSql);
 if (!$openStmt) {
     api_error('Datenbankfehler bei offenen Positionen: ' . mysqli_error($conn), 'db_error', 500);
 }
 mysqli_stmt_bind_param($openStmt, 'i', $tischnummer);
-mysqli_stmt_execute($openStmt);
+ff_mysqli_stmt_execute($openStmt);
 $oRes = mysqli_stmt_get_result($openStmt);
 
 $items = [];

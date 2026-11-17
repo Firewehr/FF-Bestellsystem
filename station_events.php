@@ -38,7 +38,7 @@ if ($printTarget <= 0) {
     header('Content-Type: text/event-stream; charset=utf-8');
     exit;
 }
-if (!mysqli_query($conn, 'SELECT 1 FROM ff_station_events LIMIT 0')
+if (!ff_mysqli_query($conn, 'SELECT 1 FROM ff_station_events LIMIT 0')
     && !ff_station_events_ensure_schema($conn)) {
     error_log('station_events.php: Ereignistabelle nicht verfügbar: ' . mysqli_error($conn));
     header('Content-Type: text/event-stream; charset=utf-8');
@@ -66,7 +66,7 @@ while (ob_get_level() > 0) {
 
 $lastEventId = (int) ($_SERVER['HTTP_LAST_EVENT_ID'] ?? $_GET['last_event_id'] ?? 0);
 if ($lastEventId <= 0) {
-    $recent = mysqli_prepare(
+    $recent = ff_mysqli_prepare(
         $conn,
         'SELECT MIN(id) AS first_id FROM ff_station_events WHERE print_target = ? AND ' . $ffEventTypeCond . ' AND created_at >= NOW() - INTERVAL 30 SECOND'
     );
@@ -77,7 +77,7 @@ if ($lastEventId <= 0) {
         exit;
     }
     mysqli_stmt_bind_param($recent, 'i', $printTarget);
-    if (!mysqli_stmt_execute($recent)) {
+    if (!ff_mysqli_stmt_execute($recent)) {
         error_log('station_events.php initial cursor: ' . mysqli_stmt_error($recent));
         mysqli_stmt_close($recent);
         http_response_code(503);
@@ -97,7 +97,7 @@ $heartbeatAt = $startedAt;
 echo "retry: 1000\n\n";
 flush();
 while (!connection_aborted() && time() - $startedAt < 20) {
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         'SELECT id, event_type FROM ff_station_events WHERE print_target = ? AND ' . $ffEventTypeCond . ' AND id > ? ORDER BY id ASC LIMIT 100'
     );
@@ -106,7 +106,7 @@ while (!connection_aborted() && time() - $startedAt < 20) {
         break;
     }
     mysqli_stmt_bind_param($stmt, 'ii', $printTarget, $lastEventId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         error_log('station_events.php read: ' . mysqli_stmt_error($stmt));
         mysqli_stmt_close($stmt);
         break;

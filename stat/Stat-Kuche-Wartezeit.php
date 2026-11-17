@@ -33,7 +33,7 @@ include __DIR__ . '/../include/db.php';
 		GROUP
 		BY t
 		ORDER BY Bestellzeit ASC";
-	$Result = mysqli_query($conn, $Requete);
+	$Result = ff_mysqli_query($conn, $Requete);
 	$Bestellzeit=""; $diffzeit=""; $maxzeit=""; $minzeit="";
 	while ($row = mysqli_fetch_array ($Result))
 	{

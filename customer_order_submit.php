@@ -169,7 +169,7 @@ if ($token === '' || strlen($token) > 128) {
 |
 */
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         t.tischnummer,
@@ -204,7 +204,7 @@ mysqli_stmt_bind_param(
 );
 
 
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 
 
 $result = mysqli_stmt_get_result($stmt);
@@ -231,7 +231,7 @@ if (!$table) {
 |--------------------------------------------------------------------------
 */
 
-$festResult = mysqli_query(
+$festResult = ff_mysqli_query(
     $conn,
     "SELECT
         id,
@@ -475,7 +475,7 @@ try {
         |
         */
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "SELECT
                 p.Betrag,
@@ -508,7 +508,7 @@ try {
         );
 
 
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
 
 
         $positionResult =
@@ -717,7 +717,7 @@ try {
      */
 
     $checkOrderNr =
-        mysqli_query(
+        ff_mysqli_query(
             $conn,
             "SHOW COLUMNS
              FROM bestellungen
@@ -731,7 +731,7 @@ try {
     ) {
 
         if (
-            !mysqli_query(
+            !ff_mysqli_query(
                 $conn,
                 "ALTER TABLE bestellungen
                  ADD COLUMN order_nr INT(11)
@@ -746,7 +746,7 @@ try {
         }
 
 
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "ALTER TABLE bestellungen
              ADD KEY idx_order_nr (order_nr)"
@@ -761,7 +761,7 @@ try {
     */
 
     $seqResult =
-        mysqli_query(
+        ff_mysqli_query(
             $conn,
             "UPDATE settings
              SET v = LAST_INSERT_ID(v + 1)
@@ -788,7 +788,7 @@ try {
     if ($orderNr <= 0) {
 
         $insertSetting =
-            mysqli_prepare(
+            ff_mysqli_prepare(
                 $conn,
                 "INSERT INTO settings
                     (k, v)
@@ -801,7 +801,7 @@ try {
 
         if ($insertSetting) {
 
-            mysqli_stmt_execute(
+            ff_mysqli_stmt_execute(
                 $insertSetting
             );
 
@@ -821,7 +821,7 @@ try {
     |--------------------------------------------------------------------------
     */
 
-    $insertStmt = mysqli_prepare(
+    $insertStmt = ff_mysqli_prepare(
         $conn,
         "INSERT INTO bestellungen
         (
@@ -909,7 +909,7 @@ try {
 
 
             if (
-                !mysqli_stmt_execute($insertStmt)
+                !ff_mysqli_stmt_execute($insertStmt)
             ) {
 
                 throw new RuntimeException(

@@ -31,13 +31,13 @@ if ($rowid <= 0) {
 }
 
 // Bestellung (order_nr / bon_id / tischnummer) der Zeile ermitteln.
-$st = mysqli_prepare($conn, 'SELECT tischnummer, order_nr, bon_id FROM bestellungen WHERE rowid = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT tischnummer, order_nr, bon_id FROM bestellungen WHERE rowid = ? LIMIT 1');
 if (!$st) {
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $rowid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $base = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);

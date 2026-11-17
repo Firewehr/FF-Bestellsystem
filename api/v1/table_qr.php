@@ -17,7 +17,7 @@ if ($table <= 0 || $token === '' || strlen($token) > 128) {
     api_error('Der QR-Code ist kein aktiver Tisch-QR-Code.', 'invalid_qr', 400);
 }
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     'SELECT t.tischnummer, t.tischname
        FROM tische t
@@ -29,7 +29,7 @@ if (!$stmt) {
     api_error('Tisch-QR-Code konnte nicht geprüft werden.', 'db_error', 500);
 }
 mysqli_stmt_bind_param($stmt, 'is', $table, $token);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $row = $result ? mysqli_fetch_assoc($result) : null;
 mysqli_stmt_close($stmt);

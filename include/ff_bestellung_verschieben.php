@@ -8,7 +8,7 @@ declare(strict_types=1);
 function ff_verschieben_payment_mode(mysqli $conn): string
 {
     $paymentMode = 'after';
-    $fres = mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
+    $fres = ff_mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
     if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
         $pm = (string) ($frow['payment_mode'] ?? '');
         if ($pm === 'instant') {

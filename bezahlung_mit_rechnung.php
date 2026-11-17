@@ -51,7 +51,7 @@ $kuecheFilterOpen = ($paymentMode === 'after') ? ' AND b.kueche=1 ' : '';
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
     id INT AUTO_INCREMENT PRIMARY KEY,
     rechnungsnummer VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -81,7 +81,7 @@ ff_rechnungen_ensure_extra_columns($conn);
 ff_bestellungen_ensure_rechnung_id_column($conn);
 
 $validTargets = [];
-$ptq = @mysqli_query($conn, 'SELECT print_target FROM print_targets WHERE active=1');
+$ptq = ff_mysqli_query($conn, 'SELECT print_target FROM print_targets WHERE active=1');
 if ($ptq) {
     while ($pt = mysqli_fetch_assoc($ptq)) {
         $validTargets[(int)$pt['print_target']] = true;
@@ -106,7 +106,7 @@ session_write_close();
 [$in, $inT, $inV] = ff_db_in_ints($ids);
 
 $fest_id = null;
-$resFest = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
+$resFest = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
 if ($resFest && ($rf = mysqli_fetch_assoc($resFest))) {
     $fest_id = (int)$rf['id'] ?: null;
 }
@@ -253,17 +253,17 @@ $created_by = $kellner !== '' ? $kellner : 'system';
 $fest_id_int = $fest_id ?? 0;
 
 $hasKellnerCol = false;
-$chkK = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE 'kellner'");
+$chkK = ff_mysqli_query($conn, "SHOW COLUMNS FROM rechnungen LIKE 'kellner'");
 if ($chkK && mysqli_num_rows($chkK) > 0) {
     $hasKellnerCol = true;
 }
 
 if ($hasKellnerCol) {
-    $stmt = mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, kellner, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, kellner, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
         empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
         VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?,0,\'pending\',0,0,NULL)');
 } else {
-    $stmt = mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO rechnungen (rechnungsnummer, created_by, fest_id, tischnummer, sammelrechnung_id, order_nr, is_firma,
         empfaenger_name, empfaenger_strasse, empfaenger_plz, empfaenger_ort, empfaenger_uid, total, gedruckt, druck_status, druck_attempts, is_proforma, lines_json)
         VALUES (?,?,?,?,?,?,0,?,?,?,?,?,?,0,\'pending\',0,0,NULL)');
 }
@@ -311,7 +311,7 @@ if ($hasKellnerCol) {
         $total
     );
 }
-if (!mysqli_stmt_execute($stmt)) {
+if (!ff_mysqli_stmt_execute($stmt)) {
     mysqli_rollback($conn);
     br_json_out(['ok' => false, 'error' => mysqli_stmt_error($stmt)], 500);
 }

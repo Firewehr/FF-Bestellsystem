@@ -16,7 +16,7 @@ function ff_next_bon_nr(mysqli $conn): int
         setting_set($conn, 'bon_nr_seq', (string)($start - 1));
     }
 
-    mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'bon_nr_seq'");
+    ff_mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'bon_nr_seq'");
     $nr = (int)mysqli_insert_id($conn);
 
     if ($nr <= 0) {

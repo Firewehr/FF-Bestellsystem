@@ -20,7 +20,7 @@ ff_position_kassa_ensure_schema($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $rows = [];
-    $r = mysqli_query($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name');
+    $r = ff_mysqli_query($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name');
     if ($r) {
         while ($x = mysqli_fetch_assoc($r)) {
             $rows[] = [
@@ -48,9 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         ff_db_query($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ?', 'i', [$id]);
-        $stmt = mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
         mysqli_stmt_bind_param($stmt, 'i', $id);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
         exit;
@@ -74,10 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $name = mb_substr($name, 0, 128, 'UTF-8');
         }
 
-        $stmt = mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)');
         $tileParam = $tileBg;
         mysqli_stmt_bind_param($stmt, 'isisi', $type, $name, $sort, $tileParam, $kassaOnly);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             http_response_code(500);
             echo json_encode(['ok' => false, 'error' => 'insert_failed'], JSON_UNESCAPED_UNICODE);

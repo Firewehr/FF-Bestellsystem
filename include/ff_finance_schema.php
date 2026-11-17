@@ -15,7 +15,7 @@ function ff_finance_table_exists(mysqli $conn, string $table): bool
         return false;
     }
     $tEsc = mysqli_real_escape_string($conn, $table);
-    $res = @mysqli_query($conn, "SHOW TABLES LIKE '{$tEsc}'");
+    $res = ff_mysqli_query($conn, "SHOW TABLES LIKE '{$tEsc}'");
     if (!$res) {
         return false;
     }
@@ -32,7 +32,7 @@ function ff_finance_table_index_exists(mysqli $conn, string $table, string $inde
         return false;
     }
     $idxEsc = mysqli_real_escape_string($conn, $indexName);
-    $res = mysqli_query($conn, "SHOW INDEX FROM `{$table}` WHERE Key_name = '{$idxEsc}'");
+    $res = ff_mysqli_query($conn, "SHOW INDEX FROM `{$table}` WHERE Key_name = '{$idxEsc}'");
     if (!$res) {
         return false;
     }
@@ -64,10 +64,10 @@ function ff_finance_ensure_undo_columns(mysqli $conn): void
                 'void_reason' => 'ADD COLUMN `void_reason` VARCHAR(255) NULL DEFAULT NULL',
             ];
             foreach ($settleCols as $col => $alter) {
-                $c = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE '{$col}'");
+                $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE '{$col}'");
                 if ($c && mysqli_num_rows($c) === 0) {
                     try {
-                        @mysqli_query($conn, "ALTER TABLE `kellner_settlements` {$alter}");
+                        ff_mysqli_query($conn, "ALTER TABLE `kellner_settlements` {$alter}");
                     } catch (\Throwable $e) {}
                 }
                 if ($c) {
@@ -83,10 +83,10 @@ function ff_finance_ensure_undo_columns(mysqli $conn): void
                 'reopen_reason' => 'ADD COLUMN `reopen_reason` VARCHAR(255) NULL DEFAULT NULL',
             ];
             foreach ($kasseCols as $col => $alter) {
-                $c = @mysqli_query($conn, "SHOW COLUMNS FROM `kassen_sessions` LIKE '{$col}'");
+                $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kassen_sessions` LIKE '{$col}'");
                 if ($c && mysqli_num_rows($c) === 0) {
                     try {
-                        @mysqli_query($conn, "ALTER TABLE `kassen_sessions` {$alter}");
+                        ff_mysqli_query($conn, "ALTER TABLE `kassen_sessions` {$alter}");
                     } catch (\Throwable $e) {}
                 }
                 if ($c) {
@@ -114,18 +114,18 @@ function ff_finance_ensure_settlement_scope_column(mysqli $conn): void
     }
     try {
         // Prüfen, ob kellner_login existiert oder die Tabelle repariert werden muss
-        $cLogin = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner_login'");
+        $cLogin = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner_login'");
         $hasLogin = ($cLogin && mysqli_num_rows($cLogin) > 0);
         if ($cLogin) @mysqli_free_result($cLogin);
 
         if (!$hasLogin) {
-            $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `kellner_settlements`");
+            $cntRes = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM `kellner_settlements`");
             $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
             if ($cntRes) @mysqli_free_result($cntRes);
 
             if ($rCount === 0) {
-                @mysqli_query($conn, "DROP TABLE `kellner_settlements`");
-                @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_settlements` (
+                ff_mysqli_query($conn, "DROP TABLE `kellner_settlements`");
+                ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_settlements` (
                   `id` INT(11) NOT NULL AUTO_INCREMENT,
                   `kellner_login` VARCHAR(255) NOT NULL,
                   `settlement_scope` VARCHAR(20) NOT NULL DEFAULT 'kellner' COMMENT 'kellner oder direktverkauf',
@@ -147,22 +147,22 @@ function ff_finance_ensure_settlement_scope_column(mysqli $conn): void
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
                 return;
             } else {
-                $cK = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner'");
+                $cK = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'kellner'");
                 if ($cK && mysqli_num_rows($cK) > 0) {
-                    @mysqli_query($conn, "ALTER TABLE `kellner_settlements` CHANGE COLUMN `kellner` `kellner_login` VARCHAR(255) NOT NULL");
+                    ff_mysqli_query($conn, "ALTER TABLE `kellner_settlements` CHANGE COLUMN `kellner` `kellner_login` VARCHAR(255) NOT NULL");
                     $hasLogin = true;
                 } else {
-                    @mysqli_query($conn, "ALTER TABLE `kellner_settlements` ADD COLUMN `kellner_login` VARCHAR(255) NOT NULL DEFAULT '' AFTER `id`");
+                    ff_mysqli_query($conn, "ALTER TABLE `kellner_settlements` ADD COLUMN `kellner_login` VARCHAR(255) NOT NULL DEFAULT '' AFTER `id`");
                     $hasLogin = true;
                 }
                 if ($cK) @mysqli_free_result($cK);
             }
         }
 
-        $c = @mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'settlement_scope'");
+        $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kellner_settlements` LIKE 'settlement_scope'");
         if ($c && mysqli_num_rows($c) === 0) {
             $afterClause = $hasLogin ? " AFTER `kellner_login`" : "";
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "ALTER TABLE `kellner_settlements` ADD COLUMN `settlement_scope` VARCHAR(20) NOT NULL DEFAULT 'kellner'"
                 . " COMMENT 'kellner oder direktverkauf'{$afterClause}"
@@ -190,17 +190,17 @@ function ff_finance_ensure_kontrolle_only_column(mysqli $conn): void
         return;
     }
     try {
-        $cAct = @mysqli_query($conn, "SHOW COLUMNS FROM `kassen_bereiche` LIKE 'is_active'");
+        $cAct = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kassen_bereiche` LIKE 'is_active'");
         if ($cAct && mysqli_num_rows($cAct) === 0) {
-            @mysqli_query($conn, "ALTER TABLE `kassen_bereiche` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `name`");
+            ff_mysqli_query($conn, "ALTER TABLE `kassen_bereiche` ADD COLUMN `is_active` TINYINT(1) NOT NULL DEFAULT 1 AFTER `name`");
         }
         if ($cAct) {
             @mysqli_free_result($cAct);
         }
 
-        $c = @mysqli_query($conn, "SHOW COLUMNS FROM `kassen_bereiche` LIKE 'kontrolle_only'");
+        $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `kassen_bereiche` LIKE 'kontrolle_only'");
         if ($c && mysqli_num_rows($c) === 0) {
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "ALTER TABLE `kassen_bereiche` ADD COLUMN `kontrolle_only` TINYINT(1) NOT NULL DEFAULT 0"
                 . " COMMENT 'Nur Kassenkontrolle, nicht in Gesamtumsatz'"
@@ -241,9 +241,9 @@ function ff_finance_ensure_schema(mysqli $conn): void
     }
 
     try {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'can_finance'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'can_finance'");
         if ($chk && mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, "ALTER TABLE `users` ADD COLUMN `can_finance` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Finanzverwaltung'");
+            ff_mysqli_query($conn, "ALTER TABLE `users` ADD COLUMN `can_finance` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Finanzverwaltung'");
         }
         if ($chk) {
             @mysqli_free_result($chk);
@@ -251,7 +251,7 @@ function ff_finance_ensure_schema(mysqli $conn): void
     } catch (\Throwable $e) {}
 
     try {
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_bereiche` (
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_bereiche` (
           `id` INT(11) NOT NULL AUTO_INCREMENT,
           `name` VARCHAR(128) NOT NULL,
           `is_active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -261,7 +261,7 @@ function ff_finance_ensure_schema(mysqli $conn): void
           KEY `idx_active` (`is_active`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_sessions` (
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_sessions` (
           `id` INT(11) NOT NULL AUTO_INCREMENT,
           `bereich_id` INT(11) NOT NULL,
           `status` ENUM('open','closed') NOT NULL DEFAULT 'open',
@@ -280,7 +280,7 @@ function ff_finance_ensure_schema(mysqli $conn): void
           KEY `idx_opened_at` (`opened_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_bewegungen` (
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kassen_bewegungen` (
           `id` INT(11) NOT NULL AUTO_INCREMENT,
           `session_id` INT(11) NOT NULL,
           `typ` ENUM('entnahme','zuzahlung') NOT NULL,
@@ -292,7 +292,7 @@ function ff_finance_ensure_schema(mysqli $conn): void
           KEY `idx_session` (`session_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_settlements` (
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_settlements` (
           `id` INT(11) NOT NULL AUTO_INCREMENT,
           `kellner_login` VARCHAR(255) NOT NULL,
           `settlement_scope` VARCHAR(20) NOT NULL DEFAULT 'kellner' COMMENT 'kellner oder direktverkauf',
@@ -313,7 +313,7 @@ function ff_finance_ensure_schema(mysqli $conn): void
           KEY `idx_von_bis` (`von_dt`, `bis_dt`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_bewegungen` (
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `kellner_bewegungen` (
           `id` INT(11) NOT NULL AUTO_INCREMENT,
           `kellner_login` VARCHAR(255) NOT NULL,
           `settlement_id` INT(11) NULL DEFAULT NULL,
@@ -335,10 +335,10 @@ function ff_finance_ensure_schema(mysqli $conn): void
             'settled_by' => "ADD COLUMN `settled_by` VARCHAR(64) NULL DEFAULT NULL",
         ];
         foreach ($cols as $col => $alter) {
-            $c = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE '{$col}'");
+            $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE '{$col}'");
             if ($c && mysqli_num_rows($c) === 0) {
                 try {
-                    @mysqli_query($conn, "ALTER TABLE `bestellungen` {$alter}");
+                    ff_mysqli_query($conn, "ALTER TABLE `bestellungen` {$alter}");
                 } catch (\Throwable $e) {}
             }
             if ($c) {
@@ -347,37 +347,37 @@ function ff_finance_ensure_schema(mysqli $conn): void
         }
         if (!ff_finance_table_index_exists($conn, 'bestellungen', 'idx_settlement_id')) {
             try {
-                @mysqli_query($conn, 'ALTER TABLE `bestellungen` ADD KEY `idx_settlement_id` (`settlement_id`)');
+                ff_mysqli_query($conn, 'ALTER TABLE `bestellungen` ADD KEY `idx_settlement_id` (`settlement_id`)');
             } catch (\Throwable $e) {}
         }
     } catch (\Throwable $e) {}
 
     // Sicherstellen, dass die Basisfelder in buchungen vorhanden sind
     try {
-        $chkNotiz = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'notiz'");
+        $chkNotiz = ff_mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'notiz'");
         if ($chkNotiz && mysqli_num_rows($chkNotiz) === 0) {
             try {
-                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `notiz` TEXT NULL");
+                ff_mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `notiz` TEXT NULL");
             } catch (\Throwable $e) {}
         }
         if ($chkNotiz) {
             @mysqli_free_result($chkNotiz);
         }
 
-        $chkTyp = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'typ'");
+        $chkTyp = ff_mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'typ'");
         if ($chkTyp && mysqli_num_rows($chkTyp) === 0) {
             try {
-                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `typ` ENUM('einnahme','ausgabe') NOT NULL DEFAULT 'ausgabe' AFTER `id`");
+                ff_mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `typ` ENUM('einnahme','ausgabe') NOT NULL DEFAULT 'ausgabe' AFTER `id`");
             } catch (\Throwable $e) {}
         }
         if ($chkTyp) {
             @mysqli_free_result($chkTyp);
         }
 
-        $chkBez = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'bezeichnung'");
+        $chkBez = ff_mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE 'bezeichnung'");
         if ($chkBez && mysqli_num_rows($chkBez) === 0) {
             try {
-                @mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `bezeichnung` VARCHAR(255) NOT NULL DEFAULT '' AFTER `typ`");
+                ff_mysqli_query($conn, "ALTER TABLE `buchungen` ADD COLUMN `bezeichnung` VARCHAR(255) NOT NULL DEFAULT '' AFTER `typ`");
             } catch (\Throwable $e) {}
         }
         if ($chkBez) {
@@ -388,10 +388,10 @@ function ff_finance_ensure_schema(mysqli $conn): void
             'bereich_id' => 'ADD COLUMN `bereich_id` INT(11) NULL DEFAULT NULL COMMENT \'Finanzbereich (kassen_bereiche)\'',
         ];
         foreach ($buchCols as $col => $alter) {
-            $c = @mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE '{$col}'");
+            $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `buchungen` LIKE '{$col}'");
             if ($c && mysqli_num_rows($c) === 0) {
                 try {
-                    @mysqli_query($conn, "ALTER TABLE `buchungen` {$alter}");
+                    ff_mysqli_query($conn, "ALTER TABLE `buchungen` {$alter}");
                 } catch (\Throwable $e) {}
             }
             if ($c) {
@@ -400,16 +400,16 @@ function ff_finance_ensure_schema(mysqli $conn): void
         }
         if (!ff_finance_table_index_exists($conn, 'buchungen', 'idx_bereich_id')) {
             try {
-                @mysqli_query($conn, 'ALTER TABLE `buchungen` ADD KEY `idx_bereich_id` (`bereich_id`)');
+                ff_mysqli_query($conn, 'ALTER TABLE `buchungen` ADD KEY `idx_bereich_id` (`bereich_id`)');
             } catch (\Throwable $e) {}
         }
     } catch (\Throwable $e) {}
 
     try {
-        $ptCol = @mysqli_query($conn, "SHOW COLUMNS FROM `print_targets` LIKE 'finance_bereich_id'");
+        $ptCol = ff_mysqli_query($conn, "SHOW COLUMNS FROM `print_targets` LIKE 'finance_bereich_id'");
         if ($ptCol && mysqli_num_rows($ptCol) === 0) {
             try {
-                @mysqli_query($conn, 'ALTER TABLE `print_targets` ADD COLUMN `finance_bereich_id` INT(11) NULL DEFAULT NULL COMMENT \'Finanzbereich für Verkaufsauswertung\' AFTER `sort_order`');
+                ff_mysqli_query($conn, 'ALTER TABLE `print_targets` ADD COLUMN `finance_bereich_id` INT(11) NULL DEFAULT NULL COMMENT \'Finanzbereich für Verkaufsauswertung\' AFTER `sort_order`');
             } catch (\Throwable $e) {}
         }
         if ($ptCol) {

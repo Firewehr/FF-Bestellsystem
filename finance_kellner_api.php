@@ -96,7 +96,7 @@ if ($action === 'list_open_summary') {
         GROUP BY b.kellnerZahlung
         ORDER BY umsatz DESC";
     $rows = [];
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $login = (string) $r['kellner_login'];
         $label = ff_finance_kellner_label($conn, $login);
@@ -136,12 +136,12 @@ if ($action === 'list_movements') {
         echo json_encode(['ok' => false, 'error' => 'bad_params']);
         exit;
     }
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT id, typ, betrag, notiz, created_at, created_by FROM kellner_bewegungen WHERE kellner_login = ? AND settlement_id IS NULL ORDER BY created_at DESC LIMIT 50'
     );
     mysqli_stmt_bind_param($st, 's', $kellner);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $rows = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
@@ -180,7 +180,7 @@ function ff_kellner_finance_list_kellner(mysqli $conn, string $scope): array
     $sql = "SELECT DISTINCT b.kellnerZahlung AS k FROM bestellungen b
         WHERE b.kellnerZahlung IS NOT NULL AND b.kellnerZahlung <> ''{$fest}{$tisch}
         ORDER BY k";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $add((string) ($r['k'] ?? ''));
     }
@@ -189,7 +189,7 @@ function ff_kellner_finance_list_kellner(mysqli $conn, string $scope): array
         WHERE " . ff_finance_order_paid_base_sql('b') . "
         AND b.kellnerZahlung IS NOT NULL AND b.kellnerZahlung <> ''
         AND b.settlement_id IS NULL{$fest}{$tisch}";
-    $resO = mysqli_query($conn, $openSql);
+    $resO = ff_mysqli_query($conn, $openSql);
     while ($resO && ($r = mysqli_fetch_assoc($resO))) {
         $add((string) ($r['k'] ?? ''));
     }
@@ -197,12 +197,12 @@ function ff_kellner_finance_list_kellner(mysqli $conn, string $scope): array
     $sqlOrdK = "SELECT DISTINCT b.kellner AS k FROM bestellungen b
         WHERE b.kellner IS NOT NULL AND b.kellner <> '' AND b.`delete` = 0{$fest}{$tisch}
         ORDER BY k";
-    $resOrdK = mysqli_query($conn, $sqlOrdK);
+    $resOrdK = ff_mysqli_query($conn, $sqlOrdK);
     while ($resOrdK && ($r = mysqli_fetch_assoc($resOrdK))) {
         $add((string) ($r['k'] ?? ''));
     }
 
-    $resMov = mysqli_query(
+    $resMov = ff_mysqli_query(
         $conn,
         "SELECT DISTINCT kellner_login AS k FROM kellner_bewegungen
          WHERE settlement_id IS NULL AND kellner_login IS NOT NULL AND kellner_login <> ''
@@ -393,9 +393,9 @@ if ($action === 'movement') {
         echo json_encode(['ok' => false, 'error' => 'bad_params']);
         exit;
     }
-    $st = mysqli_prepare($conn, 'INSERT INTO kellner_bewegungen (kellner_login, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
+    $st = ff_mysqli_prepare($conn, 'INSERT INTO kellner_bewegungen (kellner_login, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
     mysqli_stmt_bind_param($st, 'ssdss', $kellner, $typ, $betrag, $notiz, $by);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     mysqli_stmt_close($st);
     echo json_encode(['ok' => true], JSON_UNESCAPED_UNICODE);
     exit;
@@ -484,12 +484,12 @@ if ($action === 'settle') {
     $umsatzAbgabe = round($umsatz - $mov['entnahmen'] + $mov['zuzahlungen'], 2);
     $trinkgeld = round($abgegeben - $wechsel - $umsatzAbgabe, 2);
     mysqli_begin_transaction($conn);
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'INSERT INTO kellner_settlements (kellner_login, settlement_scope, von_dt, bis_dt, umsatz_soll, betrag_abgegeben, wechselgeld_zurueck, trinkgeld, notiz, created_by) VALUES (?,?,?,?,?,?,?,?,?,?)'
     );
     mysqli_stmt_bind_param($st, 'ssssddddss', $kellner, $scopeDb, $vonStore, $bisStore, $umsatz, $abgegeben, $wechsel, $trinkgeld, $notiz, $by);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $settlementId = (int) mysqli_insert_id($conn);
     mysqli_stmt_close($st);
     if ($ids !== []) {
@@ -521,7 +521,7 @@ if ($action === 'settle') {
 }
 
 $history = [];
-$res = mysqli_query($conn, 'SELECT * FROM kellner_settlements ORDER BY created_at DESC LIMIT 30');
+$res = ff_mysqli_query($conn, 'SELECT * FROM kellner_settlements ORDER BY created_at DESC LIMIT 30');
 while ($res && ($r = mysqli_fetch_assoc($res))) {
     $login = (string) ($r['kellner_login'] ?? '');
     $r['kellner_label'] = ff_finance_kellner_label($conn, $login);

@@ -19,14 +19,14 @@ function ff_schreibaus_ensure_column(mysqli $conn): void {
         return;
     }
 
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'schreibaus'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'schreibaus'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         mysqli_free_result($chk);
     } else {
         if ($chk) {
             mysqli_free_result($chk);
         }
-        @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN schreibaus TINYINT(1) NOT NULL DEFAULT 0");
+        ff_mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN schreibaus TINYINT(1) NOT NULL DEFAULT 0");
     }
 
     if (function_exists('ff_schema_flag_set')) {
@@ -38,7 +38,7 @@ function ff_schreibaus_ensure_column(mysqli $conn): void {
  * @return string 'after'|'instant'
  */
 function ff_aktiver_payment_mode(mysqli $conn): string {
-    $res = @mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
+    $res = ff_mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
     if ($res && ($row = mysqli_fetch_assoc($res))) {
         $m = (string)($row['payment_mode'] ?? 'after');
         return $m === 'instant' ? 'instant' : 'after';

@@ -57,7 +57,7 @@ if ($hasRowSelection) {
 }
 
 $printTargets = [];
-$ptq = @mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name");
+$ptq = ff_mysqli_query($conn, "SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name");
 if ($ptq) {
     while ($pt = mysqli_fetch_assoc($ptq)) {
         $printTargets[] = $pt;

@@ -23,7 +23,7 @@ if ($id <= 0 || $printTarget <= 0) {
 }
 
 $validTargets = [];
-$ptq = @mysqli_query($conn, 'SELECT print_target FROM print_targets WHERE active=1');
+$ptq = ff_mysqli_query($conn, 'SELECT print_target FROM print_targets WHERE active=1');
 if ($ptq) {
     while ($pt = mysqli_fetch_assoc($ptq)) {
         $validTargets[(int)$pt['print_target']] = true;

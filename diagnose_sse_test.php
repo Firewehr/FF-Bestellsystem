@@ -39,7 +39,7 @@ if (($_GET['hold'] ?? '') === '1') {
     echo "event: holding\ndata: {}\n\n";
     flush();
     while (!connection_aborted() && time() - $start < 20) {
-        @mysqli_query($conn, 'SELECT 1');
+        ff_mysqli_query($conn, 'SELECT 1');
         echo ": hold\n\n";
         flush();
         usleep(1000000);

@@ -26,7 +26,7 @@ $empfaenger_plz = trim($_POST['empfaenger_plz'] ?? '');
 $empfaenger_ort = trim($_POST['empfaenger_ort'] ?? '');
 $empfaenger_uid = trim($_POST['empfaenger_uid'] ?? '');
 
-$stmt = mysqli_prepare($conn, 
+$stmt = ff_mysqli_prepare($conn, 
     "UPDATE rechnungen SET 
         is_firma = ?, 
         empfaenger_name = ?, 
@@ -47,7 +47,7 @@ mysqli_stmt_bind_param($stmt, 'isssssi',
     $id
 );
 
-if (mysqli_stmt_execute($stmt)) {
+if (ff_mysqli_stmt_execute($stmt)) {
     echo json_encode(['ok' => true, 'message' => 'Rechnung aktualisiert']);
 } else {
     echo json_encode(['ok' => false, 'error' => 'Datenbankfehler: ' . mysqli_error($conn)]);

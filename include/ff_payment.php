@@ -35,7 +35,7 @@ if (!function_exists('ff_payment_pay_rows')) {
         }
 
         [$marks, $markTypes, $markIds] = ff_db_in_ints($rowids);
-        $sumStmt = mysqli_prepare(
+        $sumStmt = ff_mysqli_prepare(
             $conn,
             "SELECT b.rowid, b.position, COALESCE(b.betrag, p.Betrag) AS betrag, b.Zusatzinfo, b.order_nr,
                     COALESCE(p.Positionsname, '(Position)') AS name
@@ -48,7 +48,7 @@ if (!function_exists('ff_payment_pay_rows')) {
             throw new RuntimeException('Zahlungspositionen konnten nicht gesperrt werden.');
         }
         mysqli_stmt_bind_param($sumStmt, 'i' . $markTypes, $tischnummer, ...$markIds);
-        if (!mysqli_stmt_execute($sumStmt)) {
+        if (!ff_mysqli_stmt_execute($sumStmt)) {
             $error = mysqli_stmt_error($sumStmt);
             mysqli_stmt_close($sumStmt);
             throw new RuntimeException('Zahlungspositionen konnten nicht geladen werden: ' . $error);

@@ -23,7 +23,7 @@ mysqli_set_charset($conn, 'utf8mb4');
                 <select id="beilagePosition" class="form-select form-select-sm">
                     <?php
                     $beilageOptIdx = 0;
-                    $bq = @mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen ORDER BY type, reihenfolge, Positionsname');
+                    $bq = ff_mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen ORDER BY type, reihenfolge, Positionsname');
                     if ($bq) {
                         while ($bp = mysqli_fetch_assoc($bq)) {
                             $bid = (int) $bp['rowid'];

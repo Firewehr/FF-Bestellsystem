@@ -20,7 +20,7 @@ if ($userid <= 0) {
 
 ff_users_ensure_menu_permissions_column($conn);
 
-$st = mysqli_prepare(
+$st = ff_mysqli_prepare(
     $conn,
     'SELECT id, username, admin, can_finance, can_direktverkauf, start_page, start_print_target, menu_permissions'
     . ' FROM users WHERE id = ? LIMIT 1'
@@ -31,7 +31,7 @@ if (!$st) {
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $userid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);

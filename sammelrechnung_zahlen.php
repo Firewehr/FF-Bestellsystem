@@ -11,7 +11,7 @@ if (!isset($_SESSION['admin']) || (int)$_SESSION['admin'] < 1) {
 
 // Payment Mode ermitteln
 $paymentMode = 'after';
-$fres = mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
+$fres = ff_mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
     $paymentMode = $frow['payment_mode'] ?: 'after';
 }
@@ -45,9 +45,9 @@ if (count($tables) < 1) {
     exit;
 }
 
-$chkSm = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
+$chkSm = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
 if ($chkSm && mysqli_num_rows($chkSm) === 0) {
-    @mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0");
 }
 [$inList, $inListTypes, $inListIds] = ff_db_in_ints($tables);
 $okMap = [];
@@ -133,7 +133,7 @@ foreach ($rows as $r) {
 ksort($byTisch, SORT_NUMERIC);
 
 $userOpts = [];
-$uq = @mysqli_query($conn, "SELECT username FROM users WHERE username IS NOT NULL AND TRIM(username) <> '' ORDER BY username ASC");
+$uq = ff_mysqli_query($conn, "SELECT username FROM users WHERE username IS NOT NULL AND TRIM(username) <> '' ORDER BY username ASC");
 if ($uq) {
     while ($ur = mysqli_fetch_assoc($uq)) {
         $userOpts[] = (string) $ur['username'];

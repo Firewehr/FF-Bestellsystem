@@ -6,19 +6,19 @@ try {
     require_once __DIR__ . '/../include/menu_list_helpers.php';
     require_once __DIR__ . '/../include/ff_schreibaus.php';
 
-    $chkEh = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
+    $chkEh = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
     if ($chkEh && mysqli_num_rows($chkEh) === 0) {
-        @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
+        ff_mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
     }
-    $chkSm = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
+    $chkSm = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
     if ($chkSm && mysqli_num_rows($chkSm) === 0) {
-        @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
+        ff_mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
     }
 
     $paymentMode = ff_aktiver_payment_mode($conn);
     $openCond = ff_schreibaus_open_sql_condition($paymentMode);
 
-    $result = mysqli_query($conn, 'SELECT * FROM tische WHERE x>0 AND y>0 ORDER BY y,x');
+    $result = ff_mysqli_query($conn, 'SELECT * FROM tische WHERE x>0 AND y>0 ORDER BY y,x');
     $tables = [];
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {

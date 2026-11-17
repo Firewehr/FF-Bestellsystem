@@ -95,7 +95,7 @@ if ($method === 'POST') {
             api_error('Unbekannte Sub-Station.', 'unknown_station', 404);
         }
 
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "CREATE TABLE IF NOT EXISTS `substation_access_tokens` (
                 `token_hash` CHAR(64) NOT NULL,
@@ -111,7 +111,7 @@ if ($method === 'POST') {
 
         $token = bin2hex(random_bytes(32));
         $hash = hash('sha256', $token);
-        $ins = mysqli_prepare(
+        $ins = ff_mysqli_prepare(
             $conn,
             'INSERT INTO `substation_access_tokens` (`token_hash`, `station`, `expires_at`) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 MINUTE))'
         );
@@ -119,7 +119,7 @@ if ($method === 'POST') {
             api_error('Fehler beim Erzeugen des QR-Tokens.', 'db_error', 500);
         }
         mysqli_stmt_bind_param($ins, 'ss', $hash, $stationName);
-        if (!mysqli_stmt_execute($ins)) {
+        if (!ff_mysqli_stmt_execute($ins)) {
             mysqli_stmt_close($ins);
             api_error('Konnte QR-Token nicht speichern.', 'db_error', 500);
         }

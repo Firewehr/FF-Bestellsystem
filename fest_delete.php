@@ -46,11 +46,11 @@ function ff_delete_fest_table_has_rows(mysqli $conn, string $table, int $fest_id
     if (!in_array($table, $allowed, true)) {
         return false;
     }
-    $q = mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $table) . "'");
+    $q = ff_mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $table) . "'");
     if (!$q || mysqli_num_rows($q) === 0) {
         return false;
     }
-    $c = mysqli_query($conn, 'SHOW COLUMNS FROM `' . $table . "` LIKE 'fest_id'");
+    $c = ff_mysqli_query($conn, 'SHOW COLUMNS FROM `' . $table . "` LIKE 'fest_id'");
     if (!$c || mysqli_num_rows($c) === 0) {
         return false;
     }
@@ -72,7 +72,7 @@ if ($cur === $fest_id) {
     setting_set($conn, 'current_fest_code', '');
 }
 
-$tc = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'fest_id'");
+$tc = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'fest_id'");
 if ($tc && mysqli_num_rows($tc) > 0) {
     if (!ff_db_query($conn, 'DELETE FROM tische WHERE fest_id=?', 'i', [(int) $fest_id])) {
         header('Location: admin.php?fest_del=err&reason=server#feste');

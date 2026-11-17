@@ -57,9 +57,9 @@ if ($helpersOk) {
     $tileBg = ff_sanitize_category_tile_bg($tileBgIn !== '' ? $tileBgIn : null);
 
     if ($subcategoryId > 0) {
-        $chk = mysqli_prepare($conn, 'SELECT id, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories WHERE id = ? AND type = ? LIMIT 1');
+        $chk = ff_mysqli_prepare($conn, 'SELECT id, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories WHERE id = ? AND type = ? LIMIT 1');
         mysqli_stmt_bind_param($chk, 'ii', $subcategoryId, $type);
-        mysqli_stmt_execute($chk);
+        ff_mysqli_stmt_execute($chk);
         $okSub = mysqli_stmt_get_result($chk);
         $rowSub = $okSub ? mysqli_fetch_assoc($okSub) : null;
         mysqli_stmt_close($chk);
@@ -74,7 +74,7 @@ if ($helpersOk) {
 
     $tileBgStr = $tileBg !== null && $tileBg !== '' ? (string)$tileBg : '';
     $sql = 'INSERT INTO positionen (Positionsname, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, subcategory_id, tile_bg, print_target, color, kassa_only) VALUES (?,?,?,?,?,?,?,?,?,?,?)';
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
         echo 'prepare_failed';
@@ -98,7 +98,7 @@ if ($helpersOk) {
     );
 } else {
     $sql = 'INSERT INTO positionen (Positionsname, Betrag, type, maxBestellbar, selbstkosten, reihenfolge, print_target, color) VALUES (?,?,?,?,?,?,?,?)';
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
         echo 'prepare_failed';
@@ -118,7 +118,7 @@ if ($helpersOk) {
     );
 }
 
-if (!mysqli_stmt_execute($stmt)) {
+if (!ff_mysqli_stmt_execute($stmt)) {
     mysqli_stmt_close($stmt);
     http_response_code(500);
     echo 'insert_failed';

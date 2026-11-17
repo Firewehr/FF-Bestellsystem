@@ -50,7 +50,7 @@ function ff_mcp_table_exists(mysqli $conn, string $table): bool
         throw new InvalidArgumentException('Ungültiger Tabellenname');
     }
 
-    $statement = mysqli_prepare(
+    $statement = ff_mysqli_prepare(
         $conn,
         'SELECT 1 FROM information_schema.tables
          WHERE table_schema = DATABASE() AND table_name = ? LIMIT 1'
@@ -59,7 +59,7 @@ function ff_mcp_table_exists(mysqli $conn, string $table): bool
         throw new RuntimeException('Tabellenstatus konnte nicht gelesen werden');
     }
     mysqli_stmt_bind_param($statement, 's', $table);
-    if (!mysqli_stmt_execute($statement)) {
+    if (!ff_mysqli_stmt_execute($statement)) {
         mysqli_stmt_close($statement);
         throw new RuntimeException('Tabellenstatus konnte nicht gelesen werden');
     }
@@ -76,7 +76,7 @@ function ff_mcp_table_exists(mysqli $conn, string $table): bool
 
 function ff_mcp_query_rows(mysqli $conn, string $sql): array
 {
-    $result = mysqli_query($conn, $sql);
+    $result = ff_mysqli_query($conn, $sql);
     if (!$result) {
         throw new RuntimeException('Katalogdaten konnten nicht gelesen werden');
     }
@@ -291,13 +291,13 @@ function ff_mcp_orders(mysqli $conn, array $args): array
     }
     $whereSql = implode(' AND ', $where);
 
-    $statement = mysqli_prepare($conn, "SELECT COUNT(*) AS c, COALESCE(SUM(b.betrag), 0) AS s
+    $statement = ff_mysqli_prepare($conn, "SELECT COUNT(*) AS c, COALESCE(SUM(b.betrag), 0) AS s
         FROM bestellungen b WHERE $whereSql");
     if (!$statement) {
         throw new RuntimeException('Bestellungen konnten nicht gelesen werden');
     }
     mysqli_stmt_bind_param($statement, $types, ...$params);
-    mysqli_stmt_execute($statement);
+    ff_mysqli_stmt_execute($statement);
     $totals = mysqli_fetch_assoc(mysqli_stmt_get_result($statement)) ?: ['c' => 0, 's' => 0];
     mysqli_stmt_close($statement);
 
@@ -312,7 +312,7 @@ function ff_mcp_orders(mysqli $conn, array $args): array
             WHERE $whereSql
             ORDER BY $eventTs, b.rowid
             LIMIT ? OFFSET ?";
-    $statement = mysqli_prepare($conn, $sql);
+    $statement = ff_mysqli_prepare($conn, $sql);
     if (!$statement) {
         throw new RuntimeException('Bestellungen konnten nicht gelesen werden');
     }
@@ -320,7 +320,7 @@ function ff_mcp_orders(mysqli $conn, array $args): array
     $params[] = $limit;
     $params[] = $offset;
     mysqli_stmt_bind_param($statement, $types, ...$params);
-    mysqli_stmt_execute($statement);
+    ff_mysqli_stmt_execute($statement);
     $result = mysqli_stmt_get_result($statement);
     $rows = [];
     while ($row = mysqli_fetch_assoc($result)) {
@@ -408,7 +408,7 @@ function ff_mcp_create_unterkategorie(mysqli $conn, array $args): array
     $festId = array_key_exists('fest_id', $args) && $args['fest_id'] !== null ? (int)$args['fest_id'] : null;
 
     $hasFestCol = false;
-    $cFest = @mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'fest_id'");
+    $cFest = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'fest_id'");
     if ($cFest && mysqli_num_rows($cFest) > 0) {
         $hasFestCol = true;
     }
@@ -417,20 +417,20 @@ function ff_mcp_create_unterkategorie(mysqli $conn, array $args): array
     }
 
     if ($hasFestCol && $festId !== null) {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only, fest_id) VALUES (?, ?, ?, ?, ?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only, fest_id) VALUES (?, ?, ?, ?, ?, ?)');
         if (!$stmt) {
             throw new RuntimeException('Vorbereitung fehlgeschlagen: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'isissi', $type, $name, $sortOrder, $tileBg, $kassaOnly, $festId);
     } else {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO position_subcategories (type, name, sort_order, tile_bg, kassa_only) VALUES (?, ?, ?, ?, ?)');
         if (!$stmt) {
             throw new RuntimeException('Vorbereitung fehlgeschlagen: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'isisi', $type, $name, $sortOrder, $tileBg, $kassaOnly);
     }
 
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         $err = mysqli_stmt_error($stmt);
         mysqli_stmt_close($stmt);
         throw new RuntimeException('Unterkategorie konnte nicht angelegt werden: ' . $err);
@@ -493,12 +493,12 @@ function ff_mcp_update_unterkategorie(mysqli $conn, array $args): array
         throw new InvalidArgumentException('Mindestens eines der Felder "name", "tile_bg", "sort_order" oder "kassa_only" muss angegeben werden.');
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories WHERE id = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories WHERE id = ? LIMIT 1');
     if (!$stmt) {
         throw new RuntimeException('Datenbankfehler');
     }
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $before = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
     mysqli_stmt_close($stmt);
 
@@ -568,12 +568,12 @@ function ff_mcp_update_unterkategorie(mysqli $conn, array $args): array
 
     $types .= 'i';
     $params[] = $id;
-    $uStmt = mysqli_prepare($conn, 'UPDATE position_subcategories SET ' . implode(', ', $sets) . ' WHERE id = ? LIMIT 1');
+    $uStmt = ff_mysqli_prepare($conn, 'UPDATE position_subcategories SET ' . implode(', ', $sets) . ' WHERE id = ? LIMIT 1');
     if (!$uStmt) {
         throw new RuntimeException('Update der Unterkategorie fehlgeschlagen');
     }
     mysqli_stmt_bind_param($uStmt, $types, ...$params);
-    if (!mysqli_stmt_execute($uStmt)) {
+    if (!ff_mysqli_stmt_execute($uStmt)) {
         $err = mysqli_stmt_error($uStmt);
         mysqli_stmt_close($uStmt);
         throw new RuntimeException('Update fehlgeschlagen: ' . $err);
@@ -606,12 +606,12 @@ function ff_mcp_delete_unterkategorie(mysqli $conn, array $args): array
         throw new InvalidArgumentException('"subcategory_id" ist erforderlich und muss > 0 sein.');
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
     if (!$stmt) {
         throw new RuntimeException('Datenbankfehler');
     }
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $sub = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
     mysqli_stmt_close($stmt);
 
@@ -620,32 +620,32 @@ function ff_mcp_delete_unterkategorie(mysqli $conn, array $args): array
     }
 
     // Zugeordnete Positionen zählen und aushängen
-    $cStmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE subcategory_id = ?');
+    $cStmt = ff_mysqli_prepare($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE subcategory_id = ?');
     $detached = 0;
     if ($cStmt) {
         mysqli_stmt_bind_param($cStmt, 'i', $id);
-        mysqli_stmt_execute($cStmt);
+        ff_mysqli_stmt_execute($cStmt);
         $cRow = mysqli_fetch_assoc(mysqli_stmt_get_result($cStmt));
         mysqli_stmt_close($cStmt);
         $detached = (int)($cRow['c'] ?? 0);
     }
 
     if ($detached > 0) {
-        $uStmt = mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ?');
+        $uStmt = ff_mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = NULL WHERE subcategory_id = ?');
         if ($uStmt) {
             mysqli_stmt_bind_param($uStmt, 'i', $id);
-            mysqli_stmt_execute($uStmt);
+            ff_mysqli_stmt_execute($uStmt);
             mysqli_stmt_close($uStmt);
         }
     }
 
     // Unterkategorie löschen
-    $dStmt = mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
+    $dStmt = ff_mysqli_prepare($conn, 'DELETE FROM position_subcategories WHERE id = ? LIMIT 1');
     if (!$dStmt) {
         throw new RuntimeException('Löschen der Unterkategorie fehlgeschlagen');
     }
     mysqli_stmt_bind_param($dStmt, 'i', $id);
-    if (!mysqli_stmt_execute($dStmt)) {
+    if (!ff_mysqli_stmt_execute($dStmt)) {
         $err = mysqli_stmt_error($dStmt);
         mysqli_stmt_close($dStmt);
         throw new RuntimeException('Löschen fehlgeschlagen: ' . $err);
@@ -760,9 +760,9 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
         }
     }
 
-    $select = mysqli_prepare($conn, 'SELECT Positionsname, Betrag, print_target, subcategory_id, type, Kurzbezeichnung, tile_bg FROM positionen WHERE rowid = ? LIMIT 1');
+    $select = ff_mysqli_prepare($conn, 'SELECT Positionsname, Betrag, print_target, subcategory_id, type, Kurzbezeichnung, tile_bg FROM positionen WHERE rowid = ? LIMIT 1');
     mysqli_stmt_bind_param($select, 'i', $id);
-    mysqli_stmt_execute($select);
+    ff_mysqli_stmt_execute($select);
     $before = mysqli_fetch_assoc(mysqli_stmt_get_result($select));
     mysqli_stmt_close($select);
     if (!$before) {
@@ -782,10 +782,10 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
                 throw new InvalidArgumentException('"subcategory_id" muss >= 0 oder null sein.');
             }
             if ($valSub > 0) {
-                $subStmt = mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
+                $subStmt = ff_mysqli_prepare($conn, 'SELECT id, type, name FROM position_subcategories WHERE id = ? LIMIT 1');
                 if ($subStmt) {
                     mysqli_stmt_bind_param($subStmt, 'i', $valSub);
-                    mysqli_stmt_execute($subStmt);
+                    ff_mysqli_stmt_execute($subStmt);
                     $subRow = mysqli_fetch_assoc(mysqli_stmt_get_result($subStmt));
                     mysqli_stmt_close($subStmt);
                     if (!$subRow) {
@@ -854,12 +854,12 @@ function ff_mcp_update_position(mysqli $conn, array $args): array
 
     $types .= 'i';
     $params[] = $id;
-    $update = mysqli_prepare($conn, 'UPDATE positionen SET ' . implode(', ', $sets) . ' WHERE rowid = ? LIMIT 1');
+    $update = ff_mysqli_prepare($conn, 'UPDATE positionen SET ' . implode(', ', $sets) . ' WHERE rowid = ? LIMIT 1');
     if (!$update) {
         throw new RuntimeException('Update fehlgeschlagen');
     }
     mysqli_stmt_bind_param($update, $types, ...$params);
-    if (!mysqli_stmt_execute($update)) {
+    if (!ff_mysqli_stmt_execute($update)) {
         mysqli_stmt_close($update);
         throw new RuntimeException('Update fehlgeschlagen');
     }
@@ -917,16 +917,16 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
         throw new RuntimeException('Rezepturtabellen fehlen');
     }
 
-    $check = mysqli_prepare($conn, 'SELECT 1 FROM positionen WHERE rowid = ? LIMIT 1');
+    $check = ff_mysqli_prepare($conn, 'SELECT 1 FROM positionen WHERE rowid = ? LIMIT 1');
     mysqli_stmt_bind_param($check, 'i', $positionId);
-    mysqli_stmt_execute($check);
+    ff_mysqli_stmt_execute($check);
     $found = mysqli_num_rows(mysqli_stmt_get_result($check)) > 0;
     mysqli_stmt_close($check);
     if (!$found) {
         throw new InvalidArgumentException('Position ' . $positionId . ' nicht gefunden.');
     }
 
-    $ingredientCheck = mysqli_prepare($conn, 'SELECT 1 FROM bestandteile WHERE id = ? LIMIT 1');
+    $ingredientCheck = ff_mysqli_prepare($conn, 'SELECT 1 FROM bestandteile WHERE id = ? LIMIT 1');
     $rows = [];
     foreach (array_values($bestandteileList) as $index => $entry) {
         if (!is_array($entry)) {
@@ -934,7 +934,7 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
         }
         $ingredientId = (int)($entry['bestandteil_id'] ?? 0);
         mysqli_stmt_bind_param($ingredientCheck, 'i', $ingredientId);
-        mysqli_stmt_execute($ingredientCheck);
+        ff_mysqli_stmt_execute($ingredientCheck);
         if ($ingredientId < 1 || mysqli_num_rows(mysqli_stmt_get_result($ingredientCheck)) === 0) {
             throw new InvalidArgumentException('Bestandteil ' . $ingredientId . ' existiert nicht (Eintrag ' . ($index + 1) . ').');
         }
@@ -962,15 +962,15 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
 
     mysqli_begin_transaction($conn);
     try {
-        $delete = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ?');
+        $delete = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ?');
         mysqli_stmt_bind_param($delete, 'i', $positionId);
-        if (!mysqli_stmt_execute($delete)) {
+        if (!ff_mysqli_stmt_execute($delete)) {
             throw new RuntimeException('delete_failed');
         }
         mysqli_stmt_close($delete);
 
         if ($rows !== []) {
-            $insert = mysqli_prepare(
+            $insert = ff_mysqli_prepare(
                 $conn,
                 'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id)
                  VALUES (?, ?, ?, ?, ?, ?, ?, NULL)'
@@ -987,7 +987,7 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
                     $row['option_group'],
                     $row['reihenfolge']
                 );
-                if (!mysqli_stmt_execute($insert)) {
+                if (!ff_mysqli_stmt_execute($insert)) {
                     throw new RuntimeException('insert_failed');
                 }
             }
@@ -1005,14 +1005,14 @@ function ff_mcp_set_recipe(mysqli $conn, array $args): array
 
 function ff_mcp_fetch_all(mysqli $conn, string $sql, string $types = '', array $params = []): array
 {
-    $statement = mysqli_prepare($conn, $sql);
+    $statement = ff_mysqli_prepare($conn, $sql);
     if (!$statement) {
         throw new RuntimeException('Abfrage konnte nicht vorbereitet werden');
     }
     if ($params !== []) {
         mysqli_stmt_bind_param($statement, $types, ...$params);
     }
-    if (!mysqli_stmt_execute($statement)) {
+    if (!ff_mysqli_stmt_execute($statement)) {
         mysqli_stmt_close($statement);
         throw new RuntimeException('Abfrage fehlgeschlagen');
     }
@@ -1055,20 +1055,20 @@ function ff_mcp_save_bestandteil_allergens(mysqli $conn, int $bestandteilId, arr
     if (!ff_mcp_table_exists($conn, 'bestandteil_allergene') || !ff_mcp_table_exists($conn, 'allergene')) {
         return;
     }
-    $delete = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+    $delete = ff_mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
     if ($delete) {
         mysqli_stmt_bind_param($delete, 'i', $bestandteilId);
-        mysqli_stmt_execute($delete);
+        ff_mysqli_stmt_execute($delete);
         mysqli_stmt_close($delete);
     }
 
     foreach ($allergens as $name) {
-        $insert = mysqli_prepare($conn, 'INSERT INTO allergene (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
+        $insert = ff_mysqli_prepare($conn, 'INSERT INTO allergene (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
         if (!$insert) {
             continue;
         }
         mysqli_stmt_bind_param($insert, 's', $name);
-        if (!mysqli_stmt_execute($insert)) {
+        if (!ff_mysqli_stmt_execute($insert)) {
             mysqli_stmt_close($insert);
             continue;
         }
@@ -1076,10 +1076,10 @@ function ff_mcp_save_bestandteil_allergens(mysqli $conn, int $bestandteilId, arr
         mysqli_stmt_close($insert);
 
         if ($allergenId > 0) {
-            $assign = mysqli_prepare($conn, 'INSERT IGNORE INTO bestandteil_allergene (bestandteil_id, allergen_id) VALUES (?, ?)');
+            $assign = ff_mysqli_prepare($conn, 'INSERT IGNORE INTO bestandteil_allergene (bestandteil_id, allergen_id) VALUES (?, ?)');
             if ($assign) {
                 mysqli_stmt_bind_param($assign, 'ii', $bestandteilId, $allergenId);
-                mysqli_stmt_execute($assign);
+                ff_mysqli_stmt_execute($assign);
                 mysqli_stmt_close($assign);
             }
         }
@@ -1202,7 +1202,7 @@ function ff_mcp_create_bestandteil(mysqli $conn, array $args): array
 
     mysqli_begin_transaction($conn);
     try {
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order, fest_id) VALUES (?, ?, ?, ?, ?, ?)'
         );
@@ -1210,7 +1210,7 @@ function ff_mcp_create_bestandteil(mysqli $conn, array $args): array
             throw new RuntimeException('Fehler beim Vorbereiten des Inserts');
         }
         mysqli_stmt_bind_param($stmt, 'ssiiii', $name, $einheit, $kapazitaet, $aktiv, $sortOrder, $festId);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
             throw new RuntimeException('Fehler beim Speichern des Bestandteils: ' . $err);
@@ -1281,12 +1281,12 @@ function ff_mcp_update_bestandteil(mysqli $conn, array $args): array
 
     mysqli_begin_transaction($conn);
     try {
-        $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, aktiv = ?, sort_order = ?, fest_id = ? WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, aktiv = ?, sort_order = ?, fest_id = ? WHERE id = ?');
         if (!$stmt) {
             throw new RuntimeException('Fehler beim Vorbereiten des Updates');
         }
         mysqli_stmt_bind_param($stmt, 'ssiiiii', $name, $einheit, $kapazitaet, $aktiv, $sortOrder, $festId, $id);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
             throw new RuntimeException('Fehler beim Aktualisieren: ' . $err);
@@ -1326,10 +1326,10 @@ function ff_mcp_delete_bestandteil(mysqli $conn, array $args): array
     $force = !empty($args['force']);
 
     if ($deaktivieren) {
-        $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET aktiv = 0 WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE bestandteile SET aktiv = 0 WHERE id = ?');
         if ($stmt) {
             mysqli_stmt_bind_param($stmt, 'i', $id);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
         }
         error_log("MCP delete_bestandteil (deaktiviert) id=$id");
@@ -1348,25 +1348,25 @@ function ff_mcp_delete_bestandteil(mysqli $conn, array $args): array
     mysqli_begin_transaction($conn);
     try {
         if ($usageCount > 0 && $force && ff_mcp_table_exists($conn, 'position_rezepturen')) {
-            $delPr = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
+            $delPr = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
             if ($delPr) {
                 mysqli_stmt_bind_param($delPr, 'i', $id);
-                mysqli_stmt_execute($delPr);
+                ff_mysqli_stmt_execute($delPr);
                 mysqli_stmt_close($delPr);
             }
         }
         if (ff_mcp_table_exists($conn, 'bestandteil_allergene')) {
-            $delBa = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+            $delBa = ff_mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
             if ($delBa) {
                 mysqli_stmt_bind_param($delBa, 'i', $id);
-                mysqli_stmt_execute($delBa);
+                ff_mysqli_stmt_execute($delBa);
                 mysqli_stmt_close($delBa);
             }
         }
-        $delB = mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
+        $delB = ff_mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
         if ($delB) {
             mysqli_stmt_bind_param($delB, 'i', $id);
-            mysqli_stmt_execute($delB);
+            ff_mysqli_stmt_execute($delB);
             mysqli_stmt_close($delB);
         }
         mysqli_commit($conn);
@@ -1525,21 +1525,21 @@ function ff_mcp_add_recipe_item(mysqli $conn, array $args): array
 
     if ($existing !== []) {
         $id = (int)$existing[0]['id'];
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'UPDATE position_rezepturen SET menge = ?, optional_enabled = ?, default_selected = ?, reihenfolge = ? WHERE id = ?'
         );
         mysqli_stmt_bind_param($stmt, 'diiii', $menge, $optional, $defaultSelected, $reihenfolge, $id);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
     } else {
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, NULL)'
         );
         mysqli_stmt_bind_param($stmt, 'iidiisi', $positionId, $bestandteilId, $menge, $optional, $defaultSelected, $optionGroup, $reihenfolge);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
     }
 
@@ -1558,15 +1558,15 @@ function ff_mcp_remove_recipe_item(mysqli $conn, array $args): array
 
     if (isset($args['option_group'])) {
         $optionGroup = trim((string)$args['option_group']);
-        $stmt = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ? AND option_group = ?');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ? AND option_group = ?');
         mysqli_stmt_bind_param($stmt, 'iis', $positionId, $bestandteilId, $optionGroup);
     } else {
-        $stmt = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ? AND bestandteil_id = ?');
         mysqli_stmt_bind_param($stmt, 'ii', $positionId, $bestandteilId);
     }
 
     if ($stmt) {
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $affected = mysqli_stmt_affected_rows($stmt);
         mysqli_stmt_close($stmt);
     } else {

@@ -21,28 +21,28 @@ function ff_users_ensure_landing_columns(mysqli $conn) {
         return;
     }
 
-    $r = @mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'start_page'");
+    $r = ff_mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'start_page'");
     if ($r && mysqli_num_rows($r) > 0) {
         mysqli_free_result($r);
     } else {
         if ($r) {
             mysqli_free_result($r);
         }
-        @mysqli_query($conn, "ALTER TABLE users ADD COLUMN start_page VARCHAR(32) NOT NULL DEFAULT 'menu' AFTER admin");
-        @mysqli_query($conn, "ALTER TABLE users ADD COLUMN start_print_target INT(11) NULL DEFAULT NULL AFTER start_page");
+        ff_mysqli_query($conn, "ALTER TABLE users ADD COLUMN start_page VARCHAR(32) NOT NULL DEFAULT 'menu' AFTER admin");
+        ff_mysqli_query($conn, "ALTER TABLE users ADD COLUMN start_print_target INT(11) NULL DEFAULT NULL AFTER start_page");
     }
-    $r2 = @mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'dv_abholbon_print_target'");
+    $r2 = ff_mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'dv_abholbon_print_target'");
     if (!$r2 || mysqli_num_rows($r2) === 0) {
-        @mysqli_query($conn, "ALTER TABLE users ADD COLUMN dv_abholbon_print_target INT(11) NULL DEFAULT NULL COMMENT 'NULL=Auto laut Startseite' AFTER start_print_target");
+        ff_mysqli_query($conn, "ALTER TABLE users ADD COLUMN dv_abholbon_print_target INT(11) NULL DEFAULT NULL COMMENT 'NULL=Auto laut Startseite' AFTER start_print_target");
     }
     if ($r2) {
         mysqli_free_result($r2);
     }
     // Anzeigename (Vor-/Nachname) für Rechnungen, optional. Fallback bleibt
     // immer der username.
-    $r3 = @mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'display_name'");
+    $r3 = ff_mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'display_name'");
     if (!$r3 || mysqli_num_rows($r3) === 0) {
-        @mysqli_query($conn, "ALTER TABLE users ADD COLUMN display_name VARCHAR(120) NULL DEFAULT NULL COMMENT 'Anzeigename (Vor-/Nachname) für Rechnungen' AFTER username");
+        ff_mysqli_query($conn, "ALTER TABLE users ADD COLUMN display_name VARCHAR(120) NULL DEFAULT NULL COMMENT 'Anzeigename (Vor-/Nachname) für Rechnungen' AFTER username");
     }
     if ($r3) {
         mysqli_free_result($r3);
@@ -69,13 +69,13 @@ function ff_user_display_label(mysqli $conn, ?string $username): string {
     if (array_key_exists($login, $cache)) {
         return $cache[$login];
     }
-    $st = @mysqli_prepare($conn, 'SELECT display_name FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT display_name FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         $cache[$login] = $login;
         return $login;
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -114,12 +114,12 @@ function ff_user_print_target_is_valid(mysqli $conn, $printTargetId) {
     $sql = "SELECT 1 FROM print_targets pt
         WHERE pt.print_target = ? AND pt.active = 1
         LIMIT 1";
-    $st = mysqli_prepare($conn, $sql);
+    $st = ff_mysqli_prepare($conn, $sql);
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 'i', $pt);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $ok = $res && mysqli_fetch_row($res);
     mysqli_stmt_close($st);

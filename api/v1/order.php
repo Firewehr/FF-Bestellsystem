@@ -43,12 +43,12 @@ ff_pilot_orders_ensure_schema($conn);
 ff_pilot_linked_articles_ensure_schema($conn);
 
 // 1. Tisch prüfen & Flags holen
-$tStmt = mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer = ? LIMIT 1');
+$tStmt = ff_mysqli_prepare($conn, 'SELECT tischnummer, tischname, COALESCE(is_sammelrechnung,0) AS is_sammelrechnung, COALESCE(is_ehrengast,0) AS is_ehrengast FROM tische WHERE tischnummer = ? LIMIT 1');
 if (!$tStmt) {
     api_error('Datenbankfehler beim Prüfen des Tisches.', 'db_error', 500);
 }
 mysqli_stmt_bind_param($tStmt, 'i', $tischnummer);
-mysqli_stmt_execute($tStmt);
+ff_mysqli_stmt_execute($tStmt);
 $tRes = mysqli_stmt_get_result($tStmt);
 $tableRow = $tRes ? mysqli_fetch_assoc($tRes) : null;
 mysqli_stmt_close($tStmt);
@@ -63,7 +63,7 @@ $isEhren = (int)$tableRow['is_ehrengast'] === 1;
 // 2. Aktives Fest prüfen
 $activeFestId = 0;
 $paymentMode = 'after';
-$fRes = mysqli_query($conn, 'SELECT id, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
+$fRes = ff_mysqli_query($conn, 'SELECT id, payment_mode FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($fRes && ($fRow = mysqli_fetch_assoc($fRes))) {
     $activeFestId = (int)$fRow['id'];
     $paymentMode = (string)($fRow['payment_mode'] ?? 'after');
@@ -82,7 +82,7 @@ $stationTargets = [];
 $totalOrderAmount = 0.0;
 $totalItemsCount = 0;
 
-$posStmt = mysqli_prepare($conn, 'SELECT rowid, Positionsname, Betrag, type, COALESCE(print_target, 11) AS print_target, COALESCE(maxBestellbar, 0) AS maxBestellbar, COALESCE(kassa_only, 0) AS kassa_only FROM positionen WHERE rowid = ? LIMIT 1');
+$posStmt = ff_mysqli_prepare($conn, 'SELECT rowid, Positionsname, Betrag, type, COALESCE(print_target, 11) AS print_target, COALESCE(maxBestellbar, 0) AS maxBestellbar, COALESCE(kassa_only, 0) AS kassa_only FROM positionen WHERE rowid = ? LIMIT 1');
 if (!$posStmt) {
     api_error('Datenbankfehler bei Vorbereitung der Positionen.', 'db_error', 500);
 }
@@ -104,7 +104,7 @@ foreach ($rawItems as $entry) {
     }
 
     mysqli_stmt_bind_param($posStmt, 'i', $posId);
-    mysqli_stmt_execute($posStmt);
+    ff_mysqli_stmt_execute($posStmt);
     $pRes = mysqli_stmt_get_result($posStmt);
     $pos = $pRes ? mysqli_fetch_assoc($pRes) : null;
 
@@ -176,7 +176,7 @@ if (!mysqli_begin_transaction($conn)) {
 
 try {
     $username = (string)$user['username'];
-    $requestInsert = mysqli_prepare(
+    $requestInsert = ff_mysqli_prepare(
         $conn,
         'INSERT IGNORE INTO pilot_order_requests (client_key, username, tischnummer) VALUES (?, ?, ?)'
     );
@@ -184,14 +184,14 @@ try {
         throw new RuntimeException('Idempotenzspeicher konnte nicht vorbereitet werden.');
     }
     mysqli_stmt_bind_param($requestInsert, 'ssi', $idempotencyKey, $username, $tischnummer);
-    if (!mysqli_stmt_execute($requestInsert)) {
+    if (!ff_mysqli_stmt_execute($requestInsert)) {
         mysqli_stmt_close($requestInsert);
         throw new RuntimeException('Idempotenzspeicher konnte nicht angelegt werden.');
     }
     $newRequest = mysqli_stmt_affected_rows($requestInsert) === 1;
     mysqli_stmt_close($requestInsert);
     if (!$newRequest) {
-        $requestStmt = mysqli_prepare(
+        $requestStmt = ff_mysqli_prepare(
             $conn,
             'SELECT response_json FROM pilot_order_requests WHERE client_key = ? FOR UPDATE'
         );
@@ -199,7 +199,7 @@ try {
             throw new RuntimeException('Idempotenzprüfung konnte nicht vorbereitet werden.');
         }
         mysqli_stmt_bind_param($requestStmt, 's', $idempotencyKey);
-        mysqli_stmt_execute($requestStmt);
+        ff_mysqli_stmt_execute($requestStmt);
         $requestRes = mysqli_stmt_get_result($requestStmt);
         $requestRow = $requestRes ? mysqli_fetch_assoc($requestRes) : null;
         mysqli_stmt_close($requestStmt);
@@ -212,7 +212,7 @@ try {
         api_response($previous);
     }
 
-    mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
+    ff_mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
     $orderNr = (int)mysqli_insert_id($conn);
     if ($orderNr <= 0) {
         throw new RuntimeException('Bestellnummer konnte nicht reserviert werden.');
@@ -222,12 +222,12 @@ try {
     $festVal = $activeFestId > 0 ? $activeFestId : null;
 
     // Prüfen, ob für diesen Tisch und diesen Kellner bereits gespeicherte Entwurfszeilen (bestellt = 0) vorliegen
-    $dStmt = mysqli_prepare($conn, 'SELECT rowid, position, betrag, print_target FROM bestellungen WHERE tischnummer = ? AND kellner = ? AND (bestellt IS NULL OR bestellt = 0) AND `delete` = 0 ORDER BY rowid ASC');
+    $dStmt = ff_mysqli_prepare($conn, 'SELECT rowid, position, betrag, print_target FROM bestellungen WHERE tischnummer = ? AND kellner = ? AND (bestellt IS NULL OR bestellt = 0) AND `delete` = 0 ORDER BY rowid ASC');
     if (!$dStmt) {
         throw new RuntimeException('Draft Check Prepare fehlgeschlagen: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($dStmt, 'is', $tischnummer, $username);
-    mysqli_stmt_execute($dStmt);
+    ff_mysqli_stmt_execute($dStmt);
     $dRes = mysqli_stmt_get_result($dStmt);
     $draftRows = [];
     while ($dr = mysqli_fetch_assoc($dRes)) {
@@ -260,7 +260,7 @@ try {
                      AND `kellner` = ?
                      AND (`bestellt` IS NULL OR `bestellt` = 0)
                      AND `delete` = 0';
-        $updStmt = mysqli_prepare($conn, $updSql);
+        $updStmt = ff_mysqli_prepare($conn, $updSql);
         if (!$updStmt) {
             throw new RuntimeException('Update Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
@@ -269,7 +269,7 @@ try {
         } else {
             mysqli_stmt_bind_param($updStmt, 'iiis', $orderNr, $festVal, $tischnummer, $username);
         }
-        if (!mysqli_stmt_execute($updStmt)) {
+        if (!ff_mysqli_stmt_execute($updStmt)) {
             mysqli_stmt_close($updStmt);
             throw new RuntimeException('Update Ausführung fehlgeschlagen: ' . mysqli_stmt_error($updStmt));
         }
@@ -291,7 +291,7 @@ try {
             . ($isInstantPaid ? 'NOW(), ?' : '"0000-00-00 00:00:00", ""')
             . ')';
 
-        $insStmt = mysqli_prepare($conn, $insSql);
+        $insStmt = ff_mysqli_prepare($conn, $insSql);
         if (!$insStmt) {
             throw new RuntimeException('Insert Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
@@ -333,7 +333,7 @@ try {
                 );
             }
 
-            if (!mysqli_stmt_execute($insStmt)) {
+            if (!ff_mysqli_stmt_execute($insStmt)) {
                 mysqli_stmt_close($insStmt);
                 throw new RuntimeException('Konnte Position nicht einfügen: ' . mysqli_stmt_error($insStmt));
             }
@@ -361,7 +361,7 @@ try {
         'payment_mode' => $isInstantPaid ? 'instant' : 'later',
     ];
     $responseJson = json_encode($responsePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $completeStmt = mysqli_prepare(
+    $completeStmt = ff_mysqli_prepare(
         $conn,
         'UPDATE pilot_order_requests SET order_nr = ?, response_json = ?, completed_at = NOW() WHERE client_key = ?'
     );
@@ -369,7 +369,7 @@ try {
         throw new RuntimeException('Bestellantwort konnte nicht gesichert werden.');
     }
     mysqli_stmt_bind_param($completeStmt, 'iss', $orderNr, $responseJson, $idempotencyKey);
-    if (!mysqli_stmt_execute($completeStmt)) {
+    if (!ff_mysqli_stmt_execute($completeStmt)) {
         mysqli_stmt_close($completeStmt);
         throw new RuntimeException('Bestellantwort konnte nicht gesichert werden.');
     }

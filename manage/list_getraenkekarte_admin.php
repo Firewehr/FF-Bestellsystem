@@ -13,14 +13,14 @@ try {
     require_once __DIR__ . '/../include/ff_position_kassa_helpers.php';
 
     $hasSelbstkosten = false;
-    $chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+    $chkSk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
     if ($chkSk && mysqli_num_rows($chkSk) > 0) {
         $hasSelbstkosten = true;
     }
 
     $printTargets = [];
     $sqlPT = 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name';
-    $resPT = mysqli_query($conn, $sqlPT);
+    $resPT = ff_mysqli_query($conn, $sqlPT);
     if ($resPT) {
         while ($pt = mysqli_fetch_assoc($resPT)) {
             $printTargets[] = $pt;
@@ -40,7 +40,7 @@ try {
     }
 
     $sql = 'SELECT * FROM positionen WHERE type=2 ORDER BY reihenfolge ASC, Positionsname';
-    $result = mysqli_query($conn, $sql);
+    $result = ff_mysqli_query($conn, $sql);
     ?>
     <div class="manage-shortlist-drinks">
     <div class="manage-shortlist-drinks__sticky">

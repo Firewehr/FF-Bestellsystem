@@ -19,7 +19,7 @@ $histRowid = isset($_GET['rowid']) ? (int)$_GET['rowid'] : 0;
 
 /** Tisch-Historie: eine bereits abgeschickte, noch unbezahlte Zeile bearbeiten. */
 if ($histRowid > 0) {
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         "SELECT rowid, tischnummer, position, COALESCE(Zusatzinfo, '') AS Zusatzinfo, timestampBezahlung
          FROM bestellungen WHERE rowid = ? AND `delete` = 0 LIMIT 1"
@@ -30,7 +30,7 @@ if ($histRowid > 0) {
         exit;
     }
     mysqli_stmt_bind_param($st, 'i', $histRowid);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $hr = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -56,10 +56,10 @@ if ($histRowid > 0) {
 
     $items = [];
     $sqlB = 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC';
-    $stmtB = mysqli_prepare($conn, $sqlB);
+    $stmtB = ff_mysqli_prepare($conn, $sqlB);
     if ($stmtB) {
         mysqli_stmt_bind_param($stmtB, 'i', $positionsid);
-        mysqli_stmt_execute($stmtB);
+        ff_mysqli_stmt_execute($stmtB);
         $resB = mysqli_stmt_get_result($stmtB);
         while ($resB && ($r = mysqli_fetch_assoc($resB))) {
             $name = trim((string) ($r['name'] ?? ''));
@@ -99,14 +99,14 @@ if ($tischnummer <= 0 || $positionsid <= 0) {
 
 $items = [];
 $sqlB = 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC';
-$stmtB = mysqli_prepare($conn, $sqlB);
+$stmtB = ff_mysqli_prepare($conn, $sqlB);
 if (!$stmtB) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'prepare beilagen failed'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($stmtB, 'i', $positionsid);
-mysqli_stmt_execute($stmtB);
+ff_mysqli_stmt_execute($stmtB);
 $resB = mysqli_stmt_get_result($stmtB);
 while ($r = mysqli_fetch_assoc($resB)) {
     $name = trim((string)($r['name'] ?? ''));
@@ -140,7 +140,7 @@ if ($tischnummer === 999999) {
               {$dvScope[0]}
             ORDER BY rowid ASC
             LIMIT 50";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'prepare bestellungen failed'], JSON_UNESCAPED_UNICODE);
@@ -158,7 +158,7 @@ if ($tischnummer === 999999) {
               AND (bestellt IS NULL OR bestellt=0)
             ORDER BY rowid ASC
             LIMIT 50";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'prepare bestellungen failed'], JSON_UNESCAPED_UNICODE);
@@ -167,7 +167,7 @@ if ($tischnummer === 999999) {
     mysqli_stmt_bind_param($stmt, 'iii', $tischnummer, $positionsid, $kueche);
 }
 
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 
 while ($r = mysqli_fetch_assoc($res)) {

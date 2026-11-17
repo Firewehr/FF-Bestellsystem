@@ -26,14 +26,14 @@ if (!function_exists('ff_fest_scope_ensure_columns')) {
         }
         static $tables = ['positionen', 'position_subcategories', 'beilagen'];
         foreach ($tables as $tbl) {
-            $r = @mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $tbl) . "'");
+            $r = ff_mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $tbl) . "'");
             if (!$r || mysqli_num_rows($r) === 0) {
                 continue;
             }
-            $c = @mysqli_query($conn, "SHOW COLUMNS FROM `{$tbl}` LIKE 'fest_id'");
+            $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `{$tbl}` LIKE 'fest_id'");
             if (!$c || mysqli_num_rows($c) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `{$tbl}` ADD COLUMN `fest_id` INT(11) NULL DEFAULT NULL");
-                @mysqli_query($conn, "ALTER TABLE `{$tbl}` ADD KEY `idx_fest_id` (`fest_id`)");
+                ff_mysqli_query($conn, "ALTER TABLE `{$tbl}` ADD COLUMN `fest_id` INT(11) NULL DEFAULT NULL");
+                ff_mysqli_query($conn, "ALTER TABLE `{$tbl}` ADD KEY `idx_fest_id` (`fest_id`)");
             }
         }
     }
@@ -64,7 +64,7 @@ if (!function_exists('ff_fest_scope_attach_last')) {
         }
         $pk = $pkMap[$table];
 
-        $c = @mysqli_query($conn, "SHOW COLUMNS FROM `{$table}` LIKE 'fest_id'");
+        $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `{$table}` LIKE 'fest_id'");
         if (!$c || mysqli_num_rows($c) === 0) {
             return;
         }
@@ -86,7 +86,7 @@ if (!function_exists('ff_fest_scope_current_id')) {
         if ($id > 0) {
             return $id;
         }
-        $result = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
+        $result = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
         $row = $result ? mysqli_fetch_assoc($result) : null;
         return (int) ($row['id'] ?? 0);
     }
@@ -121,11 +121,11 @@ if (!function_exists('ff_fest_scope_delete_for_fest')) {
         }
         static $tables = ['beilagen', 'positionen', 'position_subcategories'];
         foreach ($tables as $tbl) {
-            $tr = @mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $tbl) . "'");
+            $tr = ff_mysqli_query($conn, 'SHOW TABLES LIKE ' . "'" . mysqli_real_escape_string($conn, $tbl) . "'");
             if (!$tr || mysqli_num_rows($tr) === 0) {
                 continue;
             }
-            $c = @mysqli_query($conn, "SHOW COLUMNS FROM `{$tbl}` LIKE 'fest_id'");
+            $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `{$tbl}` LIKE 'fest_id'");
             if (!$c || mysqli_num_rows($c) === 0) {
                 continue;
             }
@@ -146,12 +146,12 @@ if (!function_exists('ff_fest_set_current')) {
         if ($festId <= 0) {
             return false;
         }
-        $stmt = mysqli_prepare($conn, 'SELECT code FROM feste WHERE id = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT code FROM feste WHERE id = ? LIMIT 1');
         if (!$stmt) {
             return false;
         }
         mysqli_stmt_bind_param($stmt, 'i', $festId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $code = null;
         mysqli_stmt_bind_result($stmt, $code);
         $found = mysqli_stmt_fetch($stmt) === true;
@@ -165,7 +165,7 @@ if (!function_exists('ff_fest_set_current')) {
         // Läuft bereits eine Transaktion (MariaDB: @@in_transaction), wird sie mitbenutzt –
         // ein erneutes BEGIN würde sie sonst stillschweigend committen.
         $outerTx = false;
-        $txRes = @mysqli_query($conn, 'SELECT @@in_transaction');
+        $txRes = ff_mysqli_query($conn, 'SELECT @@in_transaction');
         if ($txRes) {
             $outerTx = (int) (mysqli_fetch_row($txRes)[0] ?? 0) === 1;
             mysqli_free_result($txRes);
@@ -174,9 +174,9 @@ if (!function_exists('ff_fest_set_current')) {
             mysqli_begin_transaction($conn);
         }
         try {
-            $upd = mysqli_prepare($conn, 'UPDATE feste SET aktiv = IF(id = ?, 1, 0)');
+            $upd = ff_mysqli_prepare($conn, 'UPDATE feste SET aktiv = IF(id = ?, 1, 0)');
             mysqli_stmt_bind_param($upd, 'i', $festId);
-            mysqli_stmt_execute($upd);
+            ff_mysqli_stmt_execute($upd);
             mysqli_stmt_close($upd);
             if (!setting_set($conn, 'current_fest_id', (string) $festId)
                 || !setting_set($conn, 'current_fest_code', (string) $code)) {

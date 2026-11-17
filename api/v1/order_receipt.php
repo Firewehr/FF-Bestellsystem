@@ -13,9 +13,9 @@ $target = (int)($data['print_target'] ?? 0);
 if ($table <= 0 || $orderNr <= 0 || $target <= 0) {
     api_error('Tisch, Bestellnummer und Druckziel sind erforderlich.', 'invalid_request', 400);
 }
-$targetStmt = mysqli_prepare($conn, 'SELECT print_target FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
+$targetStmt = ff_mysqli_prepare($conn, 'SELECT print_target FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
 mysqli_stmt_bind_param($targetStmt, 'i', $target);
-mysqli_stmt_execute($targetStmt);
+ff_mysqli_stmt_execute($targetStmt);
 $targetRes = mysqli_stmt_get_result($targetStmt);
 $validTarget = $targetRes && mysqli_fetch_assoc($targetRes);
 mysqli_stmt_close($targetStmt);
@@ -23,7 +23,7 @@ if (!$validTarget) {
     api_error('Das gewählte Druckziel ist nicht aktiv.', 'invalid_print_target', 400);
 }
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     'SELECT p.Positionsname, b.Zusatzinfo, COALESCE(b.betrag, p.Betrag) AS betrag
        FROM bestellungen b
@@ -32,7 +32,7 @@ $stmt = mysqli_prepare(
       ORDER BY b.rowid'
 );
 mysqli_stmt_bind_param($stmt, 'ii', $table, $orderNr);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $items = [];
 $total = 0.0;
@@ -45,9 +45,9 @@ if ($items === []) {
     api_error('Bestellbon wurde nicht gefunden.', 'not_found', 404);
 }
 
-$nameStmt = mysqli_prepare($conn, 'SELECT tischname FROM tische WHERE tischnummer = ? LIMIT 1');
+$nameStmt = ff_mysqli_prepare($conn, 'SELECT tischname FROM tische WHERE tischnummer = ? LIMIT 1');
 mysqli_stmt_bind_param($nameStmt, 'i', $table);
-mysqli_stmt_execute($nameStmt);
+ff_mysqli_stmt_execute($nameStmt);
 $nameRes = mysqli_stmt_get_result($nameStmt);
 $tableRow = $nameRes ? mysqli_fetch_assoc($nameRes) : [];
 mysqli_stmt_close($nameStmt);

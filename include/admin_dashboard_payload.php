@@ -53,7 +53,7 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
 
     $festId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($festId <= 0) {
-        $fAct = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
+        $fAct = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
         if ($fAct && ($rAct = mysqli_fetch_assoc($fAct))) {
             $festId = (int) $rAct['id'];
         }
@@ -91,19 +91,19 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     if ($r1 && ($row = mysqli_fetch_assoc($r1))) {
         $heute = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
-    $r3 = mysqli_query($conn, $sqlBestellt);
+    $r3 = ff_mysqli_query($conn, $sqlBestellt);
     if ($r3 && ($row = mysqli_fetch_assoc($r3))) {
         $bestellt = (int) $row['c'];
     }
-    $r4 = mysqli_query($conn, $sqlOffen);
+    $r4 = ff_mysqli_query($conn, $sqlOffen);
     if ($r4 && ($row = mysqli_fetch_assoc($r4))) {
         $offen = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
-    $r5 = mysqli_query($conn, $sqlKellner);
+    $r5 = ff_mysqli_query($conn, $sqlKellner);
     if ($r5 && ($row = mysqli_fetch_assoc($r5))) {
         $kellnerGes = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
-    $r3 = mysqli_query($conn, $sqlKellner);
+    $r3 = ff_mysqli_query($conn, $sqlKellner);
     if ($r3 && ($row = mysqli_fetch_assoc($r3))) {
         $kellnerGes = ['sum' => (float) $row['s'], 'count' => (int) $row['c']];
     }
@@ -163,12 +163,12 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
         $stuckMinutes = 10;
     }
     try {
-        $pjChk = ff_schema_is_current($conn) ? true : mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
+        $pjChk = ff_schema_is_current($conn) ? true : ff_mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
         if ($pjChk === true || ($pjChk && mysqli_num_rows($pjChk) > 0)) {
             if ($pjChk !== true) {
                 mysqli_free_result($pjChk);
             }
-            $rj = mysqli_query($conn, 'SELECT status, COUNT(*) AS c FROM printer_jobs GROUP BY status');
+            $rj = ff_mysqli_query($conn, 'SELECT status, COUNT(*) AS c FROM printer_jobs GROUP BY status');
             if ($rj) {
                 while ($jr = mysqli_fetch_assoc($rj)) {
                     $st = (string) ($jr['status'] ?? '');
@@ -218,6 +218,8 @@ function ff_admin_dashboard_payload(mysqli $conn): array {
     $payload = [
         'ok' => true,
         'login_locks' => array_values(array_unique($loginLocks)),
+        // Fehlgeschlagene DB-Abfragen / Serverfehler (include/ff_db_errors.php)
+        'db_errors' => ff_db_errors_summary(5),
         'fest_id' => $festId,
         'fest_name' => $festName,
         'datum_heute' => $today,

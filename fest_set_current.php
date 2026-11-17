@@ -13,7 +13,7 @@ require_once('include/db.php');
 require_once('include/settings.php');
 
 // Ensure table exists (same structure as fest_save.php / admin.php)
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   code VARCHAR(20) NOT NULL,

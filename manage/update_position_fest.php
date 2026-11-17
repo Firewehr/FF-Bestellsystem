@@ -15,14 +15,14 @@ if ($rowid <= 0 || $festId < 0) {
 }
 
 if ($festId > 0) {
-    $check = mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
+    $check = ff_mysqli_prepare($conn, 'SELECT id FROM feste WHERE id = ? LIMIT 1');
     if (!$check) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'prepare_failed']);
         exit;
     }
     mysqli_stmt_bind_param($check, 'i', $festId);
-    mysqli_stmt_execute($check);
+    ff_mysqli_stmt_execute($check);
     $result = mysqli_stmt_get_result($check);
     $exists = $result && mysqli_num_rows($result) > 0;
     mysqli_stmt_close($check);
@@ -34,9 +34,9 @@ if ($festId > 0) {
 }
 
 if ($festId === 0) {
-    $stmt = mysqli_prepare($conn, 'UPDATE positionen SET fest_id = NULL WHERE rowid = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE positionen SET fest_id = NULL WHERE rowid = ? LIMIT 1');
 } else {
-    $stmt = mysqli_prepare($conn, 'UPDATE positionen SET fest_id = ? WHERE rowid = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE positionen SET fest_id = ? WHERE rowid = ? LIMIT 1');
 }
 if (!$stmt) {
     http_response_code(500);
@@ -48,7 +48,7 @@ if ($festId === 0) {
 } else {
     mysqli_stmt_bind_param($stmt, 'ii', $festId, $rowid);
 }
-$ok = mysqli_stmt_execute($stmt);
+$ok = ff_mysqli_stmt_execute($stmt);
 $changed = mysqli_stmt_affected_rows($stmt);
 mysqli_stmt_close($stmt);
 

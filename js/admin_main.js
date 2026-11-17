@@ -2439,6 +2439,20 @@ function adminDashboardApplyPayload(d) {
         if (lockNames) lockNames.textContent = locks.join(', ');
         lockBox.classList.toggle('d-none', locks.length === 0);
     }
+    var dbErrBox = ffById('dashDbErrors');
+    if (dbErrBox) {
+        var de = d.db_errors || {};
+        var n15 = Number(de.count_15m || 0);
+        var n24 = Number(de.count_24h || 0);
+        var lastErr = (de.last && de.last[0]) ? de.last[0] : null;
+        var cnt = ffById('dashDbErrorsCount');
+        var lastEl = ffById('dashDbErrorsLast');
+        if (cnt) cnt.textContent = n15 > 0 ? (n15 + ' Datenbank-/Serverfehler in den letzten 15 Minuten') : (n24 + ' Datenbank-/Serverfehler in den letzten 24 Stunden');
+        if (lastEl) lastEl.textContent = (n15 > 0 && lastErr) ? (' – zuletzt: ' + lastErr.w + ' (' + lastErr.e + ')') : '';
+        dbErrBox.classList.toggle('alert-danger', n15 > 0);
+        dbErrBox.classList.toggle('alert-secondary', n15 === 0);
+        dbErrBox.classList.toggle('d-none', n24 === 0);
+    }
     adminDashboardApplyPrintAlerts(d);
     adminMaybeNotifyPrintIssues(d);
     if (tbody && d.printer_services) {

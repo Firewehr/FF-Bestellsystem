@@ -29,7 +29,7 @@ function ff_admin_render_buchungen_tbody_rows(mysqli $conn): void
     ff_finance_ensure_schema($conn);
     $finBereiche = ff_finance_list_bereiche($conn, true);
 
-    $bres = @mysqli_query($conn, 'SELECT bu.*, kb.name AS bereich_name FROM buchungen bu LEFT JOIN kassen_bereiche kb ON kb.id = bu.bereich_id ORDER BY bu.datum DESC, bu.created_at DESC LIMIT 100');
+    $bres = ff_mysqli_query($conn, 'SELECT bu.*, kb.name AS bereich_name FROM buchungen bu LEFT JOIN kassen_bereiche kb ON kb.id = bu.bereich_id ORDER BY bu.datum DESC, bu.created_at DESC LIMIT 100');
 
     $buchungenCount = 0;
 

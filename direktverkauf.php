@@ -24,10 +24,10 @@ $dvThermoHeadLabel = '';
 $dvThermoBodyCollapsed = false;
 $dvUname = trim((string) ($_SESSION['user']['username'] ?? ''));
 if ($dvUname !== '') {
-    $stDv = mysqli_prepare($conn, 'SELECT start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
+    $stDv = ff_mysqli_prepare($conn, 'SELECT start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
     if ($stDv) {
         mysqli_stmt_bind_param($stDv, 's', $dvUname);
-        mysqli_stmt_execute($stDv);
+        ff_mysqli_stmt_execute($stDv);
         $resDv = mysqli_stmt_get_result($stDv);
         $rowDv = $resDv ? mysqli_fetch_assoc($resDv) : null;
         mysqli_stmt_close($stDv);

@@ -27,7 +27,7 @@ ff_ensure_column($conn, 'bestellungen', 'fest_id', 'ALTER TABLE bestellungen ADD
 $hasFestIdColumn = true;
 $festSelect = ', fest_id';
 $removedFestId = 0;
-$sel = mysqli_prepare(
+$sel = ff_mysqli_prepare(
     $conn,
     "SELECT `position`{$festSelect} FROM bestellungen WHERE rowid = ? AND tischnummer = 999999 AND `delete` = 0
         AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')
@@ -35,7 +35,7 @@ $sel = mysqli_prepare(
 );
 if ($sel) {
     ff_mysqli_stmt_bind($sel, 'i' . $kellnerScope[1], array_merge([(int) $rowid], $kellnerScope[2]));
-    mysqli_stmt_execute($sel);
+    ff_mysqli_stmt_execute($sel);
     $sres = mysqli_stmt_get_result($sel);
     if ($sres && ($sr = mysqli_fetch_assoc($sres))) {
         $positionId = (int) ($sr['position'] ?? 0);
@@ -44,7 +44,7 @@ if ($sel) {
     mysqli_stmt_close($sel);
 }
 
-$st = mysqli_prepare(
+$st = ff_mysqli_prepare(
     $conn,
     "DELETE FROM bestellungen WHERE rowid = ? AND tischnummer = 999999 AND `delete` = 0
         AND (timestampBezahlung IS NULL OR timestampBezahlung = '0000-00-00 00:00:00')
@@ -56,7 +56,7 @@ if (!$st) {
     exit;
 }
 ff_mysqli_stmt_bind($st, 'i' . $kellnerScope[1], array_merge([(int) $rowid], $kellnerScope[2]));
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $aff = mysqli_affected_rows($conn);
 mysqli_stmt_close($st);
 

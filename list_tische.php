@@ -26,7 +26,7 @@ require_once __DIR__ . '/include/user_landing.php';
 
       //Liste alle Tische und ordne sie nach tischnummer
       $sql = "SELECT * FROM tische ORDER BY tischnummer";
-      $result = mysqli_query($conn, $sql);
+      $result = ff_mysqli_query($conn, $sql);
       ?>
 
       <div class="ui-grid-d">
@@ -56,7 +56,7 @@ require_once __DIR__ . '/include/user_landing.php';
 
       $tischnummerabfrage = $row['tischnummer'];
 
-      $result2 = mysqli_query($conn, "SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `timestampBezahlung`=\"0000-00-00 00:00:00\"  AND tischnummer=" . $tischnummerabfrage . $kellnerCountFilter);
+      $result2 = ff_mysqli_query($conn, "SELECT COUNT(*) as cnt FROM bestellungen WHERE `delete`=0 AND `timestampBezahlung`=\"0000-00-00 00:00:00\"  AND tischnummer=" . $tischnummerabfrage . $kellnerCountFilter);
       while ($roww = mysqli_fetch_assoc($result2)) {
       //echo $roww['cnt'];
 
@@ -118,13 +118,13 @@ require_once __DIR__ . '/include/user_landing.php';
             }
             $maxXMobile = $nm;
         }
-        $chkEh = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
+        $chkEh = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
         if ($chkEh && mysqli_num_rows($chkEh) === 0) {
-            @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
+            ff_mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
         }
-        $chkSm = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
+        $chkSm = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
         if ($chkSm && mysqli_num_rows($chkSm) === 0) {
-            @mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
+            ff_mysqli_query($conn, 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
         }
 
         $paymentMode = ff_aktiver_payment_mode($conn);
@@ -132,7 +132,7 @@ require_once __DIR__ . '/include/user_landing.php';
         $kellnerCountFilter = ff_tisch_kellner_scope_filter_sql($conn, 'b');
 
         $sql = 'SELECT * FROM tische WHERE x>0 AND y>0 ORDER BY y,x';
-        $result = mysqli_query($conn, $sql);
+        $result = ff_mysqli_query($conn, $sql);
         $tischRows = [];
         if ($result) {
             while ($t = mysqli_fetch_assoc($result)) {

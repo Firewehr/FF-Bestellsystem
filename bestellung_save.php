@@ -41,13 +41,13 @@ ff_position_kassa_ensure_schema($conn);
 
 // Wenn Feste gepflegt werden: ohne aktives Fest (aktiv=1) keine neuen Tisch-Buchungen (nach Festabschluss gesperrt). Direktverkauf 999999 ausgenommen.
 if ($tischnummer !== 999999) {
-    $fc = @mysqli_query($conn, 'SELECT COUNT(*) AS c FROM feste');
+    $fc = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM feste');
     $nF = 0;
     if ($fc && ($fr = mysqli_fetch_assoc($fc))) {
         $nF = (int) ($fr['c'] ?? 0);
     }
     if ($nF > 0) {
-        $fa = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
+        $fa = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
         if (!$fa || mysqli_num_rows($fa) === 0) {
             http_response_code(403);
             header('Content-Type: application/json; charset=UTF-8');
@@ -65,7 +65,7 @@ if ($tischnummer !== 999999) {
 
 // Betrag, Druckziel und maxBestellbar der Position
 $notificationFestId = 0;
-$activeFestResult = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
+$activeFestResult = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 ORDER BY id DESC LIMIT 1');
 if ($activeFestResult && ($activeFest = mysqli_fetch_assoc($activeFestResult))) {
     $notificationFestId = (int) $activeFest['id'];
 }
@@ -186,7 +186,7 @@ $timestampExpr = $tischnummer === 999999 ? 'NOW()' : "'0000-00-00 00:00:00'";
 $insertSql = 'INSERT INTO `bestellungen`
     (`tischnummer`,`position`,`timestampBestellung`,`zeitKueche`,`kueche`,`kellner`,`betrag`,`ausgeliefert`,`bestellt`,`print_target`,`bon_id`,`Zusatzinfo`,`fest_id`)
     VALUES (?, ?, ' . $timestampExpr . ', ' . $zeitKuecheExpr . ', ?, ?, ?, ?, 0, ?, ?, ?, ?)';
-$insert = mysqli_prepare($conn, $insertSql);
+$insert = ff_mysqli_prepare($conn, $insertSql);
 if (!$insert) {
     header('Content-Type: application/json; charset=UTF-8');
     http_response_code(500);
@@ -303,7 +303,7 @@ try {
             $rowZi,
             $festValue
         );
-        if (!mysqli_stmt_execute($insert)) {
+        if (!ff_mysqli_stmt_execute($insert)) {
             throw new RuntimeException('save_failed');
         }
         $orderRowId = (int) mysqli_insert_id($conn);

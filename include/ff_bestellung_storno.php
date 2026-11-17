@@ -41,12 +41,12 @@ function ff_bestellung_clear_print_queue(mysqli $conn, int $rowid): void
         return;
     }
 
-    $tbPrint = @mysqli_query($conn, "SHOW TABLES LIKE 'print'");
+    $tbPrint = ff_mysqli_query($conn, "SHOW TABLES LIKE 'print'");
     if ($tbPrint && mysqli_num_rows($tbPrint) > 0) {
         ff_db_query($conn, 'DELETE FROM `print` WHERE `bestellungID` = ?', 'i', [$rowid]);
         mysqli_free_result($tbPrint);
     }
-    $cPs = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
+    $cPs = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
     if ($cPs && mysqli_num_rows($cPs) > 0) {
         ff_db_query($conn, 'UPDATE bestellungen SET print = 0, print_status = 0 WHERE rowid = ?', 'i', [$rowid]);
         mysqli_free_result($cPs);
@@ -62,13 +62,13 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'bad_id', 'message' => 'Ungültige Bestellzeile.'];
     }
 
-    $festColumn = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'fest_id'");
+    $festColumn = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'fest_id'");
     $hasFestColumn = $festColumn && mysqli_num_rows($festColumn) > 0;
     if ($festColumn) {
         mysqli_free_result($festColumn);
     }
     $festSelect = $hasFestColumn ? ', fest_id' : '';
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT rowid, tischnummer, ausgeliefert, kueche, zeitKueche, `delete`, timestampBezahlung, settlement_id' . $festSelect . '
          FROM bestellungen WHERE rowid = ? LIMIT 1'
@@ -77,7 +77,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler.'];
     }
     mysqli_stmt_bind_param($st, 'i', $rowid);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -96,7 +96,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
     $hadSettlement = (int) ($row['settlement_id'] ?? 0) > 0;
 
     if ($hadSettlement) {
-        $upd = mysqli_prepare(
+        $upd = ff_mysqli_prepare(
             $conn,
             "UPDATE bestellungen SET
                 `delete` = 1,
@@ -111,7 +111,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         }
         $sid = (int) $row['settlement_id'];
         mysqli_stmt_bind_param($upd, 'ii', $sid, $rowid);
-        $ok = mysqli_stmt_execute($upd);
+        $ok = ff_mysqli_stmt_execute($upd);
         $aff = mysqli_affected_rows($conn);
         mysqli_stmt_close($upd);
         if (!$ok || $aff < 1) {
@@ -132,7 +132,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
 
     // Soft-delete: Zeile bleibt in DB + History (delete=1), Bezahldaten bleiben für Auswertung/Audit.
     // Küche/Schank-Flags zurücksetzen; aus Druckwarteschlange entfernen wenn noch nicht ausgeliefert.
-    $upd = mysqli_prepare(
+    $upd = ff_mysqli_prepare(
         $conn,
         "UPDATE bestellungen SET
             `delete` = 1,
@@ -149,7 +149,7 @@ function ff_bestellung_bezahlung_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler beim Storno.'];
     }
     mysqli_stmt_bind_param($upd, 'i', $rowid);
-    $ok = mysqli_stmt_execute($upd);
+    $ok = ff_mysqli_stmt_execute($upd);
     $aff = mysqli_affected_rows($conn);
     mysqli_stmt_close($upd);
 
@@ -232,7 +232,7 @@ function ff_storno_filter_rowids_by_permission(mysqli $conn, array $rowids, bool
         if ($rowid <= 0) {
             continue;
         }
-        $st = mysqli_prepare(
+        $st = ff_mysqli_prepare(
             $conn,
             'SELECT rowid, `delete`, timestampBezahlung FROM bestellungen WHERE rowid = ? LIMIT 1'
         );
@@ -240,7 +240,7 @@ function ff_storno_filter_rowids_by_permission(mysqli $conn, array $rowids, bool
             continue;
         }
         mysqli_stmt_bind_param($st, 'i', $rowid);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         $res = mysqli_stmt_get_result($st);
         $row = $res ? mysqli_fetch_assoc($res) : null;
         mysqli_stmt_close($st);
@@ -263,7 +263,7 @@ function ff_bestellung_unpaid_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'bad_id', 'message' => 'Ungültige Bestellzeile.'];
     }
 
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT rowid, `delete`, timestampBezahlung FROM bestellungen WHERE rowid = ? LIMIT 1'
     );
@@ -271,7 +271,7 @@ function ff_bestellung_unpaid_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler.'];
     }
     mysqli_stmt_bind_param($st, 'i', $rowid);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -286,7 +286,7 @@ function ff_bestellung_unpaid_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'is_paid', 'message' => 'Bezahlte Position — bitte „Stornieren“ verwenden (entfernt auch aus Küche/Schank, solange noch nicht ausgeliefert).'];
     }
 
-    $upd = mysqli_prepare(
+    $upd = ff_mysqli_prepare(
         $conn,
         "UPDATE bestellungen SET
             `delete` = 1,
@@ -299,7 +299,7 @@ function ff_bestellung_unpaid_storno(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler beim Storno.'];
     }
     mysqli_stmt_bind_param($upd, 'i', $rowid);
-    $ok = mysqli_stmt_execute($upd);
+    $ok = ff_mysqli_stmt_execute($upd);
     $aff = mysqli_affected_rows($conn);
     mysqli_stmt_close($upd);
 
@@ -321,7 +321,7 @@ function ff_bestellung_unpaid_storno(mysqli $conn, int $rowid): array
  */
 function ff_bestellung_storno_one(mysqli $conn, int $rowid): array
 {
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT rowid, `delete`, timestampBezahlung, ausgeliefert FROM bestellungen WHERE rowid = ? LIMIT 1'
     );
@@ -329,7 +329,7 @@ function ff_bestellung_storno_one(mysqli $conn, int $rowid): array
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler.'];
     }
     mysqli_stmt_bind_param($st, 'i', $rowid);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);

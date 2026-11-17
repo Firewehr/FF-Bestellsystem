@@ -41,9 +41,9 @@ if (is_readable($helpersPath)) {
     require_once $helpersPath;
     ff_menu_ensure_schema($conn);
 } else {
-    $chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'selbstkosten'");
+    $chkSk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'selbstkosten'");
     if ($chkSk && mysqli_num_rows($chkSk) === 0) {
-        @mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `selbstkosten` DECIMAL(10,2) NOT NULL DEFAULT 0.00");
+        ff_mysqli_query($conn, "ALTER TABLE `positionen` ADD COLUMN `selbstkosten` DECIMAL(10,2) NOT NULL DEFAULT 0.00");
     }
 }
 
@@ -53,7 +53,7 @@ if ($rMax && ($rm = ff_db_row_text(mysqli_fetch_assoc($rMax)))) {
     $reihenfolge = (int)$rm['n'];
 }
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     'INSERT INTO positionen (type, print_target, Positionsname, Kurzbezeichnung, Betrag, maxBestellbar, selbstkosten, reihenfolge, color) VALUES (?,?,?,?,?,?,?,?,?)'
 );
@@ -77,7 +77,7 @@ mysqli_stmt_bind_param(
     $defaultFontColor
 );
 
-if (!mysqli_stmt_execute($stmt)) {
+if (!ff_mysqli_stmt_execute($stmt)) {
     http_response_code(500);
     echo 'insert_failed: ' . mysqli_stmt_error($stmt);
     mysqli_stmt_close($stmt);

@@ -34,7 +34,7 @@ function ff_pilot_linked_articles_ensure_schema(mysqli $conn): void
 
 function ff_pilot_linked_articles_active_fest_id(mysqli $conn): int
 {
-    $result = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
+    $result = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
     $row = $result ? mysqli_fetch_assoc($result) : null;
     if ($result) {
         mysqli_free_result($result);
@@ -59,7 +59,7 @@ function ff_pilot_linked_article_is_visible(mysqli $conn, int $positionId, int $
               AND COALESCE(s.kassa_only, 0) = 0'
         . ($festId > 0 ? ' AND (p.fest_id IS NULL OR p.fest_id = ?)' : '')
         . ' LIMIT 1';
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         return false;
     }
@@ -68,7 +68,7 @@ function ff_pilot_linked_article_is_visible(mysqli $conn, int $positionId, int $
     } else {
         mysqli_stmt_bind_param($stmt, 'i', $positionId);
     }
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $visible = $result && mysqli_num_rows($result) === 1;
     if ($result) {
@@ -105,7 +105,7 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
               AND COALESCE(child_sub.kassa_only, 0) = 0
               AND l.parent_position_id IN (' . $parentList . ')' . $festFilter . '
             ORDER BY l.parent_position_id ASC, l.sort_order ASC, l.id ASC';
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         return [];
     }
@@ -115,7 +115,7 @@ function ff_pilot_linked_articles_for_parents(mysqli $conn, array $parentIds, in
         $parentT . ($festId > 0 ? 'ii' : ''),
         array_merge($parentV, $festId > 0 ? [$festId, $festId] : [])
     );
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     $rows = [];
     while ($result && ($row = mysqli_fetch_assoc($result))) {

@@ -37,7 +37,7 @@ $sql = "SELECT rowid, COALESCE(Zusatzinfo, '') AS Zusatzinfo
         ORDER BY rowid ASC
         LIMIT 50";
 
-$stmt = mysqli_prepare($conn, $sql);
+$stmt = ff_mysqli_prepare($conn, $sql);
 if (!$stmt) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'prepare failed'], JSON_UNESCAPED_UNICODE);
@@ -45,7 +45,7 @@ if (!$stmt) {
 }
 
 mysqli_stmt_bind_param($stmt, 'iii', $tischnummer, $positionsid, $kueche);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 
 while ($r = mysqli_fetch_assoc($res)) {

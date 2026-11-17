@@ -22,7 +22,7 @@ ff_menu_ensure_schema($conn);
 ff_fest_scope_ensure_columns($conn);
 
 $printTargets = [];
-$srPt = mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
+$srPt = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
 if ($srPt) {
     while ($pt = mysqli_fetch_assoc($srPt)) {
         $printTargets[] = $pt;
@@ -30,7 +30,7 @@ if ($srPt) {
 }
 
 $adminSubs = [];
-$srSub = mysqli_query($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name');
+$srSub = ff_mysqli_query($conn, 'SELECT id, type, name, sort_order, tile_bg, COALESCE(kassa_only, 0) AS kassa_only FROM position_subcategories ORDER BY type, sort_order, name');
 if ($srSub) {
     while ($sx = mysqli_fetch_assoc($srSub)) {
         $adminSubs[] = $sx;
@@ -38,7 +38,7 @@ if ($srSub) {
 }
 
 $adminFeste = [];
-$srFeste = mysqli_query($conn, 'SELECT id, name, code, aktiv FROM feste ORDER BY aktiv DESC, created_at DESC, name ASC');
+$srFeste = ff_mysqli_query($conn, 'SELECT id, name, code, aktiv FROM feste ORDER BY aktiv DESC, created_at DESC, name ASC');
 if ($srFeste) {
     while ($fest = mysqli_fetch_assoc($srFeste)) {
         $adminFeste[] = $fest;
@@ -94,9 +94,9 @@ function m_out(string $s): string {
 </div>
 
 <?php
-$result4 = mysqli_query($conn, 'SELECT p.*, s.name AS subkat_name, s.tile_bg AS subkat_tile_bg FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id ORDER BY p.type, p.reihenfolge');
+$result4 = ff_mysqli_query($conn, 'SELECT p.*, s.name AS subkat_name, s.tile_bg AS subkat_tile_bg FROM positionen p LEFT JOIN position_subcategories s ON s.id = p.subcategory_id ORDER BY p.type, p.reihenfolge');
 $hasSelbstkosten = false;
-$chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+$chkSk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
 if ($chkSk && mysqli_num_rows($chkSk) > 0) {
     $hasSelbstkosten = true;
 }

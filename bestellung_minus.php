@@ -59,10 +59,10 @@ if ($tischnummer === 999999) {
             {$kellnerClause[0]}
           ORDER BY rowid DESC
           LIMIT 1";
-  $stmt = mysqli_prepare($conn, $sql);
+  $stmt = ff_mysqli_prepare($conn, $sql);
   if ($stmt) {
     ff_mysqli_stmt_bind($stmt, 'i' . $kellnerClause[1], array_merge([(int) $position], $kellnerClause[2]));
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $affected = mysqli_stmt_affected_rows($stmt);
     mysqli_stmt_close($stmt);
   }
@@ -70,14 +70,14 @@ if ($tischnummer === 999999) {
   // Tischkarte: wie bisher (offene Küchenzeilen kueche=0)
   $kueche = 0;
   if ($hasFestIdColumn) {
-    $festStmt = mysqli_prepare(
+    $festStmt = ff_mysqli_prepare(
       $conn,
       'SELECT fest_id FROM bestellungen WHERE tischnummer=? AND position=? AND kueche=? AND `delete`=0
        AND (bestellt IS NULL OR bestellt=0) ORDER BY rowid DESC LIMIT 1'
     );
     if ($festStmt) {
       mysqli_stmt_bind_param($festStmt, 'iii', $tischnummer, $position, $kueche);
-      mysqli_stmt_execute($festStmt);
+      ff_mysqli_stmt_execute($festStmt);
       $festResult = mysqli_stmt_get_result($festStmt);
       if ($festResult && ($row = mysqli_fetch_assoc($festResult))) {
         $removedFestId = (int) ($row['fest_id'] ?? 0);
@@ -95,10 +95,10 @@ if ($tischnummer === 999999) {
           ORDER BY rowid DESC
           LIMIT 1";
 
-  $stmt = mysqli_prepare($conn, $sql);
+  $stmt = ff_mysqli_prepare($conn, $sql);
   if ($stmt) {
     mysqli_stmt_bind_param($stmt, "iii", $tischnummer, $position, $kueche);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $affected = mysqli_stmt_affected_rows($stmt);
     mysqli_stmt_close($stmt);
   }

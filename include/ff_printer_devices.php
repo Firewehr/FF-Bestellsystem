@@ -35,7 +35,7 @@ if (!function_exists('ff_printer_devices_ensure_schema')) {
             return $ready;
         }
         // Ohne DDL prüfen (CREATE TABLE würde eine offene Transaktion implizit committen)
-        $chk = @mysqli_query($conn, "SHOW TABLES LIKE 'printer_devices'");
+        $chk = ff_mysqli_query($conn, "SHOW TABLES LIKE 'printer_devices'");
         if ($chk && mysqli_num_rows($chk) > 0) {
             mysqli_free_result($chk);
             return $ready = true;
@@ -61,7 +61,7 @@ if (!function_exists('ff_printer_devices_ensure_schema')) {
             KEY `idx_printer_devices_status` (`status`, `created_at`),
             KEY `idx_printer_devices_ip` (`created_ip`, `created_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-        $ready = mysqli_query($conn, $sql) === true;
+        $ready = ff_mysqli_query($conn, $sql) === true;
         if (!$ready) {
             error_log('ff_printer_devices_ensure_schema: ' . mysqli_error($conn));
         }
@@ -129,12 +129,12 @@ if (!function_exists('ff_printer_auth_check')) {
         }
 
         $hash = ff_printer_token_hash($token);
-        $stmt = mysqli_prepare($conn, 'SELECT id, name, host, service, print_target, status, pair_code FROM printer_devices WHERE token_hash = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id, name, host, service, print_target, status, pair_code FROM printer_devices WHERE token_hash = ? LIMIT 1');
         if (!$stmt) {
             return $deny(503, 'printer_unavailable', 'Geräteverwaltung nicht verfügbar.');
         }
         mysqli_stmt_bind_param($stmt, 's', $hash);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $res = mysqli_stmt_get_result($stmt);
         $device = $res ? mysqli_fetch_assoc($res) : null;
         mysqli_stmt_close($stmt);
@@ -146,14 +146,14 @@ if (!function_exists('ff_printer_auth_check')) {
 
         // Kontakt protokollieren (gedrosselt, auch für wartende Geräte – Admin sieht so, dass der Client lebt)
         $ip = ff_printer_client_ip();
-        $upd = mysqli_prepare(
+        $upd = ff_mysqli_prepare(
             $conn,
             'UPDATE printer_devices SET last_seen_at = NOW(), last_ip = ?
               WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL 30 SECOND OR last_ip <> ?)'
         );
         if ($upd) {
             mysqli_stmt_bind_param($upd, 'sis', $ip, $device['id'], $ip);
-            mysqli_stmt_execute($upd);
+            ff_mysqli_stmt_execute($upd);
             mysqli_stmt_close($upd);
         }
 
@@ -226,9 +226,9 @@ if (!function_exists('ff_printer_effective_target')) {
             return false;
         }
         $target = $printTarget > 0 ? $printTarget : null;
-        $stmt = mysqli_prepare($conn, 'UPDATE printer_devices SET print_target = ? WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE printer_devices SET print_target = ? WHERE id = ?');
         mysqli_stmt_bind_param($stmt, 'ii', $target, $id);
-        $ok = mysqli_stmt_execute($stmt);
+        $ok = ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         return $ok;
     }
@@ -252,9 +252,9 @@ if (!function_exists('ff_printer_device_register')) {
             // Verwaiste Anfragen aufräumen
             ff_db_query($conn, 'DELETE FROM printer_devices WHERE status = \'pending\' AND created_at < NOW() - INTERVAL ? DAY', 'i', [(int)FF_PRINTER_DEVICE_PENDING_TTL_DAYS]);
 
-            $stmt = mysqli_prepare($conn, "SELECT COUNT(*) FROM printer_devices WHERE created_ip = ? AND created_at > NOW() - INTERVAL 10 MINUTE");
+            $stmt = ff_mysqli_prepare($conn, "SELECT COUNT(*) FROM printer_devices WHERE created_ip = ? AND created_at > NOW() - INTERVAL 10 MINUTE");
             mysqli_stmt_bind_param($stmt, 's', $ip);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             mysqli_stmt_bind_result($stmt, $recent);
             mysqli_stmt_fetch($stmt);
             mysqli_stmt_close($stmt);
@@ -262,7 +262,7 @@ if (!function_exists('ff_printer_device_register')) {
                 return ['ok' => false, 'http' => 429, 'code' => 'rate_limited', 'error' => 'Zu viele Registrierungen von dieser Adresse. Bitte später erneut versuchen.'];
             }
 
-            $res = mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_devices WHERE status = 'pending'");
+            $res = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_devices WHERE status = 'pending'");
             $pending = $res ? (int)(mysqli_fetch_assoc($res)['c'] ?? 0) : 0;
             if ($pending >= FF_PRINTER_DEVICE_MAX_PENDING) {
                 return ['ok' => false, 'http' => 429, 'code' => 'too_many_pending', 'error' => 'Zu viele unbestätigte Druck-Clients. Bitte im Admin aufräumen.'];
@@ -282,7 +282,7 @@ if (!function_exists('ff_printer_device_register')) {
         }
         $ipCol = substr($ip, 0, 45);
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'INSERT INTO printer_devices (token_hash, pair_code, name, host, service, print_target, client, status, created_ip, approved_at, approved_by)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? = \'approved\', NOW(), NULL), ?)'
@@ -291,7 +291,7 @@ if (!function_exists('ff_printer_device_register')) {
             return ['ok' => false, 'http' => 500, 'code' => 'db_error', 'error' => 'Gerät konnte nicht angelegt werden.'];
         }
         mysqli_stmt_bind_param($stmt, 'sssssisssss', $hash, $pair, $name, $host, $service, $target, $client, $status, $ipCol, $status, $approvedBy);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             return ['ok' => false, 'http' => 500, 'code' => 'db_error', 'error' => 'Gerät konnte nicht angelegt werden.'];
         }
@@ -308,7 +308,7 @@ if (!function_exists('ff_printer_device_register')) {
             return [];
         }
         $rows = [];
-        $res = mysqli_query(
+        $res = ff_mysqli_query(
             $conn,
             "SELECT id, pair_code, name, host, service, print_target, client, status, created_ip, created_at,
                     approved_at, approved_by, last_seen_at, last_ip
@@ -328,7 +328,7 @@ if (!function_exists('ff_printer_device_register')) {
         if (!ff_printer_devices_ensure_schema($conn)) {
             return 0;
         }
-        $res = mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_devices WHERE status = 'pending'");
+        $res = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM printer_devices WHERE status = 'pending'");
         return $res ? (int)(mysqli_fetch_assoc($res)['c'] ?? 0) : 0;
     }
 
@@ -337,7 +337,7 @@ if (!function_exists('ff_printer_device_register')) {
         if ($id <= 0 || !in_array($status, ['approved', 'blocked'], true) || !ff_printer_devices_ensure_schema($conn)) {
             return false;
         }
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "UPDATE printer_devices
                 SET status = ?,
@@ -346,7 +346,7 @@ if (!function_exists('ff_printer_device_register')) {
               WHERE id = ?"
         );
         mysqli_stmt_bind_param($stmt, 'ssssi', $status, $status, $status, $by, $id);
-        $ok = mysqli_stmt_execute($stmt);
+        $ok = ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         return $ok;
     }
@@ -357,9 +357,9 @@ if (!function_exists('ff_printer_device_register')) {
         if ($id <= 0 || $name === '' || !ff_printer_devices_ensure_schema($conn)) {
             return false;
         }
-        $stmt = mysqli_prepare($conn, 'UPDATE printer_devices SET name = ? WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE printer_devices SET name = ? WHERE id = ?');
         mysqli_stmt_bind_param($stmt, 'si', $name, $id);
-        $ok = mysqli_stmt_execute($stmt);
+        $ok = ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         return $ok;
     }
@@ -369,9 +369,9 @@ if (!function_exists('ff_printer_device_register')) {
         if ($id <= 0 || !ff_printer_devices_ensure_schema($conn)) {
             return false;
         }
-        $stmt = mysqli_prepare($conn, 'DELETE FROM printer_devices WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM printer_devices WHERE id = ?');
         mysqli_stmt_bind_param($stmt, 'i', $id);
-        $ok = mysqli_stmt_execute($stmt);
+        $ok = ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
         return $ok;
     }

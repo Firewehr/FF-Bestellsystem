@@ -11,7 +11,7 @@ if (!function_exists('ff_reset_table_exists')) {
     function ff_reset_table_exists(mysqli $conn, string $table): bool
     {
         $t = mysqli_real_escape_string($conn, $table);
-        $q = mysqli_query($conn, "SHOW TABLES LIKE '{$t}'");
+        $q = ff_mysqli_query($conn, "SHOW TABLES LIKE '{$t}'");
         return $q && mysqli_num_rows($q) > 0;
     }
 }
@@ -23,7 +23,7 @@ if (!function_exists('ff_reset_truncate_table')) {
         if (!ff_reset_table_exists($conn, $table)) {
             return null;
         }
-        if (!mysqli_query($conn, 'TRUNCATE TABLE `' . str_replace('`', '', $table) . '`')) {
+        if (!ff_mysqli_query($conn, 'TRUNCATE TABLE `' . str_replace('`', '', $table) . '`')) {
             return mysqli_error($conn) ?: ('TRUNCATE ' . $table . ' fehlgeschlagen');
         }
         return null;
@@ -41,8 +41,8 @@ if (!function_exists('ff_reset_fest_start_reset_sequences')) {
         setting_set($conn, 'order_nr_seq', '0');
         setting_set($conn, 'bon_nr_seq', '0');
         setting_set($conn, FF_RECHNUNG_NEXT_KEY, '1');
-        @mysqli_query($conn, "DELETE FROM settings WHERE k REGEXP '^rechnung_next_[0-9]{4}$'");
-        @mysqli_query($conn, "DELETE FROM settings WHERE k LIKE 'RECHNUNG_COUNTER_%'");
+        ff_mysqli_query($conn, "DELETE FROM settings WHERE k REGEXP '^rechnung_next_[0-9]{4}$'");
+        ff_mysqli_query($conn, "DELETE FROM settings WHERE k LIKE 'RECHNUNG_COUNTER_%'");
     }
 }
 

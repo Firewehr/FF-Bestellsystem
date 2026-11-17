@@ -90,7 +90,7 @@ function ff_admin_statistik_usernames(mysqli $conn): array {
             WHERE username IS NOT NULL AND TRIM(username) <> ''
     ) t WHERE u IS NOT NULL AND TRIM(u) <> '' ORDER BY u";
     $names = [];
-    $res = @mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $u = trim((string)($row['u'] ?? ''));
@@ -466,7 +466,7 @@ function ff_admin_render_statistik_inner(
         echo '</tbody></table></div>';
         echo '</div>';
 
-        $resPos = mysqli_query($conn, 'SELECT rowid, Positionsname, type FROM positionen ORDER BY type, Positionsname');
+        $resPos = ff_mysqli_query($conn, 'SELECT rowid, Positionsname, type FROM positionen ORDER BY type, Positionsname');
         $posList = [];
         if ($resPos) {
             while ($r = mysqli_fetch_assoc($resPos)) {

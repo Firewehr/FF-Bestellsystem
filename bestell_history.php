@@ -307,7 +307,7 @@ function ff_hist_order_delivery_stats(array $rows): array {
 
 function ff_hist_payment_mode(mysqli $conn): string {
     $paymentMode = 'after';
-    $fres = mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
+    $fres = ff_mysqli_query($conn, 'SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1');
     if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
         $paymentMode = ($frow['payment_mode'] === 'instant') ? 'instant' : 'after';
     }
@@ -573,14 +573,14 @@ $kellnerList = [];
 
 if ($isAdmin) {
 
-    $pRes = mysqli_query($conn, "SELECT DISTINCT p.rowid, p.Positionsname
+    $pRes = ff_mysqli_query($conn, "SELECT DISTINCT p.rowid, p.Positionsname
                                  FROM bestellungen b JOIN positionen p ON p.rowid = b.position
                                  WHERE b.`delete`=0 ORDER BY p.Positionsname ASC");
     if ($pRes) { while ($r = mysqli_fetch_assoc($pRes)) { $positions[] = $r; } }
 
     ff_users_ensure_landing_columns($conn);
     $festHist = ff_finance_fest_filter_sql($conn, 'b');
-    $kRes = mysqli_query(
+    $kRes = ff_mysqli_query(
         $conn,
         'SELECT DISTINCT ' . ff_hist_kasse_kellner_expr('b') . " AS k_login FROM bestellungen b
          WHERE b.`delete`=0 AND TRIM(" . ff_hist_kasse_kellner_expr('b') . ") <> ''{$festHist}

@@ -44,12 +44,12 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
             TRIM(COALESCE(b.Zusatzinfo, \'\')), pt.print_target, pt.name, pt.sort_order
         ORDER BY pt.sort_order, p.Positionsname, zusatzinfo';
 
-    $stmt = mysqli_prepare($conn, $sqlAgg);
+    $stmt = ff_mysqli_prepare($conn, $sqlAgg);
     if (!$stmt) {
         return null;
     }
     ff_mysqli_stmt_bind($stmt, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
 
     $positionen = [];
@@ -85,12 +85,12 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
           AND b.timestampBezahlung IS NOT NULL
           AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
           ' . $kellnerFilter[0];
-    $st2 = mysqli_prepare($conn, $sqlMeta);
+    $st2 = ff_mysqli_prepare($conn, $sqlMeta);
     if (!$st2) {
         return null;
     }
     ff_mysqli_stmt_bind($st2, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
-    mysqli_stmt_execute($st2);
+    ff_mysqli_stmt_execute($st2);
     $metaRes = mysqli_stmt_get_result($st2);
     $meta = $metaRes ? mysqli_fetch_assoc($metaRes) : null;
     mysqli_stmt_close($st2);
@@ -104,10 +104,10 @@ function ff_direktverkauf_abholbon_build_thermal_payload(mysqli $conn, string $b
           AND b.delete = 0 AND b.tischnummer = 999999
           AND b.timestampBezahlung IS NOT NULL AND b.timestampBezahlung <> \'0000-00-00 00:00:00\'
           ' . $kellnerFilter[0] . ' ORDER BY b.rowid';
-    $st3 = mysqli_prepare($conn, $sqlIds);
+    $st3 = ff_mysqli_prepare($conn, $sqlIds);
     if ($st3) {
         ff_mysqli_stmt_bind($st3, 's' . $kellnerFilter[1], array_merge([$bonId], $kellnerFilter[2]));
-        mysqli_stmt_execute($st3);
+        ff_mysqli_stmt_execute($st3);
         $idr = mysqli_stmt_get_result($st3);
         while ($idr && ($rr = mysqli_fetch_assoc($idr))) {
             $rowids[] = (int)$rr['rowid'];

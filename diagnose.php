@@ -34,6 +34,7 @@ if($pdo){
 require_once __DIR__ . '/include/ff_server_env.php';
 $isAdmin = (int) ($_SESSION['admin'] ?? 0) >= 1;
 $env = $isAdmin ? ff_server_env($conn) : [];
+$dbErrors = $isAdmin ? ff_db_errors_summary(30) : null;
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -88,6 +89,32 @@ $env = $isAdmin ? ff_server_env($conn) : [];
             </table>
             <label class="form-label mb-1" for="envCopy">Zum Weitergeben (alles markieren und kopieren):</label>
             <textarea id="envCopy" class="form-control form-control-sm font-monospace" rows="8" readonly><?php echo htmlspecialchars(ff_server_env_text($env) . "\n", ENT_QUOTES, 'UTF-8'); ?></textarea>
+        </div>
+    </div>
+    <div class="card mb-3" id="fehlerprotokoll">
+        <div class="card-header fw-bold">Fehlerprotokoll (letzte 24 Stunden)</div>
+        <div class="card-body small">
+            <p class="text-muted mb-2">
+                Fehlgeschlagene Datenbank-Abfragen, Serverfehler und PHP-Abbrüche.
+                Letzte 15 Minuten: <strong><?php echo (int) $dbErrors['count_15m']; ?></strong>,
+                letzte 24 Stunden: <strong><?php echo (int) $dbErrors['count_24h']; ?></strong>.
+                SQL-Details stehen im Fehlerprotokoll des Servers (<code>[ff-db]</code>). Leeren: Pilot-Admin → Diagnose.
+            </p>
+            <?php if (empty($dbErrors['last'])): ?>
+                <p class="mb-0 text-success">Keine Fehler.</p>
+            <?php else: ?>
+            <table class="table table-sm mb-0">
+                <tbody>
+                <?php foreach ($dbErrors['last'] as $e): ?>
+                    <tr>
+                        <td class="text-nowrap"><?php echo htmlspecialchars(date('d.m. H:i:s', (int) $e['t']), ENT_QUOTES, 'UTF-8'); ?></td>
+                        <td class="text-break"><code><?php echo htmlspecialchars($e['w'], ENT_QUOTES, 'UTF-8'); ?></code><br>
+                            <?php echo ($e['n'] ? '#' . (int) $e['n'] . ' ' : '') . htmlspecialchars($e['e'], ENT_QUOTES, 'UTF-8'); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
         </div>
     </div>
     <script>

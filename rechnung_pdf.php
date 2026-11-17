@@ -21,9 +21,9 @@ if ($rechnung_id <= 0) {
 }
 
 // Rechnung laden
-$stmt = mysqli_prepare($conn, "SELECT * FROM rechnungen WHERE id = ?");
+$stmt = ff_mysqli_prepare($conn, "SELECT * FROM rechnungen WHERE id = ?");
 mysqli_stmt_bind_param($stmt, 'i', $rechnung_id);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 $rechnung = mysqli_fetch_assoc($result);
 
@@ -110,9 +110,9 @@ if (count($positionen) === 0) {
 }
 
 if (count($positionen) === 0 && $sql !== null) {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     mysqli_stmt_bind_param($stmt, 'i', $rechnung_id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
         $an = max(1, (int) ($row['anzahl'] ?? 1));
@@ -134,10 +134,10 @@ if (count($positionen) === 0 && (int)$rechnung['sammelrechnung_id'] > 0) {
             WHERE b.sammelrechnung_id = ? AND b.delete = 0
             GROUP BY b.tischnummer, t.tischname, p.rowid, p.Positionsname, p.Kurzbezeichnung, p.Betrag, b.Zusatzinfo
             ORDER BY b.tischnummer, p.Positionsname, b.Zusatzinfo";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     $sammel_id = (int)$rechnung['sammelrechnung_id'];
     mysqli_stmt_bind_param($stmt, 'i', $sammel_id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
         $an = max(1, (int) ($row['anzahl'] ?? 1));
@@ -158,10 +158,10 @@ if (count($positionen) === 0 && (int)$rechnung['tischnummer'] > 0) {
               AND b.timestampBezahlung <> '0000-00-00 00:00:00'
             GROUP BY p.rowid, p.Positionsname, p.Kurzbezeichnung, p.Betrag, b.Zusatzinfo
             ORDER BY p.Positionsname, b.Zusatzinfo";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     $tisch = (int)$rechnung['tischnummer'];
     mysqli_stmt_bind_param($stmt, 'i', $tisch);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($result)) {
         $an = max(1, (int) ($row['anzahl'] ?? 1));
@@ -501,10 +501,10 @@ function formatEUR($amount) {
             $pdf_onr_list = [];
             $pdf_rid = (int)($rechnung['id'] ?? 0);
             if ($pdf_rid > 0) {
-                $stOnr = mysqli_prepare($conn, 'SELECT DISTINCT order_nr FROM bestellungen WHERE rechnung_id = ? AND `delete`=0 AND order_nr IS NOT NULL AND order_nr > 0 ORDER BY order_nr ASC');
+                $stOnr = ff_mysqli_prepare($conn, 'SELECT DISTINCT order_nr FROM bestellungen WHERE rechnung_id = ? AND `delete`=0 AND order_nr IS NOT NULL AND order_nr > 0 ORDER BY order_nr ASC');
                 if ($stOnr) {
                     mysqli_stmt_bind_param($stOnr, 'i', $pdf_rid);
-                    mysqli_stmt_execute($stOnr);
+                    ff_mysqli_stmt_execute($stOnr);
                     $resOnr = mysqli_stmt_get_result($stOnr);
                     while ($rOnr = mysqli_fetch_assoc($resOnr)) {
                         $pdf_onr_list[] = (int)$rOnr['order_nr'];

@@ -19,14 +19,14 @@ if ($uname === '') {
     exit;
 }
 
-$st = mysqli_prepare($conn, 'SELECT admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT admin, start_page, start_print_target, dv_abholbon_print_target FROM users WHERE username = ? LIMIT 1');
 if (!$st) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($st, 's', $uname);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);

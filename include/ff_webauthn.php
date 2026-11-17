@@ -23,7 +23,7 @@ function ff_webauthn_ensure_schema(mysqli $conn): void
         return;
     }
     $done = true;
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `user_passkeys` (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `user_passkeys` (
         `id` INT AUTO_INCREMENT PRIMARY KEY,
         `user_id` INT NOT NULL,
         `credential_id` VARCHAR(1024) NOT NULL,
@@ -364,9 +364,9 @@ function ff_webauthn_register_options(mysqli $conn, int $userId, string $usernam
     $_SESSION['webauthn_reg_user_id'] = $userId;
 
     $existing = [];
-    $stmt = mysqli_prepare($conn, 'SELECT credential_id FROM user_passkeys WHERE user_id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT credential_id FROM user_passkeys WHERE user_id = ?');
     mysqli_stmt_bind_param($stmt, 'i', $userId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     while ($row = mysqli_fetch_assoc($res)) {
         $existing[] = ['id' => $row['credential_id'], 'type' => 'public-key'];
@@ -407,7 +407,7 @@ function ff_webauthn_remote_ensure_schema(mysqli $conn): void
         return;
     }
     $done = true;
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `webauthn_remote_requests` (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `webauthn_remote_requests` (
         `token` VARCHAR(64) NOT NULL PRIMARY KEY,
         `user_id` INT NOT NULL,
         `challenge` VARCHAR(64) NOT NULL,
@@ -426,9 +426,9 @@ function ff_webauthn_remote_create(mysqli $conn, int $userId): array
     ff_webauthn_remote_ensure_schema($conn);
     $token = ff_webauthn_b64url_encode(random_bytes(32));
     $challenge = ff_webauthn_b64url_encode(random_bytes(32));
-    $stmt = mysqli_prepare($conn, "INSERT INTO webauthn_remote_requests (token, user_id, challenge, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
+    $stmt = ff_mysqli_prepare($conn, "INSERT INTO webauthn_remote_requests (token, user_id, challenge, expires_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 5 MINUTE))");
     mysqli_stmt_bind_param($stmt, 'sis', $token, $userId, $challenge);
-    $ok = mysqli_stmt_execute($stmt);
+    $ok = ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
     if (!$ok) {
         return ['ok' => false, 'error' => 'db_error'];
@@ -440,11 +440,11 @@ function ff_webauthn_remote_create(mysqli $conn, int $userId): array
 function ff_webauthn_remote_load_pending(mysqli $conn, string $token): ?array
 {
     ff_webauthn_remote_ensure_schema($conn);
-    $stmt = mysqli_prepare($conn, "SELECT r.token, r.user_id, r.challenge, r.status, r.expires_at, u.username
+    $stmt = ff_mysqli_prepare($conn, "SELECT r.token, r.user_id, r.challenge, r.status, r.expires_at, u.username
         FROM webauthn_remote_requests r JOIN users u ON u.id = r.user_id
         WHERE r.token = ? AND r.status = 'pending' AND r.expires_at >= NOW() LIMIT 1");
     mysqli_stmt_bind_param($stmt, 's', $token);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($stmt);
@@ -461,9 +461,9 @@ function ff_webauthn_remote_options(mysqli $conn, string $token): array
     $userId = (int) $row['user_id'];
 
     $existing = [];
-    $stmt = mysqli_prepare($conn, 'SELECT credential_id FROM user_passkeys WHERE user_id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT credential_id FROM user_passkeys WHERE user_id = ?');
     mysqli_stmt_bind_param($stmt, 'i', $userId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     while ($r = mysqli_fetch_assoc($res)) {
         $existing[] = ['id' => $r['credential_id'], 'type' => 'public-key'];
@@ -509,9 +509,9 @@ function ff_webauthn_remote_verify(mysqli $conn, string $token, array $cred, str
     // Einmal-Verwendung: Anfrage in jedem Fall abschließen (pending -> done/error), unabhängig vom Ergebnis.
     $newStatus = $result['ok'] ? 'done' : 'error';
     $errCode = $result['ok'] ? null : (string) ($result['error'] ?? 'unknown');
-    $stmt = mysqli_prepare($conn, "UPDATE webauthn_remote_requests SET status = ?, error = ?, label = ? WHERE token = ? AND status = 'pending'");
+    $stmt = ff_mysqli_prepare($conn, "UPDATE webauthn_remote_requests SET status = ?, error = ?, label = ? WHERE token = ? AND status = 'pending'");
     mysqli_stmt_bind_param($stmt, 'ssss', $newStatus, $errCode, $label, $token);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     return $result;
@@ -521,9 +521,9 @@ function ff_webauthn_remote_verify(mysqli $conn, string $token, array $cred, str
 function ff_webauthn_remote_status(mysqli $conn, string $token, int $expectedUserId): array
 {
     ff_webauthn_remote_ensure_schema($conn);
-    $stmt = mysqli_prepare($conn, 'SELECT status, error, label, user_id, expires_at FROM webauthn_remote_requests WHERE token = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT status, error, label, user_id, expires_at FROM webauthn_remote_requests WHERE token = ? LIMIT 1');
     mysqli_stmt_bind_param($stmt, 's', $token);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($stmt);
@@ -604,9 +604,9 @@ function ff_webauthn_register_verify_core(mysqli $conn, array $cred, string $lab
 
     $credentialIdB64 = ff_webauthn_b64url_encode($parsed['credentialId']);
 
-    $chk = mysqli_prepare($conn, 'SELECT id FROM user_passkeys WHERE credential_id = ? LIMIT 1');
+    $chk = ff_mysqli_prepare($conn, 'SELECT id FROM user_passkeys WHERE credential_id = ? LIMIT 1');
     mysqli_stmt_bind_param($chk, 's', $credentialIdB64);
-    mysqli_stmt_execute($chk);
+    ff_mysqli_stmt_execute($chk);
     mysqli_stmt_store_result($chk);
     $dup = mysqli_stmt_num_rows($chk) > 0;
     mysqli_stmt_close($chk);
@@ -621,9 +621,9 @@ function ff_webauthn_register_verify_core(mysqli $conn, array $cred, string $lab
     }
 
     $signCount = $parsed['signCount'];
-    $stmt = mysqli_prepare($conn, 'INSERT INTO user_passkeys (user_id, credential_id, public_key_pem, sign_count, label, transports) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO user_passkeys (user_id, credential_id, public_key_pem, sign_count, label, transports) VALUES (?, ?, ?, ?, ?, ?)');
     mysqli_stmt_bind_param($stmt, 'ississ', $userId, $credentialIdB64, $pem, $signCount, $label, $transportsJson);
-    $ok = mysqli_stmt_execute($stmt);
+    $ok = ff_mysqli_stmt_execute($stmt);
     $newId = $ok ? mysqli_insert_id($conn) : 0;
     mysqli_stmt_close($stmt);
 
@@ -665,9 +665,9 @@ function ff_webauthn_login_verify(mysqli $conn, array $cred): array
         return ['ok' => false, 'error' => 'bad_request'];
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT id, user_id, public_key_pem, sign_count FROM user_passkeys WHERE credential_id = ? LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT id, user_id, public_key_pem, sign_count FROM user_passkeys WHERE credential_id = ? LIMIT 1');
     mysqli_stmt_bind_param($stmt, 's', $credentialIdB64);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $pk = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($stmt);
@@ -715,14 +715,14 @@ function ff_webauthn_login_verify(mysqli $conn, array $cred): array
         return ['ok' => false, 'error' => 'signature_invalid'];
     }
 
-    $upd = mysqli_prepare($conn, 'UPDATE user_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?');
+    $upd = ff_mysqli_prepare($conn, 'UPDATE user_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?');
     $pkId = (int) $pk['id'];
     mysqli_stmt_bind_param($upd, 'ii', $signCount, $pkId);
-    mysqli_stmt_execute($upd);
+    ff_mysqli_stmt_execute($upd);
     mysqli_stmt_close($upd);
 
     $userId = (int) $pk['user_id'];
-    $ustmt = mysqli_prepare(
+    $ustmt = ff_mysqli_prepare(
         $conn,
         'SELECT id, username, password, admin, COALESCE(can_finance,0) AS can_finance, ' .
         'COALESCE(can_direktverkauf,0) AS can_direktverkauf, start_page, start_print_target, menu_permissions, ' .
@@ -731,7 +731,7 @@ function ff_webauthn_login_verify(mysqli $conn, array $cred): array
         'FROM users WHERE id = ? LIMIT 1'
     );
     mysqli_stmt_bind_param($ustmt, 'i', $userId);
-    mysqli_stmt_execute($ustmt);
+    ff_mysqli_stmt_execute($ustmt);
     $ures = mysqli_stmt_get_result($ustmt);
     $userRow = $ures ? mysqli_fetch_assoc($ures) : null;
     mysqli_stmt_close($ustmt);

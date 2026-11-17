@@ -27,7 +27,7 @@ $accessToken = (string) ($_GET['access'] ?? '');
 $accessStation = '';
 if (preg_match('/\A[a-f0-9]{64}\z/', $accessToken)) {
     $accessHash = hash('sha256', $accessToken);
-    $accessStmt = mysqli_prepare(
+    $accessStmt = ff_mysqli_prepare(
         $conn,
         'SELECT `station` FROM `substation_access_tokens` WHERE `token_hash` = ? AND `used_at` IS NOT NULL AND `expires_at` >= NOW() LIMIT 1'
     );
@@ -37,7 +37,7 @@ if (preg_match('/\A[a-f0-9]{64}\z/', $accessToken)) {
         exit('QR-Zugang konnte nicht überprüft werden.');
     }
     mysqli_stmt_bind_param($accessStmt, 's', $accessHash);
-    if (!mysqli_stmt_execute($accessStmt)) {
+    if (!ff_mysqli_stmt_execute($accessStmt)) {
         mysqli_stmt_close($accessStmt);
         error_log('substation.php: Sub-Station QR-Zugang konnte nicht abgefragt werden.');
         http_response_code(500);

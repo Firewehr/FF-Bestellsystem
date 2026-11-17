@@ -16,11 +16,11 @@ function ff_feste_ensure_rechnung_prefix_column(mysqli $conn): void
     if (ff_schema_is_current($conn)) {
         return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
     }
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM feste LIKE 'rechnung_prefix'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM feste LIKE 'rechnung_prefix'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         return;
     }
-    @mysqli_query($conn, 'ALTER TABLE feste ADD COLUMN rechnung_prefix VARCHAR(16) NULL DEFAULT NULL COMMENT \'Rechnungsnr.-Präfix; leer = global rechnung_prefix\' AFTER code');
+    ff_mysqli_query($conn, 'ALTER TABLE feste ADD COLUMN rechnung_prefix VARCHAR(16) NULL DEFAULT NULL COMMENT \'Rechnungsnr.-Präfix; leer = global rechnung_prefix\' AFTER code');
 }
 
 /**
@@ -35,7 +35,7 @@ function ff_rechnung_next_read(mysqli $conn): int
 
     $best = 1;
     $hadLegacy = false;
-    $rq = @mysqli_query($conn, "SELECT v FROM settings WHERE k REGEXP '^rechnung_next_[0-9]{4}$'");
+    $rq = ff_mysqli_query($conn, "SELECT v FROM settings WHERE k REGEXP '^rechnung_next_[0-9]{4}$'");
     if ($rq) {
         while ($row = mysqli_fetch_assoc($rq)) {
             $hadLegacy = true;
@@ -77,7 +77,7 @@ function ff_rechnung_next_allocate(mysqli $conn): int
         $nextPlusOne = ff_db_insert_id();
         // Falls mysqli_insert_id() treiberbedingt 0 liefert: SELECT LAST_INSERT_ID() abfragen
         if ($nextPlusOne <= 0) {
-            $res = mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
+            $res = ff_mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
             if ($res && ($row = mysqli_fetch_assoc($res))) {
                 $nextPlusOne = (int) ($row['lid'] ?? 0);
             }
@@ -93,7 +93,7 @@ function ff_rechnung_next_allocate(mysqli $conn): int
     $initial = ff_rechnung_next_read($conn);
     $initVal = max(1, (int) $initial);
     ff_db_query($conn, 'INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = LAST_INSERT_ID(CAST(v AS UNSIGNED) + 1)', 'ss', [$key, (string) ($initVal + 1)]);
-    $res = mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
+    $res = ff_mysqli_query($conn, 'SELECT LAST_INSERT_ID() AS lid');
     if ($res && ($row = mysqli_fetch_assoc($res)) && (int) ($row['lid'] ?? 0) > 0) {
         $nextPlusOne = (int) $row['lid'];
         $allocated = max(1, $nextPlusOne - 1);

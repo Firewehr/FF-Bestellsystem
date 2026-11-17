@@ -13,7 +13,7 @@ function ff_finance_fest_count(mysqli $conn): int
     if ($cnt !== null) {
         return $cnt;
     }
-    $res = @mysqli_query($conn, 'SELECT COUNT(*) AS c FROM feste');
+    $res = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM feste');
     $cnt = ($res && ($r = mysqli_fetch_assoc($res))) ? (int) ($r['c'] ?? 0) : 0;
 
     return $cnt;
@@ -34,7 +34,7 @@ function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
         return str_replace('__ALIAS__', $alias, $cached);
     }
     if (!ff_schema_is_current($conn)) {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
         if (!$chk || mysqli_num_rows($chk) === 0) {
             $cached = '';
             return '';
@@ -44,7 +44,7 @@ function ff_finance_fest_filter_sql(mysqli $conn, string $alias = 'b'): string
     require_once __DIR__ . '/settings.php';
     $festId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($festId <= 0) {
-        $fAct = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
+        $fAct = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
         if ($fAct && ($r = mysqli_fetch_assoc($fAct))) {
             $festId = (int) $r['id'];
         }
@@ -90,7 +90,7 @@ function ff_finance_order_amount_expr(string $b = 'b', string $p = 'p'): string
 function ff_finance_current_fest_id(mysqli $conn): int
 {
     if (!ff_schema_is_current($conn)) {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestellungen` LIKE 'fest_id'");
         if (!$chk || mysqli_num_rows($chk) === 0) {
             return 0;
         }
@@ -99,7 +99,7 @@ function ff_finance_current_fest_id(mysqli $conn): int
     require_once __DIR__ . '/settings.php';
     $festId = (int) setting_get($conn, 'current_fest_id', '0');
     if ($festId <= 0) {
-        $fAct = @mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
+        $fAct = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv=1 LIMIT 1');
         if ($fAct && ($r = mysqli_fetch_assoc($fAct))) {
             $festId = (int) $r['id'];
         }
@@ -367,7 +367,7 @@ function ff_finance_ensure_kellner_direkt_print_targets(mysqli $conn): void
     $done = true;
     ff_finance_ensure_schema($conn);
 
-    $res = mysqli_query($conn, 'SELECT print_target, name, finance_bereich_id FROM print_targets');
+    $res = ff_mysqli_query($conn, 'SELECT print_target, name, finance_bereich_id FROM print_targets');
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         if (!ff_finance_print_target_is_kellner_direkt_fixed((string) ($r['name'] ?? ''))) {
             continue;
@@ -795,7 +795,7 @@ function ff_finance_list_bereiche(mysqli $conn, bool $activeOnly = false): array
     }
     $sql .= ' ORDER BY name ASC';
     $rows = [];
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $rows[] = [
             'id' => (int) $r['id'],
@@ -857,16 +857,16 @@ function ff_finance_delete_bereich(mysqli $conn, int $bereichId): array
         ];
     }
 
-    $stPt = mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE finance_bereich_id = ?');
+    $stPt = ff_mysqli_prepare($conn, 'UPDATE print_targets SET finance_bereich_id = NULL WHERE finance_bereich_id = ?');
     if ($stPt) {
         mysqli_stmt_bind_param($stPt, 'i', $bereichId);
-        mysqli_stmt_execute($stPt);
+        ff_mysqli_stmt_execute($stPt);
         mysqli_stmt_close($stPt);
     }
 
-    $tbB = @mysqli_query($conn, "SHOW TABLES LIKE 'buchungen'");
+    $tbB = ff_mysqli_query($conn, "SHOW TABLES LIKE 'buchungen'");
     if ($tbB && mysqli_num_rows($tbB) > 0) {
-        $cB = @mysqli_query($conn, "SHOW COLUMNS FROM buchungen LIKE 'bereich_id'");
+        $cB = ff_mysqli_query($conn, "SHOW COLUMNS FROM buchungen LIKE 'bereich_id'");
         if ($cB && mysqli_num_rows($cB) > 0) {
             ff_db_query($conn, 'UPDATE buchungen SET bereich_id = NULL WHERE bereich_id = ?', 'i', [$bereichId]);
         }
@@ -876,12 +876,12 @@ function ff_finance_delete_bereich(mysqli $conn, int $bereichId): array
         mysqli_free_result($tbB);
     }
 
-    $stDel = mysqli_prepare($conn, 'DELETE FROM kassen_bereiche WHERE id = ? LIMIT 1');
+    $stDel = ff_mysqli_prepare($conn, 'DELETE FROM kassen_bereiche WHERE id = ? LIMIT 1');
     if (!$stDel) {
         return ['ok' => false, 'error' => 'db', 'message' => 'Datenbankfehler beim Löschen.'];
     }
     mysqli_stmt_bind_param($stDel, 'i', $bereichId);
-    $ok = mysqli_stmt_execute($stDel);
+    $ok = ff_mysqli_stmt_execute($stDel);
     $aff = mysqli_affected_rows($conn);
     mysqli_stmt_close($stDel);
 
@@ -965,7 +965,7 @@ function ff_finance_metrics_bereich(mysqli $conn, int $bereichId, ?array $range)
     }
 
     $variableKosten = 0.0;
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         $sqlV = "SELECT COALESCE(SUM(COALESCE(p.selbstkosten, 0)), 0) AS s
             FROM bestellungen b

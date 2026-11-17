@@ -25,9 +25,9 @@ function ff_users_ensure_status_columns(mysqli $conn): void
         'force_password_change' => "ALTER TABLE `users` ADD COLUMN `force_password_change` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Einmalpasswort, Wechsel erzwingen'",
     ];
     foreach ($cols as $name => $sql) {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE '" . $name . "'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE '" . $name . "'");
         if ($chk && mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, $sql);
+            ff_mysqli_query($conn, $sql);
         }
         if ($chk) {
             mysqli_free_result($chk);
@@ -47,9 +47,9 @@ function ff_users_ensure_auth_rev_column(mysqli $conn): void
     }
     $done = true;
     ff_users_ensure_status_columns($conn);
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'auth_rev'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'auth_rev'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query($conn, "ALTER TABLE `users` ADD COLUMN `auth_rev` INT(11) NOT NULL DEFAULT 0 COMMENT 'Session-Version, erhoehen bei Deaktivierung/PW-Reset'");
+        ff_mysqli_query($conn, "ALTER TABLE `users` ADD COLUMN `auth_rev` INT(11) NOT NULL DEFAULT 0 COMMENT 'Session-Version, erhoehen bei Deaktivierung/PW-Reset'");
     }
     if ($chk) {
         mysqli_free_result($chk);
@@ -100,7 +100,7 @@ function ff_auth_check_session_user(mysqli $conn, bool $force = false): ?string
 
     ff_users_ensure_auth_rev_column($conn);
     $username = trim((string) $_SESSION['user']['username']);
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT id, admin, COALESCE(is_active, 1) AS is_active, active_from, active_until,
                 COALESCE(auth_rev, 0) AS auth_rev, COALESCE(force_password_change, 0) AS force_password_change
@@ -110,7 +110,7 @@ function ff_auth_check_session_user(mysqli $conn, bool $force = false): ?string
         return null;
     }
     mysqli_stmt_bind_param($st, 's', $username);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);

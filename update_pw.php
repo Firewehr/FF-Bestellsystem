@@ -31,14 +31,14 @@ if ($userid <= 0) {
 ff_users_ensure_status_columns($conn);
 ff_users_ensure_auth_rev_column($conn);
 
-$st = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 if (!$st) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $userid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 $res = mysqli_stmt_get_result($st);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($st);
@@ -86,14 +86,14 @@ if ($hash === false) {
 }
 
 $forceInt = $forcePw ? 1 : 0;
-$upd = mysqli_prepare($conn, 'UPDATE users SET password = ?, force_password_change = ? WHERE id = ? LIMIT 1');
+$upd = ff_mysqli_prepare($conn, 'UPDATE users SET password = ?, force_password_change = ? WHERE id = ? LIMIT 1');
 if (!$upd) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($upd, 'sii', $hash, $forceInt, $userid);
-$ok = mysqli_stmt_execute($upd);
+$ok = ff_mysqli_stmt_execute($upd);
 mysqli_stmt_close($upd);
 
 if (!$ok) {

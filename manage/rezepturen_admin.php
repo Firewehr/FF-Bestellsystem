@@ -12,7 +12,7 @@ if (function_exists('ff_rezepturen_ensure_schema')) {
 }
 
 $positions = [];
-$result = mysqli_query($conn, 'SELECT rowid, Positionsname, Kurzbezeichnung, type, maxBestellbar FROM positionen ORDER BY type, reihenfolge, Positionsname');
+$result = ff_mysqli_query($conn, 'SELECT rowid, Positionsname, Kurzbezeichnung, type, maxBestellbar FROM positionen ORDER BY type, reihenfolge, Positionsname');
 if ($result) {
     while ($row = mysqli_fetch_assoc($result)) {
         $positions[] = $row;
@@ -25,7 +25,7 @@ $hasPositionRezepturenTable = function_exists('ff_rezepturen_table_exists') && f
 
 $bestandteile = [];
 if ($hasBestandteileTable) {
-    $resultBestandteile = mysqli_query(
+    $resultBestandteile = ff_mysqli_query(
         $conn,
         'SELECT b.id, b.name, b.einheit, b.kapazitaet, b.aktiv, b.sort_order,
          COALESCE(GROUP_CONCAT(a.name ORDER BY a.sort_order, a.name SEPARATOR ", "), "") AS allergene
@@ -53,7 +53,7 @@ if ($bestandteile !== []) {
 $positionRecipeGroups = [];
 if ($hasPositionRezepturenTable) {
     $orderClause = 'pr.position_id, pr.reihenfolge';
-    $chkPrId = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
+    $chkPrId = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
     if ($chkPrId && mysqli_num_rows($chkPrId) > 0) {
         $orderClause .= ', pr.id';
     }
@@ -61,7 +61,7 @@ if ($hasPositionRezepturenTable) {
         @mysqli_free_result($chkPrId);
     }
 
-    $recipeGroupQuery = @mysqli_query(
+    $recipeGroupQuery = ff_mysqli_query(
         $conn,
         "SELECT pr.position_id, pr.bestandteil_id, pr.menge, pr.reihenfolge, b.name, b.einheit
          FROM position_rezepturen pr
@@ -107,10 +107,10 @@ if ($selectedPositionId > 0) {
     }
 
     if ($hasPositionRezepturenTable) {
-        $stmt = mysqli_prepare($conn, 'SELECT id, position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id FROM position_rezepturen WHERE position_id = ? ORDER BY reihenfolge, id');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id, position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id FROM position_rezepturen WHERE position_id = ? ORDER BY reihenfolge, id');
         if ($stmt) {
             mysqli_stmt_bind_param($stmt, 'i', $selectedPositionId);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             $res = mysqli_stmt_get_result($stmt);
             if ($res) {
                 while ($row = mysqli_fetch_assoc($res)) {

@@ -7,7 +7,7 @@ require_once('include/db.php');
 header('Content-Type: application/json; charset=utf-8');
 
 $tische = [];
-$result = mysqli_query($conn, "SELECT tischnummer, tischname FROM tische ORDER BY tischname, tischnummer");
+$result = ff_mysqli_query($conn, "SELECT tischnummer, tischname FROM tische ORDER BY tischname, tischnummer");
 if ($result) {
     while ($row = mysqli_fetch_assoc($result)) {
         $tische[] = [

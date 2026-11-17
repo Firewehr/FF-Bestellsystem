@@ -273,7 +273,7 @@ require_once __DIR__ . '/include/db.php';
 */
 
 $columnResult =
-    mysqli_query(
+    ff_mysqli_query(
         $conn,
         "SHOW COLUMNS
          FROM bestellungen
@@ -311,7 +311,7 @@ if (
 |
 */
 
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     "SELECT
         b.order_nr,
@@ -344,7 +344,7 @@ mysqli_stmt_bind_param(
 );
 
 
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 
 
 $result =
@@ -1223,7 +1223,7 @@ try {
     */
 
     $lockStmt =
-        mysqli_prepare(
+        ff_mysqli_prepare(
             $conn,
             "SELECT
                 order_nr,
@@ -1252,7 +1252,7 @@ try {
     );
 
 
-    mysqli_stmt_execute(
+    ff_mysqli_stmt_execute(
         $lockStmt
     );
 
@@ -1300,7 +1300,7 @@ try {
     */
 
     $updateStmt =
-        mysqli_prepare(
+        ff_mysqli_prepare(
             $conn,
             "UPDATE bestellungen
              SET timestampBezahlung = NOW()
@@ -1331,7 +1331,7 @@ try {
 
 
     if (
-        !mysqli_stmt_execute(
+        !ff_mysqli_stmt_execute(
             $updateStmt
         )
     ) {
@@ -1365,7 +1365,7 @@ try {
 
 
     $transactionSchema =
-        mysqli_query(
+        ff_mysqli_query(
             $conn,
             "SHOW COLUMNS
              FROM bestellungen
@@ -1418,7 +1418,7 @@ try {
     ) {
 
         $updateTransaction =
-            mysqli_prepare(
+            ff_mysqli_prepare(
                 $conn,
                 "UPDATE bestellungen
                  SET sumup_transaction_id = ?
@@ -1440,7 +1440,7 @@ try {
             );
 
 
-            mysqli_stmt_execute(
+            ff_mysqli_stmt_execute(
                 $updateTransaction
             );
 
@@ -1465,7 +1465,7 @@ try {
     ) {
 
         $updateTransactionCode =
-            mysqli_prepare(
+            ff_mysqli_prepare(
                 $conn,
                 "UPDATE bestellungen
                  SET sumup_transaction_code = ?
@@ -1487,7 +1487,7 @@ try {
             );
 
 
-            mysqli_stmt_execute(
+            ff_mysqli_stmt_execute(
                 $updateTransactionCode
             );
 

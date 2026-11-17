@@ -49,7 +49,7 @@ if ($tischnummer <= 0 && $sammelrechnung_id <= 0) {
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
     id INT AUTO_INCREMENT PRIMARY KEY,
     rechnungsnummer VARCHAR(50) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -81,7 +81,7 @@ ff_bestellungen_ensure_is_gratis_column($conn);
 $openPdf = isset($_POST['open_pdf']) && (string) $_POST['open_pdf'] === '1';
 
 $fest_id = null;
-$resFest = @mysqli_query($conn, "SELECT id FROM feste WHERE aktiv=1 LIMIT 1");
+$resFest = ff_mysqli_query($conn, "SELECT id FROM feste WHERE aktiv=1 LIMIT 1");
 if ($resFest && ($rowFest = mysqli_fetch_assoc($resFest))) {
     $fest_id = (int)$rowFest['id'];
 }
@@ -90,13 +90,13 @@ if ($fest_id === 0) {
 }
 
 $paymentMode = 'after';
-$fres = @mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
+$fres = ff_mysqli_query($conn, "SELECT payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {
     $paymentMode = ($frow['payment_mode'] === 'instant') ? 'instant' : 'after';
 }
 
 $validTargets = [];
-$ptq = @mysqli_query($conn, "SELECT print_target FROM print_targets WHERE active=1");
+$ptq = ff_mysqli_query($conn, "SELECT print_target FROM print_targets WHERE active=1");
 if ($ptq) {
     while ($pt = mysqli_fetch_assoc($ptq)) {
         $validTargets[(int)$pt['print_target']] = true;
@@ -242,7 +242,7 @@ $tischnummerIns = $tischnummer > 0 ? (int) $tischnummer : 0;
 $sammelIns = $sammelrechnung_id > 0 ? (int) $sammelrechnung_id : 0;
 
 $existingCols = [];
-$chkCols = @mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
+$chkCols = ff_mysqli_query($conn, "SHOW COLUMNS FROM rechnungen");
 if ($chkCols) {
     while ($cRow = mysqli_fetch_assoc($chkCols)) {
         $existingCols[strtolower((string)$cRow['Field'])] = true;

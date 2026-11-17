@@ -14,19 +14,19 @@ if ((int) ($_SESSION['admin'] ?? 0) < 1) {
 session_write_close();
 
 try {
-    if (!mysqli_query($conn, ff_admin_messages_table_sql())) {
+    if (!ff_mysqli_query($conn, ff_admin_messages_table_sql())) {
         throw new RuntimeException(mysqli_error($conn));
     }
     // Ohne after_id (erster Abruf eines Geräts) nur den aktuellen Stand liefern, keine alten Nachrichten.
     if (!isset($_GET['after_id']) || !ctype_digit((string) $_GET['after_id'])) {
-        $result = mysqli_query($conn, 'SELECT COALESCE(MAX(id), 0) AS last_id FROM ff_admin_messages');
+        $result = ff_mysqli_query($conn, 'SELECT COALESCE(MAX(id), 0) AS last_id FROM ff_admin_messages');
         $row = $result ? mysqli_fetch_assoc($result) : null;
         echo json_encode(['ok' => true, 'last_id' => (int) ($row['last_id'] ?? 0), 'messages' => []], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
     $afterId = (int) $_GET['after_id'];
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         'SELECT id, title, body, url, tag FROM ff_admin_messages WHERE id > ? ORDER BY id ASC LIMIT 20'
     );
@@ -34,7 +34,7 @@ try {
         throw new RuntimeException(mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $afterId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException(mysqli_stmt_error($stmt));
     }
     $result = mysqli_stmt_get_result($stmt);

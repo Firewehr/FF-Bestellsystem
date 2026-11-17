@@ -59,10 +59,10 @@ ff_ensure_table(
 );
 
 $d = (string) $datum; // Prepared Statement – kein zusätzliches Escaping (würde den Wert verfälschen)
-$stmt = mysqli_prepare($conn, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
+$stmt = ff_mysqli_prepare($conn, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
 mysqli_stmt_bind_param($stmt, 'siiiss', $d, $bereich_id, $position_id, $menge, $notiz, $created_by);
 
-if (mysqli_stmt_execute($stmt)) {
+if (ff_mysqli_stmt_execute($stmt)) {
     $pickCnt = (int) (ff_mv_batch_counts_for_datum($conn, $datum, $bereich_id)[$position_id] ?? 0);
     $payload = [
         'ok' => true,

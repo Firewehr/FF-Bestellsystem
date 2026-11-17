@@ -19,9 +19,9 @@ if ($bon_id === '') {
 }
 
 // Spalte bon_id anlegen falls nicht vorhanden
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'bon_id'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'bon_id'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN bon_id VARCHAR(10) NULL DEFAULT NULL");
+    ff_mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN bon_id VARCHAR(10) NULL DEFAULT NULL");
 }
 
 // Positionen für diese Bon-ID laden (bezahlt und nicht gelöscht)
@@ -36,9 +36,9 @@ $sql = "SELECT p.Positionsname, p.Kurzbezeichnung, p.Betrag, pt.name as druckzie
             TRIM(COALESCE(b.Zusatzinfo, '')), pt.print_target, pt.name, pt.sort_order
         ORDER BY pt.sort_order, p.Positionsname, zusatzinfo";
 
-$stmt = mysqli_prepare($conn, $sql);
+$stmt = ff_mysqli_prepare($conn, $sql);
 mysqli_stmt_bind_param($stmt, 's', $bon_id);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
 $positionen = [];

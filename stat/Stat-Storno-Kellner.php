@@ -20,7 +20,7 @@ include __DIR__ . '/../include/db.php';
  $MyData = new pData();  
 	/* Build the query that will returns the data to graph */
 	$Requete = "SELECT kellner, COUNT(*) as anzahl FROM `bestellungen` WHERE bestellungen.delete != 0 GROUP BY kellner ORDER BY anzahl DESC";
-	$Result = mysqli_query($conn, $Requete);
+	$Result = ff_mysqli_query($conn, $Requete);
 	$kellner=""; $anzahl="";
 	while ($row = mysqli_fetch_array ($Result))
 	{

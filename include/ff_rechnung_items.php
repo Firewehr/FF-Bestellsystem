@@ -281,12 +281,12 @@ function ff_printer_jobs_ensure_table(mysqli $conn): void {
     if ($ensured) {
         return;
     }
-    $chk = @mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
+    $chk = ff_mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         $ensured = true;
         return;
     }
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS printer_jobs (
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS printer_jobs (
       id INT(11) NOT NULL AUTO_INCREMENT,
       printer VARCHAR(64) NOT NULL,
       type VARCHAR(32) DEFAULT 'invoice',

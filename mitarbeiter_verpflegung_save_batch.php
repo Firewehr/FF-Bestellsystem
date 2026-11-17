@@ -80,7 +80,7 @@ ff_ensure_table(
 );
 
 $createdBy = (string) ($_SESSION['user']['username'] ?? '');
-$stmt = mysqli_prepare(
+$stmt = ff_mysqli_prepare(
     $conn,
     'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)'
 );
@@ -92,7 +92,7 @@ if (!$stmt) {
 $ids = [];
 foreach ($agg as $positionId => $menge) {
     mysqli_stmt_bind_param($stmt, 'siiiss', $datum, $bereichId, $positionId, $menge, $notiz, $createdBy);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         echo json_encode(['ok' => false, 'error' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
         exit;
     }

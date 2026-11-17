@@ -27,14 +27,14 @@ if (!function_exists('ff_auto_print_ensure_schema')) {
             ['bestellungen', 'auto_print', 'ALTER TABLE bestellungen ADD COLUMN auto_print TINYINT(1) NOT NULL DEFAULT 0'],
         ];
         foreach ($checks as [$table, $column, $alter]) {
-            $res = mysqli_query($conn, 'SHOW COLUMNS FROM `' . $table . "` LIKE '" . $column . "'");
+            $res = ff_mysqli_query($conn, 'SHOW COLUMNS FROM `' . $table . "` LIKE '" . $column . "'");
             if (!$res) {
                 $ready = false;
                 continue;
             }
             $exists = mysqli_num_rows($res) > 0;
             mysqli_free_result($res);
-            if (!$exists && !mysqli_query($conn, $alter)) {
+            if (!$exists && !ff_mysqli_query($conn, $alter)) {
                 error_log('ff_auto_print_ensure_schema: ' . mysqli_error($conn));
                 $ready = false;
             }
@@ -91,7 +91,7 @@ if (!function_exists('ff_auto_print_for_order')) {
             return;
         }
         $limits = [];
-        $res = mysqli_query($conn, 'SELECT print_target, auto_print_limit FROM print_targets WHERE active = 1 AND auto_print_limit > 0');
+        $res = ff_mysqli_query($conn, 'SELECT print_target, auto_print_limit FROM print_targets WHERE active = 1 AND auto_print_limit > 0');
         if (!$res) {
             error_log('ff_auto_print_for_order: ' . mysqli_error($conn));
             return;

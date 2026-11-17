@@ -55,7 +55,7 @@ function generateTableToken(): string
 }
 
 
-$result = mysqli_query(
+$result = ff_mysqli_query(
     $conn,
     "SELECT tischnummer, tischname
      FROM tische
@@ -95,7 +95,7 @@ $createTableSql = "
     )
 ";
 
-if (!mysqli_query($conn, $createTableSql)) {
+if (!ff_mysqli_query($conn, $createTableSql)) {
 
     http_response_code(500);
 
@@ -118,7 +118,7 @@ if (!mysqli_query($conn, $createTableSql)) {
 /*
  * Prüfen, ob für den Tisch bereits ein Token existiert.
  */
-$checkStmt = mysqli_prepare(
+$checkStmt = ff_mysqli_prepare(
     $conn,
     "SELECT token
      FROM table_tokens
@@ -130,7 +130,7 @@ $checkStmt = mysqli_prepare(
 /*
  * Neuen Token speichern.
  */
-$insertStmt = mysqli_prepare(
+$insertStmt = ff_mysqli_prepare(
     $conn,
     "INSERT INTO table_tokens
         (table_number, token, active)
@@ -179,7 +179,7 @@ while ($row = mysqli_fetch_assoc($result)) {
         $tischnummer
     );
 
-    mysqli_stmt_execute($checkStmt);
+    ff_mysqli_stmt_execute($checkStmt);
 
     $tokenResult = mysqli_stmt_get_result($checkStmt);
     $existingToken = mysqli_fetch_assoc($tokenResult);
@@ -201,7 +201,7 @@ while ($row = mysqli_fetch_assoc($result)) {
             $token
         );
 
-        if (!mysqli_stmt_execute($insertStmt)) {
+        if (!ff_mysqli_stmt_execute($insertStmt)) {
 
             http_response_code(500);
 

@@ -65,6 +65,12 @@ function api_response(array $payload, int $status = 200): void
 function api_error(string $message, string $code = 'error', int $status = 400, array $extra = []): void
 {
     $payload = array_merge(['ok' => false, 'error' => $code, 'message' => $message], $extra);
+    if ($status >= 500 && function_exists('ff_db_error_report')) {
+        // Serverfehler (meist DB) im Admin-Dashboard sichtbar machen, nicht nur beim Kellner
+        $bt = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 1);
+        $where = isset($bt[0]['file']) ? 'api/v1/' . basename($bt[0]['file']) . ':' . (int) ($bt[0]['line'] ?? 0) : null;
+        ff_db_error_report(0, 'API ' . $status . ' ' . $code . ': ' . $message, '', $where);
+    }
     api_response($payload, $status);
 }
 
@@ -93,10 +99,10 @@ function api_require_auth(): array
 
     if ($admin === null || $userId === null || $canFinance === null || $canDirektverkauf === null) {
         if (isset($conn) && $conn instanceof mysqli) {
-            $st = mysqli_prepare($conn, 'SELECT id, admin, COALESCE(can_finance, 0) AS can_finance, COALESCE(can_direktverkauf, 0) AS can_direktverkauf FROM users WHERE username = ? LIMIT 1');
+            $st = ff_mysqli_prepare($conn, 'SELECT id, admin, COALESCE(can_finance, 0) AS can_finance, COALESCE(can_direktverkauf, 0) AS can_direktverkauf FROM users WHERE username = ? LIMIT 1');
             if ($st) {
                 mysqli_stmt_bind_param($st, 's', $username);
-                mysqli_stmt_execute($st);
+                ff_mysqli_stmt_execute($st);
                 $res = mysqli_stmt_get_result($st);
                 if ($res && ($row = mysqli_fetch_assoc($res))) {
                     $userId = (int)$row['id'];

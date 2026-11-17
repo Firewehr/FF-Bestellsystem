@@ -18,7 +18,7 @@ api_require_auth();
 
 // Aktives Fest ermitteln
 $activeFestId = 0;
-$festRes = mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
+$festRes = ff_mysqli_query($conn, 'SELECT id FROM feste WHERE aktiv = 1 LIMIT 1');
 if ($festRes && ($fRow = mysqli_fetch_assoc($festRes))) {
     $activeFestId = (int)$fRow['id'];
 }
@@ -28,7 +28,7 @@ $festParams = $activeFestId > 0 ? [$activeFestId] : [];
 
 // Wartezeiten berechnen
 $waitTimes = ['drink' => 0, 'food' => 0];
-$wq = @mysqli_query(
+$wq = ff_mysqli_query(
     $conn,
     "SELECT print_target, UNIX_TIMESTAMP(MIN(zeitstempel)) AS oldest_unix
        FROM bestellungen

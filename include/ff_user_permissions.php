@@ -25,9 +25,9 @@ function ff_users_ensure_menu_permissions_column(mysqli $conn): void
         return;
     }
 
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'menu_permissions'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'menu_permissions'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "ALTER TABLE users ADD COLUMN menu_permissions TEXT NULL DEFAULT NULL"
             . " COMMENT 'JSON: menu + print_targets' AFTER can_direktverkauf"
@@ -67,7 +67,7 @@ function ff_user_menu_permission_labels(): array
 function ff_user_permission_print_targets(mysqli $conn): array
 {
     $list = [];
-    $res = @mysqli_query(
+    $res = ff_mysqli_query(
         $conn,
         'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name'
     );
@@ -280,7 +280,7 @@ function ff_user_permissions_for_session(mysqli $conn, ?array $session = null): 
     }
 
     ff_users_ensure_menu_permissions_column($conn);
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT admin, can_finance, can_direktverkauf, start_page, start_print_target, menu_permissions'
         . ' FROM users WHERE username = ? LIMIT 1'
@@ -289,7 +289,7 @@ function ff_user_permissions_for_session(mysqli $conn, ?array $session = null): 
         return ff_user_permissions_default();
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -382,10 +382,10 @@ function ff_user_permissions_save(mysqli $conn, int $userid, array $perms, bool 
         return false;
     }
     if ($applyBundles) {
-        $st = mysqli_prepare($conn, 'SELECT start_page, start_print_target FROM users WHERE id = ? LIMIT 1');
+        $st = ff_mysqli_prepare($conn, 'SELECT start_page, start_print_target FROM users WHERE id = ? LIMIT 1');
         if ($st) {
             mysqli_stmt_bind_param($st, 'i', $userid);
-            mysqli_stmt_execute($st);
+            ff_mysqli_stmt_execute($st);
             $res = mysqli_stmt_get_result($st);
             $row = $res ? mysqli_fetch_assoc($res) : null;
             mysqli_stmt_close($st);
@@ -405,7 +405,7 @@ function ff_user_permissions_save(mysqli $conn, int $userid, array $perms, bool 
     $cf = $legacy['can_finance'];
     $cdv = $legacy['can_direktverkauf'];
 
-    $up = mysqli_prepare(
+    $up = ff_mysqli_prepare(
         $conn,
         'UPDATE users SET menu_permissions = ?, can_finance = ?, can_direktverkauf = ? WHERE id = ?'
     );
@@ -413,7 +413,7 @@ function ff_user_permissions_save(mysqli $conn, int $userid, array $perms, bool 
         return false;
     }
     mysqli_stmt_bind_param($up, 'siii', $json, $cf, $cdv, $userid);
-    $ok = mysqli_stmt_execute($up);
+    $ok = ff_mysqli_stmt_execute($up);
     mysqli_stmt_close($up);
 
     return (bool) $ok;
@@ -423,7 +423,7 @@ function ff_user_permissions_save(mysqli $conn, int $userid, array $perms, bool 
 function ff_user_permissions_refresh_after_start_change(mysqli $conn, int $userid): void
 {
     ff_users_ensure_menu_permissions_column($conn);
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT admin, can_finance, can_direktverkauf, start_page, start_print_target, menu_permissions'
         . ' FROM users WHERE id = ? LIMIT 1'
@@ -432,7 +432,7 @@ function ff_user_permissions_refresh_after_start_change(mysqli $conn, int $useri
         return;
     }
     mysqli_stmt_bind_param($st, 'i', $userid);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);

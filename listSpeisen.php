@@ -22,7 +22,7 @@ $sql1 = "SELECT p.*, s.name AS subcat_name, s.tile_bg AS sub_tile_bg
          LEFT JOIN position_subcategories s ON s.id = p.subcategory_id
          WHERE p.type = 1" . ff_position_sql_kellner_visible('p', 's') . ff_fest_scope_position_sql($conn, 'p') . "
          ORDER BY COALESCE(s.sort_order, 99999), COALESCE(s.id, 0), p.reihenfolge, p.rowid";
-$result1 = mysqli_query($conn, $sql1);
+$result1 = ff_mysqli_query($conn, $sql1);
 $rows = [];
 if ($result1) {
     while ($r = mysqli_fetch_assoc($result1)) {

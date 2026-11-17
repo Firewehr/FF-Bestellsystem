@@ -13,7 +13,7 @@ try {
     require_once __DIR__ . '/../include/ff_position_kassa_helpers.php';
 
     $hasSelbstkosten = false;
-    $chkSk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+    $chkSk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
     if ($chkSk && mysqli_num_rows($chkSk) > 0) {
         $hasSelbstkosten = true;
     }
@@ -21,7 +21,7 @@ try {
     // Print Targets laden
     $printTargets = [];
     $sqlPT = "SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name";
-    $resPT = mysqli_query($conn, $sqlPT);
+    $resPT = ff_mysqli_query($conn, $sqlPT);
     if ($resPT) {
         while ($pt = mysqli_fetch_assoc($resPT)) {
             $printTargets[] = $pt;
@@ -30,7 +30,7 @@ try {
 
     // Speisekarte laden
     $sql = "SELECT * FROM positionen WHERE type=1 ORDER BY reihenfolge ASC, Positionsname";
-    $result = mysqli_query($conn, $sql);
+    $result = ff_mysqli_query($conn, $sql);
     ?>
     <div class="manage-fragment-header mb-4 pb-3 border-bottom">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1"><h4 class="text-primary fw-semibold mb-1">Speisen · Kurzliste</h4><button type="button" class="btn btn-primary btn-sm" onclick="ffOpenNewPosModal()">+ Neue Position</button></div>

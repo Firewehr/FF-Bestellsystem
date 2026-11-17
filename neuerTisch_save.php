@@ -15,7 +15,7 @@ $neueTischY = intval($_POST['neueTischY']);
 $sql = "INSERT `tische` SET `tischname`=?, `x`=?, `y`=?, `color`=?";
 $types = 'siis';
 $params = [$tischname, $neueTischX, $neueTischY, $neueTischFarbe];
-$chkFest = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'fest_id'");
+$chkFest = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'fest_id'");
 if ($chkFest && mysqli_num_rows($chkFest) > 0) {
     $fid = (int) setting_get($conn, 'current_fest_id', '0');
     if ($fid > 0) {

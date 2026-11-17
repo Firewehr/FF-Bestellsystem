@@ -29,13 +29,13 @@ if ($tischnummer <= 0) {
 }
 
 // Best-effort: Spalten nur hinzufügen, wenn sie noch nicht existieren
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_sammelrechnung'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0");
 }
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM tische LIKE 'is_ehrengast'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0");
 }
 
 $stmt = $conn->prepare('UPDATE tische SET is_sammelrechnung=?, is_ehrengast=? WHERE tischnummer=?');

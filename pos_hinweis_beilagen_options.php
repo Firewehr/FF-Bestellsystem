@@ -15,7 +15,7 @@ if ($position <= 0) {
 $items = [];
 $sql = 'SELECT name, betrag FROM beilagen WHERE position = ? ORDER BY name ASC';
 
-$stmt = mysqli_prepare($conn, $sql);
+$stmt = ff_mysqli_prepare($conn, $sql);
 if (!$stmt) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'prepare failed'], JSON_UNESCAPED_UNICODE);
@@ -23,7 +23,7 @@ if (!$stmt) {
 }
 
 mysqli_stmt_bind_param($stmt, 'i', $position);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 mysqli_stmt_bind_result($stmt, $bname, $bbetrag);
 while (mysqli_stmt_fetch($stmt)) {
     $name = trim((string)$bname);

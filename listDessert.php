@@ -16,7 +16,7 @@ if ($Tischnummer <= 0) {
     exit;
 }
 
-$resulttt = mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen WHERE type=3' . ff_position_sql_kellner_visible() . ff_fest_scope_position_sql($conn) . ' ORDER BY Positionsname');
+$resulttt = ff_mysqli_query($conn, 'SELECT rowid, Positionsname FROM positionen WHERE type=3' . ff_position_sql_kellner_visible() . ff_fest_scope_position_sql($conn) . ' ORDER BY Positionsname');
 if (!$resulttt) {
     echo '</div>';
     exit;

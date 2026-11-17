@@ -88,7 +88,7 @@ function ff_pilot_payment_request_begin(
     int $tableNumber,
     string $requestHash
 ): ?array {
-    $insert = mysqli_prepare(
+    $insert = ff_mysqli_prepare(
         $conn,
         'INSERT IGNORE INTO pilot_payment_requests (client_key, action_name, username, tischnummer, request_hash)
          VALUES (?, ?, ?, ?, ?)'
@@ -97,7 +97,7 @@ function ff_pilot_payment_request_begin(
         throw new RuntimeException('Idempotenzspeicher konnte nicht vorbereitet werden.');
     }
     mysqli_stmt_bind_param($insert, 'sssis', $clientKey, $action, $username, $tableNumber, $requestHash);
-    if (!mysqli_stmt_execute($insert)) {
+    if (!ff_mysqli_stmt_execute($insert)) {
         $error = mysqli_stmt_error($insert);
         mysqli_stmt_close($insert);
         throw new RuntimeException('Idempotenzspeicher konnte nicht angelegt werden: ' . $error);
@@ -105,7 +105,7 @@ function ff_pilot_payment_request_begin(
     $isNew = mysqli_stmt_affected_rows($insert) === 1;
     mysqli_stmt_close($insert);
 
-    $select = mysqli_prepare(
+    $select = ff_mysqli_prepare(
         $conn,
         'SELECT request_hash, response_json FROM pilot_payment_requests
          WHERE username = ? AND action_name = ? AND client_key = ? FOR UPDATE'
@@ -114,7 +114,7 @@ function ff_pilot_payment_request_begin(
         throw new RuntimeException('Idempotenzprüfung konnte nicht vorbereitet werden.');
     }
     mysqli_stmt_bind_param($select, 'sss', $username, $action, $clientKey);
-    if (!mysqli_stmt_execute($select)) {
+    if (!ff_mysqli_stmt_execute($select)) {
         $error = mysqli_stmt_error($select);
         mysqli_stmt_close($select);
         throw new RuntimeException('Idempotenzprüfung konnte nicht ausgeführt werden: ' . $error);
@@ -146,7 +146,7 @@ function ff_pilot_payment_request_complete(mysqli $conn, string $clientKey, stri
     if ($json === false) {
         throw new RuntimeException('Zahlungsantwort konnte nicht gesichert werden.');
     }
-    $update = mysqli_prepare(
+    $update = ff_mysqli_prepare(
         $conn,
         'UPDATE pilot_payment_requests SET response_json = ?, completed_at = NOW()
          WHERE username = ? AND action_name = ? AND client_key = ?'
@@ -155,7 +155,7 @@ function ff_pilot_payment_request_complete(mysqli $conn, string $clientKey, stri
         throw new RuntimeException('Idempotenzantwort konnte nicht vorbereitet werden.');
     }
     mysqli_stmt_bind_param($update, 'ssss', $json, $username, $action, $clientKey);
-    if (!mysqli_stmt_execute($update) || mysqli_stmt_affected_rows($update) !== 1) {
+    if (!ff_mysqli_stmt_execute($update) || mysqli_stmt_affected_rows($update) !== 1) {
         $error = mysqli_stmt_error($update);
         mysqli_stmt_close($update);
         throw new RuntimeException('Idempotenzantwort konnte nicht gespeichert werden: ' . $error);

@@ -17,7 +17,7 @@ if (!function_exists('ff_print_targets_name_map')) {
         }
         $cache = [];
         if (!ff_schema_is_current($conn)) {
-            @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (
+            ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (
                 print_target INT(11) NOT NULL,
                 name VARCHAR(64) NOT NULL,
                 active TINYINT(1) NOT NULL DEFAULT 1,
@@ -25,7 +25,7 @@ if (!function_exists('ff_print_targets_name_map')) {
                 PRIMARY KEY (print_target)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         }
-        $res = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets ORDER BY sort_order, name, print_target');
+        $res = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets ORDER BY sort_order, name, print_target');
         if ($res) {
             while ($row = mysqli_fetch_assoc($res)) {
                 $id = (int) ($row['print_target'] ?? 0);
@@ -69,7 +69,7 @@ if (!function_exists('ff_print_targets_active_list')) {
     {
         $nameMap = ff_print_targets_name_map($conn);
         $out = [];
-        $res = @mysqli_query($conn, 'SELECT print_target, name, sort_order FROM print_targets WHERE active = 1 ORDER BY sort_order, name, print_target');
+        $res = ff_mysqli_query($conn, 'SELECT print_target, name, sort_order FROM print_targets WHERE active = 1 ORDER BY sort_order, name, print_target');
         if ($res) {
             while ($row = mysqli_fetch_assoc($res)) {
                 $id = (int) ($row['print_target'] ?? 0);

@@ -33,7 +33,7 @@ function ff_abrechnung_umsatz_heute(mysqli $conn): float {
               AND b.timestampBezahlung IS NOT NULL
               AND b.timestampBezahlung <> '0000-00-00 00:00:00'
               AND DATE(b.timestampBezahlung) = CURDATE()";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res && ($r = mysqli_fetch_assoc($res))) {
         return (float)$r['s'];
     }

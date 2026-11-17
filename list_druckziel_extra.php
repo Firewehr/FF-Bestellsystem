@@ -39,11 +39,11 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1') {
     // Wir suchen in positionen + bestellungen nach dem ältesten offenen Zeitpunkt für diesen Artikel
     $timeMap = [];
     $posCols = [];
-    $resCols = @mysqli_query($conn, "SHOW COLUMNS FROM positionen");
+    $resCols = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen");
     if ($resCols) { while ($r = mysqli_fetch_assoc($resCols)) { $posCols[] = $r['Field']; } }
 
     $bestCols = [];
-    $resBestCols = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen");
+    $resBestCols = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen");
     if ($resBestCols) { while ($r = mysqli_fetch_assoc($resBestCols)) { $bestCols[] = $r['Field']; } }
 
     $fkCol = '';

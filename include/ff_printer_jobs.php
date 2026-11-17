@@ -94,12 +94,12 @@ function ff_printer_jobs_problems(mysqli $conn, int $limit = 100): array
                    OR (j.status = 'reserved' AND (j.reserved_at IS NULL OR j.reserved_at < DATE_SUB(NOW(), INTERVAL ? MINUTE))))
             ORDER BY j.id DESC
             LIMIT ?";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         return [];
     }
     mysqli_stmt_bind_param($stmt, 'ii', $cfg['stuck_min'], $limit);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $rows = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
@@ -183,7 +183,7 @@ function ff_printer_job_discard(mysqli $conn, int $jobId): bool
 /** @return int betroffene Zeilen, -1 bei Fehler */
 function ff_printer_jobs_exec(mysqli $conn, string $sql, string $types, array $params): int
 {
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         return -1;
     }
@@ -192,7 +192,7 @@ function ff_printer_jobs_exec(mysqli $conn, string $sql, string $types, array $p
         $bind[] = &$params[$i];
     }
     call_user_func_array([$stmt, 'bind_param'], $bind);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         mysqli_stmt_close($stmt);
         return -1;
     }

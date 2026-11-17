@@ -61,7 +61,7 @@ if ($action === 'create') {
     }
 
     try {
-        $created = mysqli_query(
+        $created = ff_mysqli_query(
             $conn,
             "CREATE TABLE IF NOT EXISTS `substation_access_tokens` (
                 `token_hash` CHAR(64) NOT NULL,
@@ -76,13 +76,13 @@ if ($action === 'create') {
         if (!$created) {
             throw new RuntimeException('Sub-Station QR-Tabelle konnte nicht angelegt werden.');
         }
-        if (!mysqli_query($conn, 'DELETE FROM `substation_access_tokens` WHERE `expires_at` < NOW() OR (`used_at` IS NOT NULL AND `used_at` < DATE_SUB(NOW(), INTERVAL 1 DAY))')) {
+        if (!ff_mysqli_query($conn, 'DELETE FROM `substation_access_tokens` WHERE `expires_at` < NOW() OR (`used_at` IS NOT NULL AND `used_at` < DATE_SUB(NOW(), INTERVAL 1 DAY))')) {
             throw new RuntimeException('Abgelaufene Sub-Station QR-Tokens konnten nicht bereinigt werden.');
         }
 
         $token = bin2hex(random_bytes(32));
         $tokenHash = hash('sha256', $token);
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'INSERT INTO `substation_access_tokens` (`token_hash`, `station`, `expires_at`) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 2 MINUTE))'
         );
@@ -90,7 +90,7 @@ if ($action === 'create') {
             throw new RuntimeException('Sub-Station QR-Token konnte nicht vorbereitet werden.');
         }
         mysqli_stmt_bind_param($stmt, 'ss', $tokenHash, $station);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             throw new RuntimeException('Sub-Station QR-Token konnte nicht gespeichert werden.');
         }
@@ -118,7 +118,7 @@ if ($action === 'redeem') {
     }
 
     try {
-        $created = mysqli_query(
+        $created = ff_mysqli_query(
             $conn,
             "CREATE TABLE IF NOT EXISTS `substation_access_tokens` (
                 `token_hash` CHAR(64) NOT NULL,
@@ -135,12 +135,12 @@ if ($action === 'redeem') {
         }
 
         $tokenHash = hash('sha256', $token);
-        $stmt = mysqli_prepare($conn, 'SELECT `station` FROM `substation_access_tokens` WHERE `token_hash` = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT `station` FROM `substation_access_tokens` WHERE `token_hash` = ? LIMIT 1');
         if (!$stmt) {
             throw new RuntimeException('Sub-Station QR-Token konnte nicht geprüft werden.');
         }
         mysqli_stmt_bind_param($stmt, 's', $tokenHash);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             throw new RuntimeException('Sub-Station QR-Token konnte nicht geprüft werden.');
         }
@@ -153,7 +153,7 @@ if ($action === 'redeem') {
             exit;
         }
 
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             'UPDATE `substation_access_tokens` SET `used_at` = NOW(), `expires_at` = DATE_ADD(NOW(), INTERVAL 12 HOUR) WHERE `token_hash` = ? AND `used_at` IS NULL AND `expires_at` >= NOW()'
         );
@@ -161,7 +161,7 @@ if ($action === 'redeem') {
             throw new RuntimeException('Sub-Station QR-Token konnte nicht eingelöst werden.');
         }
         mysqli_stmt_bind_param($stmt, 's', $tokenHash);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             throw new RuntimeException('Sub-Station QR-Token konnte nicht eingelöst werden.');
         }

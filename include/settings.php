@@ -53,7 +53,7 @@ if (!function_exists('settings_ensure_table')) {
             $res = @$conn->query('SELECT k, v FROM settings');
             if (!$res) {
                 settings_ensure_table($conn);
-                $res = $conn->query('SELECT k, v FROM settings');
+                $res = ff_mysqli_query($conn, 'SELECT k, v FROM settings');
             }
             if (!$res) {
                 return null;

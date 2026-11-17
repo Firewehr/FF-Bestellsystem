@@ -14,7 +14,7 @@ require_once('include/settings.php');
 require_once __DIR__ . '/include/ff_rechnung_seq.php';
 
 // Ensure table
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   code VARCHAR(20) NOT NULL,

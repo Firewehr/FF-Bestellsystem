@@ -37,14 +37,14 @@ $tileUseDefault = isset($_POST['tile_use_default']) && $_POST['tile_use_default'
 $tileRaw = isset($_POST['tile_bg']) ? trim((string)$_POST['tile_bg']) : '';
 $colorRaw = isset($_POST['color']) ? trim((string)$_POST['color']) : '';
 
-$st = mysqli_prepare($conn, 'SELECT rowid, `type` FROM positionen WHERE rowid = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'SELECT rowid, `type` FROM positionen WHERE rowid = ? LIMIT 1');
 if (!$st) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($st, 'i', $rowid);
-mysqli_stmt_execute($st);
+ff_mysqli_stmt_execute($st);
 mysqli_stmt_bind_result($st, $chkRid, $posType);
 $posFound = mysqli_stmt_fetch($st);
 mysqli_stmt_close($st);
@@ -58,14 +58,14 @@ $posType = (int)$posType;
 
 $subFinal = null;
 if ($subId > 0) {
-    $sq = mysqli_prepare($conn, 'SELECT id, `type` FROM position_subcategories WHERE id = ? LIMIT 1');
+    $sq = ff_mysqli_prepare($conn, 'SELECT id, `type` FROM position_subcategories WHERE id = ? LIMIT 1');
     if (!$sq) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
         exit;
     }
     mysqli_stmt_bind_param($sq, 'i', $subId);
-    mysqli_stmt_execute($sq);
+    ff_mysqli_stmt_execute($sq);
     mysqli_stmt_bind_result($sq, $sid, $styp);
     $subOk = mysqli_stmt_fetch($sq);
     mysqli_stmt_close($sq);
@@ -102,7 +102,7 @@ if ($colorRaw !== '') {
 }
 
 if ($subFinal === null) {
-    $up = mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = NULL, tile_bg = ?, color = ? WHERE rowid = ? LIMIT 1');
+    $up = ff_mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = NULL, tile_bg = ?, color = ? WHERE rowid = ? LIMIT 1');
     if (!$up) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
@@ -110,7 +110,7 @@ if ($subFinal === null) {
     }
     mysqli_stmt_bind_param($up, 'ssi', $tileFinal, $colorFinal, $rowid);
 } else {
-    $up = mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = ?, tile_bg = ?, color = ? WHERE rowid = ? LIMIT 1');
+    $up = ff_mysqli_prepare($conn, 'UPDATE positionen SET subcategory_id = ?, tile_bg = ?, color = ? WHERE rowid = ? LIMIT 1');
     if (!$up) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
@@ -119,7 +119,7 @@ if ($subFinal === null) {
     mysqli_stmt_bind_param($up, 'issi', $subFinal, $tileFinal, $colorFinal, $rowid);
 }
 
-if (!mysqli_stmt_execute($up)) {
+if (!ff_mysqli_stmt_execute($up)) {
     mysqli_stmt_close($up);
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'update_failed', 'detail' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);

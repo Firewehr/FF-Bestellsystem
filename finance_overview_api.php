@@ -91,7 +91,7 @@ if ($resA && ($r = mysqli_fetch_assoc($resA))) {
 }
 
 $variableKosten = 0.0;
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
 if ($chk && mysqli_num_rows($chk) > 0) {
     $sqlVar = "SELECT COALESCE(SUM(COALESCE(p.selbstkosten,0)),0) AS k FROM bestellungen b JOIN positionen p ON p.rowid=b.position
         WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereBez}";

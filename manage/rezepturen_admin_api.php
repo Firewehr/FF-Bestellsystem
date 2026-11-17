@@ -24,7 +24,7 @@ function rez_api_json(bool $ok, array $data = [], int $status = 200): void {
 
 function rez_api_fetch_positions(mysqli $conn): array {
     $positions = [];
-    $result = mysqli_query($conn, 'SELECT rowid, Positionsname, Kurzbezeichnung, type, maxBestellbar FROM positionen ORDER BY type, reihenfolge, Positionsname');
+    $result = ff_mysqli_query($conn, 'SELECT rowid, Positionsname, Kurzbezeichnung, type, maxBestellbar FROM positionen ORDER BY type, reihenfolge, Positionsname');
     if ($result) {
         while ($row = mysqli_fetch_assoc($result)) {
             $positions[] = [
@@ -45,7 +45,7 @@ function rez_api_fetch_bestandteile(mysqli $conn): array {
         return $rows;
     }
 
-    $result = mysqli_query($conn, 'SELECT b.id, b.name, b.einheit, b.kapazitaet, b.aktiv, b.sort_order,
+    $result = ff_mysqli_query($conn, 'SELECT b.id, b.name, b.einheit, b.kapazitaet, b.aktiv, b.sort_order,
         COALESCE(GROUP_CONCAT(a.name ORDER BY a.sort_order, a.name SEPARATOR ", "), "") AS allergene
         FROM bestandteile b
         LEFT JOIN bestandteil_allergene ba ON ba.bestandteil_id = b.id
@@ -100,34 +100,34 @@ function rez_api_normalize_allergene($value): array {
 }
 
 function rez_api_save_bestandteil_allergene(mysqli $conn, int $bestandteilId, array $allergene): void {
-    $delete = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+    $delete = ff_mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
     if (!$delete) {
         throw new RuntimeException('allergen_delete_prepare_failed');
     }
     mysqli_stmt_bind_param($delete, 'i', $bestandteilId);
-    if (!mysqli_stmt_execute($delete)) {
+    if (!ff_mysqli_stmt_execute($delete)) {
         throw new RuntimeException('allergen_delete_failed');
     }
     mysqli_stmt_close($delete);
 
     foreach ($allergene as $name) {
-        $insertAllergen = mysqli_prepare($conn, 'INSERT INTO allergene (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
+        $insertAllergen = ff_mysqli_prepare($conn, 'INSERT INTO allergene (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)');
         if (!$insertAllergen) {
             throw new RuntimeException('allergen_insert_prepare_failed');
         }
         mysqli_stmt_bind_param($insertAllergen, 's', $name);
-        if (!mysqli_stmt_execute($insertAllergen)) {
+        if (!ff_mysqli_stmt_execute($insertAllergen)) {
             throw new RuntimeException('allergen_insert_failed');
         }
         $allergenId = (int)mysqli_insert_id($conn);
         mysqli_stmt_close($insertAllergen);
 
-        $assign = mysqli_prepare($conn, 'INSERT INTO bestandteil_allergene (bestandteil_id, allergen_id) VALUES (?, ?)');
+        $assign = ff_mysqli_prepare($conn, 'INSERT INTO bestandteil_allergene (bestandteil_id, allergen_id) VALUES (?, ?)');
         if (!$assign) {
             throw new RuntimeException('allergen_assign_prepare_failed');
         }
         mysqli_stmt_bind_param($assign, 'ii', $bestandteilId, $allergenId);
-        if (!mysqli_stmt_execute($assign)) {
+        if (!ff_mysqli_stmt_execute($assign)) {
             throw new RuntimeException('allergen_assign_failed');
         }
         mysqli_stmt_close($assign);
@@ -199,10 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     $rows = [];
     if ($positionId > 0 && function_exists('ff_rezepturen_table_exists') && ff_rezepturen_table_exists($conn, 'position_rezepturen')) {
-        $stmt = mysqli_prepare($conn, 'SELECT id, position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id FROM position_rezepturen WHERE position_id = ? ORDER BY reihenfolge, id');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT id, position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id FROM position_rezepturen WHERE position_id = ? ORDER BY reihenfolge, id');
         if ($stmt) {
             mysqli_stmt_bind_param($stmt, 'i', $positionId);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             $res = mysqli_stmt_get_result($stmt);
             if ($res) {
                 while ($row = mysqli_fetch_assoc($res)) {
@@ -260,13 +260,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $sortOrder = isset($_POST['sort_order']) ? (int)$_POST['sort_order'] : 0;
         $allergene = rez_api_normalize_allergene($_POST['allergene'] ?? '');
         mysqli_begin_transaction($conn);
-        $stmt = mysqli_prepare($conn, 'INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order, fest_id) VALUES (?, ?, ?, 1, ?, NULL)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO bestandteile (name, einheit, kapazitaet, aktiv, sort_order, fest_id) VALUES (?, ?, ?, 1, ?, NULL)');
         if (!$stmt) {
             mysqli_rollback($conn);
             rez_api_json(false, ['error' => 'insert_prepare_failed'], 500);
         }
         mysqli_stmt_bind_param($stmt, 'ssii', $name, $einheit, $kapazitaet, $sortOrder);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             mysqli_stmt_close($stmt);
             mysqli_rollback($conn);
             rez_api_json(false, ['error' => 'insert_failed'], 500);
@@ -299,7 +299,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         mysqli_begin_transaction($conn);
         try {
-            $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, sort_order = ? WHERE id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, sort_order = ? WHERE id = ?');
             if (!$stmt) {
                 throw new RuntimeException('update_prepare_failed');
             }
@@ -326,7 +326,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $einheit = 'Stk';
                 }
                 mysqli_stmt_bind_param($stmt, 'ssiii', $name, $einheit, $kapazitaet, $sortOrder, $id);
-                if (!mysqli_stmt_execute($stmt)) {
+                if (!ff_mysqli_stmt_execute($stmt)) {
                     throw new RuntimeException('update_failed');
                 }
                 rez_api_save_bestandteil_allergene($conn, $id, $allergene);
@@ -367,12 +367,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         mysqli_begin_transaction($conn);
         try {
-            $stmt = mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, sort_order = ? WHERE id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE bestandteile SET name = ?, einheit = ?, kapazitaet = ?, sort_order = ? WHERE id = ?');
             if (!$stmt) {
                 throw new RuntimeException('update_prepare_failed');
             }
             mysqli_stmt_bind_param($stmt, 'ssiii', $name, $einheit, $kapazitaet, $sortOrder, $id);
-            if (!mysqli_stmt_execute($stmt)) {
+            if (!ff_mysqli_stmt_execute($stmt)) {
                 throw new RuntimeException('update_failed');
             }
             mysqli_stmt_close($stmt);
@@ -393,22 +393,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         mysqli_begin_transaction($conn);
         try {
-            $delAllergen = mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
+            $delAllergen = ff_mysqli_prepare($conn, 'DELETE FROM bestandteil_allergene WHERE bestandteil_id = ?');
             if ($delAllergen) {
                 mysqli_stmt_bind_param($delAllergen, 'i', $id);
-                mysqli_stmt_execute($delAllergen);
+                ff_mysqli_stmt_execute($delAllergen);
                 mysqli_stmt_close($delAllergen);
             }
-            $delRez = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
+            $delRez = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE bestandteil_id = ?');
             if ($delRez) {
                 mysqli_stmt_bind_param($delRez, 'i', $id);
-                mysqli_stmt_execute($delRez);
+                ff_mysqli_stmt_execute($delRez);
                 mysqli_stmt_close($delRez);
             }
-            $delB = mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
+            $delB = ff_mysqli_prepare($conn, 'DELETE FROM bestandteile WHERE id = ?');
             if ($delB) {
                 mysqli_stmt_bind_param($delB, 'i', $id);
-                mysqli_stmt_execute($delB);
+                ff_mysqli_stmt_execute($delB);
                 mysqli_stmt_close($delB);
             }
             mysqli_commit($conn);
@@ -445,18 +445,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     mysqli_begin_transaction($conn);
     try {
-        $stmt = mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'DELETE FROM position_rezepturen WHERE position_id = ?');
         if (!$stmt) {
             throw new RuntimeException('delete_prepare_failed');
         }
         mysqli_stmt_bind_param($stmt, 'i', $positionId);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             throw new RuntimeException('delete_failed');
         }
         mysqli_stmt_close($stmt);
 
         if ($cleanRows !== []) {
-            $ins = mysqli_prepare($conn, 'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)');
+            $ins = ff_mysqli_prepare($conn, 'INSERT INTO position_rezepturen (position_id, bestandteil_id, menge, optional_enabled, default_selected, option_group, reihenfolge, fest_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)');
             if (!$ins) {
                 throw new RuntimeException('insert_prepare_failed');
             }
@@ -468,7 +468,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $optionGroup = (string)$row['option_group'];
                 $reihenfolge = (int)$row['reihenfolge'];
                 mysqli_stmt_bind_param($ins, 'iidiisi', $positionId, $componentId, $menge, $optionalEnabled, $defaultSelected, $optionGroup, $reihenfolge);
-                if (!mysqli_stmt_execute($ins)) {
+                if (!ff_mysqli_stmt_execute($ins)) {
                     throw new RuntimeException('insert_failed');
                 }
             }

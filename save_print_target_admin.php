@@ -35,7 +35,7 @@ if (!empty($_POST['delete'])) {
         exit;
     }
     try {
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
         $cntR = ff_db_query($conn, 'SELECT COUNT(*) AS c FROM positionen WHERE print_target = ?', 'i', [$print_target]);
         if (!$cntR) {
             echo json_encode(['ok' => false, 'error' => 'db_error', 'message' => mysqli_error($conn)], JSON_UNESCAPED_UNICODE);
@@ -48,14 +48,14 @@ if (!empty($_POST['delete'])) {
             exit;
         }
         $printerKey = 'target_' . $print_target;
-        $pjChk = mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
+        $pjChk = ff_mysqli_query($conn, "SHOW TABLES LIKE 'printer_jobs'");
         if ($pjChk && mysqli_num_rows($pjChk) > 0) {
             mysqli_free_result($pjChk);
             ff_db_query($conn, 'DELETE FROM printer_jobs WHERE printer = ?', 's', [$printerKey]);
         } elseif ($pjChk) {
             mysqli_free_result($pjChk);
         }
-        $colChk = mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'start_print_target'");
+        $colChk = ff_mysqli_query($conn, "SHOW COLUMNS FROM users LIKE 'start_print_target'");
         if ($colChk && mysqli_num_rows($colChk) > 0) {
             mysqli_free_result($colChk);
             ff_db_query($conn, 'UPDATE users SET start_page = CASE WHEN start_page = \'print_target\' THEN \'menu\' ELSE start_page END, start_print_target = NULL WHERE start_print_target = ?', 'i', [$print_target]);
@@ -89,7 +89,7 @@ if ($print_target <= 0 || $name === '') {
     exit;
 }
 
-@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS print_targets (print_target INT(11) NOT NULL, name VARCHAR(64) NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (print_target)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
 ff_socket_printer_ensure_schema($conn);
 

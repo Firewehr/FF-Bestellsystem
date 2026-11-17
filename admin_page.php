@@ -148,7 +148,7 @@ if (empty($_SESSION['csrf_users_import'])) {
 }
 $csrfUsersImport = (string) ($_SESSION['csrf_users_import'] ?? '');
 $abrechnung_tables = [];
-$trAb = mysqli_query($conn, 'SELECT tischnummer, tischname FROM tische WHERE tischnummer <> 999999 ORDER BY tischname ASC, tischnummer ASC');
+$trAb = ff_mysqli_query($conn, 'SELECT tischnummer, tischname FROM tische WHERE tischnummer <> 999999 ORDER BY tischname ASC, tischnummer ASC');
 if ($trAb) {
     while ($rwAb = mysqli_fetch_assoc($trAb)) {
         $abrechnung_tables[] = $rwAb;
@@ -575,6 +575,11 @@ function BenutzerNeu() {
                         (zu viele falsche Passwörter)
                         <button type="button" class="btn btn-sm btn-outline-dark py-0 ms-2 ff-admin-page-link" data-ff-page="stammdaten-abrechnung">Ansehen / entsperren</button>
                     </div>
+                    <div class="alert alert-danger d-none mb-3 py-2 small" id="dashDbErrors" role="alert">
+                        <strong id="dashDbErrorsCount"></strong>
+                        <span id="dashDbErrorsLast"></span>
+                        <a class="btn btn-sm btn-outline-dark py-0 ms-2" href="diagnose.php#fehlerprotokoll">Details</a>
+                    </div>
                     <div class="alert alert-danger d-none mb-3" id="dashPrintAlertCritical" role="alert">
                         <strong>Druck / Print-Client – Auffälligkeiten</strong>
                         <ul class="small mb-0 mt-2" id="dashPrintAlertList"></ul>
@@ -854,7 +859,7 @@ function BenutzerNeu() {
                     ff_ensure_column($conn, 'tische', 'is_sammelrechnung', 'ALTER TABLE tische ADD COLUMN is_sammelrechnung TINYINT(1) NOT NULL DEFAULT 0');
                     ff_ensure_column($conn, 'tische', 'is_ehrengast', 'ALTER TABLE tische ADD COLUMN is_ehrengast TINYINT(1) NOT NULL DEFAULT 0');
 
-                    $tres = mysqli_query($conn, "SELECT tischnummer, tischname, x, y, color, is_sammelrechnung, is_ehrengast FROM tische ORDER BY tischnummer ASC LIMIT 500");
+                    $tres = ff_mysqli_query($conn, "SELECT tischnummer, tischname, x, y, color, is_sammelrechnung, is_ehrengast FROM tische ORDER BY tischnummer ASC LIMIT 500");
                     if (!$tres) {
                         echo '<div class="alert alert-danger small mb-2">Tischliste konnte nicht geladen werden: ' . out(mysqli_error($conn)) . '</div>';
                     }
@@ -1097,9 +1102,9 @@ function BenutzerNeu() {
                     <h4>Feste / Veranstaltungen</h4>
                     <p class="text-muted-small">Aktuelles Fest steuert den Zahlungsmodus und die Zuordnung neuer Bestellungen. Zahlungsmodus ändern darf nur Super-Admin (admin=2). <strong>Rechnungs-Präfix</strong> pro Fest: leer lassen für das globale Präfix aus den Rechnungsdaten oben.</p>
                     <?php
-                    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(255) NOT NULL, code VARCHAR(16) NOT NULL, fest_datum DATE NULL, aktiv TINYINT(1) NOT NULL DEFAULT 1, payment_mode ENUM('after','instant') NOT NULL DEFAULT 'after', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(id), KEY aktiv(aktiv)) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4");
+                    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(255) NOT NULL, code VARCHAR(16) NOT NULL, fest_datum DATE NULL, aktiv TINYINT(1) NOT NULL DEFAULT 1, payment_mode ENUM('after','instant') NOT NULL DEFAULT 'after', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(id), KEY aktiv(aktiv)) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4");
                     ff_feste_ensure_rechnung_prefix_column($conn);
-                    $fres = mysqli_query($conn, "SELECT * FROM feste ORDER BY created_at DESC LIMIT 200");
+                    $fres = ff_mysqli_query($conn, "SELECT * FROM feste ORDER BY created_at DESC LIMIT 200");
                     echo '<div class="table-responsive mb-4"><table class="table table-hover ff-feste-table" id="feste"><thead><tr><th>Fest</th><th>Aktiv</th><th>Payment</th><th>Rechn.-Präfix</th><th>Aktuelles Fest</th><th>Push</th></tr></thead><tbody>';
                     while($f = $fres ? mysqli_fetch_assoc($fres) : null){
                         if(!$f) break;
@@ -1196,7 +1201,7 @@ function BenutzerNeu() {
                     require_once __DIR__ . '/include/ff_socket_printer.php';
                     ff_socket_printer_ensure_schema($conn);
                     ff_auto_print_ensure_schema($conn);
-                    $ptRes = mysqli_query($conn, "SELECT print_target, name, active, sort_order, auto_print_limit, connection_type, ip_address, port FROM print_targets ORDER BY sort_order, name");
+                    $ptRes = ff_mysqli_query($conn, "SELECT print_target, name, active, sort_order, auto_print_limit, connection_type, ip_address, port FROM print_targets ORDER BY sort_order, name");
                     echo '<div class="table-responsive mb-3"><table class="table table-hover table-sm align-middle" id="printTargetsTable"><thead><tr><th>ID</th><th>Name</th><th>Verbindung</th><th>IP : Port (Port 9100)</th><th>Reihe</th><th>Aktiv</th><th title="Wird eine Bestellung abgeschickt und sind in dieser Station weniger Bestellungen offen, wird sie sofort gedruckt. 0 = aus.">Auto-Druck</th><th class="text-nowrap">Aktion & Test</th></tr></thead><tbody>';
                     if ($ptRes) {
                         while ($pt = mysqli_fetch_assoc($ptRes)) {
@@ -1580,7 +1585,7 @@ function BenutzerNeu() {
                                     <select id="new_user_start_page" class="form-select">
                         <?php
                         $admin_landing_print_targets = [];
-                        $ptq = @mysqli_query($conn, "SELECT pt.print_target, pt.name FROM print_targets pt
+                        $ptq = ff_mysqli_query($conn, "SELECT pt.print_target, pt.name FROM print_targets pt
                             WHERE pt.active=1 AND EXISTS (SELECT 1 FROM positionen p WHERE COALESCE(p.print_target, 11) = pt.print_target)
                             ORDER BY pt.sort_order, pt.name");
                         if ($ptq) {
@@ -1633,7 +1638,7 @@ function BenutzerNeu() {
                         $sessionAdminLevel = (int)($_SESSION['admin'] ?? 0);
                         $sessionUsername = (string)($_SESSION['user']['username'] ?? '');
                         $dvBonPtList = [];
-                        $dvBq = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+                        $dvBq = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
                         if ($dvBq) {
                             while ($dbr = mysqli_fetch_assoc($dvBq)) {
                                 $dvBonPtList[] = ['print_target' => (int) $dbr['print_target'], 'name' => (string) $dbr['name']];
@@ -1859,7 +1864,7 @@ function BenutzerNeu() {
                     </form>
                     
                     <?php
-                    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
+                    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS rechnungen (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         rechnungsnummer VARCHAR(50) NOT NULL,
                         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1885,7 +1890,7 @@ function BenutzerNeu() {
                     ff_rechnungen_ensure_extra_columns($conn);
 
                     $adminRechnungPrintTargets = [];
-                    $ptqRec = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
+                    $ptqRec = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
                     if ($ptqRec) {
                         while ($ptR = mysqli_fetch_assoc($ptqRec)) {
                             $adminRechnungPrintTargets[] = $ptR;
@@ -2047,14 +2052,14 @@ function BenutzerNeu() {
                     <p class="text-muted-small">Essen und Getränke für Helfer/Mitarbeiter dokumentieren (kostenlos). Optional nach Bereich einteilen: Küche, Schank, Kellner, Komando, Jugendfeuerwehr, etc.</p>
 
                     <?php
-                    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-                    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-                    $resB = @mysqli_query($conn, "SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name");
+                    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+                    $resB = ff_mysqli_query($conn, "SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name");
                     $bereiche = [];
                     if ($resB) while ($r = mysqli_fetch_assoc($resB)) $bereiche[] = $r;
                     if (count($bereiche) === 0) {
-                        mysqli_query($conn, "INSERT IGNORE INTO mitarbeiter_bereiche (name, sort_order) VALUES ('Küche',10),('Schank',20),('Kellner',30),('Komando',40),('Jugendfeuerwehr',50),('Sonstige',99)");
-                        $resB = mysqli_query($conn, "SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name");
+                        ff_mysqli_query($conn, "INSERT IGNORE INTO mitarbeiter_bereiche (name, sort_order) VALUES ('Küche',10),('Schank',20),('Kellner',30),('Komando',40),('Jugendfeuerwehr',50),('Sonstige',99)");
+                        $resB = ff_mysqli_query($conn, "SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name");
                         if ($resB) while ($r = mysqli_fetch_assoc($resB)) $bereiche[] = $r;
                     }
                     require_once __DIR__ . '/include/ff_position_stock_summary.php';
@@ -2125,7 +2130,7 @@ function BenutzerNeu() {
                             <thead><tr><th>Bereich</th><th>Reihenfolge</th><th></th></tr></thead>
                             <tbody>
                                 <?php
-                                $resB2 = @mysqli_query($conn, "SELECT id, name, sort_order FROM mitarbeiter_bereiche ORDER BY sort_order, name");
+                                $resB2 = ff_mysqli_query($conn, "SELECT id, name, sort_order FROM mitarbeiter_bereiche ORDER BY sort_order, name");
                                 if ($resB2) while ($rb = mysqli_fetch_assoc($resB2)) {
                                     echo '<tr><td>' . out($rb['name']) . '</td><td>' . (int)$rb['sort_order'] . '</td><td><button type="button" class="btn btn-sm btn-outline-danger ff-icon-action" onclick="mvBereichLoeschen(' . (int)$rb['id'] . ');" title="Bereich löschen" aria-label="Bereich löschen">&#128465;</button></td></tr>';
                                 }

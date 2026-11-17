@@ -793,7 +793,7 @@ try {
     }
 
     $payMrPrintTargets = [];
-    $ptqMr = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
+    $ptqMr = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active=1 ORDER BY sort_order, name');
     if ($ptqMr) {
         while ($ptMr = mysqli_fetch_assoc($ptqMr)) {
             $payMrPrintTargets[] = $ptMr;

@@ -25,14 +25,14 @@ $sql = "
     ORDER BY CASE WHEN p.type = 2 THEN 0 WHEN p.type = 1 THEN 1 ELSE 2 END, p.Positionsname ASC, TRIM(COALESCE(b.Zusatzinfo, '')) ASC
 ";
 
-$stmt = mysqli_prepare($conn, $sql);
+$stmt = ff_mysqli_prepare($conn, $sql);
 if (!$stmt) {
     echo json_encode(['ok' => false, 'message' => 'summary_sql_failed'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 mysqli_stmt_bind_param($stmt, 'i', $tischnummer);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
 $lines = [];

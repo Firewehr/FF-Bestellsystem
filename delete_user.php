@@ -29,14 +29,14 @@ if ($userid <= 0) {
 $sessionLevel = (int)$_SESSION['admin'];
 $sessionName = (string)($_SESSION['user']['username'] ?? '');
 
-$stmt = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$stmt = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 if (!$stmt) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($stmt, 'i', $userid);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $row = null;
 if (function_exists('mysqli_stmt_get_result')) {
     $res = mysqli_stmt_get_result($stmt);
@@ -86,14 +86,14 @@ if ($sessionLevel < 2 && $targetLevel !== 0) {
     exit;
 }
 
-$del = mysqli_prepare($conn, 'DELETE FROM users WHERE id = ? LIMIT 1');
+$del = ff_mysqli_prepare($conn, 'DELETE FROM users WHERE id = ? LIMIT 1');
 if (!$del) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($del, 'i', $userid);
-$ok = mysqli_stmt_execute($del);
+$ok = ff_mysqli_stmt_execute($del);
 $affected = mysqli_stmt_affected_rows($del);
 mysqli_stmt_close($del);
 

@@ -199,7 +199,7 @@ function ff_statistik_position_data(mysqli $conn, array $in): array
 
     $mitarbeiter = [];
     if ($inkl_mitarbeiter) {
-        $tblMv = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
+        $tblMv = ff_mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
         if ($tblMv && mysqli_num_rows($tblMv) > 0) {
             $sel = $position_id > 0
                 ? 'v.datum, v.created_at, v.menge, v.notiz, b.name AS bereich_name'

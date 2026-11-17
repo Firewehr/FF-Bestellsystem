@@ -21,7 +21,7 @@ require_once __DIR__ . '/include/ff_schema_helpers.php';
 ff_schema_ensure_hot_paths($conn);
 
 // Nächste Bestellnummer atomar holen
-mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
+ff_mysqli_query($conn, "UPDATE settings SET v = LAST_INSERT_ID(v + 1) WHERE k = 'order_nr_seq'");
 $orderNr = (int)mysqli_insert_id($conn);
 if ($orderNr <= 0) {
     setting_set($conn, 'order_nr_seq', '1');
@@ -53,7 +53,7 @@ if ($affected === 0) {
 
 // Attach current fest_id to newly submitted rows (best-effort)
 $currentFestId = 0;
-$fres = mysqli_query($conn, "SELECT id, payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
+$fres = ff_mysqli_query($conn, "SELECT id, payment_mode FROM feste WHERE aktiv=1 LIMIT 1");
 $paymentMode = 'after';
 
 if ($fres && ($frow = mysqli_fetch_assoc($fres))) {

@@ -10,7 +10,7 @@ function ff_order_recipe_components(mysqli $conn, int $positionId): array
     }
     ff_rezepturen_ensure_schema($conn);
 
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         'SELECT pr.bestandteil_id, pr.menge, pr.optional_enabled, pr.default_selected,
                 pr.option_group, b.name, b.einheit, b.kapazitaet
@@ -23,7 +23,7 @@ function ff_order_recipe_components(mysqli $conn, int $positionId): array
         throw new RuntimeException('recipe_components_prepare_failed');
     }
     mysqli_stmt_bind_param($stmt, 'i', $positionId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         mysqli_stmt_close($stmt);
         throw new RuntimeException('recipe_components_query_failed');
     }
@@ -77,7 +77,7 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
     if ($orderRowId <= 0) {
         throw new InvalidArgumentException('bad_order_rowid');
     }
-    $header = mysqli_prepare(
+    $header = ff_mysqli_prepare(
         $conn,
         'INSERT INTO bestellung_rezeptur_snapshots (bestellung_rowid) VALUES (?)
          ON DUPLICATE KEY UPDATE created_at = CURRENT_TIMESTAMP'
@@ -86,18 +86,18 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
         throw new RuntimeException('recipe_snapshot_prepare_failed');
     }
     mysqli_stmt_bind_param($header, 'i', $orderRowId);
-    if (!mysqli_stmt_execute($header)) {
+    if (!ff_mysqli_stmt_execute($header)) {
         mysqli_stmt_close($header);
         throw new RuntimeException('recipe_snapshot_save_failed');
     }
     mysqli_stmt_close($header);
 
-    $delete = mysqli_prepare($conn, 'DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid = ?');
+    $delete = ff_mysqli_prepare($conn, 'DELETE FROM bestellung_rezeptur_komponenten WHERE bestellung_rowid = ?');
     if (!$delete) {
         throw new RuntimeException('recipe_components_delete_prepare_failed');
     }
     mysqli_stmt_bind_param($delete, 'i', $orderRowId);
-    if (!mysqli_stmt_execute($delete)) {
+    if (!ff_mysqli_stmt_execute($delete)) {
         mysqli_stmt_close($delete);
         throw new RuntimeException('recipe_components_delete_failed');
     }
@@ -106,7 +106,7 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
     if ($allComponents === []) {
         return;
     }
-    $insert = mysqli_prepare(
+    $insert = ff_mysqli_prepare(
         $conn,
         'INSERT INTO bestellung_rezeptur_komponenten
             (bestellung_rowid, bestandteil_id, name_snapshot, einheit_snapshot, menge, optional_enabled, default_selected, selected)
@@ -133,7 +133,7 @@ function ff_order_recipe_save_snapshot(mysqli $conn, int $orderRowId, array $all
         $defaultSelected = !empty($component['default_selected']) ? 1 : 0;
         $selected = isset($selectedIds[$componentId]) ? 1 : 0;
         mysqli_stmt_bind_param($insert, 'iissdiii', $orderRowId, $componentId, $name, $unit, $quantity, $optional, $defaultSelected, $selected);
-        if (!mysqli_stmt_execute($insert)) {
+        if (!ff_mysqli_stmt_execute($insert)) {
             $err = mysqli_stmt_error($insert);
             mysqli_stmt_close($insert);
             throw new RuntimeException('recipe_components_insert_failed: ' . $err);

@@ -19,7 +19,7 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
     if ($settlementId <= 0) {
         return ['ok' => false, 'error' => 'bad_settlement'];
     }
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         'SELECT id, kellner_login, voided_at FROM kellner_settlements WHERE id = ? LIMIT 1'
     );
@@ -27,7 +27,7 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
         return ['ok' => false, 'error' => 'db_error'];
     }
     mysqli_stmt_bind_param($st, 'i', $settlementId);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -48,7 +48,7 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
 
     mysqli_begin_transaction($conn);
     try {
-        $stUp = mysqli_prepare(
+        $stUp = ff_mysqli_prepare(
             $conn,
             'UPDATE bestellungen SET settlement_id = NULL, settled_at = NULL, settled_by = NULL WHERE settlement_id = ?'
         );
@@ -56,11 +56,11 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
             throw new RuntimeException('db');
         }
         mysqli_stmt_bind_param($stUp, 'i', $settlementId);
-        mysqli_stmt_execute($stUp);
+        ff_mysqli_stmt_execute($stUp);
         $orders = mysqli_stmt_affected_rows($stUp);
         mysqli_stmt_close($stUp);
 
-        $stMov = mysqli_prepare(
+        $stMov = ff_mysqli_prepare(
             $conn,
             'UPDATE kellner_bewegungen SET settlement_id = NULL WHERE settlement_id = ?'
         );
@@ -68,11 +68,11 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
             throw new RuntimeException('db');
         }
         mysqli_stmt_bind_param($stMov, 'i', $settlementId);
-        mysqli_stmt_execute($stMov);
+        ff_mysqli_stmt_execute($stMov);
         $movs = mysqli_stmt_affected_rows($stMov);
         mysqli_stmt_close($stMov);
 
-        $stVoid = mysqli_prepare(
+        $stVoid = ff_mysqli_prepare(
             $conn,
             'UPDATE kellner_settlements SET voided_at = NOW(), voided_by = ?, void_reason = ? WHERE id = ? AND voided_at IS NULL LIMIT 1'
         );
@@ -80,7 +80,7 @@ function ff_kellner_unsettle(mysqli $conn, int $settlementId, string $by, string
             throw new RuntimeException('db');
         }
         mysqli_stmt_bind_param($stVoid, 'ssi', $by, $reason, $settlementId);
-        mysqli_stmt_execute($stVoid);
+        ff_mysqli_stmt_execute($stVoid);
         if (mysqli_stmt_affected_rows($stVoid) !== 1) {
             mysqli_stmt_close($stVoid);
             throw new RuntimeException('void_failed');
@@ -130,7 +130,7 @@ function ff_kassen_reopen(mysqli $conn, int $sessionId, string $by, string $reas
         $reason = mb_substr($reason, 0, 255, 'UTF-8');
     }
 
-    $st = mysqli_prepare(
+    $st = ff_mysqli_prepare(
         $conn,
         "UPDATE kassen_sessions SET status = 'open', closing_amount = NULL, revenue_amount = NULL,
             closed_at = NULL, closed_by = NULL, reopened_at = NOW(), reopened_by = ?, reopen_reason = ?
@@ -140,7 +140,7 @@ function ff_kassen_reopen(mysqli $conn, int $sessionId, string $by, string $reas
         return ['ok' => false, 'error' => 'db_error'];
     }
     mysqli_stmt_bind_param($st, 'ssi', $by, $reason, $sessionId);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $ok = mysqli_stmt_affected_rows($st) === 1;
     mysqli_stmt_close($st);
     if (!$ok) {

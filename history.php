@@ -14,7 +14,7 @@ try {
         . "GROUP BY bestellungen.tischnummer, {$batchKeyExpr} "
         . "ORDER BY MIN(bestellungen.zeitstempel) ASC LIMIT 50";
 
-    $result1 = mysqli_query($conn, $sql1);
+    $result1 = ff_mysqli_query($conn, $sql1);
 
     $Summe = 0;
     

@@ -183,7 +183,7 @@ $wr([
     'Erfasst_von_Anzeige',
 ]);
 
-$tblMv = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
+$tblMv = ff_mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
 if ($tblMv && mysqli_num_rows($tblMv) > 0) {
     $sqlM = ['SELECT v.id, v.datum, v.created_at, v.menge, v.notiz, v.created_by,
         v.position_id, v.bereich_id,

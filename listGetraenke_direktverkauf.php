@@ -35,7 +35,7 @@ $sql = "SELECT p.*, s.name AS subcat_name, s.tile_bg AS sub_tile_bg
         LEFT JOIN position_subcategories s ON s.id = p.subcategory_id
         WHERE p.type = 2" . ff_fest_scope_position_sql($conn, 'p') . "
         ORDER BY COALESCE(s.sort_order, 99999), COALESCE(s.id, 0), p.reihenfolge, p.rowid";
-$result = mysqli_query($conn, $sql);
+$result = ff_mysqli_query($conn, $sql);
 $rows = [];
 if ($result) {
     while ($r = mysqli_fetch_assoc($result)) {

@@ -13,7 +13,7 @@ require_once('include/db.php');
 
 // OPTIONAL: nur wenn du wirklich willst, dass es "self-healing" ist.
 // Besser: einmalig im Setup/Admin anlegen.
-// @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste ( ... ) ENGINE=MyISAM DEFAULT CHARSET=utf8;");
+// ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS feste ( ... ) ENGINE=MyISAM DEFAULT CHARSET=utf8;");
 
 $id = isset($_POST['id']) ? (int)$_POST['id'] : 0;
 $mode = isset($_POST['payment_mode']) ? trim($_POST['payment_mode']) : 'after';

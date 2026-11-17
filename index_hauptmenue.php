@@ -23,10 +23,10 @@ $ff_compact_data_page_id = 'indexPage';
 if ((int)($_SESSION['admin'] ?? 0) < 1) {
     $ff_uname = trim((string)($_SESSION['user']['username'] ?? ''));
     if ($ff_uname !== '') {
-        $ff_stm = mysqli_prepare($conn, 'SELECT start_page, start_print_target FROM users WHERE username = ? LIMIT 1');
+        $ff_stm = ff_mysqli_prepare($conn, 'SELECT start_page, start_print_target FROM users WHERE username = ? LIMIT 1');
         if ($ff_stm) {
             mysqli_stmt_bind_param($ff_stm, 's', $ff_uname);
-            mysqli_stmt_execute($ff_stm);
+            ff_mysqli_stmt_execute($ff_stm);
             $ff_rs = mysqli_stmt_get_result($ff_stm);
             $ff_rw = $ff_rs ? mysqli_fetch_assoc($ff_rs) : null;
             mysqli_stmt_close($ff_stm);
@@ -55,7 +55,7 @@ $ff_initial_compact_active = !empty($ff_menu_compact) ? $ff_compact_data_page_id
 // Druckziele (Print Targets) für Menü laden; nur aktive + solche mit mind. 1 Position in der Speisekarte
 // Schema-Migration: zentralisiert in ff_schema_ensure_hot_paths() oben.
 $print_targets = [];
-$res = @mysqli_query($conn, "SELECT pt.print_target, pt.name FROM print_targets pt
+$res = ff_mysqli_query($conn, "SELECT pt.print_target, pt.name FROM print_targets pt
     WHERE pt.active=1 AND EXISTS (SELECT 1 FROM positionen p WHERE p.print_target = pt.print_target)
     ORDER BY pt.sort_order, pt.name");
 if ($res && mysqli_num_rows($res) > 0) {
@@ -64,7 +64,7 @@ if ($res && mysqli_num_rows($res) > 0) {
     }
 }
 if (count($print_targets) === 0) {
-    @mysqli_query($conn, "INSERT IGNORE INTO print_targets (print_target, name, active, sort_order) VALUES (11, 'Küche', 1, 10), (12, 'Schank', 1, 20)");
+    ff_mysqli_query($conn, "INSERT IGNORE INTO print_targets (print_target, name, active, sort_order) VALUES (11, 'Küche', 1, 10), (12, 'Schank', 1, 20)");
     $print_targets = [['print_target' => 11, 'name' => 'Küche'], ['print_target' => 12, 'name' => 'Schank']];
 }
 
@@ -264,7 +264,7 @@ $ffAppTitle = ff_app_title($conn);
     <!-- IndexedDB -->
     <script id="ffPositionsSeedJson" type="application/json"><?php
         $ffPosSeed = [];
-        $ffPosRes = mysqli_query($conn, "SELECT rowid, Positionsname, Kurzbezeichnung FROM positionen ORDER BY type, reihenfolge");
+        $ffPosRes = ff_mysqli_query($conn, "SELECT rowid, Positionsname, Kurzbezeichnung FROM positionen ORDER BY type, reihenfolge");
         if ($ffPosRes) {
             while ($rowww = mysqli_fetch_assoc($ffPosRes)) {
                 $ffPosSeed[] = [

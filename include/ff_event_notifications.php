@@ -56,16 +56,16 @@ function ff_event_notifications_bootstrap(mysqli $conn): void
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
     ];
     foreach ($tables as $sql) {
-        if (!mysqli_query($conn, $sql)) {
+        if (!ff_mysqli_query($conn, $sql)) {
             throw new RuntimeException('Push-Benachrichtigungsschema konnte nicht erstellt werden: ' . mysqli_error($conn));
         }
     }
 
-    $column = mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'fest_id'");
+    $column = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'fest_id'");
     if (!$column) {
         throw new RuntimeException('Bestellspalte fest_id konnte nicht geprüft werden: ' . mysqli_error($conn));
     }
-    if (mysqli_num_rows($column) === 0 && !mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN fest_id INT(11) NULL DEFAULT NULL')) {
+    if (mysqli_num_rows($column) === 0 && !ff_mysqli_query($conn, 'ALTER TABLE bestellungen ADD COLUMN fest_id INT(11) NULL DEFAULT NULL')) {
         throw new RuntimeException('Bestellspalte fest_id konnte nicht erstellt werden: ' . mysqli_error($conn));
     }
     mysqli_free_result($column);
@@ -86,12 +86,12 @@ function ff_event_notification_resources(mysqli $conn, int $festId): array
             WHERE COALESCE(p.maxBestellbar, 0) > 0
               AND (p.fest_id IS NULL OR p.fest_id = ?)
             ORDER BY COALESCE(t.sort_order, 0), t.name, p.Positionsname";
-    $stmt = mysqli_prepare($conn, $sql);
+    $stmt = ff_mysqli_prepare($conn, $sql);
     if (!$stmt) {
         throw new RuntimeException('Kapazitätspositionen konnten nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $festId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException('Kapazitätspositionen konnten nicht geladen werden: ' . mysqli_stmt_error($stmt));
     }
     $result = mysqli_stmt_get_result($stmt);
@@ -107,7 +107,7 @@ function ff_event_notification_resources(mysqli $conn, int $festId): array
     mysqli_stmt_close($stmt);
 
     $ingredients = [];
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         "SELECT id, name, einheit, kapazitaet
          FROM bestandteile
@@ -118,7 +118,7 @@ function ff_event_notification_resources(mysqli $conn, int $festId): array
         throw new RuntimeException('Kapazitätsbestandteile konnten nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $festId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException('Kapazitätsbestandteile konnten nicht geladen werden: ' . mysqli_stmt_error($stmt));
     }
     $result = mysqli_stmt_get_result($stmt);
@@ -134,7 +134,7 @@ function ff_event_notification_resources(mysqli $conn, int $festId): array
     mysqli_stmt_close($stmt);
 
     $stations = [];
-    $stationResult = mysqli_query(
+    $stationResult = ff_mysqli_query(
         $conn,
         'SELECT DISTINCT t.print_target AS id, t.name
          FROM print_targets t
@@ -159,7 +159,7 @@ function ff_event_notification_resources(mysqli $conn, int $festId): array
 
 function ff_event_notification_send_to_admins(mysqli $conn, array $payload): bool
 {
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         'INSERT INTO ff_admin_messages (fest_id, title, body, url, tag) VALUES (?, ?, ?, ?, ?)'
     );
@@ -172,26 +172,26 @@ function ff_event_notification_send_to_admins(mysqli $conn, array $payload): boo
     $url = mb_substr((string) ($payload['url'] ?? './admin.php'), 0, 255);
     $tag = mb_substr((string) ($payload['tag'] ?? ''), 0, 191);
     mysqli_stmt_bind_param($stmt, 'issss', $festId, $title, $body, $url, $tag);
-    $ok = mysqli_stmt_execute($stmt);
+    $ok = ff_mysqli_stmt_execute($stmt);
     $error = mysqli_stmt_error($stmt);
     mysqli_stmt_close($stmt);
     if (!$ok) {
         throw new RuntimeException('Admin-Nachricht konnte nicht gespeichert werden: ' . $error);
     }
     // Alte Nachrichten aufräumen
-    mysqli_query($conn, 'DELETE FROM ff_admin_messages WHERE created_at < (NOW() - INTERVAL 2 DAY)');
+    ff_mysqli_query($conn, 'DELETE FROM ff_admin_messages WHERE created_at < (NOW() - INTERVAL 2 DAY)');
     return true;
 }
 
 function ff_event_notification_resource_usage(mysqli $conn, int $festId, string $type, int $resourceId): array
 {
     if ($type === 'station') {
-        $stmt = mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT name FROM print_targets WHERE print_target = ? AND active = 1 LIMIT 1');
         if (!$stmt) {
             throw new RuntimeException('Küchen-/Schankstation konnte nicht vorbereitet werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'i', $resourceId);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             throw new RuntimeException('Küchen-/Schankstation konnte nicht geladen werden: ' . mysqli_stmt_error($stmt));
         }
         $station = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
@@ -199,7 +199,7 @@ function ff_event_notification_resource_usage(mysqli $conn, int $festId, string 
         if (!$station) {
             return [null, 0.0, 0.0];
         }
-        $stmt = mysqli_prepare(
+        $stmt = ff_mysqli_prepare(
             $conn,
             "SELECT COUNT(*) AS used FROM (
                 SELECT b.tischnummer, COALESCE(NULLIF(b.order_nr, 0), b.rowid) AS order_key
@@ -215,7 +215,7 @@ function ff_event_notification_resource_usage(mysqli $conn, int $festId, string 
             throw new RuntimeException('Offene Stationsbestellungen konnten nicht vorbereitet werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'ii', $festId, $resourceId);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             throw new RuntimeException('Offene Stationsbestellungen konnten nicht gezählt werden: ' . mysqli_stmt_error($stmt));
         }
         $usage = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
@@ -224,41 +224,41 @@ function ff_event_notification_resource_usage(mysqli $conn, int $festId, string 
     }
 
     if ($type === 'position') {
-        $stmt = mysqli_prepare($conn, 'SELECT Positionsname AS name, COALESCE(maxBestellbar, 0) AS capacity FROM positionen WHERE rowid = ? LIMIT 1');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT Positionsname AS name, COALESCE(maxBestellbar, 0) AS capacity FROM positionen WHERE rowid = ? LIMIT 1');
         if (!$stmt) {
             throw new RuntimeException('Positionskapazität konnte nicht vorbereitet werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'i', $resourceId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $resource = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
         mysqli_stmt_close($stmt);
         if (!$resource || (int) $resource['capacity'] <= 0) {
             return [null, 0.0, 0.0];
         }
-        $stmt = mysqli_prepare($conn, 'SELECT COUNT(*) AS used FROM bestellungen WHERE fest_id = ? AND position = ? AND COALESCE(`delete`, 0) = 0');
+        $stmt = ff_mysqli_prepare($conn, 'SELECT COUNT(*) AS used FROM bestellungen WHERE fest_id = ? AND position = ? AND COALESCE(`delete`, 0) = 0');
         if (!$stmt) {
             throw new RuntimeException('Positionsverbrauch konnte nicht vorbereitet werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'ii', $festId, $resourceId);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $usage = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
         mysqli_stmt_close($stmt);
         return [(string) $resource['name'], (float) $resource['capacity'], (float) ($usage['used'] ?? 0)];
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT name, kapazitaet FROM bestandteile WHERE id = ? AND aktiv = 1 LIMIT 1');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT name, kapazitaet FROM bestandteile WHERE id = ? AND aktiv = 1 LIMIT 1');
     if (!$stmt) {
         throw new RuntimeException('Bestandteilkapazität konnte nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $resourceId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $resource = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
     mysqli_stmt_close($stmt);
     if (!$resource || (float) $resource['kapazitaet'] <= 0) {
         return [null, 0.0, 0.0];
     }
 
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         "SELECT
             COALESCE((
@@ -284,7 +284,7 @@ function ff_event_notification_resource_usage(mysqli $conn, int $festId, string 
         throw new RuntimeException('Bestandteilverbrauch konnte nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'iiiii', $festId, $resourceId, $festId, $resourceId, $festId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException('Bestandteilverbrauch konnte nicht geladen werden: ' . mysqli_stmt_error($stmt));
     }
     $usage = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
@@ -299,7 +299,7 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
     }
     ff_event_notifications_bootstrap($conn);
 
-    $stmt = mysqli_prepare(
+    $stmt = ff_mysqli_prepare(
         $conn,
         'SELECT s.enabled, f.name AS fest_name
          FROM ff_fest_push_settings s
@@ -310,7 +310,7 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
         throw new RuntimeException('Push-Einstellungen konnten nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $festId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException('Push-Einstellungen konnten nicht geladen werden: ' . mysqli_stmt_error($stmt));
     }
     $settings = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
@@ -319,12 +319,12 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
         return;
     }
 
-    $stmt = mysqli_prepare($conn, 'SELECT resource_type, resource_id, threshold_value FROM ff_fest_push_rules WHERE fest_id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT resource_type, resource_id, threshold_value FROM ff_fest_push_rules WHERE fest_id = ?');
     if (!$stmt) {
         throw new RuntimeException('Push-Regeln konnten nicht vorbereitet werden: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $festId);
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         throw new RuntimeException('Push-Regeln konnten nicht geladen werden: ' . mysqli_stmt_error($stmt));
     }
     $result = mysqli_stmt_get_result($stmt);
@@ -344,7 +344,7 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
         }
         $stationAlert = $type === 'station';
         $remainingPercent = $stationAlert ? null : max(0.0, (($capacity - $used) / $capacity) * 100.0);
-        $state = mysqli_prepare(
+        $state = ff_mysqli_prepare(
             $conn,
             "INSERT IGNORE INTO ff_fest_push_state (fest_id, resource_type, resource_id, notified) VALUES (?, ?, ?, 0)"
         );
@@ -352,12 +352,12 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
             throw new RuntimeException('Push-Status konnte nicht vorbereitet werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($state, 'isi', $festId, $type, $resourceId);
-        mysqli_stmt_execute($state);
+        ff_mysqli_stmt_execute($state);
         mysqli_stmt_close($state);
 
         $reached = $stationAlert ? $used >= $threshold : $remainingPercent <= $threshold;
         if (!$reached) {
-            $reset = mysqli_prepare(
+            $reset = ff_mysqli_prepare(
                 $conn,
                 'UPDATE ff_fest_push_state SET notified = 0 WHERE fest_id = ? AND resource_type = ? AND resource_id = ?'
             );
@@ -365,12 +365,12 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
                 throw new RuntimeException('Push-Status konnte nicht zurückgesetzt werden: ' . mysqli_error($conn));
             }
             mysqli_stmt_bind_param($reset, 'isi', $festId, $type, $resourceId);
-            mysqli_stmt_execute($reset);
+            ff_mysqli_stmt_execute($reset);
             mysqli_stmt_close($reset);
             continue;
         }
 
-        $claim = mysqli_prepare(
+        $claim = ff_mysqli_prepare(
             $conn,
             'UPDATE ff_fest_push_state SET notified = 1 WHERE fest_id = ? AND resource_type = ? AND resource_id = ? AND notified = 0'
         );
@@ -378,7 +378,7 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
             throw new RuntimeException('Push-Status konnte nicht beansprucht werden: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($claim, 'isi', $festId, $type, $resourceId);
-        mysqli_stmt_execute($claim);
+        ff_mysqli_stmt_execute($claim);
         $claimed = mysqli_stmt_affected_rows($claim) === 1;
         mysqli_stmt_close($claim);
         if (!$claimed) {
@@ -403,13 +403,13 @@ function ff_event_notifications_evaluate(mysqli $conn, int $festId): void
             $delivered = false;
         }
         if (!$delivered) {
-            $reset = mysqli_prepare(
+            $reset = ff_mysqli_prepare(
                 $conn,
                 'UPDATE ff_fest_push_state SET notified = 0 WHERE fest_id = ? AND resource_type = ? AND resource_id = ?'
             );
             if ($reset) {
                 mysqli_stmt_bind_param($reset, 'isi', $festId, $type, $resourceId);
-                mysqli_stmt_execute($reset);
+                ff_mysqli_stmt_execute($reset);
                 mysqli_stmt_close($reset);
             }
         }

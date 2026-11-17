@@ -15,9 +15,9 @@ function ff_users_ensure_direktverkauf_column(mysqli $conn): void
         return;
     }
     $done = true;
-    $c = @mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'can_direktverkauf'");
+    $c = ff_mysqli_query($conn, "SHOW COLUMNS FROM `users` LIKE 'can_direktverkauf'");
     if ($c && mysqli_num_rows($c) === 0) {
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "ALTER TABLE `users` ADD COLUMN `can_direktverkauf` TINYINT(1) NOT NULL DEFAULT 0"
             . " COMMENT 'Direktverkauf (Kassa)' AFTER `can_finance`"
@@ -45,12 +45,12 @@ function ff_direktverkauf_user_can(mysqli $conn, ?array $session = null): bool
         return false;
     }
     ff_users_ensure_direktverkauf_column($conn);
-    $st = mysqli_prepare($conn, 'SELECT COALESCE(can_direktverkauf, 0) AS cdv FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT COALESCE(can_direktverkauf, 0) AS cdv FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -78,12 +78,12 @@ function ff_user_direktverkauf_only_ui(mysqli $conn, ?array $session = null): bo
         return false;
     }
     ff_users_ensure_direktverkauf_column($conn);
-    $st = mysqli_prepare($conn, 'SELECT start_page FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT start_page FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return false;
     }
     mysqli_stmt_bind_param($st, 's', $login);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);
@@ -118,12 +118,12 @@ function ff_direktverkauf_block_table_order(mysqli $conn): void
 function ff_direktverkauf_refresh_session_flags(mysqli $conn, string $username): void
 {
     ff_users_ensure_direktverkauf_column($conn);
-    $st = mysqli_prepare($conn, 'SELECT COALESCE(can_direktverkauf, 0) AS cdv FROM users WHERE username = ? LIMIT 1');
+    $st = ff_mysqli_prepare($conn, 'SELECT COALESCE(can_direktverkauf, 0) AS cdv FROM users WHERE username = ? LIMIT 1');
     if (!$st) {
         return;
     }
     mysqli_stmt_bind_param($st, 's', $username);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $res = mysqli_stmt_get_result($st);
     $row = $res ? mysqli_fetch_assoc($res) : null;
     mysqli_stmt_close($st);

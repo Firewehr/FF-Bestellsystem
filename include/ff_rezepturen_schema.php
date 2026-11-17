@@ -23,7 +23,7 @@ if (!function_exists('ff_rezepturen_table_exists')) {
         }
 
         $safeTable = str_replace("'", "''", $tableName);
-        $result = @mysqli_query($conn, "SHOW TABLES LIKE '" . $safeTable . "'");
+        $result = ff_mysqli_query($conn, "SHOW TABLES LIKE '" . $safeTable . "'");
         if (!$result) {
             $cache[$key] = false;
             return false;
@@ -53,7 +53,7 @@ if (!function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
         $mvChecked[$cid] = true;
 
         try {
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `mitarbeiter_bereiche` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -65,13 +65,13 @@ if (!function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
             );
 
             // Standardbereiche initialisieren, falls Tabelle neu/leer ist
-            $cntMb = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `mitarbeiter_bereiche`");
+            $cntMb = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM `mitarbeiter_bereiche`");
             $mbCount = $cntMb ? (int)(mysqli_fetch_assoc($cntMb)['c'] ?? 0) : 0;
             if ($cntMb) {
                 @mysqli_free_result($cntMb);
             }
             if ($mbCount === 0) {
-                @mysqli_query(
+                ff_mysqli_query(
                     $conn,
                     "INSERT IGNORE INTO `mitarbeiter_bereiche` (`name`, `sort_order`) VALUES
                     ('Küche', 10),
@@ -83,7 +83,7 @@ if (!function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
                 );
             }
 
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `mitarbeiter_verpflegung` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -102,77 +102,77 @@ if (!function_exists('ff_mitarbeiter_verpflegung_ensure_schema')) {
             );
 
             // Spalten in mitarbeiter_verpflegung prüfen und ggf. ergänzen / umbenennen
-            $cPosId = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
+            $cPosId = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
             $hasPosId = ($cPosId && mysqli_num_rows($cPosId) > 0);
             if ($cPosId) {
                 @mysqli_free_result($cPosId);
             }
 
             if (!$hasPosId) {
-                $cPos = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position'");
+                $cPos = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position'");
                 if ($cPos && mysqli_num_rows($cPos) > 0) {
-                    @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `position` `position_id` int(11) NOT NULL");
+                    ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `position` `position_id` int(11) NOT NULL");
                 } else {
-                    @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `position_id` int(11) NOT NULL DEFAULT 0 AFTER `bereich_id`");
+                    ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `position_id` int(11) NOT NULL DEFAULT 0 AFTER `bereich_id`");
                 }
                 if ($cPos) {
                     @mysqli_free_result($cPos);
                 }
             }
 
-            $cMenge = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
+            $cMenge = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
             $hasMenge = ($cMenge && mysqli_num_rows($cMenge) > 0);
             if ($cMenge) {
                 @mysqli_free_result($cMenge);
             }
 
             if (!$hasMenge) {
-                $cAnzahl = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'anzahl'");
+                $cAnzahl = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'anzahl'");
                 if ($cAnzahl && mysqli_num_rows($cAnzahl) > 0) {
-                    @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `anzahl` `menge` int(11) NOT NULL DEFAULT 1");
+                    ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` CHANGE COLUMN `anzahl` `menge` int(11) NOT NULL DEFAULT 1");
                 } else {
-                    @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `menge` int(11) NOT NULL DEFAULT 1 AFTER `position_id`");
+                    ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `menge` int(11) NOT NULL DEFAULT 1 AFTER `position_id`");
                 }
                 if ($cAnzahl) {
                     @mysqli_free_result($cAnzahl);
                 }
             }
 
-            $cBereich = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'bereich_id'");
+            $cBereich = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'bereich_id'");
             if (!$cBereich || mysqli_num_rows($cBereich) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `bereich_id` int(11) NOT NULL DEFAULT 0 AFTER `datum`");
+                ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `bereich_id` int(11) NOT NULL DEFAULT 0 AFTER `datum`");
             }
             if ($cBereich) {
                 @mysqli_free_result($cBereich);
             }
 
-            $cDatum = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'datum'");
+            $cDatum = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'datum'");
             if (!$cDatum || mysqli_num_rows($cDatum) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `datum` date NOT NULL DEFAULT '1970-01-01' AFTER `id`");
+                ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `datum` date NOT NULL DEFAULT '1970-01-01' AFTER `id`");
             }
             if ($cDatum) {
                 @mysqli_free_result($cDatum);
             }
 
-            $cNotiz = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'notiz'");
+            $cNotiz = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'notiz'");
             if (!$cNotiz || mysqli_num_rows($cNotiz) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `notiz` varchar(255) DEFAULT NULL AFTER `menge`");
+                ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `notiz` varchar(255) DEFAULT NULL AFTER `menge`");
             }
             if ($cNotiz) {
                 @mysqli_free_result($cNotiz);
             }
 
-            $cCreated = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'created_at'");
+            $cCreated = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'created_at'");
             if (!$cCreated || mysqli_num_rows($cCreated) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP");
+                ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP");
             }
             if ($cCreated) {
                 @mysqli_free_result($cCreated);
             }
 
-            $cBy = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'created_by'");
+            $cBy = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'created_by'");
             if (!$cBy || mysqli_num_rows($cBy) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `created_by` varchar(64) DEFAULT NULL");
+                ff_mysqli_query($conn, "ALTER TABLE `mitarbeiter_verpflegung` ADD COLUMN `created_by` varchar(64) DEFAULT NULL");
             }
             if ($cBy) {
                 @mysqli_free_result($cBy);
@@ -199,7 +199,7 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
 
         ff_mitarbeiter_verpflegung_ensure_schema($conn);
 
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "CREATE TABLE IF NOT EXISTS `bestandteile` (
                 `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -216,33 +216,33 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
         );
 
         try {
-            $bKap = @mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'kapazitaet'");
+            $bKap = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'kapazitaet'");
             if (!$bKap || mysqli_num_rows($bKap) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `kapazitaet` int(11) NOT NULL DEFAULT -1 AFTER `einheit`");
+                ff_mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `kapazitaet` int(11) NOT NULL DEFAULT -1 AFTER `einheit`");
             }
             if ($bKap) @mysqli_free_result($bKap);
 
-            $bAktiv = @mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'aktiv'");
+            $bAktiv = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'aktiv'");
             if (!$bAktiv || mysqli_num_rows($bAktiv) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `aktiv` tinyint(1) NOT NULL DEFAULT 1 AFTER `kapazitaet`");
+                ff_mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `aktiv` tinyint(1) NOT NULL DEFAULT 1 AFTER `kapazitaet`");
             }
             if ($bAktiv) @mysqli_free_result($bAktiv);
 
-            $bSort = @mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'sort_order'");
+            $bSort = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'sort_order'");
             if (!$bSort || mysqli_num_rows($bSort) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `sort_order` int(11) NOT NULL DEFAULT 0 AFTER `aktiv`");
+                ff_mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `sort_order` int(11) NOT NULL DEFAULT 0 AFTER `aktiv`");
             }
             if ($bSort) @mysqli_free_result($bSort);
 
-            $bFest = @mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'fest_id'");
+            $bFest = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestandteile` LIKE 'fest_id'");
             if (!$bFest || mysqli_num_rows($bFest) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `fest_id` int(11) DEFAULT NULL");
+                ff_mysqli_query($conn, "ALTER TABLE `bestandteile` ADD COLUMN `fest_id` int(11) DEFAULT NULL");
             }
             if ($bFest) @mysqli_free_result($bFest);
         } catch (\Throwable $e) {}
 
         try {
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `position_rezepturen` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -265,18 +265,18 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
 
         // Sicherstellen, dass position_rezepturen eine Spalte 'id' als Auto-Increment Primärschlüssel besitzt
         try {
-            $colId = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
+            $colId = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'id'");
             $hasId = ($colId && mysqli_num_rows($colId) > 0);
             if ($colId) @mysqli_free_result($colId);
 
             if (!$hasId && ff_rezepturen_table_exists($conn, 'position_rezepturen')) {
-                $cntRes = @mysqli_query($conn, "SELECT COUNT(*) AS c FROM `position_rezepturen`");
+                $cntRes = ff_mysqli_query($conn, "SELECT COUNT(*) AS c FROM `position_rezepturen`");
                 $rCount = $cntRes ? (int)(mysqli_fetch_assoc($cntRes)['c'] ?? 0) : 0;
                 if ($cntRes) @mysqli_free_result($cntRes);
 
                 if ($rCount === 0) {
-                    @mysqli_query($conn, "DROP TABLE `position_rezepturen`");
-                    @mysqli_query(
+                    ff_mysqli_query($conn, "DROP TABLE `position_rezepturen`");
+                    ff_mysqli_query(
                         $conn,
                         "CREATE TABLE IF NOT EXISTS `position_rezepturen` (
                             `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -296,18 +296,18 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
                     );
                 } else {
-                    $colRowid = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'rowid'");
+                    $colRowid = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'rowid'");
                     if ($colRowid && mysqli_num_rows($colRowid) > 0) {
-                        @mysqli_query($conn, "ALTER TABLE `position_rezepturen` CHANGE COLUMN `rowid` `id` int(11) NOT NULL AUTO_INCREMENT");
+                        ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` CHANGE COLUMN `rowid` `id` int(11) NOT NULL AUTO_INCREMENT");
                     } else {
-                        $pkRes = @mysqli_query($conn, "SHOW INDEX FROM `position_rezepturen` WHERE Key_name = 'PRIMARY'");
+                        $pkRes = ff_mysqli_query($conn, "SHOW INDEX FROM `position_rezepturen` WHERE Key_name = 'PRIMARY'");
                         $hasPk = ($pkRes && mysqli_num_rows($pkRes) > 0);
                         if ($pkRes) @mysqli_free_result($pkRes);
 
                         if ($hasPk) {
-                            @mysqli_query($conn, "ALTER TABLE `position_rezepturen` DROP PRIMARY KEY, ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
+                            ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` DROP PRIMARY KEY, ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
                         } else {
-                            @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
+                            ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY FIRST");
                         }
                     }
                     if ($colRowid) @mysqli_free_result($colRowid);
@@ -316,7 +316,7 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
         } catch (\Throwable $e) {}
 
         try {
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `allergene` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -328,7 +328,7 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
 
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `bestandteil_allergene` (
                     `bestandteil_id` int(11) NOT NULL,
@@ -338,7 +338,7 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
 
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `bestellung_rezeptur_snapshots` (
                     `bestellung_rowid` int(11) NOT NULL,
@@ -346,7 +346,7 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                     PRIMARY KEY (`bestellung_rowid`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
             );
-            @mysqli_query(
+            ff_mysqli_query(
                 $conn,
                 "CREATE TABLE IF NOT EXISTS `bestellung_rezeptur_komponenten` (
                     `bestellung_rowid` int(11) NOT NULL,
@@ -366,9 +366,9 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                 'default_selected' => "ADD COLUMN `default_selected` tinyint(1) NOT NULL DEFAULT 1",
                 'selected' => "ADD COLUMN `selected` tinyint(1) NOT NULL DEFAULT 1",
             ] as $column => $alter) {
-                $columnCheck = @mysqli_query($conn, "SHOW COLUMNS FROM `bestellung_rezeptur_komponenten` LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
+                $columnCheck = ff_mysqli_query($conn, "SHOW COLUMNS FROM `bestellung_rezeptur_komponenten` LIKE '" . mysqli_real_escape_string($conn, $column) . "'");
                 if (!$columnCheck || mysqli_num_rows($columnCheck) === 0) {
-                    @mysqli_query($conn, "ALTER TABLE `bestellung_rezeptur_komponenten` " . $alter);
+                    ff_mysqli_query($conn, "ALTER TABLE `bestellung_rezeptur_komponenten` " . $alter);
                 }
                 if ($columnCheck) {
                     @mysqli_free_result($columnCheck);
@@ -377,59 +377,59 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
         } catch (\Throwable $e) {}
 
         try {
-            $colOpt = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'optional_enabled'");
+            $colOpt = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'optional_enabled'");
             if (!$colOpt || mysqli_num_rows($colOpt) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `optional_enabled` tinyint(1) NOT NULL DEFAULT 0 AFTER `menge`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `optional_enabled` tinyint(1) NOT NULL DEFAULT 0 AFTER `menge`");
             }
             if ($colOpt) @mysqli_free_result($colOpt);
 
-            $colDef = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'default_selected'");
+            $colDef = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'default_selected'");
             if (!$colDef || mysqli_num_rows($colDef) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `default_selected` tinyint(1) NOT NULL DEFAULT 1 AFTER `optional_enabled`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `default_selected` tinyint(1) NOT NULL DEFAULT 1 AFTER `optional_enabled`");
             }
             if ($colDef) @mysqli_free_result($colDef);
 
-            $colGrp = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'option_group'");
+            $colGrp = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'option_group'");
             if (!$colGrp || mysqli_num_rows($colGrp) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `option_group` varchar(64) NOT NULL DEFAULT '' AFTER `default_selected`");
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_option_group` (`option_group`)");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `option_group` varchar(64) NOT NULL DEFAULT '' AFTER `default_selected`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_option_group` (`option_group`)");
             }
             if ($colGrp) @mysqli_free_result($colGrp);
 
-            $colReihenfolge = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'reihenfolge'");
+            $colReihenfolge = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'reihenfolge'");
             if (!$colReihenfolge || mysqli_num_rows($colReihenfolge) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `reihenfolge` int(11) NOT NULL DEFAULT 0 AFTER `option_group`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `reihenfolge` int(11) NOT NULL DEFAULT 0 AFTER `option_group`");
             }
             if ($colReihenfolge) @mysqli_free_result($colReihenfolge);
 
-            $colFest = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'fest_id'");
+            $colFest = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'fest_id'");
             if (!$colFest || mysqli_num_rows($colFest) === 0) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `fest_id` int(11) DEFAULT NULL");
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_fest_id` (`fest_id`)");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `fest_id` int(11) DEFAULT NULL");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_fest_id` (`fest_id`)");
             }
             if ($colFest) @mysqli_free_result($colFest);
 
             $hasOldCol = false;
-            $colOld = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'bestandteil_position_id'");
+            $colOld = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'bestandteil_position_id'");
             if ($colOld && mysqli_num_rows($colOld) > 0) {
                 $hasOldCol = true;
             }
             if ($colOld) @mysqli_free_result($colOld);
 
             $hasNewCol = false;
-            $colNew = @mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'bestandteil_id'");
+            $colNew = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_rezepturen` LIKE 'bestandteil_id'");
             if ($colNew && mysqli_num_rows($colNew) > 0) {
                 $hasNewCol = true;
             }
             if ($colNew) @mysqli_free_result($colNew);
 
             if (!$hasNewCol) {
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `bestandteil_id` int(11) DEFAULT NULL AFTER `position_id`");
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_bestandteil` (`bestandteil_id`)");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD COLUMN `bestandteil_id` int(11) DEFAULT NULL AFTER `position_id`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` ADD KEY `idx_bestandteil` (`bestandteil_id`)");
             }
 
             if ($hasOldCol) {
-                @mysqli_query(
+                ff_mysqli_query(
                     $conn,
                     "UPDATE `position_rezepturen`
                      SET `bestandteil_id` = `bestandteil_position_id`
@@ -437,11 +437,11 @@ if (!function_exists('ff_rezepturen_ensure_schema')) {
                        AND `bestandteil_position_id` > 0"
                 );
 
-                @mysqli_query($conn, "ALTER TABLE `position_rezepturen` DROP COLUMN `bestandteil_position_id`");
+                ff_mysqli_query($conn, "ALTER TABLE `position_rezepturen` DROP COLUMN `bestandteil_position_id`");
             }
 
-            @mysqli_query($conn, "UPDATE `position_rezepturen` SET `bestandteil_id` = 0 WHERE `bestandteil_id` IS NULL");
-            @mysqli_query($conn, "DELETE FROM `position_rezepturen` WHERE `bestandteil_id` <= 0");
+            ff_mysqli_query($conn, "UPDATE `position_rezepturen` SET `bestandteil_id` = 0 WHERE `bestandteil_id` IS NULL");
+            ff_mysqli_query($conn, "DELETE FROM `position_rezepturen` WHERE `bestandteil_id` <= 0");
         } catch (\Throwable $e) {}
     }
 }

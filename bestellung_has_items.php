@@ -14,7 +14,7 @@ if ($tischnummer <= 0 || $tischnummer === 999999) {
 }
 
 $ffT = microtime(true);
-@mysqli_query($conn, 'SELECT 1');
+ff_mysqli_query($conn, 'SELECT 1');
 $ffTping = (microtime(true) - $ffT) * 1000;
 
 $ffT = microtime(true);
@@ -31,10 +31,10 @@ $ffTcount = (microtime(true) - $ffT) * 1000;
 
 $ffT = microtime(true);
 $total = 0.0;
-$tq = mysqli_prepare($conn, "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag, 0)), 0) FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position WHERE b.tischnummer = ? AND b.delete = 0 AND (b.bestellt IS NULL OR b.bestellt = 0)");
+$tq = ff_mysqli_prepare($conn, "SELECT COALESCE(SUM(COALESCE(b.betrag, p.Betrag, 0)), 0) FROM bestellungen b INNER JOIN positionen p ON p.rowid = b.position WHERE b.tischnummer = ? AND b.delete = 0 AND (b.bestellt IS NULL OR b.bestellt = 0)");
 if ($tq) {
     mysqli_stmt_bind_param($tq, 'i', $tischnummer);
-    mysqli_stmt_execute($tq);
+    ff_mysqli_stmt_execute($tq);
     mysqli_stmt_bind_result($tq, $totalVal);
     if (mysqli_stmt_fetch($tq)) {
         $total = (float) $totalVal;

@@ -22,9 +22,9 @@ if ($userid <= 0) {
 
 ff_users_ensure_direktverkauf_column($conn);
 
-$chk = mysqli_prepare($conn, 'SELECT id, username FROM users WHERE id = ? LIMIT 1');
+$chk = ff_mysqli_prepare($conn, 'SELECT id, username FROM users WHERE id = ? LIMIT 1');
 mysqli_stmt_bind_param($chk, 'i', $userid);
-mysqli_stmt_execute($chk);
+ff_mysqli_stmt_execute($chk);
 $res = mysqli_stmt_get_result($chk);
 $target = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($chk);
@@ -34,9 +34,9 @@ if (!$target) {
     exit;
 }
 
-$st = mysqli_prepare($conn, 'UPDATE users SET can_direktverkauf = ? WHERE id = ? LIMIT 1');
+$st = ff_mysqli_prepare($conn, 'UPDATE users SET can_direktverkauf = ? WHERE id = ? LIMIT 1');
 mysqli_stmt_bind_param($st, 'ii', $can, $userid);
-$ok = mysqli_stmt_execute($st);
+$ok = ff_mysqli_stmt_execute($st);
 mysqli_stmt_close($st);
 
 if ($ok && isset($_SESSION['user']['username']) && (string) $target['username'] === (string) $_SESSION['user']['username']) {

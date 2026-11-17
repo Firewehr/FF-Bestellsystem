@@ -73,12 +73,12 @@ if (!function_exists('ff_ensure_column')) {
 
         $tableEsc = mysqli_real_escape_string($conn, $table);
         $columnEsc = mysqli_real_escape_string($conn, $column);
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `{$tableEsc}` LIKE '{$columnEsc}'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `{$tableEsc}` LIKE '{$columnEsc}'");
         if (!$chk) {
             return;
         }
         if (mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, $alterSql);
+            ff_mysqli_query($conn, $alterSql);
         } else {
             mysqli_free_result($chk);
         }
@@ -103,7 +103,7 @@ if (!function_exists('ff_ensure_table')) {
             return;
         }
 
-        @mysqli_query($conn, $createSql);
+        ff_mysqli_query($conn, $createSql);
         ff_schema_flag_set($flag);
     }
 }
@@ -130,12 +130,12 @@ if (!function_exists('ff_ensure_index')) {
 
         $tableEsc = mysqli_real_escape_string($conn, $table);
         $indexEsc = mysqli_real_escape_string($conn, $indexName);
-        $chk = @mysqli_query($conn, "SHOW INDEX FROM `{$tableEsc}` WHERE Key_name='{$indexEsc}'");
+        $chk = ff_mysqli_query($conn, "SHOW INDEX FROM `{$tableEsc}` WHERE Key_name='{$indexEsc}'");
         if (!$chk) {
             return;
         }
         if (mysqli_num_rows($chk) === 0) {
-            @mysqli_query($conn, "ALTER TABLE `{$tableEsc}` ADD {$indexDef}");
+            ff_mysqli_query($conn, "ALTER TABLE `{$tableEsc}` ADD {$indexDef}");
         } else {
             mysqli_free_result($chk);
         }

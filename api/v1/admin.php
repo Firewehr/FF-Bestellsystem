@@ -76,7 +76,7 @@ if ($action === 'overview') {
     // Aktive Feste
     ff_feste_ensure_rechnung_prefix_column($conn);
     $feste = [];
-    $resF = mysqli_query($conn, 'SELECT id, name, code, fest_datum AS datum, payment_mode, aktiv, COALESCE(rechnung_prefix, "") AS rechnung_prefix FROM feste ORDER BY id DESC');
+    $resF = ff_mysqli_query($conn, 'SELECT id, name, code, fest_datum AS datum, payment_mode, aktiv, COALESCE(rechnung_prefix, "") AS rechnung_prefix FROM feste ORDER BY id DESC');
     if ($resF) {
         while ($rf = mysqli_fetch_assoc($resF)) {
             $feste[] = [
@@ -96,7 +96,7 @@ if ($action === 'overview') {
     require_once __DIR__ . '/../../include/ff_socket_printer.php';
     ff_socket_printer_ensure_schema($conn);
     $printTargets = [];
-    $resPt = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
+    $resPt = ff_mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
     if ($resPt) {
         while ($rpt = mysqli_fetch_assoc($resPt)) {
             $printTargets[] = [
@@ -156,19 +156,19 @@ if ($action === 'overview') {
 
     // Counts
     $usersCount = 0;
-    $resUc = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
+    $resUc = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM users');
     if ($resUc && ($ruc = mysqli_fetch_assoc($resUc))) {
         $usersCount = (int)$ruc['c'];
     }
 
     $tablesCount = 0;
-    $resTc = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM tische WHERE tischnummer <> 999999');
+    $resTc = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM tische WHERE tischnummer <> 999999');
     if ($resTc && ($rtc = mysqli_fetch_assoc($resTc))) {
         $tablesCount = (int)$rtc['c'];
     }
 
     $invoicesTodayCount = 0;
-    $resIc = mysqli_query($conn, 'SELECT COUNT(*) AS c FROM rechnungen WHERE DATE(created_at) = CURDATE()');
+    $resIc = ff_mysqli_query($conn, 'SELECT COUNT(*) AS c FROM rechnungen WHERE DATE(created_at) = CURDATE()');
     if ($resIc && ($ric = mysqli_fetch_assoc($resIc))) {
         $invoicesTodayCount = (int)$ric['c'];
     }
@@ -284,7 +284,7 @@ if ($action === 'feste_list') {
     ff_feste_ensure_rechnung_prefix_column($conn);
     $currentFestId = (int)setting_get($conn, 'current_fest_id', '0');
     $feste = [];
-    $res = mysqli_query($conn, 'SELECT id, name, code, fest_datum AS datum, payment_mode, aktiv, COALESCE(rechnung_prefix, "") AS rechnung_prefix FROM feste ORDER BY id DESC');
+    $res = ff_mysqli_query($conn, 'SELECT id, name, code, fest_datum AS datum, payment_mode, aktiv, COALESCE(rechnung_prefix, "") AS rechnung_prefix FROM feste ORDER BY id DESC');
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $feste[] = [
@@ -335,12 +335,12 @@ if ($action === 'fest_save') {
     $datumVal = ($datum !== '') ? $datum : null;
 
     if ($id > 0) {
-        $stmt = mysqli_prepare($conn, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, rechnung_prefix = ? WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE feste SET name = ?, code = ?, fest_datum = ?, payment_mode = ?, rechnung_prefix = ? WHERE id = ?');
         if (!$stmt) {
             api_error('Datenbankfehler beim Vorbereiten: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'sssssi', $name, $code, $datumVal, $paymentMode, $prefix, $id);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
             api_error('Fehler beim Aktualisieren des Festes: ' . $err);
@@ -348,12 +348,12 @@ if ($action === 'fest_save') {
         mysqli_stmt_close($stmt);
         api_response(['ok' => true, 'message' => 'Fest erfolgreich aktualisiert.']);
     } else {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, 0, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO feste (name, code, fest_datum, payment_mode, aktiv, rechnung_prefix) VALUES (?, ?, ?, ?, 0, ?)');
         if (!$stmt) {
             api_error('Datenbankfehler beim Vorbereiten: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'sssss', $name, $code, $datumVal, $paymentMode, $prefix);
-        if (!mysqli_stmt_execute($stmt)) {
+        if (!ff_mysqli_stmt_execute($stmt)) {
             $err = mysqli_stmt_error($stmt);
             mysqli_stmt_close($stmt);
             api_error('Fehler beim Anlegen des Festes: ' . $err);
@@ -361,7 +361,7 @@ if ($action === 'fest_save') {
         $newId = (int)mysqli_insert_id($conn);
         mysqli_stmt_close($stmt);
         // Erstes Fest überhaupt: direkt aktivieren, damit Bestellungen einem Fest zugeordnet werden
-        $hasActive = mysqli_query($conn, 'SELECT 1 FROM feste WHERE aktiv = 1 LIMIT 1');
+        $hasActive = ff_mysqli_query($conn, 'SELECT 1 FROM feste WHERE aktiv = 1 LIMIT 1');
         if (!$hasActive || mysqli_num_rows($hasActive) === 0) {
             ff_fest_set_current($conn, $newId);
         }
@@ -389,12 +389,12 @@ if ($action === 'fest_delete') {
         api_error('Löschen nicht möglich: Zu diesem Fest existieren noch Bestellungen oder Rechnungen. Bitte vorher Daten sichern oder löschen.');
     }
 
-    $stmt = mysqli_prepare($conn, 'DELETE FROM feste WHERE id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM feste WHERE id = ?');
     if (!$stmt) {
         api_error('Datenbankfehler beim Vorbereiten: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Fest gelöscht.']);
@@ -407,7 +407,7 @@ if ($action === 'print_targets_list') {
     require_once __DIR__ . '/../../include/ff_socket_printer.php';
     ff_socket_printer_ensure_schema($conn);
     $targets = [];
-    $res = mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
+    $res = ff_mysqli_query($conn, 'SELECT print_target, name, sort_order, active, COALESCE(auto_print_limit, 0) AS auto_print_limit, COALESCE(connection_type, "client") AS connection_type, ip_address, COALESCE(port, 9100) AS port FROM print_targets ORDER BY sort_order ASC, name ASC');
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $targets[] = [
@@ -442,12 +442,12 @@ if ($action === 'print_target_save') {
     require_once __DIR__ . '/../../include/ff_socket_printer.php';
     ff_socket_printer_ensure_schema($conn);
 
-    $stmt = mysqli_prepare($conn, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit, connection_type, ip_address, port) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit), connection_type=VALUES(connection_type), ip_address=VALUES(ip_address), port=VALUES(port)');
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO print_targets (print_target, name, sort_order, active, auto_print_limit, connection_type, ip_address, port) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), sort_order=VALUES(sort_order), active=VALUES(active), auto_print_limit=VALUES(auto_print_limit), connection_type=VALUES(connection_type), ip_address=VALUES(ip_address), port=VALUES(port)');
     if (!$stmt) {
         api_error('Datenbankfehler beim Speichern des Druckziels: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'isiiissi', $id, $name, $sortOrder, $active, $autoPrintLimit, $connectionType, $ipAddress, $port);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Druckziel gespeichert.']);
@@ -560,12 +560,12 @@ if ($action === 'print_target_delete') {
     if ($id <= 0) {
         api_error('Ungültiges Druckziel.');
     }
-    $stmt = mysqli_prepare($conn, 'DELETE FROM print_targets WHERE print_target = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM print_targets WHERE print_target = ?');
     if (!$stmt) {
         api_error('Datenbankfehler: ' . mysqli_error($conn));
     }
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Druckziel entfernt.']);
@@ -635,9 +635,9 @@ if ($action === 'printer_device_set_target') {
     $id = (int)($data['id'] ?? 0);
     $target = (int)($data['print_target'] ?? 0);
     if ($target > 0) {
-        $chk = mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? LIMIT 1');
+        $chk = ff_mysqli_prepare($conn, 'SELECT 1 FROM print_targets WHERE print_target = ? LIMIT 1');
         mysqli_stmt_bind_param($chk, 'i', $target);
-        mysqli_stmt_execute($chk);
+        ff_mysqli_stmt_execute($chk);
         mysqli_stmt_store_result($chk);
         $exists = mysqli_stmt_num_rows($chk) > 0;
         mysqli_stmt_close($chk);
@@ -682,7 +682,7 @@ if ($action === 'printer_device_create') {
 // AKTION: TISCHE (List, Save, Delete, Flags, Tokens, Layout)
 // -----------------------------------------------------------------------------
 if ($action === 'tables_list') {
-    @mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS table_tokens (
+    ff_mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS table_tokens (
         id INT AUTO_INCREMENT PRIMARY KEY,
         table_number INT NOT NULL,
         token VARCHAR(64) NOT NULL UNIQUE,
@@ -713,7 +713,7 @@ if ($action === 'tables_list') {
             WHERE t.tischnummer <> 999999
             GROUP BY t.tischnummer, t.tischname, t.x, t.y, t.color, tt.token, t.is_sammelrechnung, t.is_ehrengast
             ORDER BY t.tischnummer ASC';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $tables[] = [
@@ -738,7 +738,7 @@ if ($action === 'tables_layout_save') {
     if (!is_array($layout)) {
         api_error('Ungültiges Layout-Format.');
     }
-    $stmt = mysqli_prepare($conn, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET x = ?, y = ? WHERE tischnummer = ?');
     $updated = 0;
     foreach ($layout as $item) {
         $nr = (int)($item['tischnummer'] ?? 0);
@@ -746,7 +746,7 @@ if ($action === 'tables_layout_save') {
         $y = max(0, (int)($item['y'] ?? 0));
         if ($nr > 0) {
             mysqli_stmt_bind_param($stmt, 'iii', $x, $y, $nr);
-            mysqli_stmt_execute($stmt);
+            ff_mysqli_stmt_execute($stmt);
             $updated++;
         }
     }
@@ -772,17 +772,17 @@ if ($action === 'table_save') {
     }
 
     if ($x !== null && $y !== null) {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast, x, y) 
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast, x, y) 
                                        VALUES (?, ?, ?, ?, ?, ?, ?) 
                                        ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast), x=VALUES(x), y=VALUES(y)');
         mysqli_stmt_bind_param($stmt, 'issiiii', $nr, $name, $color, $isSr, $isEg, $x, $y);
     } else {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast) 
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO tische (tischnummer, tischname, color, is_sammelrechnung, is_ehrengast) 
                                        VALUES (?, ?, ?, ?, ?) 
                                        ON DUPLICATE KEY UPDATE tischname=VALUES(tischname), color=VALUES(color), is_sammelrechnung=VALUES(is_sammelrechnung), is_ehrengast=VALUES(is_ehrengast)');
         mysqli_stmt_bind_param($stmt, 'issii', $nr, $name, $color, $isSr, $isEg);
     }
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Tisch gespeichert.']);
@@ -799,9 +799,9 @@ if ($action === 'table_delete') {
         api_error('Tisch kann nicht gelöscht werden: Es sind noch unbezahlte Bestellungen offen.');
     }
 
-    $stmt = mysqli_prepare($conn, 'DELETE FROM tische WHERE tischnummer = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM tische WHERE tischnummer = ?');
     mysqli_stmt_bind_param($stmt, 'i', $nr);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Tisch gelöscht.']);
@@ -818,22 +818,22 @@ if ($action === 'table_flag_toggle') {
 
     if ($flag === 'sr' || $flag === 'is_sammelrechnung') {
         if ($val === 1) {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 1, is_ehrengast = 0 WHERE tischnummer = ?');
         } else {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_sammelrechnung = 0 WHERE tischnummer = ?');
         }
     } elseif ($flag === 'eg' || $flag === 'is_ehrengast') {
         if ($val === 1) {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 1, is_sammelrechnung = 0 WHERE tischnummer = ?');
         } else {
-            $stmt = mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE tische SET is_ehrengast = 0 WHERE tischnummer = ?');
         }
     } else {
         api_error('Unbekanntes Flag.');
     }
 
     mysqli_stmt_bind_param($stmt, 'i', $nr);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Tisch-Status aktualisiert.']);
@@ -841,7 +841,7 @@ if ($action === 'table_flag_toggle') {
 
 if ($action === 'generate_table_tokens') {
     // Generiert kryptografische Tokens für alle Tische
-    @mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS table_tokens (
+    ff_mysqli_query($conn, 'CREATE TABLE IF NOT EXISTS table_tokens (
         id INT AUTO_INCREMENT PRIMARY KEY,
         table_number INT NOT NULL,
         token VARCHAR(64) NOT NULL UNIQUE,
@@ -851,18 +851,18 @@ if ($action === 'generate_table_tokens') {
         INDEX idx_active (active)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-    $res = mysqli_query($conn, 'SELECT tischnummer FROM tische WHERE tischnummer <> 999999');
+    $res = ff_mysqli_query($conn, 'SELECT tischnummer FROM tische WHERE tischnummer <> 999999');
     $count = 0;
     if ($res) {
         // Alte Tokens entfernen, damit keine inaktiven Duplikate verbleiben
-        mysqli_query($conn, 'DELETE FROM table_tokens');
-        $stmt = mysqli_prepare($conn, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1)');
+        ff_mysqli_query($conn, 'DELETE FROM table_tokens');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO table_tokens (table_number, token, active) VALUES (?, ?, 1)');
         while ($r = mysqli_fetch_assoc($res)) {
             $tNr = (int)$r['tischnummer'];
             $tok = rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
             if ($stmt) {
                 mysqli_stmt_bind_param($stmt, 'is', $tNr, $tok);
-                mysqli_stmt_execute($stmt);
+                ff_mysqli_stmt_execute($stmt);
                 $count++;
             }
         }
@@ -889,7 +889,7 @@ if ($action === 'users_list') {
             FROM users u
             LEFT JOIN (SELECT user_id, COUNT(*) AS pk_count FROM user_passkeys GROUP BY user_id) pk ON pk.user_id = u.id
             ORDER BY u.admin DESC, u.username ASC';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $users[] = [
@@ -949,13 +949,13 @@ if ($action === 'user_save') {
 
         if ($password !== '') {
             $hash = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = mysqli_prepare($conn, 'UPDATE users SET display_name = ?, admin = ?, can_finance = ?, can_direktverkauf = ?, is_active = ?, start_page = ?, start_print_target = ?, dv_abholbon_print_target = ?, password = ? WHERE id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE users SET display_name = ?, admin = ?, can_finance = ?, can_direktverkauf = ?, is_active = ?, start_page = ?, start_print_target = ?, dv_abholbon_print_target = ?, password = ? WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'siiississi', $displayName, $role, $canFinance, $canDv, $isActive, $startPage, $startPt, $dvPt, $hash, $id);
         } else {
-            $stmt = mysqli_prepare($conn, 'UPDATE users SET display_name = ?, admin = ?, can_finance = ?, can_direktverkauf = ?, is_active = ?, start_page = ?, start_print_target = ?, dv_abholbon_print_target = ? WHERE id = ?');
+            $stmt = ff_mysqli_prepare($conn, 'UPDATE users SET display_name = ?, admin = ?, can_finance = ?, can_direktverkauf = ?, is_active = ?, start_page = ?, start_print_target = ?, dv_abholbon_print_target = ? WHERE id = ?');
             mysqli_stmt_bind_param($stmt, 'siiissiii', $displayName, $role, $canFinance, $canDv, $isActive, $startPage, $startPt, $dvPt, $id);
         }
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         mysqli_stmt_close($stmt);
 
         api_response(['ok' => true, 'message' => "Benutzer {$username} aktualisiert."]);
@@ -970,9 +970,9 @@ if ($action === 'user_save') {
         }
 
         $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = mysqli_prepare($conn, 'INSERT INTO users (username, display_name, password, admin, can_finance, can_direktverkauf, is_active, start_page, start_print_target, dv_abholbon_print_target) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO users (username, display_name, password, admin, can_finance, can_direktverkauf, is_active, start_page, start_print_target, dv_abholbon_print_target) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         mysqli_stmt_bind_param($stmt, 'sssiiissii', $username, $displayName, $hash, $role, $canFinance, $canDv, $isActive, $startPage, $startPt, $dvPt);
-        mysqli_stmt_execute($stmt);
+        ff_mysqli_stmt_execute($stmt);
         $newId = mysqli_insert_id($conn);
         mysqli_stmt_close($stmt);
 
@@ -998,9 +998,9 @@ if ($action === 'user_delete') {
         api_error('Super-Admins können nur von Super-Admins gelöscht werden.', 'forbidden', 403);
     }
 
-    $stmt = mysqli_prepare($conn, 'DELETE FROM users WHERE id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM users WHERE id = ?');
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => "Benutzer {$curr['username']} gelöscht."]);
@@ -1023,9 +1023,9 @@ if ($action === 'user_reset_password') {
     }
 
     $hash = password_hash($newPw, PASSWORD_DEFAULT);
-    $stmt = mysqli_prepare($conn, 'UPDATE users SET password = ?, force_password_change = 0 WHERE id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE users SET password = ?, force_password_change = 0 WHERE id = ?');
     mysqli_stmt_bind_param($stmt, 'si', $hash, $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => "Passwort für {$curr['username']} erfolgreich geändert."]);
@@ -1036,9 +1036,9 @@ if ($action === 'passkeys_list') {
     if ($userId <= 0) {
         api_error('Benutzer-ID erforderlich.');
     }
-    $stmt = mysqli_prepare($conn, 'SELECT id, label, created_at, last_used_at FROM user_passkeys WHERE user_id = ? ORDER BY created_at DESC');
+    $stmt = ff_mysqli_prepare($conn, 'SELECT id, label, created_at, last_used_at FROM user_passkeys WHERE user_id = ? ORDER BY created_at DESC');
     mysqli_stmt_bind_param($stmt, 'i', $userId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $res = mysqli_stmt_get_result($stmt);
     $list = [];
     while ($row = mysqli_fetch_assoc($res)) {
@@ -1058,9 +1058,9 @@ if ($action === 'passkey_delete') {
     if ($passkeyId <= 0) {
         api_error('Passkey-ID erforderlich.');
     }
-    $stmt = mysqli_prepare($conn, 'DELETE FROM user_passkeys WHERE id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM user_passkeys WHERE id = ?');
     mysqli_stmt_bind_param($stmt, 'i', $passkeyId);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $aff = mysqli_stmt_affected_rows($stmt);
     mysqli_stmt_close($stmt);
     api_response(['ok' => true, 'message' => 'Passkey gelöscht.', 'deleted' => $aff > 0]);
@@ -1243,9 +1243,9 @@ if ($action === 'invoice_edit_recipient') {
     $ort = trim((string)($data['empfaenger_ort'] ?? ''));
     $uid = trim((string)($data['empfaenger_uid'] ?? ''));
 
-    $stmt = mysqli_prepare($conn, 'UPDATE rechnungen SET is_firma=?, empfaenger_name=?, empfaenger_strasse=?, empfaenger_plz=?, empfaenger_ort=?, empfaenger_uid=? WHERE id=?');
+    $stmt = ff_mysqli_prepare($conn, 'UPDATE rechnungen SET is_firma=?, empfaenger_name=?, empfaenger_strasse=?, empfaenger_plz=?, empfaenger_ort=?, empfaenger_uid=? WHERE id=?');
     mysqli_stmt_bind_param($stmt, 'isssssi', $isFirma, $name, $strasse, $plz, $ort, $uid, $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Rechnungsempfänger aktualisiert.']);
@@ -1263,9 +1263,9 @@ if ($action === 'invoice_storno') {
 
     mysqli_begin_transaction($conn);
     try {
-        $st = mysqli_prepare($conn, 'SELECT id, rechnungsnummer, total, COALESCE(storniert, 0) AS storniert FROM rechnungen WHERE id = ? FOR UPDATE');
+        $st = ff_mysqli_prepare($conn, 'SELECT id, rechnungsnummer, total, COALESCE(storniert, 0) AS storniert FROM rechnungen WHERE id = ? FOR UPDATE');
         mysqli_stmt_bind_param($st, 'i', $id);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         $res = mysqli_stmt_get_result($st);
         $inv = $res ? mysqli_fetch_assoc($res) : null;
         mysqli_stmt_close($st);
@@ -1282,15 +1282,15 @@ if ($action === 'invoice_storno') {
         $now = date('Y-m-d H:i:s');
         $by = (string)($user['username'] ?? 'admin');
 
-        $upd = mysqli_prepare($conn, 'UPDATE rechnungen SET storniert = 1, storno_at = ?, storno_by = ?, storno_reason = ? WHERE id = ?');
+        $upd = ff_mysqli_prepare($conn, 'UPDATE rechnungen SET storniert = 1, storno_at = ?, storno_by = ?, storno_reason = ? WHERE id = ?');
         mysqli_stmt_bind_param($upd, 'sssi', $now, $by, $reason, $id);
-        mysqli_stmt_execute($upd);
+        ff_mysqli_stmt_execute($upd);
         mysqli_stmt_close($upd);
 
         // Verknüpfte Bestellpositionen stornieren (delete=1, Küche/Druck zurücksetzen)
-        $stB = mysqli_prepare($conn, 'SELECT rowid, tischnummer, ausgeliefert, kueche, settlement_id FROM bestellungen WHERE rechnung_id = ? AND `delete` = 0 FOR UPDATE');
+        $stB = ff_mysqli_prepare($conn, 'SELECT rowid, tischnummer, ausgeliefert, kueche, settlement_id FROM bestellungen WHERE rechnung_id = ? AND `delete` = 0 FOR UPDATE');
         mysqli_stmt_bind_param($stB, 'i', $id);
-        mysqli_stmt_execute($stB);
+        ff_mysqli_stmt_execute($stB);
         $resB = mysqli_stmt_get_result($stB);
         $linkedRowids = [];
         while ($resB && ($bRow = mysqli_fetch_assoc($resB))) {
@@ -1318,15 +1318,15 @@ if ($action === 'invoice_storno') {
 // AKTION: MITARBEITER-VERPFLEGUNG
 // -----------------------------------------------------------------------------
 if ($action === 'verpflegung_list') {
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_bereiche (id INT(11) NOT NULL AUTO_INCREMENT, name VARCHAR(64) NOT NULL, sort_order INT(11) NOT NULL DEFAULT 0, PRIMARY KEY (id), UNIQUE KEY name (name)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ff_mysqli_query($conn, "CREATE TABLE IF NOT EXISTS mitarbeiter_verpflegung (id INT(11) NOT NULL AUTO_INCREMENT, datum DATE NOT NULL, bereich_id INT(11) NOT NULL, position_id INT(11) NOT NULL, menge INT(11) NOT NULL DEFAULT 1, notiz VARCHAR(255) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, created_by VARCHAR(64) NULL, PRIMARY KEY (id), KEY idx_datum (datum), KEY idx_bereich (bereich_id), KEY idx_position (position_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     $datum = trim((string)($data['datum'] ?? date('Y-m-d')));
     if ($datum === '') $datum = date('Y-m-d');
 
     // Bereiche
     $bereiche = [];
-    $resB = mysqli_query($conn, 'SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name');
+    $resB = ff_mysqli_query($conn, 'SELECT id, name FROM mitarbeiter_bereiche ORDER BY sort_order, name');
     if ($resB) {
         while ($rb = mysqli_fetch_assoc($resB)) {
             $bereiche[] = ['id' => (int)$rb['id'], 'name' => (string)$rb['name']];
@@ -1379,9 +1379,9 @@ if ($action === 'verpflegung_add') {
     }
 
     $created_by = (string)($user['username'] ?? 'admin');
-    $stmt = mysqli_prepare($conn, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
+    $stmt = ff_mysqli_prepare($conn, 'INSERT INTO mitarbeiter_verpflegung (datum, bereich_id, position_id, menge, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?)');
     mysqli_stmt_bind_param($stmt, 'siiiss', $datum, $bereichId, $posId, $menge, $notiz, $created_by);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     $newId = mysqli_insert_id($conn);
     mysqli_stmt_close($stmt);
 
@@ -1393,9 +1393,9 @@ if ($action === 'verpflegung_delete') {
     if ($id <= 0) {
         api_error('Ungültige ID.');
     }
-    $stmt = mysqli_prepare($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ?');
+    $stmt = ff_mysqli_prepare($conn, 'DELETE FROM mitarbeiter_verpflegung WHERE id = ?');
     mysqli_stmt_bind_param($stmt, 'i', $id);
-    mysqli_stmt_execute($stmt);
+    ff_mysqli_stmt_execute($stmt);
     mysqli_stmt_close($stmt);
 
     api_response(['ok' => true, 'message' => 'Eintrag gelöscht.']);
@@ -1403,7 +1403,7 @@ if ($action === 'verpflegung_delete') {
 
 if ($action === 'mitarbeiter_bereiche_list') {
     $bereiche = [];
-    $res = mysqli_query($conn, 'SELECT id, name, sort_order FROM mitarbeiter_bereiche ORDER BY sort_order ASC, name ASC');
+    $res = ff_mysqli_query($conn, 'SELECT id, name, sort_order FROM mitarbeiter_bereiche ORDER BY sort_order ASC, name ASC');
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $bereiche[] = [
@@ -1426,19 +1426,19 @@ if ($action === 'mitarbeiter_bereich_save') {
     }
 
     if ($id > 0) {
-        $stmt = mysqli_prepare($conn, 'UPDATE mitarbeiter_bereiche SET name = ?, sort_order = ? WHERE id = ?');
+        $stmt = ff_mysqli_prepare($conn, 'UPDATE mitarbeiter_bereiche SET name = ?, sort_order = ? WHERE id = ?');
         if (!$stmt) {
             api_error('Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'sii', $name, $sortOrder, $id);
     } else {
-        $stmt = mysqli_prepare($conn, 'INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES (?, ?) ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)');
+        $stmt = ff_mysqli_prepare($conn, 'INSERT INTO mitarbeiter_bereiche (name, sort_order) VALUES (?, ?) ON DUPLICATE KEY UPDATE sort_order = VALUES(sort_order)');
         if (!$stmt) {
             api_error('Prepare fehlgeschlagen: ' . mysqli_error($conn));
         }
         mysqli_stmt_bind_param($stmt, 'si', $name, $sortOrder);
     }
-    if (!mysqli_stmt_execute($stmt)) {
+    if (!ff_mysqli_stmt_execute($stmt)) {
         $err = mysqli_stmt_error($stmt);
         mysqli_stmt_close($stmt);
         api_error('Speichern des Bereichs fehlgeschlagen: ' . $err);
@@ -1473,7 +1473,13 @@ if ($action === 'server_env') {
         'ok' => true,
         'checks' => ff_server_checks($conn),
         'env' => ff_server_env($conn),
+        'db_errors' => ff_db_errors_summary(30),
     ]);
+}
+
+// Fehlerprotokoll (include/ff_db_errors.php) leeren – nach Durchsicht, damit neue Fehler auffallen
+if ($action === 'db_errors_clear' && $method === 'POST') {
+    api_response(['ok' => ff_db_errors_clear(), 'db_errors' => ff_db_errors_summary(30)]);
 }
 
 // -----------------------------------------------------------------------------
@@ -1737,9 +1743,9 @@ if ($action === 'kellner_movement_save') {
         api_error('Ungültige Bewegungsdaten (Kellner, Typ und positiver Betrag erforderlich).');
     }
     $by = (string)($user['username'] ?? 'admin');
-    $st = mysqli_prepare($conn, 'INSERT INTO kellner_bewegungen (kellner_login, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
+    $st = ff_mysqli_prepare($conn, 'INSERT INTO kellner_bewegungen (kellner_login, typ, betrag, notiz, created_by) VALUES (?, ?, ?, ?, ?)');
     mysqli_stmt_bind_param($st, 'ssdss', $kellner, $typ, $betrag, $notiz, $by);
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $mId = mysqli_insert_id($conn);
     mysqli_stmt_close($st);
 
@@ -1805,9 +1811,9 @@ if ($action === 'kellner_settle') {
 
     mysqli_begin_transaction($conn);
     try {
-        $st = mysqli_prepare($conn, 'INSERT INTO kellner_settlements (kellner_login, settlement_scope, von_dt, bis_dt, umsatz_soll, betrag_abgegeben, wechselgeld_zurueck, trinkgeld, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $st = ff_mysqli_prepare($conn, 'INSERT INTO kellner_settlements (kellner_login, settlement_scope, von_dt, bis_dt, umsatz_soll, betrag_abgegeben, wechselgeld_zurueck, trinkgeld, notiz, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         mysqli_stmt_bind_param($st, 'ssssddddss', $kellner, $scopeDb, $vonStore, $bisStore, $umsatz, $abgegeben, $wechsel, $trinkgeld, $notiz, $by);
-        mysqli_stmt_execute($st);
+        ff_mysqli_stmt_execute($st);
         $settlementId = (int)mysqli_insert_id($conn);
         mysqli_stmt_close($st);
 
@@ -1831,7 +1837,7 @@ if ($action === 'kellner_settle') {
 }
 
 if ($action === 'kellner_settlements_list') {
-    $res = mysqli_query($conn, 'SELECT * FROM kellner_settlements ORDER BY id DESC LIMIT 50');
+    $res = ff_mysqli_query($conn, 'SELECT * FROM kellner_settlements ORDER BY id DESC LIMIT 50');
     $settlements = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $login = (string)$r['kellner_login'];
@@ -1953,7 +1959,7 @@ if ($action === 'finance_overview') {
     if ($resA && ($ra = mysqli_fetch_assoc($resA))) $fixAusgaben = (float)$ra['s'];
 
     $variableKosten = 0.0;
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'selbstkosten'");
     if ($chk && mysqli_num_rows($chk) > 0) {
         $sqlVar = "SELECT COALESCE(SUM(COALESCE(p.selbstkosten, 0)), 0) AS k FROM bestellungen b JOIN positionen p ON p.rowid = b.position WHERE " . ff_finance_order_paid_base_sql('b') . "{$fest}{$whereBez}";
         $resV = ff_db_query($conn, $sqlVar, $rangeTypes, $rangeParams);
@@ -1984,7 +1990,7 @@ if ($action === 'finance_overview') {
 }
 
 if ($action === 'finance_bookings_list') {
-    $res = mysqli_query($conn, 'SELECT bu.*, kb.name AS bereich_name FROM buchungen bu LEFT JOIN kassen_bereiche kb ON kb.id = bu.bereich_id ORDER BY bu.datum DESC, bu.created_at DESC LIMIT 200');
+    $res = ff_mysqli_query($conn, 'SELECT bu.*, kb.name AS bereich_name FROM buchungen bu LEFT JOIN kassen_bereiche kb ON kb.id = bu.bereich_id ORDER BY bu.datum DESC, bu.created_at DESC LIMIT 200');
     $bookings = [];
     while ($res && ($r = mysqli_fetch_assoc($res))) {
         $bookings[] = [
@@ -2020,13 +2026,13 @@ if ($action === 'finance_booking_save') {
     $by = (string)($user['username'] ?? 'admin');
 
     if ($id > 0) {
-        $st = mysqli_prepare($conn, 'UPDATE buchungen SET typ=?, bezeichnung=?, betrag=?, datum=?, kategorie=?, notiz=?, bereich_id=? WHERE id=?');
+        $st = ff_mysqli_prepare($conn, 'UPDATE buchungen SET typ=?, bezeichnung=?, betrag=?, datum=?, kategorie=?, notiz=?, bereich_id=? WHERE id=?');
         mysqli_stmt_bind_param($st, 'ssdsssii', $typ, $bezeichnung, $betrag, $datum, $kategorie, $notiz, $bereichId, $id);
     } else {
-        $st = mysqli_prepare($conn, 'INSERT INTO buchungen (typ, bezeichnung, betrag, datum, kategorie, notiz, bereich_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        $st = ff_mysqli_prepare($conn, 'INSERT INTO buchungen (typ, bezeichnung, betrag, datum, kategorie, notiz, bereich_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         mysqli_stmt_bind_param($st, 'ssdsssis', $typ, $bezeichnung, $betrag, $datum, $kategorie, $notiz, $bereichId, $by);
     }
-    mysqli_stmt_execute($st);
+    ff_mysqli_stmt_execute($st);
     $savedId = $id > 0 ? $id : mysqli_insert_id($conn);
     mysqli_stmt_close($st);
 

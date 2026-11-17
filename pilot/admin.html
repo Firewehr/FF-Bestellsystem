@@ -173,6 +173,15 @@
           <span>🔒 <strong>Login gesperrt:</strong> {{ overview.stats.login_locks.join(', ') }} – zu viele falsche Passwörter.</span>
           <button type="button" class="btn btn-outline btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'abrechnung')">Ansehen / entsperren</button>
         </div>
+        <div v-if="overview?.stats?.db_errors?.count_15m > 0" class="admin-card admin-alert-warning" style="border-left-color: var(--ff-danger, #dc2626);">
+          <span>⚠️ <strong>{{ overview.stats.db_errors.count_15m }} Datenbank-/Serverfehler</strong> in den letzten 15 Minuten
+            – zuletzt: {{ overview.stats.db_errors.last[0]?.w }} ({{ overview.stats.db_errors.last[0]?.e }})</span>
+          <button type="button" class="btn btn-outline btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'diagnose')">Details</button>
+        </div>
+        <div v-else-if="overview?.stats?.db_errors?.count_24h > 0" class="admin-card admin-alert-warning">
+          <span>ℹ️ {{ overview.stats.db_errors.count_24h }} Datenbank-/Serverfehler in den letzten 24 Stunden.</span>
+          <button type="button" class="btn btn-outline btn-sm" @click="activeTab = 'stammdaten'; switchSubTab('stammdaten', 'diagnose')">Details</button>
+        </div>
         <!-- KPI Kacheln -->
         <div class="kpi-grid">
           <div class="kpi-tile kpi-primary">
@@ -1522,6 +1531,33 @@
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="card-header u-row-wrap" style="justify-content: space-between;">
+              <h3><span>⚠️</span> Fehlerprotokoll (letzte 24 Stunden)</h3>
+              <button type="button" class="btn btn-outline btn-sm" :disabled="!(diagnose.dbErrors.last || []).length" @click="clearDbErrors">Als erledigt markieren</button>
+            </div>
+            <div class="card-body">
+              <p class="u-muted-sm u-mb-16">
+                Fehlgeschlagene Datenbank-Abfragen, Serverfehler der App und PHP-Abbrüche. Bisher scheiterten solche Abfragen
+                still – eine Station zeigte dann einfach nichts an. Details mit SQL stehen im Fehlerprotokoll des Servers (<code>[ff-db]</code>).
+                Letzte 15 Minuten: <strong>{{ diagnose.dbErrors.count_15m || 0 }}</strong>, letzte 24 Stunden: <strong>{{ diagnose.dbErrors.count_24h || 0 }}</strong>.
+              </p>
+              <div class="table-responsive">
+                <table class="data-table diag-table">
+                  <thead><tr><th>Zeit</th><th>Stelle</th><th>Fehler</th></tr></thead>
+                  <tbody>
+                    <tr v-for="(r, i) in (diagnose.dbErrors.last || [])" :key="i">
+                      <td style="white-space: nowrap;">{{ new Date(r.t * 1000).toLocaleTimeString('de-AT') }}</td>
+                      <td><code>{{ r.w }}</code><br><span class="u-muted-sm">{{ r.u }}</span></td>
+                      <td><span v-if="r.n">#{{ r.n }}&nbsp;</span>{{ r.e }}</td>
+                    </tr>
+                    <tr v-if="!(diagnose.dbErrors.last || []).length"><td colspan="3" class="u-empty-cell">{{ diagnose.loading ? 'Wird geladen …' : 'Keine Fehler – gut so.' }}</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -3686,6 +3722,6 @@
   <!-- QR-Code Library -->
   <script src="assets/qrcode.min.js"></script>
   <!-- Vue 3 App Initialisierung -->
-  <script type="module" src="admin.js?v=20261116_5"></script>
+  <script type="module" src="admin.js?v=20261117_1"></script>
 </body>
 </html>

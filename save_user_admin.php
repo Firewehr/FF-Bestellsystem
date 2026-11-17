@@ -35,14 +35,14 @@ if ($newLevel === 2) {
 $sessionLevel = (int)$_SESSION['admin'];
 $sessionName = $_SESSION['user']['username'] ?? '';
 
-$stmt = mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
+$stmt = ff_mysqli_prepare($conn, 'SELECT id, username, admin FROM users WHERE id = ? LIMIT 1');
 if (!$stmt) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($stmt, 'i', $userid);
-mysqli_stmt_execute($stmt);
+ff_mysqli_stmt_execute($stmt);
 $res = mysqli_stmt_get_result($stmt);
 $row = $res ? mysqli_fetch_assoc($res) : null;
 mysqli_stmt_close($stmt);
@@ -67,14 +67,14 @@ if ($sessionLevel < 2) {
     }
 }
 
-$upd = mysqli_prepare($conn, 'UPDATE users SET admin = ? WHERE id = ? LIMIT 1');
+$upd = ff_mysqli_prepare($conn, 'UPDATE users SET admin = ? WHERE id = ? LIMIT 1');
 if (!$upd) {
     http_response_code(500);
     echo json_encode(['ok' => false, 'error' => 'db'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 mysqli_stmt_bind_param($upd, 'ii', $newLevel, $userid);
-$ok = mysqli_stmt_execute($upd);
+$ok = ff_mysqli_stmt_execute($upd);
 mysqli_stmt_close($upd);
 
 if (!$ok) {

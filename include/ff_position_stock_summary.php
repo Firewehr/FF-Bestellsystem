@@ -24,7 +24,7 @@ if (!function_exists('ff_position_mv_table_exists')) {
             ff_mitarbeiter_verpflegung_ensure_schema($conn);
         }
 
-        $tbl = @mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
+        $tbl = ff_mysqli_query($conn, "SHOW TABLES LIKE 'mitarbeiter_verpflegung'");
         $exists = ($tbl && mysqli_num_rows($tbl) > 0);
         if ($tbl) {
             @mysqli_free_result($tbl);
@@ -36,13 +36,13 @@ if (!function_exists('ff_position_mv_table_exists')) {
         }
 
         // Prüfen, ob benötigte Spalten tatsächlich vorhanden sind
-        $cPos = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
+        $cPos = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'position_id'");
         $hasPos = ($cPos && mysqli_num_rows($cPos) > 0);
         if ($cPos) {
             @mysqli_free_result($cPos);
         }
 
-        $cMenge = @mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
+        $cMenge = ff_mysqli_query($conn, "SHOW COLUMNS FROM `mitarbeiter_verpflegung` LIKE 'menge'");
         $hasMenge = ($cMenge && mysqli_num_rows($cMenge) > 0);
         if ($cMenge) {
             @mysqli_free_result($cMenge);
@@ -194,7 +194,7 @@ function ff_position_batch_mv_counts(mysqli $conn): array
         return $map;
     }
 
-    $res = mysqli_query($conn, 'SELECT position_id, COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung GROUP BY position_id');
+    $res = ff_mysqli_query($conn, 'SELECT position_id, COALESCE(SUM(menge), 0) AS cnt FROM mitarbeiter_verpflegung GROUP BY position_id');
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $map[(int) $row['position_id']] = (int) ($row['cnt'] ?? 0);
@@ -262,7 +262,7 @@ function ff_position_stock_snapshot(?mysqli $conn = null, bool $load = false): ?
             return $snapshot;
         }
         ff_rezepturen_ensure_schema($conn);
-        $res = mysqli_query(
+        $res = ff_mysqli_query(
             $conn,
             'SELECT pr.position_id, pr.bestandteil_id, pr.menge, b.name, b.kapazitaet
              FROM position_rezepturen pr
@@ -548,7 +548,7 @@ function ff_position_stock_limited_list(mysqli $conn): array
         $hasMaxCol = true; // Soll-Struktur laut Migrationslauf vollständig
     }
     if ($hasMaxCol === null) {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
         $hasMaxCol = ($chk && mysqli_num_rows($chk) > 0);
         if ($chk) {
             mysqli_free_result($chk);
@@ -562,7 +562,7 @@ function ff_position_stock_limited_list(mysqli $conn): array
             WHERE p.maxBestellbar > 0 OR pr.position_id IS NOT NULL
             GROUP BY p.rowid, p.Positionsname, p.maxBestellbar
             ORDER BY p.reihenfolge ASC, p.Positionsname ASC';
-    $res = mysqli_query($conn, $positionsSql);
+    $res = ff_mysqli_query($conn, $positionsSql);
     if (!$res) {
         return [];
     }
@@ -571,7 +571,7 @@ function ff_position_stock_limited_list(mysqli $conn): array
     $mvCounts = ff_position_batch_mv_counts($conn);
     $componentCaps = [];
     if (function_exists('ff_rezepturen_table_exists') && ff_rezepturen_table_exists($conn, 'bestandteile') && ff_rezepturen_table_exists($conn, 'position_rezepturen')) {
-        $compRes = mysqli_query($conn, 'SELECT pr.position_id, pr.bestandteil_id, pr.menge, b.kapazitaet
+        $compRes = ff_mysqli_query($conn, 'SELECT pr.position_id, pr.bestandteil_id, pr.menge, b.kapazitaet
             FROM position_rezepturen pr
             INNER JOIN bestandteile b ON b.id = pr.bestandteil_id
             WHERE b.aktiv = 1 AND b.kapazitaet > 0 AND pr.menge > 0');
@@ -706,7 +706,7 @@ function ff_bestandteil_batch_order_counts(mysqli $conn): array
                   AND (pr.optional_enabled = 0 OR pr.default_selected = 1)
             ) consumed
             GROUP BY consumed.bestandteil_id";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $bid = (int) ($row['bestandteil_id'] ?? 0);
@@ -731,7 +731,7 @@ function ff_bestandteil_batch_mv_counts(mysqli $conn): array
             JOIN position_rezepturen pr ON pr.position_id = v.position_id
             WHERE pr.optional_enabled = 0 OR pr.default_selected = 1
             GROUP BY pr.bestandteil_id";
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($row = mysqli_fetch_assoc($res)) {
             $bid = (int) ($row['bestandteil_id'] ?? 0);
@@ -751,7 +751,7 @@ function ff_bestandteil_stock_limited_list(mysqli $conn): array
     }
 
     $sql = 'SELECT id, name, einheit, kapazitaet FROM bestandteile WHERE aktiv = 1 AND kapazitaet > 0 ORDER BY sort_order ASC, name ASC';
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if (!$res) {
         return [];
     }
@@ -766,7 +766,7 @@ function ff_bestandteil_stock_limited_list(mysqli $conn): array
             LEFT JOIN positionen p ON p.rowid = pr.position_id
             WHERE pr.bestandteil_id IS NOT NULL AND p.rowid IS NOT NULL AND pr.menge > 0
             ORDER BY p.Positionsname ASC, pr.reihenfolge ASC, pr.id ASC';
-        $usageRes = mysqli_query($conn, $usageSql);
+        $usageRes = ff_mysqli_query($conn, $usageSql);
         if ($usageRes) {
             while ($usageRow = mysqli_fetch_assoc($usageRes)) {
                 $bid = (int) ($usageRow['bestandteil_id'] ?? 0);
@@ -860,7 +860,7 @@ function ff_mv_list_positions(mysqli $conn): array
 
     $hasMaxCol = ff_schema_is_current($conn);
     if (!$hasMaxCol) {
-        $chk = @mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
+        $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM positionen LIKE 'maxBestellbar'");
         if ($chk && mysqli_num_rows($chk) > 0) {
             $hasMaxCol = true;
         }
@@ -878,7 +878,7 @@ function ff_mv_list_positions(mysqli $conn): array
             ORDER BY COALESCE(s.sort_order, 99999), COALESCE(s.id, 0), p.type, p.Positionsname";
 
     $rows = [];
-    $res = mysqli_query($conn, $sql);
+    $res = ff_mysqli_query($conn, $sql);
     if ($res) {
         while ($r = mysqli_fetch_assoc($res)) {
             $r['is_kassa_only'] = ff_position_is_kassa_only($r) ? 1 : 0;
@@ -1272,6 +1272,11 @@ function ff_timing_flush(): void
         header('Server-Timing: ' . implode(', ', $parts), false);
     }
     unset($GLOBALS['ff_timing_marks']);
+    if (defined('FF_DV_FRAGMENT_CAPTURE')) {
+        // direktverkauf.php fängt die Liste per ob_start() ein (ff_direktverkauf_capture_fragment):
+        // Puffer hier nicht schließen, sonst liefert ob_get_clean() false und die Seite bricht ab.
+        return;
+    }
     while (ob_get_level() > 0) {
         ob_end_flush();
     }

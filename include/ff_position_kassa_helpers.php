@@ -13,9 +13,9 @@ function ff_position_ensure_kassa_only_column(mysqli $conn): void
     if (ff_schema_is_current($conn)) {
         return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
     }
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'kassa_only'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `positionen` LIKE 'kassa_only'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "ALTER TABLE `positionen` ADD COLUMN `kassa_only` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=nur Direktverkauf/Kasse'"
         );
@@ -27,9 +27,9 @@ function ff_subcategory_ensure_kassa_only_column(mysqli $conn): void
     if (ff_schema_is_current($conn)) {
         return; // Schema laut Migrationslauf aktuell (include/ff_schema_gate.php)
     }
-    $chk = @mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'kassa_only'");
+    $chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM `position_subcategories` LIKE 'kassa_only'");
     if ($chk && mysqli_num_rows($chk) === 0) {
-        @mysqli_query(
+        ff_mysqli_query(
             $conn,
             "ALTER TABLE `position_subcategories` ADD COLUMN `kassa_only` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=nur Kasse, Kellner sehen Gruppe nicht'"
         );
@@ -71,7 +71,7 @@ function ff_position_sql_station_visible(string $aliasPos = 'p', ?string $aliasS
 function ff_manage_print_target_select_options(mysqli $conn, int $selected): string
 {
     $html = '';
-    $res = @mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
+    $res = ff_mysqli_query($conn, 'SELECT print_target, name FROM print_targets WHERE active = 1 ORDER BY sort_order, name');
     if ($res && mysqli_num_rows($res) > 0) {
         while ($pt = mysqli_fetch_assoc($res)) {
             $pid = (int) ($pt['print_target'] ?? 0);

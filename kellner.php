@@ -32,7 +32,7 @@ $sql = "SELECT COUNT(*) as cnt, bestellungen.kellnerZahlung,
         GROUP BY bestellungen.kellnerZahlung
         ORDER BY bestellungen.kellnerZahlung";
 
-$result = mysqli_query($conn, $sql);
+$result = ff_mysqli_query($conn, $sql);
 
 header('Content-Type: text/html; charset=utf-8');
 echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Kellner Umsatz</title></head><body>';

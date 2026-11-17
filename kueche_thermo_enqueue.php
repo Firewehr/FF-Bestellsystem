@@ -32,9 +32,9 @@ if ($print_target <= 0 || $rowids === []) {
 
 mysqli_set_charset($conn, 'utf8mb4');
 
-$chk = @mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
+$chk = ff_mysqli_query($conn, "SHOW COLUMNS FROM bestellungen LIKE 'print_status'");
 if ($chk && mysqli_num_rows($chk) === 0) {
-    @mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN print_status TINYINT(1) NOT NULL DEFAULT 0");
+    ff_mysqli_query($conn, "ALTER TABLE bestellungen ADD COLUMN print_status TINYINT(1) NOT NULL DEFAULT 0");
 }
 
 $built = ff_kueche_thermal_build_tische_for_rowids($conn, $print_target, $rowids);
