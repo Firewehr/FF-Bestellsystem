@@ -35,7 +35,7 @@
 - `gewinn_api.php` – liefert Umsatz, variable Kosten, fixe Einnahmen/Ausgaben, Gewinn (JSON)
 - `buchungen_save.php` – speichert neue/geänderte Buchung
 - `buchungen_delete.php` – löscht Buchung
-- `update_selbstkosten.php` – aktualisiert Selbstkosten einer Position
+- `manage/api.php` – Selbstkosten (EK) werden beim Speichern einer Position in der Speisekarte mitgesetzt
 
 ## Datenbank
 
