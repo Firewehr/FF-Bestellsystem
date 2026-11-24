@@ -88,6 +88,7 @@ Dieser Abschnitt ersetzt ein früheres separates Änderungsprotokoll: **alles Wi
 
 - **`include/sql.sql`** ist das **kanonische Vollschema** (inkl. `CREATE DATABASE`/`USE` für `ffobritzberg`).
 - **`documentation/install_neuinstallation_complete.sql`** ist daran **angeglichen** (ohne `CREATE DATABASE`/`USE`; in phpMyAdmin zuerst die Ziel-Datenbank auswählen).
+- **Stand 24.11.2026:** Beide Dateien sind aus dem Schema einer laufenden Installation erzeugt (alle Migrationen angewendet): **46 Tabellen**, darunter Rezepturen/Bestandteile/Allergene, Kassen- und Kellnerabrechnung, Kellner-App (`pilot_*`), Passkeys (`user_passkeys`, `webauthn_remote_requests`), Push-Regeln (`ff_fest_push_*`), Druck-Clients (`printer_devices`), Tisch- und Stations-Tokens (`table_tokens`, `substation_access_tokens`), Login-Sperre und CSRF-Protokoll. Einheitliche Sortierung `utf8mb4_unicode_ci`. Nach dem Import meldet der Migrationslauf (Pre-Flight „Datenbank-Schema aktuell“) sofort ein vollständiges Schema.
 
 **Neu ergänzt bzw. im Schema abgesichert (Auszug):**
 

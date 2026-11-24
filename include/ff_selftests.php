@@ -2945,8 +2945,12 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
         });
 
         $check($g, 'Admin-Pilot API: Fest Steuerberater-Paket & Export (fest_steuerpaket_zip & fest_export mit fest_id und id)', function (mysqli $c) {
-            $fRow = ff_st_fetch_one($c, 'SELECT id FROM feste ORDER BY id ASC LIMIT 1');
-            $fid = $fRow ? (int)$fRow['id'] : 1;
+            // Fest über die PDO-Verbindung suchen: Export und Unterprozess sehen nur gespeicherte Feste,
+            // nicht die, die frühere Tests in der Test-Transaktion angelegt haben.
+            $fid = (int) db()->query('SELECT id FROM feste ORDER BY id ASC LIMIT 1')->fetchColumn();
+            if ($fid <= 0) {
+                return null;   // frische Installation ohne Fest: nichts zu exportieren
+            }
 
             $scriptZip = dirname(__DIR__) . '/fest_steuerpaket_zip.php';
             $scriptExport = dirname(__DIR__) . '/fest_export.php';
@@ -3527,7 +3531,9 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
 
         $check($g, 'Bezahlen mit Rechnung: Nummer aus dem Nummernkreis, Belegzeilen gruppiert, Zeilen verknüpft', function (mysqli $c) {
             $seqRow = ff_st_fetch_one($c, 'SELECT v FROM settings WHERE k = ?', 's', [FF_RECHNUNG_NEXT_KEY]);
-            $seqBefore = (int) ($seqRow['v'] ?? 0);
+            $seqRaw = (string) ($seqRow['v'] ?? '');
+            // Wie der Code selbst: ohne Eintrag (frische Installation) beginnt der Nummernkreis bei 1
+            $seqBefore = ff_rechnung_next_read($c);
             try {
                 $p = ff_st_position($c, 5.0);
                 $a = ff_st_flow_row($c, $p, ['tisch' => 7787, 'betrag' => 6.0, 'order_nr' => 71]);
@@ -3552,7 +3558,7 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                     ?? ff_st_expect_same(3, $linked, 'Zeilen mit Rechnung verknüpft');
             } finally {
                 // Datenbank wird am Ende zurückgerollt; den Settings-Cache dieses Requests ebenso
-                ff_settings_cache($c, ['v' => (string) $seqBefore], FF_RECHNUNG_NEXT_KEY);
+                ff_settings_cache($c, ['v' => $seqRaw], FF_RECHNUNG_NEXT_KEY);
             }
         });
 

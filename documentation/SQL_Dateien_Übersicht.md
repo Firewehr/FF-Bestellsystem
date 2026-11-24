@@ -9,7 +9,9 @@
 | **`documentation/install_neuinstallation_complete.sql`** | **Standard:** In phpMyAdmin die **leere Ziel-Datenbank auswählen** → SQL-Tab → dieses Script **einmal** einfügen und ausführen. Enthält **kein** `CREATE DATABASE` / `USE` (du wählst die DB selbst). |
 | **`include/sql.sql`** | **Alternative:** Enthält dasselbe Schema **plus** optional `CREATE DATABASE`/`USE ffobritzberg`. Nutzen, wenn du DB und Tabellen in **einem** Schritt aus der Konsole anlegen willst oder den festen Namen `ffobritzberg` brauchst. |
 
-Beide Dateien sind inhaltlich **aufeinander abgestimmt** (kanonische Quelle im Repo: **`include/sql.sql`**; die Install-Datei wird daran angepasst).
+Beide Dateien sind inhaltlich **gleich** (kanonische Quelle im Repo: **`include/sql.sql`**; die Install-Datei wird daran angepasst). **Stand 24.11.2026:** 46 Tabellen, erzeugt aus dem Schema einer laufenden Installation nach dem Migrationslauf – Details in `README_Projekt_Gesamtdokumentation.md`, Abschnitt 3.5.
+
+Spätere Schema-Erweiterungen spielt der **Migrationslauf** (`include/ff_schema_migrate.php`) beim ersten Admin-Aufruf nach einem Update automatisch ein; die Patch-Dateien unten sind nur noch für sehr alte Installationen gedacht.
 
 ### Erst-Login nach SQL-Import (Merker)
 
