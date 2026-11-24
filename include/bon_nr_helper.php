@@ -22,6 +22,10 @@ function ff_next_bon_nr(mysqli $conn): int
     if ($nr <= 0) {
         setting_set($conn, 'bon_nr_seq', (string)$start);
         $nr = $start;
+    } else {
+        // Cache nachziehen: sonst liest der nächste Aufruf im selben Request den alten Wert,
+        // setzt den Zähler wieder auf Start − 1 zurück und vergibt dieselbe Nummer erneut.
+        ff_settings_cache($conn, ['v' => (string)$nr], 'bon_nr_seq');
     }
 
     return $nr;

@@ -2207,6 +2207,21 @@ function ff_selftests_run(mysqli $conn, string $mode = 'all'): array
                 ?? ff_st_expect_same($first, (int)$payload['bon_nr'], 'Kompatibilitätsfeld bon_nr');
         });
 
+        $check($g, 'Bon-Nr. nach Zähler-Reset (Fest-Start): mehrere Tische im selben Aufruf zählen weiter', function (mysqli $c) {
+            require_once __DIR__ . '/bon_nr_helper.php';
+            $old = (string)setting_get($c, 'bon_nr_seq', '0');
+            try {
+                setting_set($c, 'bon_nr_seq', '0');   // wie ff_fest_start_reset(); Test-Transaktion wird zurückgerollt
+                $start = max(1, (int)setting_get($c, 'bon_nr_start', '1'));
+                $payload = ['tische' => [['tischnummer' => 1], ['tischnummer' => 2], ['tischnummer' => 3]]];
+                ff_bon_nr_assign_tische($c, $payload);
+                $nrs = array_map(static fn(array $t): int => (int)($t['bon_nr'] ?? 0), $payload['tische']);
+                return ff_st_expect_same([$start, $start + 1, $start + 2], $nrs, 'Bon-Nummern nach Reset');
+            } finally {
+                ff_settings_cache($c, ['v' => $old], 'bon_nr_seq');
+            }
+        });
+
         $check($g, 'Bon-Kopfzeile kommt aus dem Admin, sonst Vereinsname, sonst App-Titel', function (mysqli $c) {
             require_once __DIR__ . '/ff_bon_layout.php';
             $keys = ['thermo_bon_header', 'seller_name', 'app_title'];
